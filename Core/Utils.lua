@@ -1,9 +1,9 @@
--- CharacterAdvisor/Core/Utils.lua
--- Shared utility functions available to all modules via CharacterAdvisor.Utils
+-- ToonAge/Core/Utils.lua
+-- Shared utility functions available to all modules via ToonAge.Utils
 
-local CA = CharacterAdvisor
-CA.Utils = {}
-local U = CA.Utils
+local TA = ToonAge
+TA.Utils = {}
+local U = TA.Utils
 
 -- ── Colour helpers ────────────────────────────────────────────────────
 U.GOLD    = "|cFFFFD100"

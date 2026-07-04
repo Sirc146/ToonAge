@@ -1,12 +1,12 @@
--- CharacterAdvisor/Data/Guides/CAG_Midnight_Intro.lua
+-- ToonAge/Data/Guides/TAG_Midnight_Intro.lua
 -- Midnight expansion: Quel'Thalas introduction questline.
--- Self-registers into CA.GuideData on load (before Modules/ run).
+-- Self-registers into TA.GuideData on load (before Modules/ run).
 -- Update questID and coord values with live PTR data as it becomes available.
 
-local CA = CharacterAdvisor
-CA.GuideData = CA.GuideData or {}
+local TA = ToonAge
+TA.GuideData = TA.GuideData or {}
 
-CA.GuideData["midnight_intro"] = {
+TA.GuideData["midnight_intro"] = {
     id       = "midnight_intro",
     title    = "Midnight: Quel'Thalas Intro",
     zone     = 2434,   -- PTR intro zone (update with live map ID)

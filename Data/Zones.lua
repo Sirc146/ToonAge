@@ -1,11 +1,11 @@
--- CharacterAdvisor/Data/Zones.lua
+-- ToonAge/Data/Zones.lua
 -- Midnight Season 1 ilvl data (Patch 12.0.5)
 -- Source: Official Blizzard gear track table + community verification
 
-local CA = CharacterAdvisor
-CA.Data = CA.Data or {}
-CA.Data.Zones = {}
-local Z = CA.Data.Zones
+local TA = ToonAge
+TA.Data = TA.Data or {}
+TA.Data.Zones = {}
+local Z = TA.Data.Zones
 
 -- ── Content type enum ──────────────────────────────────────────────────
 Z.TYPE = {

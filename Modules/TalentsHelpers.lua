@@ -1,6 +1,6 @@
 -- Modules/TalentsHelpers.lua
-local CA = CharacterAdvisor
-CA.TalentsAPI = CA.TalentsAPI or {}
+local TA = ToonAge
+TA.TalentsAPI = TA.TalentsAPI or {}
 
 local function safeInsert(t, v)
   if v and type(v) == "number" then table.insert(t, v) end
@@ -99,7 +99,7 @@ local function scanTalentFrameForSelectedNodes()
   return ids
 end
 
-function CA.TalentsAPI.GetActiveTalentIDs()
+function TA.TalentsAPI.GetActiveTalentIDs()
   -- 1. Try modern C_ClassTalents + C_Traits path
   local ids = tryClassTalentsNodes()
   if ids and #ids > 0 then return ids end
@@ -178,13 +178,13 @@ local SpecInfoDB = {
   [73]  = { role="TANK",    style="melee"  }, -- Protection
 }
 
-function CA.TalentsAPI.GetSpecInfo(specID)
+function TA.TalentsAPI.GetSpecInfo(specID)
   return SpecInfoDB[specID] or { role="DAMAGER", style="melee" }
 end
 
 -- Scores active talent node IDs against a stored profile node list.
 -- Returns 0-100 (integer %) or nil when profileNodes is empty (no data).
-function CA.TalentsAPI.ScoreProfile(activeIDs, profileNodes)
+function TA.TalentsAPI.ScoreProfile(activeIDs, profileNodes)
   if not profileNodes or #profileNodes == 0 then return nil end
   if not activeIDs    or #activeIDs    == 0 then return 0    end
   local active = {}

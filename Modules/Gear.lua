@@ -1,13 +1,13 @@
--- CharacterAdvisor/Modules/Gear.lua
+-- ToonAge/Modules/Gear.lua
 -- Caching, PvP/PvE persistence, tooltip injection, bag-claim logic, enchant audit
 
-local CA   = CharacterAdvisor
-local U    = CA.Utils
-local SW   = CA.Data.StatWeights
-local EMap = CA.Data.EnchantProfessionMap or {}
+local TA   = ToonAge
+local U    = TA.Utils
+local SW   = TA.Data.StatWeights
+local EMap = TA.Data.EnchantProfessionMap or {}
 
 local Gear = {}
-CA:RegisterModule("Gear", Gear)
+TA:RegisterModule("Gear", Gear)
 
 -- ── State ─────────────────────────────────────────────────────────────
 Gear.frames       = {}
@@ -61,7 +61,7 @@ local function CleanProxyValue(val)
 end
 
 -- ── Tooltip scanner for PvP iLvl detection ────────────────────────────
-local ScanTT = CreateFrame("GameTooltip", "CAGearScannerTT", nil, "GameTooltipTemplate")
+local ScanTT = CreateFrame("GameTooltip", "TAGearScannerTT", nil, "GameTooltipTemplate")
 ScanTT:SetOwner(WorldFrame, "ANCHOR_NONE")
 
 local function GetItemIlvls(itemLink)
@@ -79,7 +79,7 @@ local function GetItemIlvls(itemLink)
     ScanTT:ClearLines()
     ScanTT:SetHyperlink(itemLink)
     for i = 2, ScanTT:NumLines() do
-        local line = _G["CAGearScannerTTTextLeft" .. i]
+        local line = _G["TAGearScannerTTTextLeft" .. i]
         if line then
             local text = line:GetText()
             if text then
@@ -146,7 +146,7 @@ local function CalculateItemScore(itemLink, specID, mode)
         return ((mode == "pvp" and pIlvl) or wIlvl or 0) * 3
     end
 
-    local src = CA.charDB and CA.charDB.weightSource or "built-in"
+    local src = TA.charDB and TA.charDB.weightSource or "built-in"
     if src == "pawn" and Pawn and Pawn.GetSingleItemValue then
         local ok, val = pcall(function() return Pawn.GetSingleItemValue(itemLink, false) end)
         if ok and val then return CleanProxyValue(val) end
@@ -283,8 +283,8 @@ local function ScheduleBagRender()
     if bagRenderTimer then return end
     bagRenderTimer = C_Timer.After(0.3, function()
         bagRenderTimer = nil
-        if CA.UI and CA.UI.activeTab == "gear" and Gear.viewMode == "player" then
-            Gear:Render(CA.UI.contentChild, CA.UI.sideChild)
+        if TA.UI and TA.UI.activeTab == "gear" and Gear.viewMode == "player" then
+            Gear:Render(TA.UI.contentChild, TA.UI.sideChild)
         end
     end)
 end
@@ -297,12 +297,12 @@ function Gear:OnEvent(event, ...)
     elseif event == "PLAYER_TARGET_CHANGED" then
         if self.viewMode == "target" then
             if UnitIsPlayer("target") and CanInspect("target") then NotifyInspect("target") end
-            if CA.UI and CA.UI.activeTab == "gear" then self:Render(CA.UI.contentChild, CA.UI.sideChild) end
+            if TA.UI and TA.UI.activeTab == "gear" then self:Render(TA.UI.contentChild, TA.UI.sideChild) end
         end
     elseif event == "INSPECT_READY" then
         local guid = ...
         if self.viewMode == "target" and UnitGUID("target") == guid then
-            if CA.UI and CA.UI.activeTab == "gear" then self:Render(CA.UI.contentChild, CA.UI.sideChild) end
+            if TA.UI and TA.UI.activeTab == "gear" then self:Render(TA.UI.contentChild, TA.UI.sideChild) end
         end
     elseif event == "SKILL_LINES_CHANGED" then
         RebuildProfessionsCache()
@@ -310,13 +310,13 @@ function Gear:OnEvent(event, ...)
 end
 
 function Gear:Init()
-    CA.eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-    CA.eventFrame:RegisterEvent("INSPECT_READY")
+    TA.eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+    TA.eventFrame:RegisterEvent("INSPECT_READY")
     -- SKILL_LINES_CHANGED is already registered globally in Core/Init.lua's
     -- PERSISTENT_EVENTS list; no need to register it again here.
-    if CA.charDB then
-        CA.charDB.pvxMode      = CA.charDB.pvxMode      or "pve"
-        CA.charDB.weightSource = CA.charDB.weightSource or "built-in"
+    if TA.charDB then
+        TA.charDB.pvxMode      = TA.charDB.pvxMode      or "pve"
+        TA.charDB.weightSource = TA.charDB.weightSource or "built-in"
     end
     RebuildProfessionsCache()
 end
@@ -329,11 +329,11 @@ function Gear:Render(content, sidebar)
     self.sideFrames = {}
 
     if C_PvP and C_PvP.IsWarModeDesired and C_PvP.IsWarModeDesired() then
-        if CA.charDB then CA.charDB.pvxMode = "pvp" end
+        if TA.charDB then TA.charDB.pvxMode = "pvp" end
     end
 
-    local pvxMode      = (CA.charDB and CA.charDB.pvxMode)      or "pve"
-    local weightSource = (CA.charDB and CA.charDB.weightSource) or "built-in"
+    local pvxMode      = (TA.charDB and TA.charDB.pvxMode)      or "pve"
+    local weightSource = (TA.charDB and TA.charDB.weightSource) or "built-in"
     local padL, y     = 20, -10
     local w           = content:GetWidth() - 40
 
@@ -368,7 +368,7 @@ function Gear:Render(content, sidebar)
     pvpBtn:SetText(pvxMode == "pvp" and "PvP: ON" or "PvP: OFF")
     pvpBtn:SetScript("OnClick", function()
         local next = (pvxMode == "pve") and "pvp" or "pve"
-        if CA.charDB then CA.charDB.pvxMode = next end
+        if TA.charDB then TA.charDB.pvxMode = next end
         self:Render(content, sidebar)
     end)
     table.insert(self.frames, pvpBtn)
@@ -382,7 +382,7 @@ function Gear:Render(content, sidebar)
         local next = weightSource == "built-in" and "pawn"
                   or weightSource == "pawn"     and "custom"
                   or "built-in"
-        if CA.charDB then CA.charDB.weightSource = next end
+        if TA.charDB then TA.charDB.weightSource = next end
         self:Render(content, sidebar)
     end)
     table.insert(self.frames, srcBtn)
@@ -526,7 +526,7 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
                 GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
                 GameTooltip:SetHyperlink(currentLink)
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("Character Advisor:", 1, 0.82, 0)
+                GameTooltip:AddLine("ToonAge:", 1, 0.82, 0)
                 GameTooltip:AddLine("Mode: " .. capPvxMode:upper(), 0.55, 0.44, 0.25)
                 GameTooltip:AddLine("Score: " .. capScore, 1, 1, 1)
                 if capHasUp then

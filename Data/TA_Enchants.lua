@@ -1,12 +1,12 @@
--- CharacterAdvisor/Data/CA_Enchants.lua
+-- ToonAge/Data/TA_Enchants.lua
 -- Midnight Expansion enchant → profession mapping.
 -- Keys are the enchantID field from the item link (item:id:enchantID:...).
 -- spellID is the crafting spell checked with IsSpellKnown() to verify recipe ownership.
 
-local CA = CharacterAdvisor
-CA.Data = CA.Data or {}
+local TA = ToonAge
+TA.Data = TA.Data or {}
 
-CA.Data.EnchantProfessionMap = {
+TA.Data.EnchantProfessionMap = {
     -- ── Weapon Enchants ───────────────────────────────────────────────
     [74001] = { profession = "ENCHANTING", name = "Authority of the Depths",    spellID = 445001 },
     [74002] = { profession = "ENCHANTING", name = "Acuity of the Ren'dorei",    spellID = 445002 },

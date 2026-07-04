@@ -1,4 +1,4 @@
--- CharacterAdvisor/Modules/Arrow.lua
+-- ToonAge/Modules/Arrow.lua
 -- Draggable, scroll-to-resize, right-click-lockable HUD arrow.
 -- Layout: gold arrow -> white distance -> grey ETA -> gold objective title
 --
@@ -6,11 +6,11 @@
 --   Map-y increases SOUTHWARD, so atan2(dx, -dy) gives a clockwise bearing
 --   where 0 = North, matching GetPlayerFacing() conventions.
 
-local CA = CharacterAdvisor
-local U  = CA.Utils
+local TA = ToonAge
+local U  = TA.Utils
 
 local Arrow = {}
-CA:RegisterModule("Arrow", Arrow)
+TA:RegisterModule("Arrow", Arrow)
 
 Arrow.frame        = nil
 Arrow.throttle     = 0
@@ -31,17 +31,17 @@ end
 -- ── Helpers ───────────────────────────────────────────────────────────────
 
 local function GetTargetStep()
-    local QT = CA:GetModule("QuestTracker")
+    local QT = TA:GetModule("QuestTracker")
     if not (QT and QT.guideID and QT.stepIdx) then return nil end
-    local guide = CA.Guides and CA.Guides[QT.guideID]
+    local guide = TA.Guides and TA.Guides[QT.guideID]
     if not guide then return nil end
     return guide.steps[QT.stepIdx]
 end
 
--- Distance/ETA math lives in Core/Utils.lua (CA.Utils) so QuestTracker.lua
+-- Distance/ETA math lives in Core/Utils.lua (TA.Utils) so QuestTracker.lua
 -- can show identical numbers for the same step without duplicating it here.
 local function GetTravelSpeed()
-    local TM = CA:GetModule("TravelModes")
+    local TM = TA:GetModule("TravelModes")
     return (TM and TM:GetSpeed()) or 7
 end
 
@@ -72,7 +72,7 @@ Arrow.GetEffectiveCoord = GetEffectiveCoord
 -- ── Frame construction ────────────────────────────────────────────────────
 
 function Arrow:InitFrame()
-    local f = CreateFrame("Button", "CAWaypointArrow", UIParent)
+    local f = CreateFrame("Button", "TAWaypointArrow", UIParent)
     f:SetSize(ARROW_W, ARROW_H)
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
@@ -83,10 +83,10 @@ function Arrow:InitFrame()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", function(fr)
         fr:StopMovingOrSizing()
-        if CA.charDB then
-            CA.charDB.arrow   = CA.charDB.arrow or {}
-            CA.charDB.arrow.x = fr:GetLeft()
-            CA.charDB.arrow.y = fr:GetTop()
+        if TA.charDB then
+            TA.charDB.arrow   = TA.charDB.arrow or {}
+            TA.charDB.arrow.x = fr:GetLeft()
+            TA.charDB.arrow.y = fr:GetTop()
         end
     end)
 
@@ -95,21 +95,21 @@ function Arrow:InitFrame()
     f:SetScript("OnMouseWheel", function(fr, delta)
         local s = math.max(0.5, math.min(fr:GetScale() + delta * 0.1, 3.0))
         fr:SetScale(s)
-        if CA.charDB then CA.charDB.arrow = CA.charDB.arrow or {}; CA.charDB.arrow.scale = s end
+        if TA.charDB then TA.charDB.arrow = TA.charDB.arrow or {}; TA.charDB.arrow.scale = s end
     end)
 
     -- Right-click to toggle drag lock
     f:RegisterForClicks("RightButtonUp")
     f:SetScript("OnClick", function(fr, button)
         if button ~= "RightButton" then return end
-        CA.charDB.arrow = CA.charDB.arrow or {}
-        CA.charDB.arrow.locked = not CA.charDB.arrow.locked
-        if CA.charDB.arrow.locked then
+        TA.charDB.arrow = TA.charDB.arrow or {}
+        TA.charDB.arrow.locked = not TA.charDB.arrow.locked
+        if TA.charDB.arrow.locked then
             fr:RegisterForDrag()
-            print("|cFFFFD100[CA Arrow]|r Locked. Right-click to unlock.")
+            print("|cFFFFD100[TA Arrow]|r Locked. Right-click to unlock.")
         else
             fr:RegisterForDrag("LeftButton")
-            print("|cFFFFD100[CA Arrow]|r Unlocked. Drag to move.")
+            print("|cFFFFD100[TA Arrow]|r Unlocked. Drag to move.")
         end
     end)
 
@@ -124,7 +124,7 @@ function Arrow:InitFrame()
     f:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     -- Restore saved state
-    local saved = CA.charDB and CA.charDB.arrow
+    local saved = TA.charDB and TA.charDB.arrow
     if saved and saved.scale then f:SetScale(saved.scale) end
     if saved and saved.x and saved.y then
         f:ClearAllPoints()
@@ -270,17 +270,17 @@ end
 
 function Arrow:Toggle()
     if not self.frame then
-        print("|cFFFF4444[CA]|r Arrow frame not initialised.")
+        print("|cFFFF4444[TA]|r Arrow frame not initialised.")
         return
     end
     if self.frame:IsVisible() then
         self.frame:Hide()
-        if CA.charDB then CA.charDB.arrow = CA.charDB.arrow or {}; CA.charDB.arrow.visible = false end
-        print("|cFFFFD100[CA Arrow]|r Hidden.")
+        if TA.charDB then TA.charDB.arrow = TA.charDB.arrow or {}; TA.charDB.arrow.visible = false end
+        print("|cFFFFD100[TA Arrow]|r Hidden.")
     else
         self.frame:Show()
-        if CA.charDB then CA.charDB.arrow = CA.charDB.arrow or {}; CA.charDB.arrow.visible = true end
-        print("|cFFFFD100[CA Arrow]|r Visible.")
+        if TA.charDB then TA.charDB.arrow = TA.charDB.arrow or {}; TA.charDB.arrow.visible = true end
+        print("|cFFFFD100[TA Arrow]|r Visible.")
     end
 end
 
@@ -288,7 +288,7 @@ end
 
 function Arrow:Init()
     self:InitFrame()
-    local saved = CA.charDB and CA.charDB.arrow
+    local saved = TA.charDB and TA.charDB.arrow
     if saved and saved.visible then self.frame:Show() end
 end
 

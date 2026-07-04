@@ -1,10 +1,10 @@
--- CharacterAdvisor/Data/Spells.lua
+-- ToonAge/Data/Spells.lua
 -- Spell IDs for Midnight 12.0.5 (verify in-game via GetSpellInfo)
 
-local CA = CharacterAdvisor
-CA.Data = CA.Data or {}
-CA.Data.Spells = {}
-local S = CA.Data.Spells
+local TA = ToonAge
+TA.Data = TA.Data or {}
+TA.Data.Spells = {}
+local S = TA.Data.Spells
 
 -- ── Evoker — Preservation ─────────────────────────────────────────────
 S.PRES = {

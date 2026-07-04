@@ -1,10 +1,10 @@
--- CharacterAdvisor/Data/Professions.lua
+-- ToonAge/Data/Professions.lua
 -- Profession talent trees, gear slots, quality thresholds (Midnight 12.0.5)
 
-local CA = CharacterAdvisor
-CA.Data = CA.Data or {}
-CA.Data.Professions = {}
-local P = CA.Data.Professions
+local TA = ToonAge
+TA.Data = TA.Data or {}
+TA.Data.Professions = {}
+local P = TA.Data.Professions
 
 -- ── Profession gear slot IDs ───────────────────────────────────────────
 -- In Midnight, profession gear uses dedicated equip slots

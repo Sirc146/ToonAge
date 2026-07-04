@@ -1,13 +1,13 @@
--- CharacterAdvisor/Core/MinimapButton.lua
+-- ToonAge/Core/MinimapButton.lua
 -- Draggable minimap button — follows the guide's radial orbit pattern exactly.
 -- OnUpdate is registered only during drag and unregistered immediately on drag stop.
 
-local CA = CharacterAdvisor
+local TA = ToonAge
 
-function CA:InitMinimap()
+function TA:InitMinimap()
     if self.minimapBtn then return end
 
-    local btn = CreateFrame("Button", "CharacterAdvisorMinimapButton", Minimap)
+    local btn = CreateFrame("Button", "ToonAgeMinimapButton", Minimap)
     btn:SetSize(31, 31)
     btn:SetFrameLevel(Minimap:GetFrameLevel() + 2)
     btn:RegisterForDrag("LeftButton")
@@ -29,7 +29,7 @@ function CA:InitMinimap()
     -- ── Radial orbit geometry ─────────────────────────────────────────
     -- Saved angle persists across sessions via SavedVariables
     local ORBIT_RADIUS = 78
-    local angle = (CA.db and CA.db.minimap and CA.db.minimap.position) or 45
+    local angle = (TA.db and TA.db.minimap and TA.db.minimap.position) or 45
 
     local function UpdatePosition()
         btn:SetPoint("CENTER", Minimap, "CENTER",
@@ -59,24 +59,24 @@ function CA:InitMinimap()
         self:SetScript("OnUpdate", nil)
         self:UnlockHighlight()
         -- Persist position to SavedVariables
-        if CA.db and CA.db.minimap then
-            CA.db.minimap.position = angle
+        if TA.db and TA.db.minimap then
+            TA.db.minimap.position = angle
         end
     end)
 
     -- ── Clicks ────────────────────────────────────────────────────────
     btn:SetScript("OnClick", function(self, button)
         if button == "LeftButton" then
-            CA:ToggleUI()
+            TA:ToggleUI()
         elseif button == "RightButton" then
-            print("|cFFFFD100[CA]|r Type |cFFFFD100/ca|r for commands.")
+            print("|cFFFFD100[TA]|r Type |cFFFFD100/ta|r for commands.")
         end
     end)
 
     -- ── Tooltip ───────────────────────────────────────────────────────
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("|cFFFFD100Character Advisor|r", 1, 1, 1)
+        GameTooltip:SetText("|cFFFFD100ToonAge|r", 1, 1, 1)
         GameTooltip:AddLine("Left-click: open / close", 0, 1, 0)
         GameTooltip:AddLine("Right-click: commands", 0.5, 0.5, 0.5)
         GameTooltip:AddLine("Drag: reposition button", 0.5, 0.5, 0.5)

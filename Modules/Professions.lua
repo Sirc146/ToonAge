@@ -1,12 +1,12 @@
--- CharacterAdvisor/Modules/Professions.lua
+-- ToonAge/Modules/Professions.lua
 -- Dynamic UI Renderer pulling from Data/Professions_Data.lua
 
-local CA = CharacterAdvisor
-local U  = CA.Utils
-local P  = CA.Data.Professions
+local TA = ToonAge
+local U  = TA.Utils
+local P  = TA.Data.Professions
 
 local Professions = {}
-CA:RegisterModule("Professions", Professions)
+TA:RegisterModule("Professions", Professions)
 
 Professions.frames = {}
 Professions.sideFrames = {}
@@ -14,8 +14,8 @@ Professions.selectedSkillLine = nil
 
 function Professions:OnEvent(event, ...)
     if event == "SKILL_LINES_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
-        if CA.UI and CA.UI.activeTab == "professions" then
-            self:Render(CA.UI.contentChild, CA.UI.sideChild)
+        if TA.UI and TA.UI.activeTab == "professions" then
+            self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end
     end
 end
@@ -98,7 +98,7 @@ function Professions:RenderSidebar(parent, playerProfs)
 
         btn:SetScript("OnClick", function()
             self.selectedSkillLine = prof.skillLine
-            self:Render(CA.UI.contentChild, CA.UI.sideChild)
+            self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end)
 
         y = y - 46

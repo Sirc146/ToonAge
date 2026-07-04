@@ -1,12 +1,12 @@
--- CharacterAdvisor/Data/Guides/CAG_Silvermoon_Midnight.lua
+-- ToonAge/Data/Guides/TAG_Silvermoon_Midnight.lua
 -- STUB -- auto-generated from WoWDB PTR HTML dump
 -- Quest ORDER is sorted by questID (approximate).
--- TODO: verify order in-game with /caquestscan, fill coords.
+-- TODO: verify order in-game with /taquestscan, fill coords.
 
-local CA = CharacterAdvisor
-CA.GuideData = CA.GuideData or {}
+local TA = ToonAge
+TA.GuideData = TA.GuideData or {}
 
-CA.GuideData["silvermoon_midnight"] = {
+TA.GuideData["silvermoon_midnight"] = {
     id       = "silvermoon_midnight",
     title    = "Midnight: Silvermoon City",
     zone     = 2434,   -- TODO: confirm with /coord

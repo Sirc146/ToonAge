@@ -1,4 +1,4 @@
--- CharacterAdvisor/Data/Talents.lua
+-- ToonAge/Data/Talents.lua
 -- Build data for all 39 specs (Midnight 12.0.x PTR)
 --
 -- Schema per entry:
@@ -12,10 +12,10 @@
 -- To enable match scoring: populate nodes with C_Traits node IDs.
 -- To enable leveling advisor: populate levelPath with talent name per level.
 
-local CA = CharacterAdvisor
-CA.Data = CA.Data or {}
-CA.Data.Talents = {}
-local T  = CA.Data.Talents
+local TA = ToonAge
+TA.Data = TA.Data or {}
+TA.Data.Talents = {}
+local T  = TA.Data.Talents
 local DB = {}
 
 -- ── WARRIOR ──────────────────────────────────────────────────────────────

@@ -1,10 +1,10 @@
--- CharacterAdvisor/Modules/Pets.lua
+-- ToonAge/Modules/Pets.lua
 
-local CA = CharacterAdvisor
-local U  = CA.Utils
+local TA = ToonAge
+local U  = TA.Utils
 
 local Pets = {}
-CA:RegisterModule("Pets", Pets)
+TA:RegisterModule("Pets", Pets)
 
 Pets.frames      = {}
 Pets.sideFrames  = {}
@@ -15,8 +15,8 @@ Pets.lastSidebar = nil
 
 -- ── Init ──────────────────────────────────────────────────────────────
 function Pets:Init()
-    if CA.charDB then
-        CA.charDB.knownPets = CA.charDB.knownPets or {}
+    if TA.charDB then
+        TA.charDB.knownPets = TA.charDB.knownPets or {}
     end
 end
 
@@ -24,24 +24,24 @@ end
 function Pets:OnEvent(event, ...)
     if event == "UNIT_PET" and (select(1, ...)) ~= "player" then return end
     self.lastContent = nil
-    if CA.UI and CA.UI.activeTab == "pets" and CA.UI.contentChild then
-        self:Render(CA.UI.contentChild, CA.UI.sideChild)
+    if TA.UI and TA.UI.activeTab == "pets" and TA.UI.contentChild then
+        self:Render(TA.UI.contentChild, TA.UI.sideChild)
     end
 end
 
 -- ── Stable helpers ────────────────────────────────────────────────────
 function Pets:TrackPet(name, family)
-    if not CA.charDB then return end
-    CA.charDB.knownPets = CA.charDB.knownPets or {}
-    for _, p in ipairs(CA.charDB.knownPets) do
+    if not TA.charDB then return end
+    TA.charDB.knownPets = TA.charDB.knownPets or {}
+    for _, p in ipairs(TA.charDB.knownPets) do
         if p.name == name then return end
     end
-    table.insert(CA.charDB.knownPets, { name = name, family = family })
+    table.insert(TA.charDB.knownPets, { name = name, family = family })
 end
 
 function Pets:ForgetPet(name)
-    if not CA.charDB then return end
-    local t = CA.charDB.knownPets
+    if not TA.charDB then return end
+    local t = TA.charDB.knownPets
     for i = #t, 1, -1 do
         if t[i].name == name then table.remove(t, i) end
     end
@@ -113,8 +113,8 @@ function Pets:RenderSidebar(sideChild)
     for _, f in ipairs(self.sideFrames) do f:Hide(); f:SetParent(nil) end
     self.sideFrames = {}
 
-    local P       = CA.Data.Pets
-    local sidebar = CA.UI.sidebar
+    local P       = TA.Data.Pets
+    local sidebar = TA.UI.sidebar
     local sW      = sidebar:GetWidth()
     local hasPet  = UnitExists("pet")
 
@@ -263,7 +263,7 @@ function Pets:Render(content, sidebar)
         self.lastContent = content
     end
 
-    local P      = CA.Data.Pets
+    local P      = TA.Data.Pets
     local class  = U.GetPlayerClass()
     local specID = U.GetPlayerSpec()
     local isBM   = (specID == 253)
@@ -556,7 +556,7 @@ function Pets:RenderZoneView(content, P, isBM, w, padL, y)
                 local pF = pet.family
                 sBtn:SetScript("OnClick", function()
                     self:TrackPet(pN, pF)
-                    print("|cFFFFD100[CA]|r Added |cFF00FF00" .. pN .. "|r to stable list.")
+                    print("|cFFFFD100[TA]|r Added |cFF00FF00" .. pN .. "|r to stable list.")
                 end)
 
                 -- Prerequisites with ***
@@ -606,7 +606,7 @@ end
 
 -- ── View: My Stable ───────────────────────────────────────────────────
 function Pets:RenderStableView(content, P, w, padL, y)
-    local known = (CA.charDB and CA.charDB.knownPets) or {}
+    local known = (TA.charDB and TA.charDB.knownPets) or {}
 
     local hdr = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     hdr:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")

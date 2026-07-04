@@ -1,13 +1,13 @@
--- CharacterAdvisor/Modules/QuestTracker.lua
+-- ToonAge/Modules/QuestTracker.lua
 -- Floating tracker window showing current guide step.
 -- Features: Live Objectives, FFWD Catch-up, Smart Phrase Parsing,
 --           Auto-Questing, Blizzard Tracker Replacement.
 
-local CA = CharacterAdvisor
-local U  = CA.Utils
+local TA = ToonAge
+local U  = TA.Utils
 
 local QT = {}
-CA:RegisterModule("QuestTracker", QT)
+TA:RegisterModule("QuestTracker", QT)
 
 QT.window        = nil
 QT.optionsFrame  = nil
@@ -90,7 +90,7 @@ end
 
 function QT:FastForward(silent)
     if not self.guideID then return end
-    local guide = CA.Guides and CA.Guides[self.guideID]
+    local guide = TA.Guides and TA.Guides[self.guideID]
     if not guide then return end
 
     -- Pass 1: scan backwards to find the furthest quest that's active or done
@@ -112,7 +112,7 @@ function QT:FastForward(silent)
             self:SaveState()
             self:UpdateWindow()
             if not silent then
-                print("|cFF4AFF7A[CA Tracker]|r Fast-forwarded to step " .. i .. ".")
+                print("|cFF4AFF7A[TA Tracker]|r Fast-forwarded to step " .. i .. ".")
             end
             return
         end
@@ -123,7 +123,7 @@ function QT:FastForward(silent)
     self:SaveState()
     self:UpdateWindow()
     if not silent then
-        print("|cFF4AFF7A[CA Tracker]|r Guide appears complete.")
+        print("|cFF4AFF7A[TA Tracker]|r Guide appears complete.")
     end
 end
 
@@ -143,7 +143,7 @@ end
 
 function QT:GetSortedGuideList()
     local list = {}
-    for id, g in pairs(CA.Guides or {}) do
+    for id, g in pairs(TA.Guides or {}) do
         table.insert(list, { id = id, title = g.title, minLevel = g.minLevel or 1 })
     end
     table.sort(list, function(a, b)
@@ -153,7 +153,7 @@ function QT:GetSortedGuideList()
 end
 
 function QT:SetGuide(guideID)
-    local guide = CA.Guides and CA.Guides[guideID]
+    local guide = TA.Guides and TA.Guides[guideID]
     if not guide then return end
     self.guideID = guideID
     self.stepIdx = 1
@@ -162,7 +162,7 @@ function QT:SetGuide(guideID)
 end
 
 function QT:SmartMatchGuideFromLog()
-    if not CA.Guides then return false end
+    if not TA.Guides then return false end
     local numEntries = C_QuestLog.GetNumQuestLogEntries()
     if numEntries == 0 then return false end
 
@@ -175,7 +175,7 @@ function QT:SmartMatchGuideFromLog()
     end
 
     local bestID, bestCount = nil, 0
-    for id, guide in pairs(CA.Guides) do
+    for id, guide in pairs(TA.Guides) do
         local count = 0
         for _, step in ipairs(guide.steps) do
             if step.questID and activeIDs[step.questID] then count = count + 1 end
@@ -197,7 +197,7 @@ function QT:AutoSelectGuide()
     local currentMap = C_Map.GetBestMapForUnit("player")
     local list       = self:GetSortedGuideList()
     for _, entry in ipairs(list) do
-        local g = CA.Guides[entry.id]
+        local g = TA.Guides[entry.id]
         local levelMatch = level >= (g.minLevel or 1) and level <= (g.maxLevel or 999)
         local zoneMatch  = currentMap and MapIsInZone(currentMap, g.zone)
         if levelMatch and zoneMatch then
@@ -222,16 +222,16 @@ function QT:CycleGuide(dir)
 end
 
 function QT:SaveState()
-    if not CA.charDB then return end
-    CA.charDB.tracker = CA.charDB.tracker or {}
-    CA.charDB.tracker.guideID = self.guideID
-    CA.charDB.tracker.stepIdx = self.stepIdx
+    if not TA.charDB then return end
+    TA.charDB.tracker = TA.charDB.tracker or {}
+    TA.charDB.tracker.guideID = self.guideID
+    TA.charDB.tracker.stepIdx = self.stepIdx
 end
 
 -- ── Auto-Quest Engine ─────────────────────────────────────────────────────────
 
 function QT:HandleAutoQuest(event)
-    if not (CA.charDB and CA.charDB.tracker and CA.charDB.tracker.autoQuest) then return end
+    if not (TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoQuest) then return end
     if IsShiftKeyDown() then return end
 
     if event == "QUEST_DETAIL" then
@@ -270,8 +270,8 @@ end
 -- ── Blizzard tracker ─────────────────────────────────────────────────────────
 
 function QT:UpdateBlizzardTrackerVisibility()
-    if not (CA.charDB and CA.charDB.tracker) then return end
-    local shouldHide = CA.charDB.tracker.replaceBlizzTracker
+    if not (TA.charDB and TA.charDB.tracker) then return end
+    local shouldHide = TA.charDB.tracker.replaceBlizzTracker
                     and self.window and self.window:IsVisible()
     if ObjectiveTrackerFrame then
         if shouldHide then ObjectiveTrackerFrame:Hide() else ObjectiveTrackerFrame:Show() end
@@ -304,24 +304,24 @@ end
 -- ── Init ─────────────────────────────────────────────────────────────────────
 
 function QT:Init()
-    CA.eventFrame:RegisterEvent("QUEST_ACCEPTED")
-    CA.eventFrame:RegisterEvent("QUEST_TURNED_IN")
-    CA.eventFrame:RegisterEvent("QUEST_LOG_UPDATE")
-    CA.eventFrame:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
-    CA.eventFrame:RegisterEvent("QUEST_WATCH_LIST_CHANGED")
-    CA.eventFrame:RegisterEvent("QUEST_DETAIL")
-    CA.eventFrame:RegisterEvent("QUEST_PROGRESS")
-    CA.eventFrame:RegisterEvent("QUEST_COMPLETE")
-    CA.eventFrame:RegisterEvent("GOSSIP_SHOW")
-    CA.eventFrame:RegisterEvent("QUEST_GREETING")
+    TA.eventFrame:RegisterEvent("QUEST_ACCEPTED")
+    TA.eventFrame:RegisterEvent("QUEST_TURNED_IN")
+    TA.eventFrame:RegisterEvent("QUEST_LOG_UPDATE")
+    TA.eventFrame:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
+    TA.eventFrame:RegisterEvent("QUEST_WATCH_LIST_CHANGED")
+    TA.eventFrame:RegisterEvent("QUEST_DETAIL")
+    TA.eventFrame:RegisterEvent("QUEST_PROGRESS")
+    TA.eventFrame:RegisterEvent("QUEST_COMPLETE")
+    TA.eventFrame:RegisterEvent("GOSSIP_SHOW")
+    TA.eventFrame:RegisterEvent("QUEST_GREETING")
 
     -- Preserve existing saved settings; only apply defaults for missing keys
-    CA.charDB.tracker = CA.charDB.tracker or {}
-    local t = CA.charDB.tracker
+    TA.charDB.tracker = TA.charDB.tracker or {}
+    local t = TA.charDB.tracker
     if t.autoQuest           == nil then t.autoQuest           = false end
     if t.replaceBlizzTracker == nil then t.replaceBlizzTracker = false end
 
-    if t.guideID and CA.Guides and CA.Guides[t.guideID] then
+    if t.guideID and TA.Guides and TA.Guides[t.guideID] then
         self.guideID = t.guideID
         self.stepIdx = t.stepIdx or 1
         self:FastForward(true)   -- re-sync on login in case progress happened offline
@@ -389,16 +389,16 @@ local function MakeCheckbox(parent, x, y, label, dbKey, onChange)
     chk:SetColorTexture(1, 0.82, 0, 1)
     chk:SetPoint("CENTER")
     chk:SetSize(8, 8)
-    if CA.charDB.tracker[dbKey] then chk:Show() else chk:Hide() end
+    if TA.charDB.tracker[dbKey] then chk:Show() else chk:Hide() end
     local lblStr = cb:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     lblStr:SetFont(STANDARD_TEXT_FONT, 10, "")
     lblStr:SetText(label)
     lblStr:SetTextColor(0.88, 0.83, 0.65, 1)
     lblStr:SetPoint("LEFT", cb, "RIGHT", 6, 0)
     cb:SetScript("OnClick", function()
-        CA.charDB.tracker[dbKey] = not CA.charDB.tracker[dbKey]
-        if CA.charDB.tracker[dbKey] then chk:Show() else chk:Hide() end
-        if onChange then onChange(CA.charDB.tracker[dbKey]) end
+        TA.charDB.tracker[dbKey] = not TA.charDB.tracker[dbKey]
+        if TA.charDB.tracker[dbKey] then chk:Show() else chk:Hide() end
+        if onChange then onChange(TA.charDB.tracker[dbKey]) end
     end)
     return cb
 end
@@ -417,7 +417,7 @@ local QUEST_STATUS = {
 -- ── InitWindow ────────────────────────────────────────────────────────────────
 
 function QT:InitWindow()
-    local win = CreateFrame("Frame", "CATrackerWindow", UIParent, "BackdropTemplate")
+    local win = CreateFrame("Frame", "TATrackerWindow", UIParent, "BackdropTemplate")
     win:SetSize(W, H)
     win:SetFrameStrata("HIGH")
     win:SetMovable(true)
@@ -427,14 +427,14 @@ function QT:InitWindow()
     win:SetScript("OnDragStart", win.StartMoving)
     win:SetScript("OnDragStop", function(f)
         f:StopMovingOrSizing()
-        if CA.charDB then
-            CA.charDB.tracker.x = f:GetLeft()
-            CA.charDB.tracker.y = f:GetTop()
+        if TA.charDB then
+            TA.charDB.tracker.x = f:GetLeft()
+            TA.charDB.tracker.y = f:GetTop()
         end
     end)
     ApplyBD(win, 0.05, 0.04, 0.02, 0.97, 0.55, 0.40, 0.08)
 
-    local saved = CA.charDB and CA.charDB.tracker
+    local saved = TA.charDB and TA.charDB.tracker
     if saved and saved.x and saved.y then
         win:ClearAllPoints()
         win:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", saved.x, saved.y)
@@ -562,7 +562,7 @@ function QT:InitWindow()
 
     win.doneBtn = MakeBtn(win, 108, 22, "Mark Done >", function()
         if not self.guideID then return end
-        local guide = CA.Guides and CA.Guides[self.guideID]
+        local guide = TA.Guides and TA.Guides[self.guideID]
         if not guide then return end
         local step = guide.steps[self.stepIdx]
         if step then step._manualDone = true end
@@ -604,7 +604,7 @@ function QT:UpdateWindow()
     local win = self.window
     if not win then return end
 
-    local guide = self.guideID and CA.Guides and CA.Guides[self.guideID]
+    local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
 
     if not guide then
         win.guideTitleF:SetText("|cFFFF8800No Active Guide|r")
@@ -717,7 +717,7 @@ function QT:RenderStatusLine()
     -- No active guide: UpdateWindow() already blanked these fields directly
     -- (its "No Active Guide" branch) — don't let a stale cached _statusBase/
     -- _badgeBase from a previously-selected guide bleed back in on the next tick.
-    if not (self.guideID and CA.Guides and CA.Guides[self.guideID]) then
+    if not (self.guideID and TA.Guides and TA.Guides[self.guideID]) then
         win.questStatusF:SetText("")
         if win.stepBadgeF then win.stepBadgeF:SetText("") end
         return
@@ -727,10 +727,10 @@ function QT:RenderStatusLine()
     local distStr = ""
     local hasLiveTarget = false
 
-    local guide = self.guideID and CA.Guides and CA.Guides[self.guideID]
+    local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
     local step  = guide and guide.steps[self.stepIdx]
     if step and step.coord and step.type ~= "text" then
-        local Arrow = CA:GetModule("Arrow")
+        local Arrow = TA:GetModule("Arrow")
         if Arrow and Arrow.GetEffectiveCoord then
             local coordMap, cx, cy = Arrow.GetEffectiveCoord(step)
             local currentMap = C_Map.GetBestMapForUnit("player")
@@ -741,7 +741,7 @@ function QT:RenderStatusLine()
                     hasLiveTarget = true
                     local px, py = pos:GetXY()
                     local yards  = U.ComputeDistance(px, py, cx, cy)
-                    local TM     = CA:GetModule("TravelModes")
+                    local TM     = TA:GetModule("TravelModes")
                     local speed  = (TM and TM:GetSpeed()) or 7
                     distStr = "  |cFF888780" .. U.FormatDistance(yards)
                               .. "  " .. U.FormatETA(yards, speed) .. "|r"
@@ -773,22 +773,22 @@ end
 
 function QT:ToggleWindow()
     if not self.window then
-        print("|cFFFF4444[CA]|r Tracker window not initialised — check for errors at login.")
+        print("|cFFFF4444[TA]|r Tracker window not initialised — check for errors at login.")
         return
     end
     if self.window:IsVisible() then
         self.window:Hide()
         if self.optionsFrame then self.optionsFrame:Hide() end
-        if CA.charDB then CA.charDB.tracker.visible = false end
+        if TA.charDB then TA.charDB.tracker.visible = false end
         self:UpdateBlizzardTrackerVisibility()
     else
         self.window:Show()
         self:UpdateWindow()
-        if CA.charDB then CA.charDB.tracker.visible = true end
+        if TA.charDB then TA.charDB.tracker.visible = true end
         self:UpdateBlizzardTrackerVisibility()
-        if self.guideID and CA.Guides and CA.Guides[self.guideID] then
-            local g = CA.Guides[self.guideID]
-            print(string.format("|cFFFFD100[CA Tracker]|r '%s' — step %d/%d",
+        if self.guideID and TA.Guides and TA.Guides[self.guideID] then
+            local g = TA.Guides[self.guideID]
+            print(string.format("|cFFFFD100[TA Tracker]|r '%s' — step %d/%d",
                 g.title, self.stepIdx, #g.steps))
         end
     end
@@ -799,11 +799,11 @@ QT.SlashCommands = {
     autoselect = function(self)
         self:AutoSelectGuide()
         self:UpdateWindow()
-        if self.guideID and CA.Guides and CA.Guides[self.guideID] then
-            local g = CA.Guides[self.guideID]
-            print("|cFFFFD100[CA Tracker]|r Auto-selected: '" .. g.title .. "' — step " .. self.stepIdx .. "/" .. #g.steps)
+        if self.guideID and TA.Guides and TA.Guides[self.guideID] then
+            local g = TA.Guides[self.guideID]
+            print("|cFFFFD100[TA Tracker]|r Auto-selected: '" .. g.title .. "' — step " .. self.stepIdx .. "/" .. #g.steps)
         else
-            print("|cFFFFD100[CA Tracker]|r No guide matches your current zone, level, or quest log.")
+            print("|cFFFFD100[TA Tracker]|r No guide matches your current zone, level, or quest log.")
         end
     end,
 }

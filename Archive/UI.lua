@@ -1,11 +1,11 @@
--- CharacterAdvisor/UI.lua
+-- ToonAge/UI.lua
 -- Core User Interface Frame Window Manager with Protected View Interceptions
 
-local CA = CharacterAdvisor
-local U  = CA.Utils
+local TA = ToonAge
+local U  = TA.Utils
 
-CA.UI = CA.UI or {}
-local UI = CA.UI
+TA.UI = TA.UI or {}
+local UI = TA.UI
 
 UI.activeTab = "character"
 UI.frame = nil
@@ -24,7 +24,7 @@ local TABS = {
 function UI:Init()
     if self.frame then return end
 
-    local f = CreateFrame("Frame", "CharacterAdvisorFrame", UIParent, "BackdropTemplate")
+    local f = CreateFrame("Frame", "ToonAgeFrame", UIParent, "BackdropTemplate")
     f:SetSize(820, 500)
     f:SetPoint("CENTER")
     f:SetMovable(true)
@@ -112,7 +112,7 @@ function UI:SelectTab(tabID)
         end
     end
 
-    local mod = CA:GetModule(tabID:gsub("^%l", string.upper))
+    local mod = TA:GetModule(tabID:gsub("^%l", string.upper))
     if mod and mod.Render then
         -- Intercept and safely isolate execution faults if module data contains errors
         local success, err = pcall(function()

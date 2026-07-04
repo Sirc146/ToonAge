@@ -1,8 +1,8 @@
--- CharacterAdvisor/Core/UI.lua
+-- ToonAge/Core/UI.lua
 -- Main frame, tab bar, sidebar, WoW-native styling
 
-local CA = CharacterAdvisor
-local U  = CA.Utils
+local TA = ToonAge
+local U  = TA.Utils
 
 -- ── Constants ─────────────────────────────────────────────────────────
 local FRAME_WIDTH   = 900
@@ -63,15 +63,15 @@ end
 -- empty window.
 local function IsTabEnabled(tabID)
     if tabID == "character" then return true end
-    return not (CA.db and CA.db.disabledTabs and CA.db.disabledTabs[tabID])
+    return not (TA.db and TA.db.disabledTabs and TA.db.disabledTabs[tabID])
 end
 
-function CA:InitUI()
+function TA:InitUI()
     if self.UI then return end
     self.db.disabledTabs = self.db.disabledTabs or {}
 
     -- ── Outer frame ───────────────────────────────────────────────────
-    local frame = CreateFrame("Frame", "CharacterAdvisorFrame", UIParent, "BackdropTemplate")
+    local frame = CreateFrame("Frame", "ToonAgeFrame", UIParent, "BackdropTemplate")
     frame:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 30)
     frame:SetFrameStrata("HIGH")
@@ -100,13 +100,13 @@ function CA:InitUI()
 
     local titleLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     titleLabel:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
-    titleLabel:SetText("Character Advisor")
+    titleLabel:SetText("ToonAge")
     titleLabel:SetTextColor(1.00, 0.82, 0.00, 1.00)
     titleLabel:SetPoint("LEFT", titleBar, "LEFT", 34, 0)
 
     local versionLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     versionLabel:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-    versionLabel:SetText("v" .. CA.version .. "  ·  Midnight 12.0.5")
+    versionLabel:SetText("v" .. TA.version .. "  ·  Midnight 12.0.5")
     versionLabel:SetTextColor(0.55, 0.44, 0.25, 1.00)
     versionLabel:SetPoint("RIGHT", titleBar, "RIGHT", -36, 0)
 
@@ -126,7 +126,7 @@ function CA:InitUI()
     optIcon:SetJustifyH("CENTER")
     optionsBtn:SetScript("OnEnter", function() optIcon:SetTextColor(1, 0.82, 0, 1) end)
     optionsBtn:SetScript("OnLeave", function() optIcon:SetTextColor(0.55, 0.40, 0.08, 1) end)
-    optionsBtn:SetScript("OnClick", function() CA:OpenOptionsFrame() end)
+    optionsBtn:SetScript("OnClick", function() TA:OpenOptionsFrame() end)
 
     -- ── Tab bar ───────────────────────────────────────────────────────
     local tabBar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
@@ -143,7 +143,7 @@ function CA:InitUI()
     sidebar:SetWidth(SIDEBAR_WIDTH)
     ApplyBackdrop(sidebar, 0.04, 0.03, 0.01, 1.00)
 
-    local sideScroll = CreateFrame("ScrollFrame", "CASideScrollFrame", sidebar, "UIPanelScrollFrameTemplate")
+    local sideScroll = CreateFrame("ScrollFrame", "TASideScrollFrame", sidebar, "UIPanelScrollFrameTemplate")
     sideScroll:SetPoint("TOPLEFT",     sidebar, "TOPLEFT",     4, -4)
     sideScroll:SetPoint("BOTTOMRIGHT", sidebar, "BOTTOMRIGHT", -22, 4)
 
@@ -156,7 +156,7 @@ function CA:InitUI()
     local contentLeft = SIDEBAR_WIDTH + 1
     local contentWidth = FRAME_WIDTH - contentLeft - 22  -- 22 = scrollbar width
 
-    local contentScroll = CreateFrame("ScrollFrame", "CAContentScrollFrame", frame, "UIPanelScrollFrameTemplate")
+    local contentScroll = CreateFrame("ScrollFrame", "TAContentScrollFrame", frame, "UIPanelScrollFrameTemplate")
     contentScroll:SetPoint("TOPLEFT",     frame, "TOPLEFT",     contentLeft, sidebarTop)
     contentScroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -22, 0)
 
@@ -241,13 +241,13 @@ function CA:InitUI()
             if isActive then btn.activeLine:Show() else btn.activeLine:Hide() end
         end
         self.activeTab = tabID
-        CA.charDB.lastTab  = tabID
+        TA.charDB.lastTab  = tabID
 
         -- Clean up persistent sidebar frames from all modules before switching.
-        -- Modules may parent frames to CA.UI.sidebar (persistent) instead of
+        -- Modules may parent frames to TA.UI.sidebar (persistent) instead of
         -- sideChild (rebuilt below). Without this step those frames bleed into
         -- the next tab's sidebar.
-        for _, mod in pairs(CA.modules) do
+        for _, mod in pairs(TA.modules) do
             if mod.sideFrames then
                 for _, f in ipairs(mod.sideFrames) do
                     f:Hide()
@@ -270,7 +270,7 @@ function CA:InitUI()
             if t.id == tabID then tabDef = t; break end
         end
         if tabDef then
-            local mod = CA:GetModule(tabDef.module)
+            local mod = TA:GetModule(tabDef.module)
             if mod and mod.Render then
                 local ok, err = pcall(mod.Render, mod, self.contentChild, self.sideChild)
                 if not ok then
@@ -299,7 +299,7 @@ function CA:InitUI()
     local origShow = frame.Show
     function frame:Show()
         origShow(self)
-        self:SetTab(CA.charDB.lastTab or "character")
+        self:SetTab(TA.charDB.lastTab or "character")
     end
 
     self.UI = frame
@@ -307,13 +307,13 @@ end
 
 -- ── Options panel — toggle which tabs are shown ────────────────────────
 -- Takes effect after /reload (the tab bar is only built once at InitUI).
-function CA:OpenOptionsFrame()
+function TA:OpenOptionsFrame()
     if self.optionsFrame then
         self.optionsFrame:Show()
         return
     end
 
-    local of = CreateFrame("Frame", "CharacterAdvisorOptionsFrame", UIParent, "BackdropTemplate")
+    local of = CreateFrame("Frame", "ToonAgeOptionsFrame", UIParent, "BackdropTemplate")
     of:SetSize(280, 60 + (#TABS - 1) * 24)
     of:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
     ApplyBackdrop(of, 0.05, 0.04, 0.02, 0.98)
@@ -345,8 +345,8 @@ function CA:OpenOptionsFrame()
             lbl:SetPoint("LEFT", cb, "RIGHT", 2, 0)
 
             cb:SetScript("OnClick", function(self)
-                CA.db.disabledTabs = CA.db.disabledTabs or {}
-                CA.db.disabledTabs[tabDef.id] = not self:GetChecked() or nil
+                TA.db.disabledTabs = TA.db.disabledTabs or {}
+                TA.db.disabledTabs[tabDef.id] = not self:GetChecked() or nil
             end)
 
             y = y - 24

@@ -1,10 +1,10 @@
 ## Interface: 120007
-## Title: |cFFFFD100Character Advisor|r
+## Title: |cFFFFD100ToonAge|r
 ## Notes: Full character scanner — gear, talents, rotation, professions, pets, and weekly guidance.
 ## Author: Chris
 ## Version: 1.0.0
 ## DefaultState: enabled
-## SavedVariables: CharacterAdvisorDB
+## SavedVariables: ToonAgeDB
 
 Libs\LibStub.lua
 
@@ -20,13 +20,13 @@ Data\Rotations.lua
 Data\Professions_Data.lua
 Data\Zones.lua
 Data\Pets.lua
-Data\CA_Enchants.lua
-Data\Guides\CAG_Midnight_Intro.lua
-Data\Guides\CAG_Exiles_Reach.lua
-Data\Guides\CAG_Hallowfall.lua
-Data\Guides\CAG_Eversong_Midnight.lua
-Data\Guides\CAG_Silvermoon_Midnight.lua
-Data\Guides\CAG_Naigtal.lua
+Data\TA_Enchants.lua
+Data\Guides\TAG_Midnight_Intro.lua
+Data\Guides\TAG_Exiles_Reach.lua
+Data\Guides\TAG_Hallowfall.lua
+Data\Guides\TAG_Eversong_Midnight.lua
+Data\Guides\TAG_Silvermoon_Midnight.lua
+Data\Guides\TAG_Naigtal.lua
 
 Modules\TalentsHelpers.lua
 Modules\DevHelpers.lua

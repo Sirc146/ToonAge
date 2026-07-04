@@ -1,26 +1,26 @@
--- CharacterAdvisor/Modules/DevHelpers.lua
+-- ToonAge/Modules/DevHelpers.lua
 -- Developer tools: quest recorder, coordinate capture, quest log scanner.
 --
 -- Slash commands:
 --   /coord           -- print current map position as a guide coord line
---   /caquestscan     -- dump active quest log with IDs and positions
---   /carecord        -- show recorder status
---   /carecord start [Guide Title]   -- begin recording quests in play order
---   /carecord stop                  -- pause recording
---   /carecord undo                  -- remove the last recorded step
---   /carecord dump                  -- print the recorded guide stub to chat
---   /carecord clear                 -- wipe the recording and start fresh
+--   /taquestscan     -- dump active quest log with IDs and positions
+--   /tarecord        -- show recorder status
+--   /tarecord start [Guide Title]   -- begin recording quests in play order
+--   /tarecord stop                  -- pause recording
+--   /tarecord undo                  -- remove the last recorded step
+--   /tarecord dump                  -- print the recorded guide stub to chat
+--   /tarecord clear                 -- wipe the recording and start fresh
 
-local CA = CharacterAdvisor
+local TA = ToonAge
 
--- Register as a module so OnEvent receives QUEST_ACCEPTED from CA.eventFrame
+-- Register as a module so OnEvent receives QUEST_ACCEPTED from TA.eventFrame
 local DH = {}
-CA:RegisterModule("DevHelpers", DH)
+TA:RegisterModule("DevHelpers", DH)
 
 DH.recording = false
 
 local function p(msg)
-    DEFAULT_CHAT_FRAME:AddMessage("|cFF4AFF7A[CA-Dev]|r " .. msg)
+    DEFAULT_CHAT_FRAME:AddMessage("|cFF4AFF7A[TA-Dev]|r " .. msg)
 end
 
 -- ── Quest Recorder ────────────────────────────────────────────────────────────
@@ -29,8 +29,8 @@ end
 -- recording survives a /reload.
 
 local function RecorderDB()
-    CA.charDB.recorder = CA.charDB.recorder or {}
-    local r = CA.charDB.recorder
+    TA.charDB.recorder = TA.charDB.recorder or {}
+    local r = TA.charDB.recorder
     r.title  = r.title  or "Untitled Zone"
     r.zone   = r.zone   or 0
     r.steps  = r.steps  or {}
@@ -80,7 +80,7 @@ end
 function DH:DumpRecording()
     local r = RecorderDB()
     if #r.steps == 0 then
-        p("Nothing recorded yet.  Run: /carecord start My Zone Name")
+        p("Nothing recorded yet.  Run: /tarecord start My Zone Name")
         return
     end
 
@@ -88,13 +88,13 @@ function DH:DumpRecording()
     local lines   = {}
 
     lines[#lines+1] = "-- =============================================="
-    lines[#lines+1] = "-- CA Guide Stub — recorded in-game"
+    lines[#lines+1] = "-- TA Guide Stub — recorded in-game"
     lines[#lines+1] = "-- Title:  " .. r.title
     lines[#lines+1] = "-- Steps:  " .. #r.steps
     lines[#lines+1] = "-- =============================================="
-    lines[#lines+1] = "local CA = CharacterAdvisor"
-    lines[#lines+1] = "CA.GuideData = CA.GuideData or {}"
-    lines[#lines+1] = 'CA.GuideData["' .. guideID .. '"] = {'
+    lines[#lines+1] = "local TA = ToonAge"
+    lines[#lines+1] = "TA.GuideData = TA.GuideData or {}"
+    lines[#lines+1] = 'TA.GuideData["' .. guideID .. '"] = {'
     lines[#lines+1] = '    id       = "' .. guideID .. '",'
     lines[#lines+1] = '    title    = "' .. EscLua(r.title) .. '",'
     lines[#lines+1] = "    zone     = " .. r.zone .. ","
@@ -125,10 +125,10 @@ function DH:DumpRecording()
     p("===== GUIDE STUB END =====")
 
     -- Also stash the full text in SavedVariables so it survives a /reload
-    -- and can be copied from WTF/Account/.../CharacterAdvisorDB.lua
-    CA.charDB.recorder.lastDump = table.concat(lines, "\n")
-    p("Full stub also saved to CharacterAdvisorDB.lua under key 'recorder.lastDump'.")
-    p("Find it at: WTF/Account/<name>/<server>/<char>/CharacterAdvisorDB.lua")
+    -- and can be copied from WTF/Account/.../ToonAgeDB.lua
+    TA.charDB.recorder.lastDump = table.concat(lines, "\n")
+    p("Full stub also saved to ToonAgeDB.lua under key 'recorder.lastDump'.")
+    p("Find it at: WTF/Account/<name>/<server>/<char>/ToonAgeDB.lua")
 end
 
 -- ── Guide list helper ────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ end
 local function GetGuideList()
     -- Returns sorted list of { id, title, zone, minLevel, maxLevel }
     local list = {}
-    for id, g in pairs(CA.Guides or {}) do
+    for id, g in pairs(TA.Guides or {}) do
         table.insert(list, {
             id       = id,
             title    = g.title    or id,
@@ -162,13 +162,13 @@ local function PrintGuideList()
         p(string.format("  |cFFFFD100%d.|r  %-36s  lvl %d-%d  map=%d",
             i, g.title, g.minLevel, g.maxLevel, g.zone))
     end
-    p("Usage:  /carecord start 1   or   /carecord start exiles_reach")
+    p("Usage:  /tarecord start 1   or   /tarecord start exiles_reach")
 end
 
--- ── /carecord ────────────────────────────────────────────────────────────────
+-- ── /tarecord ────────────────────────────────────────────────────────────────
 
-SLASH_CARECORD1 = "/carecord"
-SlashCmdList["CARECORD"] = function(msg)
+SLASH_TARECORD1 = "/tarecord"
+SlashCmdList["TARECORD"] = function(msg)
     msg = (msg or ""):match("^%s*(.-)%s*$")   -- trim
     local cmd, rest = msg:match("^(%S+)%s*(.*)$")
     cmd  = (cmd  or ""):lower()
@@ -188,7 +188,7 @@ SlashCmdList["CARECORD"] = function(msg)
         if idx then
             chosen = list[idx]
             if not chosen then
-                p("No guide at index " .. idx .. ".  Run /carecord start to see the list.")
+                p("No guide at index " .. idx .. ".  Run /tarecord start to see the list.")
                 return
             end
         else
@@ -219,12 +219,12 @@ SlashCmdList["CARECORD"] = function(msg)
         else
             p("  Zone not set — will be captured from your position on first quest.")
         end
-        p("Accept quests normally.  /carecord stop  when done,  /carecord dump  to export.")
+        p("Accept quests normally.  /tarecord stop  when done,  /tarecord dump  to export.")
 
     elseif cmd == "stop" then
         DH.recording = false
         local n = #RecorderDB().steps
-        p("Recording paused.  " .. n .. " quest(s) captured.  /carecord dump  to export.")
+        p("Recording paused.  " .. n .. " quest(s) captured.  /tarecord dump  to export.")
 
     elseif cmd == "undo" then
         local r = RecorderDB()
@@ -236,7 +236,7 @@ SlashCmdList["CARECORD"] = function(msg)
         DH:DumpRecording()
 
     elseif cmd == "clear" then
-        CA.charDB.recorder = { title = "Untitled Zone", zone = 0, steps = {} }
+        TA.charDB.recorder = { title = "Untitled Zone", zone = 0, steps = {} }
         DH.recording   = false
         p("Recording cleared.")
 
@@ -250,19 +250,19 @@ SlashCmdList["CARECORD"] = function(msg)
         local state = DH.recording and "|cFF1EFF00RECORDING|r" or "|cFFFF8800paused|r"
         p("Quest Recorder  [" .. state .. "]")
         p("  Guide: |cFFFFD100" .. (r.title or "?") .. "|r  |  Steps captured: " .. #r.steps)
-        p("  /carecord start     — show guide list to pick from")
-        p("  /carecord start 2   — start recording guide #2")
-        p("  /carecord stop      — pause recording")
-        p("  /carecord undo      — remove last step")
-        p("  /carecord dump      — print Lua stub to chat")
-        p("  /carecord clear     — wipe everything")
+        p("  /tarecord start     — show guide list to pick from")
+        p("  /tarecord start 2   — start recording guide #2")
+        p("  /tarecord stop      — pause recording")
+        p("  /tarecord undo      — remove last step")
+        p("  /tarecord dump      — print Lua stub to chat")
+        p("  /tarecord clear     — wipe everything")
     end
 end
 
--- ── /caquestscan — snapshot active quest log ──────────────────────────────────
+-- ── /taquestscan — snapshot active quest log ──────────────────────────────────
 
-SLASH_CAQUESTSCAN1 = "/caquestscan"
-SlashCmdList["CAQUESTSCAN"] = function()
+SLASH_TAQUESTSCAN1 = "/taquestscan"
+SlashCmdList["TAQUESTSCAN"] = function()
     local mapID   = C_Map.GetBestMapForUnit("player")
     local mapInfo = mapID and C_Map.GetMapInfo(mapID)
     local zone    = mapInfo and mapInfo.name or "Unknown"
@@ -292,8 +292,8 @@ end
 
 -- ── /coord — print current position as a guide coord line ─────────────────────
 
-SLASH_CACOORD1 = "/coord"
-SlashCmdList["CACOORD"] = function()
+SLASH_TACOORD1 = "/coord"
+SlashCmdList["TACOORD"] = function()
     local mapID = C_Map.GetBestMapForUnit("player")
     if not mapID then p("No map data available here."); return end
     local pos = C_Map.GetPlayerMapPosition(mapID, "player")
@@ -304,13 +304,13 @@ SlashCmdList["CACOORD"] = function()
         zoneName, mapID, mapID, x, y))
 end
 
--- ── /caweekly — dump raw C_WeeklyRewards data for schema verification ─────────
+-- ── /taweekly — dump raw C_WeeklyRewards data for schema verification ─────────
 -- Weekly.lua currently checks fake questIDs for Great Vault progress, which is
 -- wrong -- Great Vault isn't quest-based. This dumps the REAL API's raw shape
 -- so Weekly.lua can be rebuilt against confirmed field names instead of guesses.
 
-SLASH_CAWEEKLY1 = "/caweekly"
-SlashCmdList["CAWEEKLY"] = function()
+SLASH_TAWEEKLY1 = "/taweekly"
+SlashCmdList["TAWEEKLY"] = function()
     if not C_WeeklyRewards then
         p("C_WeeklyRewards does not exist on this client at all.")
         return
@@ -353,20 +353,20 @@ SlashCmdList["CAWEEKLY"] = function()
     end
 end
 
--- ── /cadev — spec/talent debug ────────────────────────────────────────────────
+-- ── /tadev — spec/talent debug ────────────────────────────────────────────────
 
-SLASH_CADEV1 = "/cadev"
-SlashCmdList["CADEV"] = function()
+SLASH_TADEV1 = "/tadev"
+SlashCmdList["TADEV"] = function()
     local specIndex = GetSpecialization()
     if not specIndex then p("No active specialization detected."); return end
     local _, specName, _, specID = GetSpecializationInfo(specIndex)
     p("Spec: " .. tostring(specName) .. "  specID: " .. tostring(specID))
     local ids = {}
-    if CA and CA.TalentsAPI and CA.TalentsAPI.GetActiveTalentIDs then
-        ids = CA.TalentsAPI.GetActiveTalentIDs() or {}
+    if TA and TA.TalentsAPI and TA.TalentsAPI.GetActiveTalentIDs then
+        ids = TA.TalentsAPI.GetActiveTalentIDs() or {}
     end
     if #ids == 0 then
-        p("No talent IDs found. Open the Blizzard talent UI first, then run /cadev.")
+        p("No talent IDs found. Open the Blizzard talent UI first, then run /tadev.")
         return
     end
     table.sort(ids)
@@ -378,9 +378,9 @@ end
 function DH:Init()
     -- QUEST_ACCEPTED is already registered by QuestTracker; no duplicate needed.
     -- If DevHelpers loads before QuestTracker (unlikely but possible), register it.
-    CA.eventFrame:RegisterEvent("QUEST_ACCEPTED")
+    TA.eventFrame:RegisterEvent("QUEST_ACCEPTED")
     -- Restore recording state across reloads
-    if CA.charDB.recorder and CA.charDB.recorder.steps and #CA.charDB.recorder.steps > 0 then
-        p(string.format("Quest recorder has %d step(s) from a previous session.  /carecord dump to export, /carecord clear to reset.", #CA.charDB.recorder.steps))
+    if TA.charDB.recorder and TA.charDB.recorder.steps and #TA.charDB.recorder.steps > 0 then
+        p(string.format("Quest recorder has %d step(s) from a previous session.  /tarecord dump to export, /tarecord clear to reset.", #TA.charDB.recorder.steps))
     end
 end

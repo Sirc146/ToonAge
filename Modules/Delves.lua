@@ -1,12 +1,12 @@
--- CharacterAdvisor/Modules/Delves.lua
+-- ToonAge/Modules/Delves.lua
 -- Brann companion advisor + Delve tier progression tracker
 
-local CA = CharacterAdvisor
-local U  = CA.Utils
-local Z  = CA.Data.Zones
+local TA = ToonAge
+local U  = TA.Utils
+local Z  = TA.Data.Zones
 
 local Delves = {}
-CA:RegisterModule("Delves", Delves)
+TA:RegisterModule("Delves", Delves)
 
 Delves.frames     = {}
 Delves.sideFrames = {}  -- persistent sidebar frames cleaned up by UI.lua on tab switch
@@ -132,8 +132,8 @@ function Delves:OnEvent(event, ...)
     if event == "ZONE_CHANGED_NEW_AREA"
     or event == "PLAYER_SPECIALIZATION_CHANGED"
     or event == "GROUP_ROSTER_UPDATE" then
-        if CA.UI and CA.UI.activeTab == "delves" then
-            self:Render(CA.UI.contentChild, CA.UI.sideChild)
+        if TA.UI and TA.UI.activeTab == "delves" then
+            self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end
     end
 end

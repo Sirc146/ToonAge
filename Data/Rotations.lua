@@ -1,11 +1,11 @@
--- CharacterAdvisor/Data/Rotations.lua
+-- ToonAge/Data/Rotations.lua
 -- Rotation priority data per spec (Midnight 12.0.5)
 -- SpellIDs are Midnight build IDs — verify with GetSpellInfo() in-game
 
-local CA = CharacterAdvisor
-CA.Data = CA.Data or {}
-CA.Data.Rotations = {}
-local R = CA.Data.Rotations
+local TA = ToonAge
+TA.Data = TA.Data or {}
+TA.Data.Rotations = {}
+local R = TA.Data.Rotations
 
 -- ── Entry format ───────────────────────────────────────────────────────
 -- Each entry: {

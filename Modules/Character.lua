@@ -1,15 +1,15 @@
--- CharacterAdvisor/Modules/Character.lua
+-- ToonAge/Modules/Character.lua
 -- Character tab: 3D model portrait, full stat breakdown with weights and DR visualisers
 --
 -- Architecture: BuildUI constructs frames once per tab-open; UpdateData only
 -- mutates text/colors on events, avoiding frame creation on every stat tick.
 
-local CA = CharacterAdvisor
-local U  = CA.Utils
-local SW = CA.Data.StatWeights
+local TA = ToonAge
+local U  = TA.Utils
+local SW = TA.Data.StatWeights
 
 local Character = {}
-CA:RegisterModule("Character", Character)
+TA:RegisterModule("Character", Character)
 
 Character.pvxMode     = "pve"
 Character.widgets     = {}
@@ -18,12 +18,12 @@ Character.lastContent = nil
 
 -- ── Events ────────────────────────────────────────────────────────────
 function Character:OnEvent(event, ...)
-    if not (CA.UI and CA.UI.activeTab == "character") then return end
+    if not (TA.UI and TA.UI.activeTab == "character") then return end
 
     if event == "PLAYER_SPECIALIZATION_CHANGED" then
         -- Spec change alters the sidebar overlay text, so force full rebuild
         self.lastContent = nil
-        self:Render(CA.UI.contentChild, CA.UI.sideChild)
+        self:Render(TA.UI.contentChild, TA.UI.sideChild)
     elseif event == "PLAYER_LEVEL_UP"
         or event == "UNIT_INVENTORY_CHANGED"
         or event == "PLAYER_EQUIPMENT_CHANGED" then
@@ -61,10 +61,10 @@ local function Backdrop(frame, br, bg, bb, ba, er, eg, eb, ea)
 end
 
 -- ── Sidebar: 3D portrait with identity overlay ────────────────────────
--- Parented to CA.UI.sidebar (the persistent frame, not the scroll child)
+-- Parented to TA.UI.sidebar (the persistent frame, not the scroll child)
 -- so the model is not clipped by the scroll region.
 function Character:RenderSidebar(sideChild)
-    local container = CA.UI.sidebar
+    local container = TA.UI.sidebar
     if not container then return end
 
     local model = CreateFrame("PlayerModel", nil, container)

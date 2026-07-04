@@ -1,13 +1,13 @@
--- CharacterAdvisor/Modules/Talents.lua
+-- ToonAge/Modules/Talents.lua
 -- Role-aware talent advisor: match scoring, role badges, debounced refresh
 
-local CA = CharacterAdvisor
-local U  = CA.Utils
-local T  = CA.Data.Talents
-local TA = CA.TalentsAPI
+local TA = ToonAge
+local U  = TA.Utils
+local T  = TA.Data.Talents
+local TA = TA.TalentsAPI
 
 local Talents = {}
-CA:RegisterModule("Talents", Talents)
+TA:RegisterModule("Talents", Talents)
 
 Talents.frames         = {}
 Talents.sideFrames     = {}
@@ -20,8 +20,8 @@ local function ScheduleRefresh()
     if refreshTimer then return end
     refreshTimer = C_Timer.After(0.25, function()
         refreshTimer = nil
-        if CA.UI and CA.UI.activeTab == "talents" then
-            Talents:Render(CA.UI.contentChild, CA.UI.sideChild)
+        if TA.UI and TA.UI.activeTab == "talents" then
+            Talents:Render(TA.UI.contentChild, TA.UI.sideChild)
         end
     end)
 end
@@ -164,7 +164,7 @@ function Talents:RenderContent(content, activeSpecID)
         lbl:SetJustifyH("CENTER")
         btn:SetScript("OnClick", function()
             self.viewBuildType = bt.key
-            self:Render(CA.UI.contentChild, CA.UI.sideChild)
+            self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end)
         Track(btn)
         bx = bx + btnW + 3
@@ -292,7 +292,7 @@ function Talents:RenderContent(content, activeSpecID)
 
         cpBtn:SetScript("OnClick", function()
             if InCombatLockdown() then
-                print("|cFFFFD100[CA]|r Cannot copy talent string during combat.")
+                print("|cFFFFD100[TA]|r Cannot copy talent string during combat.")
                 return
             end
             self:OpenSafeCopyFrame(build.name, build.string)
@@ -489,7 +489,7 @@ function Talents:RenderSidebar(parent, activeSpecID)
             btn:SetScript("OnClick", function()
                 self.selectedSpecID = id
                 self.viewBuildType  = GetGroupMode()
-                self:Render(CA.UI.contentChild, CA.UI.sideChild)
+                self:Render(TA.UI.contentChild, TA.UI.sideChild)
             end)
 
             y = y - 50
@@ -573,7 +573,7 @@ function Talents:OpenSafeCopyFrame(buildName, importString)
         return
     end
 
-    local cf = CreateFrame("Frame", "CharacterAdvisorCopyFrame", UIParent, "BackdropTemplate")
+    local cf = CreateFrame("Frame", "ToonAgeCopyFrame", UIParent, "BackdropTemplate")
     cf:SetSize(440, 110)
     cf:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
     cf:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=2})

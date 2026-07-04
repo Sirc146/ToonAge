@@ -1,21 +1,21 @@
--- CharacterAdvisor/Core/Init.lua
+-- ToonAge/Core/Init.lua
 -- Addon object, event registration, SavedVariables, module system
 
-local ADDON_NAME = "CharacterAdvisor"
+local ADDON_NAME = "ToonAge"
 local ADDON_VERSION = "1.0.0"
 
 -- Create the global addon table
-CharacterAdvisor = CharacterAdvisor or {}
-local CA = CharacterAdvisor
+ToonAge = ToonAge or {}
+local TA = ToonAge
 
 -- Version
-CA.version = ADDON_VERSION
+TA.version = ADDON_VERSION
 
 -- Module registry: modules register themselves here
-CA.modules = {}
+TA.modules = {}
 
 -- Event frame
-CA.eventFrame = CreateFrame("Frame", "CharacterAdvisorEventFrame")
+TA.eventFrame = CreateFrame("Frame", "ToonAgeEventFrame")
 
 -- Default saved variables schema
 local DB_DEFAULTS = {
@@ -24,10 +24,10 @@ local DB_DEFAULTS = {
 }
 
 -- ── SavedVariables ────────────────────────────────────────────────────
-function CA:InitDB()
-    -- CharacterAdvisorDB is set by WoW from SavedVariables on login
-    CharacterAdvisorDB = CharacterAdvisorDB or {}
-    local db = CharacterAdvisorDB
+function TA:InitDB()
+    -- ToonAgeDB is set by WoW from SavedVariables on login
+    ToonAgeDB = ToonAgeDB or {}
+    local db = ToonAgeDB
 
     -- Apply defaults for any missing keys
     for k, v in pairs(DB_DEFAULTS) do
@@ -47,34 +47,34 @@ function CA:InitDB()
 end
 
 -- ── Module system ─────────────────────────────────────────────────────
-function CA:RegisterModule(name, module)
+function TA:RegisterModule(name, module)
     self.modules[name] = module
-    if CA.debug then
-        print("|cFFFFD100[CA]|r Module registered: " .. name)
+    if TA.debug then
+        print("|cFFFFD100[TA]|r Module registered: " .. name)
     end
 end
 
-function CA:GetModule(name)
+function TA:GetModule(name)
     return self.modules[name]
 end
 
-function CA:InitModules()
+function TA:InitModules()
     for name, mod in pairs(self.modules) do
         if mod.Init then
             local ok, err = pcall(mod.Init, mod)
             if not ok then
-                print("|cFFFF4444[CA] Error initialising module " .. name .. ":|r " .. tostring(err))
+                print("|cFFFF4444[TA] Error initialising module " .. name .. ":|r " .. tostring(err))
             end
         end
     end
 end
 
-function CA:UpdateModules(event, ...)
+function TA:UpdateModules(event, ...)
     for name, mod in pairs(self.modules) do
         if mod.OnEvent then
             local ok, err = pcall(mod.OnEvent, mod, event, ...)
             if not ok then
-                print("|cFFFF4444[CA] Module " .. name .. " OnEvent error:|r " .. tostring(err))
+                print("|cFFFF4444[TA] Module " .. name .. " OnEvent error:|r " .. tostring(err))
             end
         end
     end
@@ -104,21 +104,21 @@ local PERSISTENT_EVENTS = {
 }
 
 -- Register one-shot boot events
-CA.eventFrame:RegisterEvent("ADDON_LOADED")
-CA.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+TA.eventFrame:RegisterEvent("ADDON_LOADED")
+TA.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
 -- Register persistent events
 for _, event in ipairs(PERSISTENT_EVENTS) do
-    CA.eventFrame:RegisterEvent(event)
+    TA.eventFrame:RegisterEvent(event)
 end
 
-CA.eventFrame:SetScript("OnEvent", function(self, event, ...)
-    local CA  = CharacterAdvisor
+TA.eventFrame:SetScript("OnEvent", function(self, event, ...)
+    local TA  = ToonAge
     local arg1 = ...
 
     if event == "ADDON_LOADED" then
         -- Only act on our own addon load; unregister immediately
-        if arg1 == "CharacterAdvisor" then
+        if arg1 == "ToonAge" then
             self:UnregisterEvent("ADDON_LOADED")
             -- Pre-init: nothing to do yet — SavedVariables not available yet
         end
@@ -126,28 +126,28 @@ CA.eventFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- SavedVariables are now guaranteed loaded — safe to init DB and UI
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
-        CA:OnLogin()
+        TA:OnLogin()
 
     else
         -- All persistent events: update modules then refresh UI if open
-        CA:UpdateModules(event, ...)
-        if CA.UI and CA.UI:IsVisible() then
-            CA.UI:Refresh(event)
+        TA:UpdateModules(event, ...)
+        if TA.UI and TA.UI:IsVisible() then
+            TA.UI:Refresh(event)
         end
     end
 end)
 
 -- ── Login sequence ────────────────────────────────────────────────────
-function CA:OnLogin()
+function TA:OnLogin()
     self:InitDB()
 
     -- Snapshot this character's professions (+ class/level) on every login,
     -- so profession data can be gathered across the whole account just by
     -- logging into each character — read back from SavedVariables afterward.
     self.charDB.professionSnapshot = {
-        class       = CA.Utils.GetPlayerClass(),
-        level       = CA.Utils.GetPlayerLevel(),
-        professions = CA.Utils.GetProfessions(),
+        class       = TA.Utils.GetPlayerClass(),
+        level       = TA.Utils.GetPlayerLevel(),
+        professions = TA.Utils.GetProfessions(),
     }
 
     self:InitModules()
@@ -155,17 +155,17 @@ function CA:OnLogin()
     self:InitMinimap()  -- defined in Core/MinimapButton.lua
 
     -- Slash commands
-    SLASH_CHARACTERADVISOR1 = "/ca"
-    SLASH_CHARACTERADVISOR2 = "/characteradvisor"
-    SlashCmdList["CHARACTERADVISOR"] = function(msg)
-        CA:SlashCommand(msg)
+    SLASH_TOONAGE1 = "/ta"
+    SLASH_TOONAGE2 = "/toonage"
+    SlashCmdList["TOONAGE"] = function(msg)
+        TA:SlashCommand(msg)
     end
 
-    print("|cFFFFD100Character Advisor|r v" .. self.version .. " loaded. Type |cFFFFD100/ca|r to open.")
+    print("|cFFFFD100ToonAge|r v" .. self.version .. " loaded. Type |cFFFFD100/ta|r to open.")
 end
 
 -- ── Slash command handler ─────────────────────────────────────────────
-function CA:SlashCommand(msg)
+function TA:SlashCommand(msg)
     msg = msg and msg:lower():trim() or ""
 
     if msg == "" or msg == "open" then
@@ -185,36 +185,36 @@ function CA:SlashCommand(msg)
     elseif msg == "options" then
         self:OpenOptionsFrame()
     elseif msg == "debug" then
-        CA.debug = not CA.debug
-        print("|cFFFFD100[CA]|r Debug mode: " .. (CA.debug and "ON" or "OFF"))
+        TA.debug = not TA.debug
+        print("|cFFFFD100[TA]|r Debug mode: " .. (TA.debug and "ON" or "OFF"))
     elseif msg == "reset" then
-        CharacterAdvisorDB = nil
-        print("|cFFFFD100[CA]|r Settings reset. Please reload UI (/reload).")
+        ToonAgeDB = nil
+        print("|cFFFFD100[TA]|r Settings reset. Please reload UI (/reload).")
     else
-        -- Dispatch to module-registered slash commands (e.g. /ca tracker, /ca guides)
+        -- Dispatch to module-registered slash commands (e.g. /ta tracker, /ta guides)
         for _, mod in pairs(self.modules) do
             if mod.SlashCommands then
                 local fn = mod.SlashCommands[msg]
                 if fn then fn(mod); return end
             end
         end
-        print("|cFFFFD100Character Advisor|r commands:")
-        print("  |cFFFFD100/ca|r — open/close")
-        print("  |cFFFFD100/ca gear|r — gear tab")
-        print("  |cFFFFD100/ca talents|r — talents tab")
-        print("  |cFFFFD100/ca rotation|r — rotation tab")
-        print("  |cFFFFD100/ca prof|r — professions tab")
-        print("  |cFFFFD100/ca pets|r — pets tab")
-        print("  |cFFFFD100/ca weekly|r — weekly tab")
-        print("  |cFFFFD100/ca guides|r — list loaded guides")
-        print("  |cFFFFD100/ca tracker|r — toggle guide tracker window")
-        print("  |cFFFFD100/ca arrow|r — toggle navigation arrow HUD")
-        print("  |cFFFFD100/ca options|r — toggle which tabs are shown")
-        print("  |cFFFFD100/ca reset|r — reset saved data")
+        print("|cFFFFD100ToonAge|r commands:")
+        print("  |cFFFFD100/ta|r — open/close")
+        print("  |cFFFFD100/ta gear|r — gear tab")
+        print("  |cFFFFD100/ta talents|r — talents tab")
+        print("  |cFFFFD100/ta rotation|r — rotation tab")
+        print("  |cFFFFD100/ta prof|r — professions tab")
+        print("  |cFFFFD100/ta pets|r — pets tab")
+        print("  |cFFFFD100/ta weekly|r — weekly tab")
+        print("  |cFFFFD100/ta guides|r — list loaded guides")
+        print("  |cFFFFD100/ta tracker|r — toggle guide tracker window")
+        print("  |cFFFFD100/ta arrow|r — toggle navigation arrow HUD")
+        print("  |cFFFFD100/ta options|r — toggle which tabs are shown")
+        print("  |cFFFFD100/ta reset|r — reset saved data")
     end
 end
 
-function CA:ToggleUI()
+function TA:ToggleUI()
     if self.UI then
         if self.UI:IsVisible() then
             self.UI:Hide()
@@ -224,7 +224,7 @@ function CA:ToggleUI()
     end
 end
 
-function CA:OpenTab(tabName)
+function TA:OpenTab(tabName)
     if self.UI then
         self.UI:Show()
         self.UI:SetTab(tabName)

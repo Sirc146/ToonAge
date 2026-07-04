@@ -1,12 +1,12 @@
--- CharacterAdvisor/Data/Guides/CAG_Hallowfall.lua
+-- ToonAge/Data/Guides/TAG_Hallowfall.lua
 -- STUB -- auto-generated from WoWDB PTR HTML dump
 -- Quest ORDER is sorted by questID (approximate).
--- TODO: verify order in-game with /caquestscan, fill coords.
+-- TODO: verify order in-game with /taquestscan, fill coords.
 
-local CA = CharacterAdvisor
-CA.GuideData = CA.GuideData or {}
+local TA = ToonAge
+TA.GuideData = TA.GuideData or {}
 
-CA.GuideData["hallowfall"] = {
+TA.GuideData["hallowfall"] = {
     id       = "hallowfall",
     title    = "The War Within: Hallowfall",
     zone     = 2248,   -- TODO: confirm with /coord

@@ -1,4 +1,4 @@
--- CharacterAdvisor/Modules/TravelModes.lua
+-- ToonAge/Modules/TravelModes.lua
 -- Travel-state helper consumed by Arrow.lua for ETA.
 --
 -- GetUnitSpeed is intentionally NOT used here: it returns a "secret number"
@@ -8,9 +8,9 @@
 -- Mount-state APIs (IsFlying, IsMounted, IsPlayerDynamicFlying) are
 -- unrestricted and return normal booleans regardless of taint state.
 
-local CA = CharacterAdvisor
+local TA = ToonAge
 local TM = {}
-CA:RegisterModule("TravelModes", TM)
+TA:RegisterModule("TravelModes", TM)
 
 -- Approximate yards-per-second for each travel mode.
 -- These are typical values; actual speed varies by mount and player speed%.

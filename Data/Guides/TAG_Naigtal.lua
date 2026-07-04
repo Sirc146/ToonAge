@@ -1,12 +1,12 @@
--- CharacterAdvisor/Data/Guides/CAG_Naigtal.lua
+-- ToonAge/Data/Guides/TAG_Naigtal.lua
 -- STUB -- auto-generated from WoWDB PTR HTML dump
 -- Quest ORDER is sorted by questID (approximate).
--- TODO: verify order in-game with /caquestscan, fill coords.
+-- TODO: verify order in-game with /taquestscan, fill coords.
 
-local CA = CharacterAdvisor
-CA.GuideData = CA.GuideData or {}
+local TA = ToonAge
+TA.GuideData = TA.GuideData or {}
 
-CA.GuideData["naigtal"] = {
+TA.GuideData["naigtal"] = {
     id       = "naigtal",
     title    = "Midnight: Naigtal",
     zone     = 0,   -- TODO: confirm with /coord

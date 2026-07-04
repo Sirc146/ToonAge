@@ -1,13 +1,13 @@
--- CharacterAdvisor/Modules/Rotation.lua
+-- ToonAge/Modules/Rotation.lua
 -- Rotation tab: spell priority list with real icons, drag-to-bar, auto-updates on talent/level change
 
-local CA   = CharacterAdvisor
-local U    = CA.Utils
-local R    = CA.Data.Rotations
-local S    = CA.Data.Spells
+local TA   = ToonAge
+local U    = TA.Utils
+local R    = TA.Data.Rotations
+local S    = TA.Data.Spells
 
 local Rotation = {}
-CA:RegisterModule("Rotation", Rotation)
+TA:RegisterModule("Rotation", Rotation)
 
 -- ── State ──────────────────────────────────────────────────────────────
 Rotation.currentView    = "solo"   -- solo | aoe | st
@@ -43,8 +43,8 @@ function Rotation:OnEvent(event, ...)
         self.currentLevel  = U.GetPlayerLevel()
         self.currentRole   = UnitGroupRolesAssigned("player") or "DAMAGER"
 
-        if CA.UI and CA.UI.activeTab == "rotation" then
-            self:Render(CA.UI.contentChild, CA.UI.sideChild)
+        if TA.UI and TA.UI.activeTab == "rotation" then
+            self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end
     end
 
@@ -144,7 +144,7 @@ function Rotation:RenderSidebar(parent, specID, level, groupType)
 
         btn:SetScript("OnClick", function()
             self.currentView = view.id
-            self:Render(CA.UI.contentChild, CA.UI.sideChild)
+            self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end)
 
         y = y - 28

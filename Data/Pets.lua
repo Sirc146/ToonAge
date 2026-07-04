@@ -1,10 +1,10 @@
--- CharacterAdvisor/Data/Pets.lua
+-- ToonAge/Data/Pets.lua
 -- Pet family database, zone tameable pets, and class summon data
 
-local CA = CharacterAdvisor
-CA.Data = CA.Data or {}
-CA.Data.Pets = {}
-local P = CA.Data.Pets
+local TA = ToonAge
+TA.Data = TA.Data or {}
+TA.Data.Pets = {}
+local P = TA.Data.Pets
 
 -- ── Prerequisites ─────────────────────────────────────────────────────
 P.Prereqs = {

@@ -1,6 +1,6 @@
--- CharacterAdvisor/Modules/GuideParser.lua
--- Validates CA.GuideData at file-load time (TOC phase) and builds the
--- CA.Guides registry. Print output is deferred to Init() so messages
+-- ToonAge/Modules/GuideParser.lua
+-- Validates TA.GuideData at file-load time (TOC phase) and builds the
+-- TA.Guides registry. Print output is deferred to Init() so messages
 -- appear in chat after PLAYER_ENTERING_WORLD.
 --
 -- Guide schema:
@@ -9,11 +9,11 @@
 --   { type, text, questID?, coord={map,x,y}?, spec?, class?,
 --     minLevel?, precondition={questID?,questComplete?}? }
 
-local CA = CharacterAdvisor
-CA.Guides = CA.Guides or {}
+local TA = ToonAge
+TA.Guides = TA.Guides or {}
 
 local GP = {}
-CA:RegisterModule("GuideParser", GP)
+TA:RegisterModule("GuideParser", GP)
 
 -- ── Schema constants ──────────────────────────────────────────────────
 local VALID_TYPES = {
@@ -88,11 +88,11 @@ end
 
 -- ── File-scope load ───────────────────────────────────────────────────
 -- Guide data files (Data/Guides/*.lua) are listed before this module in
--- the TOC and have already populated CA.GuideData. We validate and build
--- CA.Guides here, at file-load time, so any module's Init() can read it
+-- the TOC and have already populated TA.GuideData. We validate and build
+-- TA.Guides here, at file-load time, so any module's Init() can read it
 -- regardless of init order.
 do
-    for id, guide in pairs(CA.GuideData or {}) do
+    for id, guide in pairs(TA.GuideData or {}) do
         guide.id = guide.id or id
         local valid, count, errs = ValidateGuide(id, guide)
         table.insert(_summary, {
@@ -103,7 +103,7 @@ do
             valid    = valid,
         })
         if valid then
-            CA.Guides[id] = guide
+            TA.Guides[id] = guide
         end
     end
 end
@@ -114,48 +114,48 @@ function GP:Init()
         local where = e.stepN
             and ("Guide '" .. e.id .. "' step " .. e.stepN)
             or  ("Guide '" .. e.id .. "'")
-        print("|cFFFFD100[CA]|r " .. where .. ": |cFFFF4444" .. e.msg .. "|r")
+        print("|cFFFFD100[TA]|r " .. where .. ": |cFFFF4444" .. e.msg .. "|r")
     end
 
     local loadedCount = 0
     for _, s in ipairs(_summary) do
         if s.valid then
             loadedCount = loadedCount + 1
-            if CA.debug then
-                print(string.format("|cFFFFD100[CA]|r Guide '|cFFFFFFFF%s|r' |cFF1EFF00OK|r (%d steps)", s.title, s.count))
+            if TA.debug then
+                print(string.format("|cFFFFD100[TA]|r Guide '|cFFFFFFFF%s|r' |cFF1EFF00OK|r (%d steps)", s.title, s.count))
             end
         else
-            print(string.format("|cFFFFD100[CA]|r Guide '|cFFFFFFFF%s|r' |cFFFF4444INVALID|r (%d error(s))", s.title, s.errCount))
+            print(string.format("|cFFFFD100[TA]|r Guide '|cFFFFFFFF%s|r' |cFFFF4444INVALID|r (%d error(s))", s.title, s.errCount))
         end
     end
 
     if #_summary == 0 then
-        if CA.debug then
-            print("|cFFFFD100[CA]|r No guide files found — add *.lua to Data/Guides/ and list in the .toc")
+        if TA.debug then
+            print("|cFFFFD100[TA]|r No guide files found — add *.lua to Data/Guides/ and list in the .toc")
         end
     elseif loadedCount > 0 then
-        print(string.format("|cFFFFD100[CA]|r %d guide(s) loaded. Type |cFFFFD100/ca tracker|r to open the tracker.", loadedCount))
+        print(string.format("|cFFFFD100[TA]|r %d guide(s) loaded. Type |cFFFFD100/ta tracker|r to open the tracker.", loadedCount))
     end
 end
 
 -- ── Public API ────────────────────────────────────────────────────────
 function GP:GetGuide(id)
-    return CA.Guides[id]
+    return TA.Guides[id]
 end
 
 function GP:GetAllGuides()
-    return CA.Guides
+    return TA.Guides
 end
 
 function GP:DumpGuides()
     local n = 0
-    for id, g in pairs(CA.Guides) do
+    for id, g in pairs(TA.Guides) do
         n = n + 1
-        print(string.format("|cFFFFD100[CA]|r  [%s] \"%s\"  lvl %d-%d  (%d steps)",
+        print(string.format("|cFFFFD100[TA]|r  [%s] \"%s\"  lvl %d-%d  (%d steps)",
             id, g.title, g.minLevel or 1, g.maxLevel or 999, #g.steps))
     end
     if n == 0 then
-        print("|cFFFFD100[CA]|r No validated guides are loaded.")
+        print("|cFFFFD100[TA]|r No validated guides are loaded.")
     end
 end
 

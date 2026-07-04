@@ -1,9 +1,9 @@
--- CharacterAdvisor/Modules/Weekly.lua
-local CA = CharacterAdvisor
-local U  = CA.Utils
+-- ToonAge/Modules/Weekly.lua
+local TA = ToonAge
+local U  = TA.Utils
 
 local Weekly = {}
-CA:RegisterModule("Weekly", Weekly)
+TA:RegisterModule("Weekly", Weekly)
 
 Weekly.frames = {}
 

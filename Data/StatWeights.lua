@@ -1,12 +1,12 @@
--- CharacterAdvisor/Data/StatWeights.lua
+-- ToonAge/Data/StatWeights.lua
 -- Stat weights per spec for PvE and PvP (Midnight 12.0.5)
 -- Higher = more valuable. Primary stat always reference weight of 1.0.
 -- Source: Method, Icy Veins, Archon theorycrafting (12.0.5)
 
-local CA = CharacterAdvisor
-CA.Data = CA.Data or {}
-CA.Data.StatWeights = {}
-local SW = CA.Data.StatWeights
+local TA = ToonAge
+TA.Data = TA.Data or {}
+TA.Data.StatWeights = {}
+local SW = TA.Data.StatWeights
 
 -- ── Weight table format ────────────────────────────────────────────────
 -- SW[specID] = { pve = {...}, pvp = {...} }
