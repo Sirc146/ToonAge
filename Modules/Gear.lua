@@ -1,0 +1,801 @@
+-- CharacterAdvisor/Modules/Gear.lua
+-- Caching, PvP/PvE persistence, tooltip injection, bag-claim logic, enchant audit
+
+local CA   = CharacterAdvisor
+local U    = CA.Utils
+local SW   = CA.Data.StatWeights
+local EMap = CA.Data.EnchantProfessionMap or {}
+
+local Gear = {}
+CA:RegisterModule("Gear", Gear)
+
+-- ── State ─────────────────────────────────────────────────────────────
+Gear.frames       = {}
+Gear.sideFrames   = {}
+Gear.viewMode     = "player"
+Gear.selectedSlot = nil
+Gear.pvpIlvlCache     = {}
+Gear.heirloomCapCache = {}
+Gear.bagCache         = { time = 0, items = {} }
+
+local HEIRLOOM_QUALITY = 7
+
+-- ── Slot definitions (canonical WoW inventory slot IDs) ───────────────
+-- Head=1 Neck=2 Shoulder=3 Shirt=4 Chest=5 Waist=6 Legs=7 Feet=8
+-- Wrist=9 Hands=10 Ring1=11 Ring2=12 Trinket1=13 Trinket2=14
+-- Back=15 MainHand=16 OffHand=17 Tabard=19
+local CORE_GRID_SLOTS = {
+    { slotID = 1,  name = "Head" },
+    { slotID = 2,  name = "Neck" },
+    { slotID = 3,  name = "Shoulder" },
+    { slotID = 15, name = "Back",      isEnchantable = true },
+    { slotID = 5,  name = "Chest",     isEnchantable = true },
+    { slotID = 4,  name = "Shirt" },
+    { slotID = 19, name = "Tabard" },
+    { slotID = 9,  name = "Wrist",     isEnchantable = true },
+    { slotID = 10, name = "Hands" },
+    { slotID = 6,  name = "Waist" },
+    { slotID = 7,  name = "Legs",      isEnchantable = true },
+    { slotID = 8,  name = "Feet",      isEnchantable = true },
+    { slotID = 11, name = "Ring 1",    isRing = true,    ringIdx = 1, isEnchantable = true },
+    { slotID = 12, name = "Ring 2",    isRing = true,    ringIdx = 2, isEnchantable = true },
+    { slotID = 13, name = "Trinket 1", isTrinket = true, triIdx  = 1 },
+    { slotID = 14, name = "Trinket 2", isTrinket = true, triIdx  = 2 },
+    { slotID = 16, name = "Main Hand", isEnchantable = true },
+    { slotID = 17, name = "Off Hand",  isEnchantable = true },
+}
+
+-- ── Armor proficiency ─────────────────────────────────────────────────
+local _, playerClass = UnitClass("player")
+local PRIMARY_ARMOR_TYPE = 1
+if     playerClass == "WARRIOR" or playerClass == "PALADIN" or playerClass == "DEATHKNIGHT"  then PRIMARY_ARMOR_TYPE = 4
+elseif playerClass == "HUNTER"  or playerClass == "SHAMAN"  or playerClass == "EVOKER"       then PRIMARY_ARMOR_TYPE = 3
+elseif playerClass == "ROGUE"   or playerClass == "DRUID"   or playerClass == "MONK"
+    or playerClass == "DEMONHUNTER"                                                           then PRIMARY_ARMOR_TYPE = 2 end
+
+-- ── Helpers ───────────────────────────────────────────────────────────
+local function CleanProxyValue(val)
+    if not val then return 0 end
+    if type(val) == "number" then return val end
+    return tonumber(tostring(val):match("([%d%.%-]+)")) or 0
+end
+
+-- ── Tooltip scanner for PvP iLvl detection ────────────────────────────
+local ScanTT = CreateFrame("GameTooltip", "CAGearScannerTT", nil, "GameTooltipTemplate")
+ScanTT:SetOwner(WorldFrame, "ANCHOR_NONE")
+
+local function GetItemIlvls(itemLink)
+    if not itemLink then return 0, nil, nil end
+    local worldIlvl = U.GetItemIlvl(itemLink) or 0
+
+    if Gear.pvpIlvlCache[itemLink] and Gear.heirloomCapCache[itemLink] ~= nil then
+        local cap = Gear.heirloomCapCache[itemLink]
+        return worldIlvl, Gear.pvpIlvlCache[itemLink], (cap ~= false) and cap or nil
+    end
+
+    local pvpIlvl, heirloomCap = nil, nil
+    local isHeirloom = U.GetItemQuality(itemLink) == HEIRLOOM_QUALITY
+
+    ScanTT:ClearLines()
+    ScanTT:SetHyperlink(itemLink)
+    for i = 2, ScanTT:NumLines() do
+        local line = _G["CAGearScannerTTTextLeft" .. i]
+        if line then
+            local text = line:GetText()
+            if text then
+                local m = text:match("PvP Item Level (%d+)")
+                       or text:match("Equips to (%d+)")
+                       or text:match("Increases item level.-(%d+) in")
+                if m then pvpIlvl = tonumber(m) end
+
+                -- Heirloom scaling cap. NOTE: exact tooltip wording for this
+                -- expansion isn't verified — these patterns match historically
+                -- common phrasings ("Scales with your level up to level X" /
+                -- "Scales to level X"). Adjust if the real tooltip text differs.
+                if isHeirloom and not heirloomCap then
+                    local cap = text:match("[Ss]cales with your level up to level (%d+)")
+                             or text:match("[Ss]cales to level (%d+)")
+                             or text:match("[Uu]p to level (%d+)")
+                    if cap then heirloomCap = tonumber(cap) end
+                end
+            end
+        end
+    end
+
+    if pvpIlvl then Gear.pvpIlvlCache[itemLink] = pvpIlvl end
+    -- Cache `false` (not nil) for "checked, not a capped heirloom" so the
+    -- cache-hit branch above can distinguish "not scanned yet" from "scanned,
+    -- no cap found".
+    Gear.heirloomCapCache[itemLink] = heirloomCap or false
+
+    return worldIlvl, pvpIlvl, heirloomCap
+end
+
+-- ── Item scoring ──────────────────────────────────────────────────────
+local function CalculateItemScore(itemLink, specID, mode)
+    if not itemLink then return 0 end
+    local rawStats = C_Item.GetItemStats(itemLink) or {}
+    local stats = {
+        INT     = CleanProxyValue(rawStats["ITEM_MOD_INTELLECT_SHORT"]),
+        AGI     = CleanProxyValue(rawStats["ITEM_MOD_AGILITY_SHORT"]),
+        STR     = CleanProxyValue(rawStats["ITEM_MOD_STRENGTH_SHORT"]),
+        STAM    = CleanProxyValue(rawStats["ITEM_MOD_STAMINA_SHORT"]),
+        CRIT    = CleanProxyValue(rawStats["ITEM_MOD_CRIT_RATING_SHORT"]),
+        HASTE   = CleanProxyValue(rawStats["ITEM_MOD_HASTE_RATING_SHORT"]),
+        MASTERY = CleanProxyValue(rawStats["ITEM_MOD_MASTERY_RATING_SHORT"]),
+        VERS    = CleanProxyValue(rawStats["ITEM_MOD_VERSATILITY_SHORT"]),
+    }
+    local total = stats.INT + stats.AGI + stats.STR + stats.STAM
+                + stats.CRIT + stats.HASTE + stats.MASTERY + stats.VERS
+
+    if total == 0 then
+        -- No recognized stat budget on this item (common for pure on-use/proc
+        -- trinkets, or occasionally an item whose data hasn't finished caching).
+        -- BUG FIX: this used to be `ilvl * 100`, which put stat-less items on
+        -- a wildly different scale than the normal weighted formula below --
+        -- a real piece of gear typically scores ~500-3000 (primary stat at
+        -- ~1.6x weight plus a few hundred each of haste/crit/mastery/vers at
+        -- ~1.0-1.2x), while `ilvl * 100` gives a level-580 item a score of
+        -- 58,000. That let any stat-less item -- even a low-ilvl one -- crush
+        -- every properly-itemized comparison purely from the scale mismatch,
+        -- which is exactly the "lower stats, higher rating" bug. `ilvl * 3` is
+        -- an approximation to land in the same rough range as real gear, not
+        -- a precisely derived constant -- it exists to stop the fallback from
+        -- dominating comparisons it has no business winning.
+        local wIlvl, pIlvl = GetItemIlvls(itemLink)
+        return ((mode == "pvp" and pIlvl) or wIlvl or 0) * 3
+    end
+
+    local src = CA.charDB and CA.charDB.weightSource or "built-in"
+    if src == "pawn" and Pawn and Pawn.GetSingleItemValue then
+        local ok, val = pcall(function() return Pawn.GetSingleItemValue(itemLink, false) end)
+        if ok and val then return CleanProxyValue(val) end
+    end
+    return CleanProxyValue(SW:ScoreItem(stats, specID, mode))
+end
+
+-- ── Throttled bag scan with claim tracking ────────────────────────────
+-- Returns bestLink, bestScore, bestBag, bestSlot, claimedBy, claimedLink, claimedBag, claimedSlot
+-- claimedBy/claimedLink/Bag/Slot describe the best item that was already claimed by another slot.
+local function ScanBagsForUpgrades(slotID, specID, mode, currentScore, itemDef, claimedBags)
+    local bestLink, bestBag, bestSlot = nil, nil, nil
+    local bestScore = currentScore or 0
+    local claimedLink, claimedBag, claimedSlot, claimedBy = nil, nil, nil, nil
+    local bestClaimedScore = currentScore or 0
+
+    if GetTime() - Gear.bagCache.time > 2.0 then
+        Gear.bagCache.items = {}
+        for bag = 0, 4 do
+            for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
+                local info = C_Container.GetContainerItemInfo(bag, slot)
+                if info and info.hyperlink then
+                    table.insert(Gear.bagCache.items, { bag = bag, slot = slot, link = info.hyperlink })
+                end
+            end
+        end
+        Gear.bagCache.time = GetTime()
+    end
+
+    for _, item in ipairs(Gear.bagCache.items) do
+        local bagSlotKey = item.bag .. "_" .. item.slot
+        local _, _, _, _, _, _, _, _, equipLoc, _, _, itemClassID, itemSubClassID = GetItemInfo(item.link)
+
+        if equipLoc then
+            local isValid = false
+            if     slotID == 1  and equipLoc == "INVTYPE_HEAD"     then isValid = true
+            elseif slotID == 2  and equipLoc == "INVTYPE_NECK"     then isValid = true
+            elseif slotID == 3  and equipLoc == "INVTYPE_SHOULDER"  then isValid = true
+            elseif slotID == 15 and equipLoc == "INVTYPE_CLOAK"    then isValid = true
+            elseif slotID == 5  and (equipLoc == "INVTYPE_CHEST" or equipLoc == "INVTYPE_ROBE") then isValid = true
+            elseif slotID == 9  and equipLoc == "INVTYPE_WRIST"    then isValid = true
+            elseif slotID == 10 and equipLoc == "INVTYPE_HAND"     then isValid = true
+            elseif slotID == 6  and equipLoc == "INVTYPE_WAIST"    then isValid = true
+            elseif slotID == 7  and equipLoc == "INVTYPE_LEGS"     then isValid = true
+            elseif slotID == 8  and equipLoc == "INVTYPE_FEET"     then isValid = true
+            elseif itemDef.isRing    and equipLoc == "INVTYPE_FINGER"  then isValid = true
+            elseif itemDef.isTrinket and equipLoc == "INVTYPE_TRINKET" then isValid = true
+            elseif slotID == 16 and (equipLoc == "INVTYPE_WEAPON" or equipLoc == "INVTYPE_2HWEAPON"
+                                  or equipLoc == "INVTYPE_RANGED"  or equipLoc == "INVTYPE_RANGEDRIGHT") then isValid = true
+            elseif slotID == 17 and (equipLoc == "INVTYPE_WEAPON" or equipLoc == "INVTYPE_SHIELD"
+                                  or equipLoc == "INVTYPE_HOLDABLE") then isValid = true
+            end
+
+            -- Reject wrong armor types (accessories bypass this check)
+            if isValid and itemClassID == 4 then
+                local isAccessory = equipLoc == "INVTYPE_NECK"    or equipLoc == "INVTYPE_CLOAK"
+                                 or equipLoc == "INVTYPE_FINGER"  or equipLoc == "INVTYPE_TRINKET"
+                                 or equipLoc == "INVTYPE_SHIELD"  or equipLoc == "INVTYPE_HOLDABLE"
+                if not isAccessory and itemSubClassID ~= PRIMARY_ARMOR_TYPE then isValid = false end
+            end
+
+            if isValid then
+                local score = CalculateItemScore(item.link, specID, mode)
+                if score > bestScore then
+                    if claimedBags[bagSlotKey] then
+                        if score > bestClaimedScore then
+                            bestClaimedScore = score
+                            claimedLink = item.link; claimedBag = item.bag; claimedSlot = item.slot
+                            claimedBy = claimedBags[bagSlotKey]
+                        end
+                    else
+                        bestScore = score; bestLink = item.link; bestBag = item.bag; bestSlot = item.slot
+                    end
+                end
+            end
+        end
+    end
+    return bestLink, bestScore, bestBag, bestSlot, claimedBy, claimedLink, claimedBag, claimedSlot
+end
+
+local function GetLiveEquippedLink(itemDef, unit)
+    unit = unit or "player"
+    if itemDef.isRing then
+        return GetInventoryItemLink(unit, itemDef.ringIdx == 1 and 11 or 12)
+    elseif itemDef.isTrinket then
+        return GetInventoryItemLink(unit, itemDef.triIdx == 1 and 13 or 14)
+    else
+        return GetInventoryItemLink(unit, itemDef.slotID)
+    end
+end
+
+-- ── Profession cache ───────────────────────────────────────────────────
+local PlayerProfessionsCache = {}
+local function RebuildProfessionsCache()
+    wipe(PlayerProfessionsCache)
+    local p1, p2, arch, fish, cook, fa = GetProfessions()
+    for _, idx in ipairs({ p1, p2, arch, fish, cook, fa }) do
+        if idx then
+            local name = GetProfessionInfo(idx)
+            if name then PlayerProfessionsCache[name:upper()] = true end
+        end
+    end
+end
+
+-- ── Enchant audit (profession + recipe ownership) ─────────────────────
+local function AuditItemEnchants(itemLink, isEnchantable)
+    if not itemLink or not isEnchantable then return true, "" end
+    local itemString = string.match(itemLink, "item[%-?%d:]+")
+    if not itemString then return true, "" end
+    local _, _, enchantID = strsplit(":", itemString)
+    enchantID = tonumber(enchantID) or 0
+
+    if enchantID == 0 then return false, "|cFFFF4444[!] Missing Enchant|r" end
+
+    local eInfo = EMap[enchantID]
+    if eInfo and eInfo.profession then
+        local pKey = eInfo.profession:upper()
+        if not PlayerProfessionsCache[pKey] then
+            return false, "|cFFFF4444[!] Needs " .. eInfo.profession .. "|r"
+        end
+        if eInfo.spellID and not IsSpellKnown(eInfo.spellID) then
+            return false, "|cFFFF4444[!] Recipe not learned|r"
+        end
+    end
+    return true, "|cFF888780[OK] Enchanted|r"
+end
+
+-- Debounced re-render for the bag-change events, which can fire many times
+-- in a single loot/vendor action — each full render rescans every bag slot
+-- against all 18 grid slots, so batching avoids repeating that scan per event.
+-- Mirrors the same C_Timer.After debounce pattern Talents.lua already uses.
+local bagRenderTimer = nil
+local function ScheduleBagRender()
+    if bagRenderTimer then return end
+    bagRenderTimer = C_Timer.After(0.3, function()
+        bagRenderTimer = nil
+        if CA.UI and CA.UI.activeTab == "gear" and Gear.viewMode == "player" then
+            Gear:Render(CA.UI.contentChild, CA.UI.sideChild)
+        end
+    end)
+end
+
+-- ── Events ────────────────────────────────────────────────────────────
+function Gear:OnEvent(event, ...)
+    if event == "PLAYER_EQUIPMENT_CHANGED" or event == "BAG_UPDATE" or event == "UNIT_INVENTORY_CHANGED" or event == "GET_ITEM_INFO_RECEIVED" then
+        self.bagCache.time = 0
+        ScheduleBagRender()
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        if self.viewMode == "target" then
+            if UnitIsPlayer("target") and CanInspect("target") then NotifyInspect("target") end
+            if CA.UI and CA.UI.activeTab == "gear" then self:Render(CA.UI.contentChild, CA.UI.sideChild) end
+        end
+    elseif event == "INSPECT_READY" then
+        local guid = ...
+        if self.viewMode == "target" and UnitGUID("target") == guid then
+            if CA.UI and CA.UI.activeTab == "gear" then self:Render(CA.UI.contentChild, CA.UI.sideChild) end
+        end
+    elseif event == "SKILL_LINES_CHANGED" then
+        RebuildProfessionsCache()
+    end
+end
+
+function Gear:Init()
+    CA.eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+    CA.eventFrame:RegisterEvent("INSPECT_READY")
+    -- SKILL_LINES_CHANGED is already registered globally in Core/Init.lua's
+    -- PERSISTENT_EVENTS list; no need to register it again here.
+    if CA.charDB then
+        CA.charDB.pvxMode      = CA.charDB.pvxMode      or "pve"
+        CA.charDB.weightSource = CA.charDB.weightSource or "built-in"
+    end
+    RebuildProfessionsCache()
+end
+
+-- ── Render ────────────────────────────────────────────────────────────
+function Gear:Render(content, sidebar)
+    for _, f in ipairs(self.frames) do f:Hide(); f:SetParent(nil) end
+    self.frames = {}
+    for _, f in ipairs(self.sideFrames) do f:Hide(); f:SetParent(nil) end
+    self.sideFrames = {}
+
+    if C_PvP and C_PvP.IsWarModeDesired and C_PvP.IsWarModeDesired() then
+        if CA.charDB then CA.charDB.pvxMode = "pvp" end
+    end
+
+    local pvxMode      = (CA.charDB and CA.charDB.pvxMode)      or "pve"
+    local weightSource = (CA.charDB and CA.charDB.weightSource) or "built-in"
+    local padL, y     = 20, -10
+    local w           = content:GetWidth() - 40
+
+    -- Header
+    local hdr = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hdr:SetFont(STANDARD_TEXT_FONT, 14, "")
+    hdr:SetText((self.viewMode == "player" and "GEAR ADVISOR: BAG SCANNER"
+                                           or  "GEAR ADVISOR: TARGET SCOUTER")
+                .. " |cFF888780(Weights: " .. weightSource:upper() .. ")|r")
+    hdr:SetTextColor(1, 0.82, 0, 1)
+    hdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    table.insert(self.frames, hdr)
+
+    -- View Mode toggle
+    local viewBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    viewBtn:SetSize(110, 22)
+    viewBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y + 4)
+    viewBtn:SetText(self.viewMode == "player" and "Scan Target" or "View Player")
+    viewBtn:SetScript("OnClick", function()
+        self.viewMode = self.viewMode == "player" and "target" or "player"
+        if self.viewMode == "target" and UnitIsPlayer("target") and CanInspect("target") then
+            NotifyInspect("target")
+        end
+        self:Render(content, sidebar)
+    end)
+    table.insert(self.frames, viewBtn)
+
+    -- PvP toggle
+    local pvpBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    pvpBtn:SetSize(90, 22)
+    pvpBtn:SetPoint("TOPRIGHT", viewBtn, "TOPLEFT", -4, 0)
+    pvpBtn:SetText(pvxMode == "pvp" and "PvP: ON" or "PvP: OFF")
+    pvpBtn:SetScript("OnClick", function()
+        local next = (pvxMode == "pve") and "pvp" or "pve"
+        if CA.charDB then CA.charDB.pvxMode = next end
+        self:Render(content, sidebar)
+    end)
+    table.insert(self.frames, pvpBtn)
+
+    -- Weight source cycling
+    local srcBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    srcBtn:SetSize(110, 22)
+    srcBtn:SetPoint("TOPRIGHT", pvpBtn, "TOPLEFT", -4, 0)
+    srcBtn:SetText("Src: " .. weightSource)
+    srcBtn:SetScript("OnClick", function()
+        local next = weightSource == "built-in" and "pawn"
+                  or weightSource == "pawn"     and "custom"
+                  or "built-in"
+        if CA.charDB then CA.charDB.weightSource = next end
+        self:Render(content, sidebar)
+    end)
+    table.insert(self.frames, srcBtn)
+
+    y = y - 30
+    local disc = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    disc:SetFont(STANDARD_TEXT_FONT, 10, "")
+    disc:SetText("|cFFAAAAAAPvP gear shows world ilvl + PvP ilvl (green) when available. Click any slot to see score details.|r")
+    disc:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    table.insert(self.frames, disc)
+    y = y - 20
+
+    if self.viewMode == "target" then
+        if not UnitIsPlayer("target") then
+            local errF = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            errF:SetFont(STANDARD_TEXT_FONT, 12, "")
+            errF:SetText("|cFF888780No valid player targeted for inspection.|r")
+            errF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y - 20)
+            table.insert(self.frames, errF)
+            content:SetHeight(math.abs(y) + 60)
+            return
+        end
+        self:RenderTargetGrid(content, sidebar, padL, y, w)
+    else
+        self:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
+    end
+end
+
+-- ── Player Grid ───────────────────────────────────────────────────────
+function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
+    local specID = U.GetPlayerSpec()
+    if not specID then return end
+    local colW, col = math.floor((w - 8) / 2), 0
+    local claimedBags = {}
+    local playerLevel = UnitLevel("player") or 1
+
+    for _, slotDef in ipairs(CORE_GRID_SLOTS) do
+        local currentLink  = GetLiveEquippedLink(slotDef, "player")
+        local currentScore = CalculateItemScore(currentLink, specID, pvxMode)
+        local wIlvl, pIlvl, heirloomCap = GetItemIlvls(currentLink)
+        local heirloomWarn = heirloomCap and playerLevel >= (heirloomCap - 2)
+
+        local bestBagLink, bestBagScore, bBag, bSlot, claimedBy, claimedLink, claimedBag, claimedSlot =
+            ScanBagsForUpgrades(slotDef.slotID, specID, pvxMode, currentScore, slotDef, claimedBags)
+        local hasUpgrade = bestBagLink ~= nil and (bestBagScore - currentScore) > 0.0001
+
+        if hasUpgrade and bBag and bSlot then
+            claimedBags[bBag .. "_" .. bSlot] = slotDef.name
+        end
+
+        local targetSlotID = slotDef.slotID
+        if slotDef.isRing    then targetSlotID = (slotDef.ringIdx == 1 and 11 or 12) end
+        if slotDef.isTrinket then targetSlotID = (slotDef.triIdx  == 1 and 13 or 14) end
+
+        local cx = padL + col * (colW + 8)
+        local row = CreateFrame("Button", nil, content, "BackdropTemplate")
+        row:SetSize(colW, 52)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", cx, y)
+        row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        table.insert(self.frames, row)
+
+        local isEnchantWarning = false
+
+        if hasUpgrade then
+            row:SetBackdropColor(0.02, 0.06, 0.02, 0.9)
+            row:SetBackdropBorderColor(0.12, 1.00, 0.00, 0.5)
+        else
+            row:SetBackdropColor(0.02, 0.02, 0.02, 0.9)
+            row:SetBackdropBorderColor(0.35, 0.28, 0.06, 0.4)
+        end
+
+        -- Slot name (top-left)
+        local slNameF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        slNameF:SetFont(STANDARD_TEXT_FONT, 9, "")
+        slNameF:SetText(slotDef.name:upper())
+        slNameF:SetTextColor(0.55, 0.44, 0.25, 1)
+        slNameF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -6)
+
+        -- iLvl display (top-right)
+        local slIlvlF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        slIlvlF:SetFont(STANDARD_TEXT_FONT, 9, "")
+        if currentLink and wIlvl > 0 then
+            if pIlvl then
+                slIlvlF:SetText(wIlvl .. " |cFF00FF00(PvP " .. pIlvl .. ")|r")
+            else
+                slIlvlF:SetText(wIlvl .. " |cFF555555(no PvP)|r")
+            end
+        end
+        slIlvlF:SetPoint("TOPRIGHT", row, "TOPRIGHT", -10, -6)
+
+        -- Item name
+        local nameF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nameF:SetFont(STANDARD_TEXT_FONT, 11, "")
+        if currentLink then
+            local itemName, _, quality = GetItemInfo(currentLink)
+            local r, g, b = GetItemQualityColor(quality or 1)
+            nameF:SetText(U.Truncate(itemName or "Loading...", 24))
+            nameF:SetTextColor(r, g, b, 1)
+        else
+            nameF:SetText("|cFFFF4444Empty Slot|r")
+        end
+        nameF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -18)
+
+        -- Status line
+        local statusF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        statusF:SetFont(STANDARD_TEXT_FONT, 10, "")
+        statusF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -34)
+
+        if hasUpgrade then
+            local pct = currentScore > 0 and math.floor(((bestBagScore - currentScore) / currentScore) * 100) or 0
+            statusF:SetText("|cFF1EFF00[+] Ready to Swap (+" .. pct .. "% score)|r")
+        elseif claimedBy then
+            statusF:SetText("|cFFAAAAAA[!] Upgrade claimed by " .. claimedBy .. "|r")
+        elseif currentLink then
+            if slotDef.isEnchantable then
+                local ok, auditStr = AuditItemEnchants(currentLink, true)
+                statusF:SetText(auditStr)
+                if not ok then
+                    isEnchantWarning = true
+                    row:SetBackdropColor(0.06, 0.02, 0.02, 0.9)
+                    row:SetBackdropBorderColor(1.0, 0.27, 0.27, 0.6)
+                end
+            else
+                statusF:SetText("|cFF888780[OK] Equipped|r")
+            end
+        else
+            statusF:SetText("|cFFFF4444[!] Missing Item|r")
+            row:SetBackdropBorderColor(1.0, 0.27, 0.27, 0.6)
+        end
+
+        -- Tooltip injection
+        local capScore       = currentScore
+        local capBestScore   = bestBagScore
+        local capHasUp       = hasUpgrade
+        local capPvxMode     = pvxMode
+        local capHeirloomCap = heirloomCap
+        local capHeirloomWarn= heirloomWarn
+        row:SetScript("OnEnter", function(s)
+            row:SetBackdropBorderColor(1, 0.82, 0, 0.8)
+            if currentLink then
+                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                GameTooltip:SetHyperlink(currentLink)
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("Character Advisor:", 1, 0.82, 0)
+                GameTooltip:AddLine("Mode: " .. capPvxMode:upper(), 0.55, 0.44, 0.25)
+                GameTooltip:AddLine("Score: " .. capScore, 1, 1, 1)
+                if capHasUp then
+                    GameTooltip:AddLine("Bag upgrade: +" .. math.floor(capBestScore - capScore) .. " score", 0.12, 1.0, 0.0)
+                end
+                if capHeirloomCap then
+                    if capHeirloomWarn then
+                        GameTooltip:AddLine("[!] Heirloom scales to level " .. capHeirloomCap .. " — upgrade soon", 1.0, 0.53, 0.0)
+                    else
+                        GameTooltip:AddLine("Heirloom — scales to level " .. capHeirloomCap, 0.05, 0.96, 0.93)
+                    end
+                end
+                GameTooltip:Show()
+            end
+        end)
+        row:SetScript("OnLeave", function()
+            if capHasUp then
+                row:SetBackdropBorderColor(0.12, 1.00, 0.00, 0.5)
+            elseif isEnchantWarning then
+                row:SetBackdropBorderColor(1.0, 0.27, 0.27, 0.6)
+            else
+                row:SetBackdropBorderColor(0.35, 0.28, 0.06, 0.4)
+            end
+            GameTooltip:Hide()
+        end)
+
+        local capSlotID       = targetSlotID
+        local capCurLink      = currentLink
+        local capUpLink       = bestBagLink
+        local capCurScore     = currentScore
+        local capUpScore      = bestBagScore
+        local capBBag         = bBag
+        local capBSlot        = bSlot
+        local capClaimedBy    = claimedBy
+        local capClaimedLink  = claimedLink
+        local capClaimedBag   = claimedBag
+        local capClaimedSlot  = claimedSlot
+        row:SetScript("OnClick", function()
+            self.selectedSlot = capSlotID
+            self:RenderSidebarDetails(
+                sidebar, capSlotID, capCurLink, capUpLink,
+                capCurScore, capUpScore, false,
+                capBBag, capBSlot, capClaimedBy,
+                capClaimedLink, capClaimedBag, capClaimedSlot
+            )
+        end)
+
+        col = col + 1
+        if col >= 2 then col = 0; y = y - 58 end
+    end
+
+    -- Currency section
+    y = y - 10
+    local curHdr = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    curHdr:SetFont(STANDARD_TEXT_FONT, 11, "")
+    curHdr:SetText("MIDNIGHT UPGRADE CURRENCIES")
+    curHdr:SetTextColor(0.55, 0.44, 0.25, 1)
+    curHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    table.insert(self.frames, curHdr)
+    y = y - 20
+
+    local currencies = {
+        { id = 3108, name = "Weathered Harbinger Crest", color = "|cFF1EFF00" },
+        { id = 3109, name = "Carved Harbinger Crest",    color = "|cFF0070DD" },
+        { id = 3110, name = "Runed Harbinger Crest",     color = "|cFFA335EE" },
+        { id = 3111, name = "Gilded Harbinger Crest",    color = "|cFFFF8000" },
+        { id = 3112, name = "Voidforged Shard",          color = "|cFF0CF4EC" },
+    }
+
+    local cx = padL
+    for _, c in ipairs(currencies) do
+        local info  = C_CurrencyInfo.GetCurrencyInfo(c.id)
+        local count = info and info.quantity    or 0
+        local max   = info and info.maxQuantity or 90
+
+        local curBox = CreateFrame("Frame", nil, content, "BackdropTemplate")
+        curBox:SetSize(115, 36)
+        curBox:SetPoint("TOPLEFT", content, "TOPLEFT", cx, y)
+        curBox:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        curBox:SetBackdropColor(0.02, 0.02, 0.02, 0.9)
+        curBox:SetBackdropBorderColor(0.35, 0.28, 0.06, 0.4)
+        table.insert(self.frames, curBox)
+
+        local cVal = curBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        cVal:SetFont(STANDARD_TEXT_FONT, 12, "")
+        cVal:SetText(c.color .. count .. "|r / " .. max)
+        cVal:SetPoint("TOPLEFT", curBox, "TOPLEFT", 8, -6)
+
+        local cName = curBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        cName:SetFont(STANDARD_TEXT_FONT, 8, "")
+        cName:SetText(U.Truncate(c.name, 22))
+        cName:SetTextColor(0.7, 0.7, 0.7, 1)
+        cName:SetPoint("TOPLEFT", curBox, "TOPLEFT", 8, -20)
+        cx = cx + 122
+    end
+    content:SetHeight(math.abs(y) + 60)
+end
+
+-- ── Target Grid ───────────────────────────────────────────────────────
+function Gear:RenderTargetGrid(content, sidebar, padL, y, w)
+    local tName  = UnitName("target")
+    local _, tClass = UnitClass("target")
+    local tLevel = UnitLevel("target")
+
+    local statText = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    statText:SetFont(STANDARD_TEXT_FONT, 12, "")
+    statText:SetText(string.format("Inspecting: |cFFFFFFFF%s|r  |cFF888780(Level %d %s)|r",
+        tName, tLevel, tClass:lower():gsub("^%l", string.upper)))
+    statText:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    table.insert(self.frames, statText)
+
+    y = y - 30
+    local colW, col = math.floor((w - 8) / 2), 0
+    local totalIlvl, count = 0, 0
+
+    for _, slotDef in ipairs(CORE_GRID_SLOTS) do
+        local currentLink = GetLiveEquippedLink(slotDef, "target")
+        local isEnchanted, auditStr = AuditItemEnchants(currentLink, slotDef.isEnchantable)
+
+        if currentLink then
+            local ilvl = U.GetItemIlvl(currentLink)
+            totalIlvl = totalIlvl + ilvl
+            count = count + 1
+        end
+
+        local cx = padL + col * (colW + 8)
+        local row = CreateFrame("Button", nil, content, "BackdropTemplate")
+        row:SetSize(colW, 52)
+        row:SetPoint("TOPLEFT", content, "TOPLEFT", cx, y)
+        row:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+
+        if currentLink and not isEnchanted then
+            row:SetBackdropColor(0.06, 0.02, 0.02, 0.9)
+            row:SetBackdropBorderColor(1.0, 0.27, 0.27, 0.6)
+        else
+            row:SetBackdropColor(0.02, 0.02, 0.02, 0.9)
+            row:SetBackdropBorderColor(0.35, 0.28, 0.06, 0.4)
+        end
+        table.insert(self.frames, row)
+
+        local slNameF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        slNameF:SetFont(STANDARD_TEXT_FONT, 9, "")
+        slNameF:SetText(slotDef.name:upper())
+        slNameF:SetTextColor(0.55, 0.44, 0.25, 1)
+        slNameF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -6)
+
+        local nameF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nameF:SetFont(STANDARD_TEXT_FONT, 11, "")
+        if currentLink then
+            local itemName, _, quality = GetItemInfo(currentLink)
+            local r, g, b = GetItemQualityColor(quality or 1)
+            nameF:SetText(U.Truncate(itemName or "Loading...", 24))
+            nameF:SetTextColor(r, g, b, 1)
+        else
+            nameF:SetText("|cFF888780Empty Slot|r")
+        end
+        nameF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -18)
+
+        local statusF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        statusF:SetFont(STANDARD_TEXT_FONT, 10, "")
+        statusF:SetText(auditStr)
+        statusF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -34)
+
+        local capLink = currentLink
+        row:SetScript("OnEnter", function(s)
+            row:SetBackdropBorderColor(1, 0.82, 0, 0.8)
+            if capLink then GameTooltip:SetOwner(s, "ANCHOR_RIGHT"); GameTooltip:SetHyperlink(capLink); GameTooltip:Show() end
+        end)
+        row:SetScript("OnLeave", function()
+            row:SetBackdropBorderColor(0.35, 0.28, 0.06, 0.4)
+            GameTooltip:Hide()
+        end)
+        row:SetScript("OnClick", function()
+            self:RenderSidebarDetails(sidebar, slotDef.slotID, capLink, nil, 0, 0, true)
+        end)
+
+        col = col + 1
+        if col >= 2 then col = 0; y = y - 58 end
+    end
+
+    local ilvlBox = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ilvlBox:SetFont(STANDARD_TEXT_FONT, 14, "")
+    ilvlBox:SetText("True Average iLvl: " .. (count > 0 and math.floor(totalIlvl / count) or 0))
+    ilvlBox:SetTextColor(0.64, 0.21, 0.93, 1)
+    ilvlBox:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, -10)
+    table.insert(self.frames, ilvlBox)
+
+    content:SetHeight(math.abs(y) + 20)
+end
+
+-- ── Sidebar details ───────────────────────────────────────────────────
+function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, upScore, isTarget,
+                                    bag, slot, claimedBy, claimedLink, claimedBag, claimedSlot)
+    for _, f in ipairs(self.sideFrames) do f:Hide(); f:SetParent(nil) end
+    self.sideFrames = {}
+    local y, w = -8, parent:GetWidth() - 12
+
+    local function SLabel(text, size, r, g, b)
+        local f = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f:SetFont(STANDARD_TEXT_FONT, size or 10, "")
+        f:SetText(text)
+        f:SetTextColor(r or 0.78, g or 0.73, b or 0.48, 1)
+        f:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, y)
+        f:SetWidth(w)
+        y = y - (f:GetStringHeight() or 14) - 6
+        table.insert(self.sideFrames, f)
+    end
+
+    local function SButton(label, onClick)
+        local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        btn:SetSize(w - 6, 22)
+        btn:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, y)
+        btn:SetText(label)
+        btn:SetScript("OnClick", onClick)
+        table.insert(self.sideFrames, btn)
+        y = y - 28
+    end
+
+    if isTarget then
+        SLabel("TARGET INSPECTION", 11, 1, 0.82, 0)
+        SLabel(curLink and (GetItemInfo(curLink) or "Equipped Item") or "Empty Slot",
+               10, curLink and 1 or 0.5, curLink and 1 or 0.5, curLink and 1 or 0.5)
+        parent:SetHeight(math.abs(y) + 10)
+        return
+    end
+
+    SLabel("GEAR SCORE COMPARISON", 11, 1, 0.82, 0)
+    if curLink then
+        local wI, pI = GetItemIlvls(curLink)
+        SLabel("|cFF8B7040Score:|r " .. curScore, 10)
+        SLabel("iLvl: " .. wI .. (pI and ("  |cFF00FF00PvP: " .. pI .. "|r") or "  |cFF555555(no PvP)|r"), 9)
+        SLabel(GetItemInfo(curLink) or "Equipped Item", 9, 0.55, 0.44, 0.25)
+    else
+        SLabel("|cFF8B7040Score:|r 0 (Empty)", 10)
+    end
+
+    y = y - 4
+    if upLink then
+        SLabel("|cFF1EFF00[+] Upgrade Ready|r", 10, 0.12, 1.0, 0.0)
+        SLabel(GetItemInfo(upLink) or "Upgrade Item", 10, 1, 1, 1)
+        SLabel("Score: " .. upScore .. "  |cFF1EFF00(+" .. math.floor(upScore - curScore) .. ")|r", 9, 0.12, 1.0, 0.0)
+        SButton("Equip Now", function()
+            C_Container.PickupContainerItem(bag, slot)
+            EquipCursorItem(slotID)
+        end)
+    elseif claimedBy then
+        SLabel("|cFFAAAAAA[!] Best upgrade claimed by " .. claimedBy .. "|r", 10)
+        if claimedLink and claimedBag and claimedSlot then
+            SLabel(GetItemInfo(claimedLink) or "Claimed Item", 9, 0.8, 0.8, 0.8)
+            SButton("Force Override", function()
+                C_Container.PickupContainerItem(claimedBag, claimedSlot)
+                EquipCursorItem(slotID)
+            end)
+        end
+    else
+        SLabel("[OK] Slot is optimized.", 10, 0.5, 0.5, 0.5)
+    end
+
+    -- Enchant sidebar audit
+    if curLink then
+        y = y - 4
+        local isOk, auditStr = AuditItemEnchants(curLink, true)
+        SLabel(auditStr ~= "" and auditStr or "|cFF555555[OK] No enchant slot|r", 9)
+        if not isOk and auditStr:find("Needs") then
+            SButton("Open Professions", function()
+                pcall(ToggleSpellBook, BOOKTYPE_PROFESSION)
+            end)
+        end
+    end
+
+    parent:SetHeight(math.abs(y) + 10)
+end
