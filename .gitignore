@@ -1,0 +1,11 @@
+# Python (Tools/ scripts)
+__pycache__/
+*.pyc
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor cruft
+.vscode/
+*.swp
