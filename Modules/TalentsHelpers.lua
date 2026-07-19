@@ -6,14 +6,234 @@ local function safeInsert(t, v)
   if v and type(v) == "number" then table.insert(t, v) end
 end
 
--- Export-string parsing is intentionally NOT used here.
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- SECTION 1: Blizzard Import String Decoder
+-- ═══════════════════════════════════════════════════════════════════════════════
 --
--- The Blizzard talent export string is a base64-encoded binary blob.
--- Extracting raw digit sequences from it yields version bytes, level numbers,
--- coordinate data, and other non-node values — not reliable node IDs.
--- The correct path is C_Traits.GetConfigInfo().nodes (see tryClassTalentsNodes).
--- If that API is unavailable, return an empty table and surface the limitation
--- rather than returning silently wrong data.
+-- Decodes Blizzard talent loadout strings (base64 bit-packed format) to extract
+-- the selected node IDs. This replaces the previous "intentionally NOT used"
+-- approach. Uses ExportUtil.MakeImportDataStream (Blizzard built-in) + the same
+-- algorithm as TalentTreeTweaks/TalentTreeViewer.
+--
+-- Format (serialization version 2):
+--   8 bits  → version (= 2)
+--   16 bits → specID
+--   128 bits → tree hash (16 × 8-bit values; all-zero = skip validation)
+--   Body: per node in C_Traits.GetTreeNodes() order:
+--     1 bit → isNodeSelected
+--     if selected:
+--       1 bit → isNodePurchased (vs granted/free)
+--       if purchased:
+--         1 bit → isPartiallyRanked
+--         if partially ranked:
+--           6 bits → ranksPurchased
+--         1 bit → isChoiceNode
+--         if choice:
+--           2 bits → entryIndex (0-based)
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+local BIT_WIDTH_VERSION = 8
+local BIT_WIDTH_SPEC_ID = 16
+local BIT_WIDTH_RANKS   = 6
+local SERIALIZATION_VERSION = 2
+
+--- Node cache per treeID for performance
+local _treeNodeCache = {}
+local function GetCachedTreeNodes(treeID)
+    if not _treeNodeCache[treeID] then
+        _treeNodeCache[treeID] = C_Traits.GetTreeNodes(treeID)
+    end
+    return _treeNodeCache[treeID]
+end
+
+local _treeHashCache = {}
+local function GetCachedTreeHash(treeID)
+    if not _treeHashCache[treeID] then
+        _treeHashCache[treeID] = C_Traits.GetTreeHash(treeID)
+    end
+    return _treeHashCache[treeID]
+end
+
+--- Validate a tree hash from an import string against the current game data.
+--- All-zero hash always passes (used by TalentTreeViewer for cross-patch compat).
+local function IsTreeHashValid(importedHash, treeID)
+    if not importedHash or #importedHash ~= 16 then return false end
+    local expected = GetCachedTreeHash(treeID)
+    if not expected then return false end
+
+    local allZero = true
+    for i, val in ipairs(importedHash) do
+        if val ~= 0 then allZero = false end
+        if not allZero and val ~= expected[i] then
+            return false
+        end
+    end
+    return true  -- all-zero passes, or matched
+end
+
+--- Decode a Blizzard talent export string into structured node data.
+--- @param importString string — the base64 loadout string
+--- @return table|nil result — { specID, classID, treeHashValid, nodes = { {nodeID, isSelected, isPurchased, ...} } }
+--- @return string|nil error — error message on failure
+function TA.TalentsAPI.DecodeImportString(importString)
+    if not importString or importString == "" then
+        return nil, "Empty import string"
+    end
+
+    -- Requires Blizzard's ExportUtil (available since Dragonflight)
+    if not ExportUtil or not ExportUtil.MakeImportDataStream then
+        return nil, "ExportUtil not available (requires Dragonflight+)"
+    end
+
+    local ok, importStream = pcall(ExportUtil.MakeImportDataStream, importString)
+    if not ok or not importStream then
+        return nil, "Failed to parse base64 string"
+    end
+
+    -- ── Read header ──────────────────────────────────────────────────
+    local totalBits = importStream:GetNumberOfBits()
+    local headerBits = BIT_WIDTH_VERSION + BIT_WIDTH_SPEC_ID + 128
+    if totalBits < headerBits then
+        return nil, "String too short for header"
+    end
+
+    local version = importStream:ExtractValue(BIT_WIDTH_VERSION)
+    if version ~= SERIALIZATION_VERSION then
+        return nil, "Unsupported serialization version: " .. tostring(version)
+    end
+
+    local specID = importStream:ExtractValue(BIT_WIDTH_SPEC_ID)
+
+    -- Tree hash: 16 × 8-bit values
+    local treeHash = {}
+    for i = 1, 16 do
+        treeHash[i] = importStream:ExtractValue(8)
+    end
+
+    -- ── Resolve treeID from specID ───────────────────────────────────
+    -- Need classID to get treeID via C_Traits
+    local _, _, _, _, _, classFileName = GetSpecializationInfoByID(specID)
+    if not classFileName then
+        return nil, "Unknown specID: " .. tostring(specID)
+    end
+
+    -- Get classID from the class file name
+    local classID = nil
+    for i = 1, GetNumClasses() do
+        local _, cFile, cID = GetClassInfo(i)
+        if cFile == classFileName then classID = cID; break end
+    end
+    if not classID then
+        return nil, "Could not resolve classID for " .. classFileName
+    end
+
+    -- Get treeID — prefer C_ClassTalents if available
+    local treeID = nil
+    if C_ClassTalents and C_ClassTalents.GetTraitTreeForSpec then
+        treeID = C_ClassTalents.GetTraitTreeForSpec(specID)
+    end
+    -- Fallback: try the LibTalentTree pattern or iterate configs
+    if not treeID and C_Traits and C_Traits.GetConfigInfo then
+        local configID = C_ClassTalents and C_ClassTalents.GetActiveConfigID and C_ClassTalents.GetActiveConfigID()
+        if configID then
+            local info = C_Traits.GetConfigInfo(configID)
+            if info and info.treeIDs and #info.treeIDs > 0 then
+                treeID = info.treeIDs[1]
+            end
+        end
+    end
+    if not treeID then
+        return nil, "Could not resolve talent treeID"
+    end
+
+    -- ── Validate tree hash ───────────────────────────────────────────
+    local hashValid = IsTreeHashValid(treeHash, treeID)
+
+    -- ── Read body: per-node selection data ────────────────────────────
+    local treeNodes = GetCachedTreeNodes(treeID)
+    if not treeNodes or #treeNodes == 0 then
+        return nil, "No tree nodes found for treeID " .. tostring(treeID)
+    end
+
+    local nodes = {}
+    local selectedNodeIDs = {}
+
+    for i, nodeID in ipairs(treeNodes) do
+        local isSelected = importStream:ExtractValue(1) == 1
+        local isPurchased = false
+        local isPartiallyRanked = false
+        local ranksPurchased = 0
+        local isChoice = false
+        local choiceIndex = 0
+
+        if isSelected then
+            isPurchased = importStream:ExtractValue(1) == 1
+            if isPurchased then
+                isPartiallyRanked = importStream:ExtractValue(1) == 1
+                if isPartiallyRanked then
+                    ranksPurchased = importStream:ExtractValue(BIT_WIDTH_RANKS)
+                end
+                isChoice = importStream:ExtractValue(1) == 1
+                if isChoice then
+                    choiceIndex = importStream:ExtractValue(2)  -- 0-based
+                end
+            end
+        end
+
+        nodes[i] = {
+            nodeID            = nodeID,
+            isSelected        = isSelected,
+            isPurchased       = isPurchased,
+            isPartiallyRanked = isPartiallyRanked,
+            ranksPurchased    = ranksPurchased,
+            isChoice          = isChoice,
+            choiceIndex       = choiceIndex + 1,  -- convert to 1-based
+        }
+
+        if isSelected and isPurchased then
+            table.insert(selectedNodeIDs, nodeID)
+        end
+    end
+
+    return {
+        specID         = specID,
+        classID        = classID,
+        treeID         = treeID,
+        treeHashValid  = hashValid,
+        nodes          = nodes,
+        selectedNodeIDs = selectedNodeIDs,
+    }, nil
+end
+
+--- Convenience: extract just the node IDs from an import string.
+--- @param importString string
+--- @return table nodeIDs — array of selected/purchased node IDs, or empty table on error
+function TA.TalentsAPI.GetNodeIDsFromString(importString)
+    local result, err = TA.TalentsAPI.DecodeImportString(importString)
+    if not result then
+        if TA.debug then
+            print("|cFFFF4444[TA Talents]|r Decode error: " .. (err or "unknown"))
+        end
+        return {}
+    end
+    return result.selectedNodeIDs or {}
+end
+
+--- Validate whether a stored build string is still valid for the current tree.
+--- @param importString string
+--- @return boolean isValid
+--- @return string|nil reason — nil if valid, otherwise explanation
+function TA.TalentsAPI.ValidateBuildString(importString)
+    local result, err = TA.TalentsAPI.DecodeImportString(importString)
+    if not result then return false, err end
+    if not result.treeHashValid then
+        return false, "Tree structure has changed since this build was created"
+    end
+    if #result.selectedNodeIDs == 0 then
+        return false, "No talent selections found in string"
+    end
+    return true, nil
+end
 
 local function tryClassTalentsNodes()
   local ids = {}

@@ -35,6 +35,7 @@ Modules\DevHelpers.lua
 Modules\Character.lua
 Modules\Gear.lua
 Modules\Talents.lua
+Modules\CombatState.lua
 Modules\Rotation.lua
 Modules\Professions.lua
 Modules\Pets.lua
@@ -44,5 +45,8 @@ Modules\TravelModes.lua
 Modules\GuideParser.lua
 Modules\QuestTracker.lua
 Modules\Arrow.lua
+Modules\NavHud.lua
+Modules\MapPins.xml
+Modules\MapPins.lua
 Modules\CutsceneSkip.lua
 Modules\AutoEquip.lua

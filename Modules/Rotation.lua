@@ -175,14 +175,18 @@ end
 
 -- ── Spell row renderer ────────────────────────────────────────────────
 -- Returns the pixel height consumed (caller advances y by this amount).
-function Rotation:RenderSpellRow(parent, y, w, padL, entry, isCD)
+function Rotation:RenderSpellRow(parent, y, w, padL, entry, isCD, isNext)
     local h = isCD and 36 or 46
 
     local row = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     row:SetSize(w, h)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", padL, y)
     row:SetBackdrop({ bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1 })
-    if entry.isMajorCd then
+    if isNext then
+        -- "Press Next" highlight: bright green glow border
+        row:SetBackdropColor(0.04, 0.12, 0.02, 0.98)
+        row:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.95)
+    elseif entry.isMajorCd then
         row:SetBackdropColor(0.12, 0.06, 0.00, 0.95)
         row:SetBackdropBorderColor(1.00, 0.55, 0.00, 0.65)
     elseif isCD then
@@ -236,6 +240,14 @@ function Rotation:RenderSpellRow(parent, y, w, padL, entry, isCD)
         whyLbl:SetWidth(w - textLeft - 8)
         whyLbl:SetJustifyH("LEFT")
         whyLbl:SetWordWrap(false)
+    end
+
+    -- "Press Next" indicator on right side
+    if isNext then
+        local nextLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nextLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+        nextLbl:SetText("|cFF4AFF7ANEXT ►|r")
+        nextLbl:SetPoint("RIGHT", row, "RIGHT", -8, 0)
     end
 
     return h + 4
@@ -320,8 +332,17 @@ function Rotation:RenderContent(content, rotData, specID, level)
 
     if #normal > 0 then
         AddDivider("PRIORITY LIST  (1 = cast first)")
-        for _, entry in ipairs(normal) do
-            y = y - self:RenderSpellRow(content, y, w, padL, entry, false)
+
+        -- Query CombatState for the "press next" ability highlight
+        local CS = TA:GetModule("CombatState")
+        local nextIdx, nextEntry = nil, nil
+        if CS and CS.GetNextAbility and CS.state.inCombat then
+            nextIdx, nextEntry = CS:GetNextAbility(normal, level)
+        end
+
+        for idx, entry in ipairs(normal) do
+            local isNext = (nextEntry and entry.spellID == nextEntry.spellID)
+            y = y - self:RenderSpellRow(content, y, w, padL, entry, false, isNext)
         end
         y = y - 6
     end

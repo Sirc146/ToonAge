@@ -65,6 +65,12 @@ end
 -- ── Step evaluation & Smart Phrase Parsing ────────────────────────────────────
 
 function QT:IsStepApplicable(step)
+    -- Delegate to GuideParser's filter which covers faction, class, race, spec, minLevel
+    local GP = TA:GetModule("GuideParser")
+    if GP and GP.IsStepApplicable then
+        return GP:IsStepApplicable(step)
+    end
+    -- Fallback inline check (should not be reached if GuideParser is loaded)
     if step.class then
         local _, pClass = UnitClass("player")
         if pClass ~= step.class then return false end
@@ -80,24 +86,92 @@ function QT:IsStepApplicable(step)
     return true
 end
 
+--- Determine if the player is currently flying (dragonriding, flying mount, or flight path).
+local function IsPlayerFlying()
+    return IsFlying() or UnitOnTaxi("player")
+end
+
+--- Check if a specific quest objective is finished.
+--- @param questID number
+--- @param objectiveIndex number (1-based)
+--- @return boolean
+local function IsObjectiveFinished(questID, objectiveIndex)
+    if not questID or not objectiveIndex then return false end
+    local objectives = C_QuestLog.GetQuestObjectives(questID)
+    if not objectives then return false end
+    local obj = objectives[objectiveIndex]
+    return obj and obj.finished == true
+end
+
 function QT:IsStepComplete(step)
     if not self:IsStepApplicable(step) then return true end
     if step.type == "text"             then return true end
     if step._manualDone                then return true end
 
-    if step.questID then
-        if IsComplete(step.questID) then return true end
+    local sType = step.type or "quest"
 
-        -- Smart Phrase Parsing: "accept/speak/talk" steps finish the moment
-        -- the quest appears in the log — no need to wait for turn-in.
-        local text = (step.text or ""):lower()
-        local isAcceptStep = step.type == "accept"
-                          or text:match("^accept")
-                          or text:match("^speak")
-                          or text:match("^talk")
-        if isAcceptStep and IsInLog(step.questID) then return true end
+    -- ─── Pickup / Accept: complete when quest enters the log ───────────
+    if sType == "pickup" or sType == "accept" then
+        if step.questID then
+            return IsInLog(step.questID) or IsComplete(step.questID)
+        end
+        -- Smart Phrase Parsing fallback for pickup steps without explicit questID
+        return false
     end
 
+    -- ─── Turnin: complete when IsQuestFlaggedCompleted ─────────────────
+    if sType == "turnin" then
+        if step.questID then
+            return IsComplete(step.questID)
+        end
+        return false
+    end
+
+    -- ─── Objective: complete when specific objective index is finished ──
+    if sType == "objective" then
+        if step.questID and step.objectiveIndex then
+            return IsObjectiveFinished(step.questID, step.objectiveIndex)
+                or IsComplete(step.questID)
+        end
+        return false
+    end
+
+    -- ─── Waypoint: proximity-only (checked in CheckProximityAdvance) ───
+    -- Also auto-skip if player is flying and step doesn't forbid it.
+    if sType == "waypoint" then
+        if IsPlayerFlying() then return true end  -- auto-skip waypoints while flying
+        return false  -- otherwise only proximity advance
+    end
+
+    -- ─── Legacy "quest" type: complete when flagged complete ───────────
+    if sType == "quest" then
+        if step.questID then
+            if IsComplete(step.questID) then return true end
+            -- Smart Phrase Parsing: accept/speak/talk steps finish when quest is in log
+            local text = (step.text or ""):lower()
+            local isAcceptStep = text:match("^accept")
+                              or text:match("^speak")
+                              or text:match("^talk")
+            if isAcceptStep and IsInLog(step.questID) then return true end
+        end
+        return false
+    end
+
+    -- ─── Travel: NOT auto-skipped when flying (mandatory path step) ────
+    if sType == "travel" then
+        return false  -- only completes via proximity
+    end
+
+    -- ─── Flyto: complete when player arrives in target zone ────────────
+    if sType == "flyto" then
+        if step.coord and step.coord.map and step.coord.map ~= 0 then
+            local currentMap = C_Map.GetBestMapForUnit("player")
+            return currentMap == step.coord.map
+        end
+        return false
+    end
+
+    -- ─── All other types (npc, item, action, sethearth): no auto-complete
     return false
 end
 
@@ -151,6 +225,24 @@ function QT:FastForward(silent)
     self.stepIdx = #guide.steps
     self:SaveState()
     self:UpdateWindow()
+
+    -- Route chaining: if this guide has a nextGuide, auto-transition
+    if guide.nextGuide and TA.Guides[guide.nextGuide] then
+        local GP = TA:GetModule("GuideParser")
+        local nextGuide = TA.Guides[guide.nextGuide]
+        -- Only chain if the next guide is applicable to this player
+        if not GP or GP:IsGuideApplicable(nextGuide) then
+            if not silent then
+                print(string.format("|cFF4AFF7A[TA Tracker]|r Guide complete! Chaining to '%s'.",
+                    nextGuide.title or guide.nextGuide))
+            end
+            self.guideID = guide.nextGuide
+            self.stepIdx = 1
+            self:FastForward(silent)  -- recurse to sync position in new guide
+            return
+        end
+    end
+
     if not silent then
         print("|cFF4AFF7A[TA Tracker]|r Guide appears complete.")
     end
@@ -398,41 +490,146 @@ function QT:HandleAutoQuest(event)
     if not (TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoQuest) then return end
     if IsShiftKeyDown() then return end
 
+    -- ── Safety: NPC Blocklist ─────────────────────────────────────────
+    -- NPCs that should NEVER be auto-accepted/completed because they have
+    -- permanent consequences (spending currency, losing materials, branching
+    -- choices). Based on Leatrix_Plus patterns.
+    local targetGUID = UnitGUID("npc") or UnitGUID("questnpc") or ""
+    local npcID = targetGUID:match("Creature%-0%-%d+%-%d+%-%d+%-(%d+)")
+    npcID = npcID and tonumber(npcID)
+
+    local NPC_BLOCKLIST = {
+        -- Seal of Fate / Bonus Roll vendors (spend currency)
+        [111243] = true, -- Archmage Timear (Seal of Tempered Fate)
+        [87391]  = true, -- Fate-Twister Seress (Seal of Inevitable Fate)
+        [142063] = true, -- Zurvan (Coins of Air)
+        [199257] = true, -- Selector Renza (Aspect Tokens)
+        -- Wartime Donation NPCs (lose trade goods)
+        [142564] = true, [142993] = true, [143004] = true,
+        [143005] = true, [143006] = true, [143007] = true,
+        -- Choice NPCs that lock you into a path
+        [18166]  = true, -- Khadgar (Aldor/Scryer choice)
+        -- Reputation token turn-ins (Firewing Signets, etc.)
+        [18257]  = true, -- Voren'thal the Seer (Scryer signets)
+        [18252]  = true, -- Ishanah (Aldor marks)
+    }
+
+    if npcID and NPC_BLOCKLIST[npcID] then return end
+
+    -- ── Safety: Quest ID Blocklist ────────────────────────────────────
+    -- Quests with negative consequences if auto-completed (currency spend,
+    -- consuming materials you might want to keep, etc.)
+    local QUEST_BLOCKLIST = {
+        -- Threads of Fate / campaign skip choices (irreversible)
+        [62716] = true, [62714] = true, [60972] = true,
+        -- Dragonflight waygate skip quests
+        [72366] = true, [72367] = true,
+    }
+
     if event == "QUEST_DETAIL" then
-        -- Auto-accept the presented quest unconditionally.
-        -- QUEST_DETAIL only fires when a specific quest's detail frame is already
-        -- open, meaning the player or gossip engine has already selected it.
+        -- Check if the offered quest is blocklisted
+        local questID = GetQuestID and GetQuestID()
+        if questID and QUEST_BLOCKLIST[questID] then return end
+
+        -- Safety: Don't auto-accept quests shared by unknown players.
+        -- (QuestGetAutoAccept returns true for auto-accepted world quests)
+        local offeredByPlayer = (QuestIsFromAreaTrigger and not QuestIsFromAreaTrigger())
+                             and UnitIsPlayer("questnpc")
+        if offeredByPlayer then
+            -- Only auto-accept shares from friends/guild
+            local name = UnitName("questnpc")
+            local isFriend = name and (C_FriendList.IsFriend(name)
+                          or (C_BattleNet and C_BattleNet.GetAccountInfoByGUID
+                              and C_BattleNet.GetAccountInfoByGUID(UnitGUID("questnpc"))))
+            local isGuild = name and IsInGuild() and UnitIsInMyGuild("questnpc")
+            if not isFriend and not isGuild then return end
+        end
+
         AcceptQuest()
-        HideUIPanel(QuestFrame)
+        if QuestFrame and QuestFrame:IsShown() then
+            HideUIPanel(QuestFrame)
+        end
 
     elseif event == "QUEST_PROGRESS" then
+        -- Safety: Don't auto-complete if quest requires currency or gold
+        if QuestProgressRequiresGold and QuestProgressRequiresGold() then return end
+        if GetQuestMoneyToGet and GetQuestMoneyToGet() > 0 then return end
+
+        -- Safety: Don't auto-complete if progress items are crafting reagents
+        -- or account-bound (warbound) items the player might want to keep
+        local numItems = GetNumQuestItems and GetNumQuestItems() or 0
+        for i = 1, numItems do
+            local _, _, numRequired = GetQuestItemInfo("required", i)
+            if numRequired and numRequired > 0 then
+                local link = GetQuestItemLink("required", i)
+                if link then
+                    local _, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(link)
+                    -- Block if it's a trade good / crafting reagent
+                    if itemType == "Tradeskill" or itemSubType == "Reagent" then return end
+                end
+            end
+        end
+
         if IsQuestCompletable() then CompleteQuest() end
 
     elseif event == "QUEST_COMPLETE" then
-        -- Auto-select the best reward when there is only one choice.
-        -- When there are multiple choices let the player decide (holding shift
-        -- is irrelevant here — the whole point of multiple choices is player
-        -- agency). The guide can add an 'action' step recommending which reward
-        -- to pick if the route cares about a specific one.
-        if GetNumQuestChoices() <= 1 then
-            GetQuestReward(1)
+        local numChoices = GetNumQuestChoices()
+
+        -- No choices or single reward: auto-complete
+        if numChoices <= 1 then
+            GetQuestReward(numChoices == 1 and 1 or nil)
+            return
         end
+
+        -- Multiple choices: check if the guide specifies a preferred reward
+        local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
+        if guide then
+            local step = guide.steps[self.stepIdx]
+            if step and step.reward then
+                -- Match the guide's preferred reward itemID against the choices
+                for i = 1, numChoices do
+                    local link = GetQuestItemLink("choice", i)
+                    if link then
+                        local itemID = GetItemInfoInstant(link)
+                        if itemID == step.reward then
+                            GetQuestReward(i)
+                            return
+                        end
+                    end
+                end
+            end
+        end
+
+        -- Multiple choices, no guide preference: let the player decide
+        -- (don't auto-complete — this is the correct behavior)
 
     elseif event == "GOSSIP_SHOW" then
         if not C_GossipInfo then return end
         local expectedIDs = GetGuideExpectedQuestIDs(self)
 
+        -- Safety: Don't auto-interact with gossip if options contain color
+        -- codes or angle-bracket markers (indicates skip/choice dialogs like
+        -- Threads of Fate, Chromie Time selectors, etc.)
+        local gossipOptions = C_GossipInfo.GetOptions and C_GossipInfo.GetOptions()
+        if gossipOptions then
+            for _, opt in ipairs(gossipOptions) do
+                local name = opt.name or ""
+                if name:find("|c") or name:find("<") then
+                    -- Potentially dangerous gossip choice — don't auto-interact
+                    return
+                end
+            end
+        end
+
         -- Phase 1: check active (in-progress) quests — try to turn in guide quests first.
         local active = C_GossipInfo.GetActiveQuests()
         if active then
-            -- Guide-matching turn-in: prefer a quest the current guide expects.
             for _, q in ipairs(active) do
                 if q.isComplete and expectedIDs[q.questID] then
                     C_GossipInfo.SelectActiveQuest(q.questID)
                     return
                 end
             end
-            -- Fallback: any complete quest (non-guide NPC with a completable quest).
             for _, q in ipairs(active) do
                 if q.isComplete then
                     C_GossipInfo.SelectActiveQuest(q.questID)
@@ -444,44 +641,32 @@ function QT:HandleAutoQuest(event)
         -- Phase 2: accept an available quest — guide-expected quests first.
         local available = C_GossipInfo.GetAvailableQuests()
         if available then
-            -- Prefer a quest the guide is currently pointing at.
             for _, q in ipairs(available) do
                 if expectedIDs[q.questID] then
                     C_GossipInfo.SelectAvailableQuest(q.questID)
                     return
                 end
             end
-            -- Fallback: first available quest (same as before, only reached when
-            -- none of the available quests match the guide's lookahead window).
             if available[1] then
                 C_GossipInfo.SelectAvailableQuest(available[1].questID)
             end
         end
 
     elseif event == "QUEST_GREETING" then
-        -- Legacy multi-quest NPC frame (pre-Cataclysm gossip style, still used
-        -- in some Exile's Reach scripted sequences).
         local expectedIDs = GetGuideExpectedQuestIDs(self)
 
-        -- Phase 1: turn in guide-expected active quests.
         for i = 1, GetNumActiveQuests() do
             local _, isComplete = GetActiveTitle(i)
             if isComplete then
-                -- Try to match by quest ID if the API surface allows it.
-                -- GetActiveTitle doesn't return questID directly; rely on the
-                -- same order heuristic as the original for now, but still prefer
-                -- any complete quest over an incomplete one.
                 SelectActiveQuest(i)
                 return
             end
         end
-        -- Phase 2: accept first available.
         if GetNumAvailableQuests() > 0 then
             SelectAvailableQuest(1)
         end
     end
 end
-
 -- ── Blizzard tracker ─────────────────────────────────────────────────────────
 
 function QT:UpdateBlizzardTrackerVisibility()
@@ -627,9 +812,15 @@ local function MakeCheckbox(parent, x, y, label, dbKey, onChange)
 end
 
 local BADGE = {
-    quest  = "|cFFFFD100", travel = "|cFF1EBCFF", npc    = "|cFF78FF78",
-    item   = "|cFFBB99FF", action = "|cFFFF8833", text   = "|cFF999999",
-    accept = "|cFF4AFF7A",  -- green — complete once the quest is in the log
+    quest     = "|cFFFFD100", travel    = "|cFF1EBCFF", npc       = "|cFF78FF78",
+    item      = "|cFFBB99FF", action    = "|cFFFF8833", text      = "|cFF999999",
+    accept    = "|cFF4AFF7A",  -- green — complete once the quest is in the log
+    pickup    = "|cFF4AFF7A",  -- green — accept quest
+    turnin    = "|cFFFFD100",  -- gold  — turn in quest
+    objective = "|cFFFFAA33",  -- orange — complete specific objective
+    waypoint  = "|cFF1EBCFF",  -- blue  — travel waypoint (auto-skip if flying)
+    flyto     = "|cFF55CCFF",  -- light blue — take flight path
+    sethearth = "|cFFCC66FF",  -- purple — set hearthstone
 }
 local QUEST_STATUS = {
     complete   = "|cFF1EFF00[Complete]|r",
@@ -1148,6 +1339,10 @@ function QT:UpdateWindow()
         win.doneBtn:SetBackdropColor(0.18, 0.13, 0.01, 0.90)
         win.doneBtn._lbl:SetTextColor(1.00, 0.82, 0.00, 1.00)
     end
+
+    -- Refresh world map pins when step changes
+    local MapPins = TA:GetModule("MapPins")
+    if MapPins and MapPins.Refresh then MapPins:Refresh() end
 end
 
 -- ── RenderStatusLine ──────────────────────────────────────────────────────────
@@ -1278,9 +1473,14 @@ function QT:CheckProximityAdvance()
     local step = guide.steps[self.stepIdx]
     if not step then return end
 
-    -- Only auto-advance travel/waypoint steps (not quest pickup/turnin/action)
+    -- Determine which step types support proximity-based advancement.
+    -- Core proximity types: waypoint, travel
+    -- Extended: any step with an explicit "range" field is opt-in to proximity advance
     local stepType = step.type or ""
-    if stepType ~= "travel" and stepType ~= "waypoint" and stepType ~= "run" then
+    local isProximityType = (stepType == "travel" or stepType == "waypoint" or stepType == "run")
+    local hasExplicitRange = (step.range ~= nil and step.range > 0)
+
+    if not isProximityType and not hasExplicitRange then
         return
     end
 
@@ -1294,14 +1494,32 @@ function QT:CheckProximityAdvance()
 
     local currentMap = C_Map.GetBestMapForUnit("player")
     if not currentMap then return end
-    if coordMap ~= 0 and coordMap ~= currentMap then return end
+
+    -- Zone-gating: don't auto-advance if the player is in a completely different zone.
+    -- Allow advancement if coordMap is 0 (placeholder) or matches the player's zone tree.
+    if coordMap ~= 0 and coordMap ~= currentMap then
+        -- Walk map parents to check sub-zone containment
+        local info = C_Map.GetMapInfo(currentMap)
+        local inZone = false
+        while info do
+            if info.mapID == coordMap then inZone = true; break end
+            if info.parentMapID and info.parentMapID > 0 then
+                info = C_Map.GetMapInfo(info.parentMapID)
+            else
+                break
+            end
+        end
+        if not inZone then return end
+    end
 
     local pos = C_Map.GetPlayerMapPosition(currentMap, "player")
     if not pos then return end
     local px, py = pos:GetXY()
 
+    -- Use step-specific range if provided, otherwise fall back to global default
+    local range = step.range or PROXIMITY_RANGE
     local yards = TA.Utils.ComputeDistance(px, py, cx, cy)
-    if yards <= PROXIMITY_RANGE then
+    if yards <= range then
         -- Auto-advance: mark current step done and move to next incomplete
         step._manualDone = true
         for i = self.stepIdx + 1, #guide.steps do
@@ -1314,10 +1532,8 @@ function QT:CheckProximityAdvance()
                 return
             end
         end
-        -- All subsequent steps done
-        self.stepIdx = #guide.steps
-        self:SaveState()
-        self:UpdateWindow()
+        -- All subsequent steps done — trigger route chaining via FastForward
+        self:FastForward(false)
     end
 end
 
