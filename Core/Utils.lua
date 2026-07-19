@@ -167,14 +167,6 @@ function U.GetItemQuality(itemLink)
     return quality or 1
 end
 
--- Get equipped item ilvl by slot ID
-function U.GetEquippedIlvl(slotID)
-    local itemID = GetInventoryItemID("player", slotID)
-    if not itemID then return 0 end
-    local link = GetInventoryItemLink("player", slotID)
-    return U.GetItemIlvl(link)
-end
-
 -- ── Average ilvl ──────────────────────────────────────────────────────
 -- GetAverageItemLevel() returns: overall, equipped
 -- "equipped" matches the character sheet exactly — best-of-two-rings,
@@ -182,15 +174,6 @@ end
 function U.GetAverageIlvl()
     local _, equipped = GetAverageItemLevel()
     return math.floor(equipped or 0)
-end
-
--- Per-slot ilvl used by the Gear tab for individual slot display
--- Slot IDs: 1=Head 2=Neck 3=Shoulder 4=Back 5=Chest 8=Wrist
---           9=Hands 10=Waist 11=Legs 12=Feet 13=Ring1 14=Ring2
---           15=Trinket1 16=Trinket2 17=MainHand 18=OffHand
-function U.GetSlotIlvl(slotID)
-    local link = GetInventoryItemLink("player", slotID)
-    return link and U.GetItemIlvl(link) or 0
 end
 
 -- ── Talent utilities ──────────────────────────────────────────────────

@@ -130,8 +130,13 @@ SW[255] = { -- Survival
     name = "Survival",
     role = "DAMAGER",
     primary = "AGI",
-    pve = { AGI=1.60, STR=0.20, INT=0.10, STAM=0.30, HASTE=1.20, MASTERY=1.10, CRIT=1.00, VERS=0.90, ARMOR=0.10 },
-    pvp = { AGI=1.40, STR=0.20, INT=0.10, STAM=0.80, VERS=1.50,   HASTE=1.10, CRIT=1.00, MASTERY=0.80, ARMOR=0.10 },
+    -- Pack Leader / melee: Haste > Mastery > Crit > Vers for sustained PvE.
+    -- AGI is always king as primary stat. Mastery powers Wildfire Bomb and
+    -- melee DoT components. Haste reduces GCD and focus regen.
+    pve = { AGI=1.60, STR=0.10, INT=0.10, STAM=0.25, HASTE=1.25, MASTERY=1.15, CRIT=1.05, VERS=0.85, ARMOR=0.10 },
+    -- PvP: Versatility is mandatory (damage reduction + throughput), then
+    -- Mastery (consistent damage in short windows), Haste, Crit last.
+    pvp = { AGI=1.40, STR=0.10, INT=0.10, STAM=0.90, VERS=1.60,   HASTE=1.10, MASTERY=1.05, CRIT=0.90, ARMOR=0.10 },
 }
 
 -- ── Mage ──────────────────────────────────────────────────────────────

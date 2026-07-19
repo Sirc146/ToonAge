@@ -20,7 +20,23 @@ TA.eventFrame = CreateFrame("Frame", "ToonAgeEventFrame")
 -- Default saved variables schema
 local DB_DEFAULTS = {
     minimap = { minimized = false, position = 45 },
-    char     = {},  -- per-character data keyed by "Name-Server"
+    char    = {},  -- per-character data keyed by "Name-Server"
+
+    -- UI layout toggle
+    -- true  = Unified HUD (compass + tracker parented inside one draggable frame)
+    -- false = Fragmented (each window floats independently, classic feel)
+    useUnifiedUI = true,
+
+    -- Position for the unified master frame
+    unifiedPosition = { point = "BOTTOM", relativePoint = "BOTTOM", x = 0, y = 220 },
+
+    -- Saved independent positions used by the old fragmented layout.
+    -- These are written every time the player drags a window in fragmented mode
+    -- so switching back preserves wherever they left each window.
+    oldUiPositions = {
+        arrow  = { point = "CENTER", relativePoint = "CENTER", x = 0,    y = 150  },
+        guide  = { point = "CENTER", relativePoint = "CENTER", x = 0,    y = 0    },
+    },
 }
 
 -- ── SavedVariables ────────────────────────────────────────────────────
@@ -29,10 +45,29 @@ function TA:InitDB()
     ToonAgeDB = ToonAgeDB or {}
     local db = ToonAgeDB
 
-    -- Apply defaults for any missing keys
+    -- Apply defaults for any missing top-level keys
     for k, v in pairs(DB_DEFAULTS) do
         if db[k] == nil then
             db[k] = v
+        end
+    end
+
+    -- Deep-default nested tables so sub-keys added in new versions get
+    -- backfilled into existing SavedVariables without wiping user data.
+    if type(DB_DEFAULTS.oldUiPositions) == "table" then
+        db.oldUiPositions = db.oldUiPositions or {}
+        for k, v in pairs(DB_DEFAULTS.oldUiPositions) do
+            if db.oldUiPositions[k] == nil then
+                db.oldUiPositions[k] = v
+            end
+        end
+    end
+    if type(DB_DEFAULTS.unifiedPosition) == "table" then
+        db.unifiedPosition = db.unifiedPosition or {}
+        for k, v in pairs(DB_DEFAULTS.unifiedPosition) do
+            if db.unifiedPosition[k] == nil then
+                db.unifiedPosition[k] = v
+            end
         end
     end
 
@@ -101,6 +136,8 @@ local PERSISTENT_EVENTS = {
     "UNIT_PET",
     "CHAT_MSG_SYSTEM",
     "GET_ITEM_INFO_RECEIVED",
+    "QUEST_ACCEPTED",              -- needed by DevHelpers recorder & QuestTracker; registered here
+                                   -- to guarantee it fires regardless of module init order.
 }
 
 -- Register one-shot boot events
@@ -154,6 +191,11 @@ function TA:OnLogin()
     self:InitUI()       -- defined in Core/UI.lua
     self:InitMinimap()  -- defined in Core/MinimapButton.lua
 
+    -- Apply the saved layout choice (Unified HUD vs Fragmented Windows).
+    -- Called after both InitUI and InitMinimap so all frames exist, and after
+    -- InitModules so Arrow.frame and QuestTracker.window are initialised.
+    self:ApplyLayout()
+
     -- Slash commands
     SLASH_TOONAGE1 = "/ta"
     SLASH_TOONAGE2 = "/toonage"
@@ -166,7 +208,7 @@ end
 
 -- ── Slash command handler ─────────────────────────────────────────────
 function TA:SlashCommand(msg)
-    msg = msg and msg:lower():trim() or ""
+    msg = msg and msg:lower():match("^%s*(.-)%s*$") or ""
 
     if msg == "" or msg == "open" then
         self:ToggleUI()
@@ -183,7 +225,13 @@ function TA:SlashCommand(msg)
     elseif msg == "weekly" then
         self:OpenTab("weekly")
     elseif msg == "options" then
-        self:OpenOptionsFrame()
+        self:ToggleOptionsPanel()
+    elseif msg == "layout" then
+        -- Toggle between Unified HUD and Fragmented Windows from the command line
+        self.db.useUnifiedUI = not self.db.useUnifiedUI
+        self:ApplyLayout()
+        local mode = self.db.useUnifiedUI and "|cFF4AFF7AUnified HUD|r" or "|cFFFF9A1AFragmented Windows|r"
+        print("|cFFFFD100[ToonAge]|r Layout: " .. mode)
     elseif msg == "debug" then
         TA.debug = not TA.debug
         print("|cFFFFD100[TA]|r Debug mode: " .. (TA.debug and "ON" or "OFF"))
@@ -208,8 +256,11 @@ function TA:SlashCommand(msg)
         print("  |cFFFFD100/ta weekly|r — weekly tab")
         print("  |cFFFFD100/ta guides|r — list loaded guides")
         print("  |cFFFFD100/ta tracker|r — toggle guide tracker window")
+        print("  |cFFFFD100/ta autoselect|r — re-run guide auto-selection")
+        print("  |cFFFFD100/ta diag|r — diagnose why tracker shows no guide")
         print("  |cFFFFD100/ta arrow|r — toggle navigation arrow HUD")
-        print("  |cFFFFD100/ta options|r — toggle which tabs are shown")
+        print("  |cFFFFD100/ta layout|r — toggle Unified HUD ↔ Fragmented Windows")
+        print("  |cFFFFD100/ta options|r — open settings panel")
         print("  |cFFFFD100/ta reset|r — reset saved data")
     end
 end

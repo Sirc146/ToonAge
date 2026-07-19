@@ -11,6 +11,7 @@ Libs\LibStub.lua
 Core\Init.lua
 Core\Utils.lua
 Core\UI.lua
+Core\UIModern.lua
 Core\MinimapButton.lua
 
 Data\StatWeights.lua
@@ -43,3 +44,5 @@ Modules\TravelModes.lua
 Modules\GuideParser.lua
 Modules\QuestTracker.lua
 Modules\Arrow.lua
+Modules\CutsceneSkip.lua
+Modules\AutoEquip.lua

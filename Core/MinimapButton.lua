@@ -11,7 +11,7 @@ function TA:InitMinimap()
     btn:SetSize(31, 31)
     btn:SetFrameLevel(Minimap:GetFrameLevel() + 2)
     btn:RegisterForDrag("LeftButton")
-    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
 
     -- ── Icon ──────────────────────────────────────────────────────────
     local icon = btn:CreateTexture(nil, "BACKGROUND")
@@ -69,7 +69,24 @@ function TA:InitMinimap()
         if button == "LeftButton" then
             TA:ToggleUI()
         elseif button == "RightButton" then
-            print("|cFFFFD100[TA]|r Type |cFFFFD100/ta|r for commands.")
+            -- Right-click: instantly swap between Unified HUD and Fragmented layout.
+            -- This is the fastest access point — no menus needed.
+            TA.db.useUnifiedUI = not TA.db.useUnifiedUI
+            TA:ApplyLayout()
+            local mode = TA.db.useUnifiedUI and "|cFF4AFF7AUnified HUD|r" or "|cFFFF9A1AFragmented Windows|r"
+            print("|cFFFFD100[ToonAge]|r Layout: " .. mode)
+        elseif button == "MiddleButton" then
+            -- Middle-click: hide / show button icon (minimized mode).
+            -- Keeps the 31×31 hit area alive so the button can be found again.
+            local minimized = not (TA.db.minimap.minimized or false)
+            TA.db.minimap.minimized = minimized
+            if minimized then
+                icon:Hide()
+                border:Hide()
+            else
+                icon:Show()
+                border:Show()
+            end
         end
     end)
 
@@ -77,9 +94,14 @@ function TA:InitMinimap()
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("|cFFFFD100ToonAge|r", 1, 1, 1)
-        GameTooltip:AddLine("Left-click: open / close", 0, 1, 0)
-        GameTooltip:AddLine("Right-click: commands", 0.5, 0.5, 0.5)
+        GameTooltip:AddLine("Left-click: open / close main panel", 0, 1, 0)
+        local layoutMode = (TA.db and TA.db.useUnifiedUI) and "Unified HUD" or "Fragmented Windows"
+        GameTooltip:AddLine("Right-click: swap layout  (now: " .. layoutMode .. ")", 1, 0.82, 0)
+        GameTooltip:AddLine("Middle-click: hide / show button icon", 0.5, 0.5, 0.5)
         GameTooltip:AddLine("Drag: reposition button", 0.5, 0.5, 0.5)
+        if TA.db and TA.db.minimap and TA.db.minimap.minimized then
+            GameTooltip:AddLine("(Minimized — middle-click to restore)", 1, 0.82, 0)
+        end
         GameTooltip:Show()
     end)
 
@@ -89,6 +111,12 @@ function TA:InitMinimap()
 
     -- Place on minimap at saved position
     UpdatePosition()
+
+    -- Restore minimized state from SavedVariables
+    if TA.db.minimap.minimized then
+        icon:Hide()
+        border:Hide()
+    end
 
     self.minimapBtn = btn
 end

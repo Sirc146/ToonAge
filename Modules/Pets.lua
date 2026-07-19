@@ -254,14 +254,13 @@ function Pets:Render(content, sidebar)
     for _, f in ipairs(self.frames) do f:Hide(); f:SetParent(nil) end
     self.frames = {}
 
-    -- Preserve sidebar ref so inner button callbacks can re-render
+    -- Always update the sidebar reference when one is provided.
+    -- The sidebar must be rebuilt on EVERY render, not just on content changes,
+    -- because sub-tab switches (zone/stable/finder) reuse the same content frame
+    -- but the sidebar still needs to reflect the current active pet state.
     if sidebar then self.lastSidebar = sidebar end
     local sideRef = sidebar or self.lastSidebar
-
-    if self.lastContent ~= content then
-        if sideRef then self:RenderSidebar(sideRef) end
-        self.lastContent = content
-    end
+    if sideRef then self:RenderSidebar(sideRef) end
 
     local P      = TA.Data.Pets
     local class  = U.GetPlayerClass()

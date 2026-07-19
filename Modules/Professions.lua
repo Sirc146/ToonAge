@@ -13,7 +13,11 @@ Professions.sideFrames = {}
 Professions.selectedSkillLine = nil
 
 function Professions:OnEvent(event, ...)
-    if event == "SKILL_LINES_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
+    -- PLAYER_ENTERING_WORLD is intentionally NOT handled here.
+    -- At that point TA:InitUI() has not yet been called, so TA.UI is nil and
+    -- the render attempt would be a silent no-op (or worse, an error).
+    -- Initial profession data is captured via OnLogin's charDB snapshot instead.
+    if event == "SKILL_LINES_CHANGED" then
         if TA.UI and TA.UI.activeTab == "professions" then
             self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end

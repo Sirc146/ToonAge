@@ -24,8 +24,10 @@ Setup
 Rate limiting
 -------------
 Blizzard's API allows 36,000 requests/hour at up to 100 requests/second.
-This module self-throttles well under both limits and backs off on 429s,
-per the API Terms of Use ("You may not use the Blizzard Developer APIs
+This module throttles both independently -- a per-request delay keeps the
+per-second rate under the 100/sec cap, and a separate hourly counter pauses
+once 36,000 requests land in a rolling hour -- and backs off on 429s, per
+the API Terms of Use ("You may not use the Blizzard Developer APIs
 Excessively").
 """
 
@@ -43,6 +45,14 @@ STATIC_NAMESPACE = f"static-{REGION}"
 
 MIN_INTERVAL = 0.02   # ~50 req/sec, safely under Blizzard's 100/sec cap
 
+# The per-request MIN_INTERVAL above only bounds the per-second rate (50 <
+# 100/sec). Sustained at that rate it's 180,000 requests/hour -- 5x over
+# Blizzard's separate 36,000/hour quota -- so a long crawl needs its own
+# hourly gate independent of the per-second one.
+HOURLY_LIMIT = 36000
+_hour_window_start = time.monotonic()
+_hour_request_count = 0
+
 
 def get_access_token(client_id, client_secret):
     r = requests.post(
@@ -57,12 +67,28 @@ def get_access_token(client_id, client_secret):
 
 _last_request_time = 0.0
 
+def _throttle_hourly():
+    global _hour_window_start, _hour_request_count
+    elapsed = time.monotonic() - _hour_window_start
+    if elapsed >= 3600:
+        _hour_window_start = time.monotonic()
+        _hour_request_count = 0
+        return
+    if _hour_request_count >= HOURLY_LIMIT:
+        wait = 3600 - elapsed
+        print(f"  [hourly cap] {_hour_request_count} requests this hour, sleeping {wait:.0f}s")
+        time.sleep(wait)
+        _hour_window_start = time.monotonic()
+        _hour_request_count = 0
+
+
 def api_get(path, token, params=None, namespace=None):
-    global _last_request_time
+    global _last_request_time, _hour_request_count
     params = dict(params or {})
     params.setdefault("namespace", namespace or STATIC_NAMESPACE)
     params.setdefault("locale", LOCALE)
 
+    _throttle_hourly()
     wait = MIN_INTERVAL - (time.monotonic() - _last_request_time)
     if wait > 0:
         time.sleep(wait)
@@ -70,6 +96,7 @@ def api_get(path, token, params=None, namespace=None):
     backoff = 1.0
     for attempt in range(6):
         _last_request_time = time.monotonic()
+        _hour_request_count += 1
         r = requests.get(
             f"{API_BASE}{path}",
             headers={"Authorization": f"Bearer {token}"},

@@ -1,5 +1,5 @@
 -- ToonAge/Modules/DevHelpers.lua
--- Developer tools: quest recorder, coordinate capture, quest log scanner.
+-- Developer tools: quest recorder, coordinate capture, quest log scanner, talent scanner.
 --
 -- Slash commands:
 --   /coord           -- print current map position as a guide coord line
@@ -10,6 +10,7 @@
 --   /tarecord undo                  -- remove the last recorded step
 --   /tarecord dump                  -- print the recorded guide stub to chat
 --   /tarecord clear                 -- wipe the recording and start fresh
+--   /ta talentscan   -- export all saved talent loadouts for the current spec
 
 local TA = ToonAge
 
@@ -281,8 +282,12 @@ SlashCmdList["TAQUESTSCAN"] = function()
                       or (info.isComplete and "turnin" or "inprogress")
             local pos  = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
             local px, py = "?", "?"
-            if pos then px = string.format("%.2f", (pos:GetXY())); py = select(2, string.format("%.2f", pos:GetXY())) end
-            p(string.format("  %d  %-40s  %-10s", qid, info.title or "?", done))
+            if pos then
+                local rx, ry = pos:GetXY()
+                px = string.format("%.2f", rx)
+                py = string.format("%.2f", ry)
+            end
+            p(string.format("  %d  %-40s  %-10s  (%.2s, %.2s)", qid, info.title or "?", done, px, py))
             count = count + 1
         end
     end
@@ -373,12 +378,102 @@ SlashCmdList["TADEV"] = function()
     p("Active talent IDs: " .. table.concat(ids, ", "))
 end
 
+-- ── /ta talentscan — bulk export all talent loadouts for all specs ─────────────
+-- Iterates through every spec the player can access and exports their saved
+-- loadout strings. This is the fastest way to populate Data/Talents.lua with
+-- real, validated import strings for your class.
+--
+-- Usage: /ta talentscan
+-- Output: prints ready-to-paste Lua snippets to chat + saves to SavedVariables
+
+local function TalentScan()
+    if not C_ClassTalents or not C_ClassTalents.GetActiveConfigID then
+        p("C_ClassTalents API not available on this client.")
+        return
+    end
+
+    local _, className = UnitClass("player")
+    local activeSpecIdx = GetSpecialization()
+    local numSpecs = GetNumSpecializations() or 0
+
+    p("=== TALENT SCAN: " .. className .. " ===")
+    p("Scanning " .. numSpecs .. " specialization(s)...")
+
+    -- Store results in SavedVariables for easy external copy
+    TA.charDB.talentExport = TA.charDB.talentExport or {}
+    local export = TA.charDB.talentExport
+
+    -- For the active spec, we can get the live export string + all saved loadouts
+    local activeSpecID = GetSpecializationInfo(activeSpecIdx)
+    local cfgID = C_ClassTalents.GetActiveConfigID()
+
+    if cfgID then
+        -- Active loadout
+        if C_ClassTalents.GetExportString then
+            local str = C_ClassTalents.GetExportString(cfgID)
+            if str and str ~= "" then
+                export[activeSpecID] = export[activeSpecID] or {}
+                export[activeSpecID].active = str
+                p(string.format("  [%d] Active loadout: %s", activeSpecID, str:sub(1, 50) .. "..."))
+            end
+        end
+
+        -- All saved loadout names + strings (if API exposes them)
+        if C_ClassTalents.GetConfigIDsBySpecID then
+            for specIdx = 1, numSpecs do
+                local specID = GetSpecializationInfo(specIdx)
+                if specID then
+                    export[specID] = export[specID] or {}
+                    local ok, configIDs = pcall(C_ClassTalents.GetConfigIDsBySpecID, specID)
+                    if ok and configIDs then
+                        for _, cid in ipairs(configIDs) do
+                            if C_Traits and C_Traits.GetConfigInfo then
+                                local ok2, info = pcall(C_Traits.GetConfigInfo, cid)
+                                if ok2 and info then
+                                    local loadoutName = info.name or ("Loadout " .. cid)
+                                    -- Try to generate export string for this config
+                                    if C_ClassTalents.GetExportString then
+                                        local ok3, expStr = pcall(C_ClassTalents.GetExportString, cid)
+                                        if ok3 and expStr and expStr ~= "" then
+                                            export[specID][loadoutName] = expStr
+                                            p(string.format("  [%d] %s: %s", specID, loadoutName, expStr:sub(1, 50) .. "..."))
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Summary
+    local total = 0
+    for specID, data in pairs(export) do
+        for _ in pairs(data) do total = total + 1 end
+    end
+    p(string.format("=== Done. %d loadout string(s) captured. ===", total))
+    p("Strings saved to ToonAgeDB (char section). Copy from SavedVariables file,")
+    p("or use the 'Save Current as X Build' button in /ta talents to set them per content type.")
+    p("")
+    p("|cFF888780To populate ALL content types for this spec:|r")
+    p("  1. Switch to your M+ loadout in Blizzard UI → open /ta talents → click Mythic+ tab → 'Save Current'")
+    p("  2. Switch to Raid loadout → Raid tab → 'Save Current'")
+    p("  3. Repeat for PvP, Delves, Leveling")
+    p("  4. Each save persists in SavedVariables — available next session.")
+end
+
+-- Register as a module slash command so /ta talentscan works
+DH.SlashCommands = DH.SlashCommands or {}
+DH.SlashCommands["talentscan"] = function(self) TalentScan() end
+
 -- ── Init ─────────────────────────────────────────────────────────────────────
 
 function DH:Init()
-    -- QUEST_ACCEPTED is already registered by QuestTracker; no duplicate needed.
-    -- If DevHelpers loads before QuestTracker (unlikely but possible), register it.
-    TA.eventFrame:RegisterEvent("QUEST_ACCEPTED")
+    -- QUEST_ACCEPTED is now in Core/Init.lua's PERSISTENT_EVENTS list and is
+    -- guaranteed registered before any module Init() runs. No re-registration
+    -- needed here.
     -- Restore recording state across reloads
     if TA.charDB.recorder and TA.charDB.recorder.steps and #TA.charDB.recorder.steps > 0 then
         p(string.format("Quest recorder has %d step(s) from a previous session.  /tarecord dump to export, /tarecord clear to reset.", #TA.charDB.recorder.steps))

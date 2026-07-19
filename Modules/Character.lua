@@ -150,16 +150,16 @@ function Character:BuildUI(content, sidebar)
 
     local function Divider(label)
         local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        f:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+        f:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
         f:SetText(label)
-        f:SetTextColor(0.55, 0.40, 0.08, 1)
+        f:SetTextColor(0.62, 0.59, 0.55, 1)
         f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, cy)
         cy = cy - 14
         local line = content:CreateTexture(nil, "ARTWORK")
         line:SetHeight(1)
         line:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL,  cy)
         line:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, cy)
-        line:SetColorTexture(0.55, 0.40, 0.08, 0.35)
+        line:SetColorTexture(0.30, 0.30, 0.35, 0.40)
         cy = cy - 8
         return f
     end
@@ -187,18 +187,18 @@ function Character:BuildUI(content, sidebar)
     Backdrop(primRow, 0.08, 0.06, 0.01, 1, 1, 0.82, 0, 0.50)
 
     self.widgets.primName = primRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    self.widgets.primName:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
-    self.widgets.primName:SetTextColor(0.78, 0.73, 0.48, 1)
+    self.widgets.primName:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+    self.widgets.primName:SetTextColor(0.82, 0.78, 0.70, 1)
     self.widgets.primName:SetPoint("LEFT", primRow, "LEFT", 12, 4)
 
     self.widgets.primVal = primRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    self.widgets.primVal:SetFont(STANDARD_TEXT_FONT, 18, "OUTLINE")
-    self.widgets.primVal:SetTextColor(1, 0.82, 0, 1)
+    self.widgets.primVal:SetFont("Fonts\\ARIALN.TTF", 18, "OUTLINE")
+    self.widgets.primVal:SetTextColor(0.92, 0.90, 0.87, 1)
     self.widgets.primVal:SetPoint("RIGHT", primRow, "RIGHT", -14, 4)
 
     self.widgets.primSub = primRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    self.widgets.primSub:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-    self.widgets.primSub:SetTextColor(0.45, 0.40, 0.28, 1)
+    self.widgets.primSub:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
+    self.widgets.primSub:SetTextColor(0.50, 0.47, 0.42, 1)
     self.widgets.primSub:SetPoint("BOTTOMLEFT", primRow, "BOTTOMLEFT", 12, 5)
 
     cy = cy - 46
@@ -228,7 +228,39 @@ function Character:BuildUI(content, sidebar)
     cy = cy - 32
 
     -- Secondary stat rows (4 slots, populated by UpdateData)
-    Divider("SECONDARY STATS")
+    -- Collapsible section header — clickable divider toggles row visibility
+    local secHeader = Divider("SECONDARY STATS")
+    local secSectionOpen = true
+
+    -- Make the divider header clickable to toggle secondary stats visibility
+    if secHeader then
+        local hitbox = CreateFrame("Button", nil, content)
+        hitbox:SetSize(w, 18)
+        hitbox:SetPoint("TOPLEFT", secHeader, "TOPLEFT", -4, 4)
+        hitbox:SetPoint("BOTTOMRIGHT", secHeader, "BOTTOMRIGHT", w, -4)
+        hitbox:SetScript("OnClick", function()
+            secSectionOpen = not secSectionOpen
+            for i = 1, 4 do
+                local rw = Character.widgets.secRows[i]
+                if rw and rw.row then
+                    if secSectionOpen then rw.row:Show() else rw.row:Hide() end
+                end
+            end
+            if secSectionOpen then
+                secHeader:SetText("\226\150\188 SECONDARY STATS")
+            else
+                secHeader:SetText("\226\150\182 SECONDARY STATS")
+            end
+        end)
+        hitbox:SetScript("OnEnter", function()
+            secHeader:SetTextColor(0.92, 0.90, 0.87, 1)
+        end)
+        hitbox:SetScript("OnLeave", function()
+            secHeader:SetTextColor(0.62, 0.59, 0.55, 1)
+        end)
+        secHeader:SetText("\226\150\188 SECONDARY STATS")
+    end
+
     self.widgets.secRows = {}
 
     local RANK_COLORS = {
@@ -249,26 +281,26 @@ function Character:BuildUI(content, sidebar)
         fill:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 1,  1)
 
         local nameLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        nameLbl:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
-        nameLbl:SetTextColor(0.72, 0.68, 0.52, 1)
+        nameLbl:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
+        nameLbl:SetTextColor(0.82, 0.78, 0.70, 1)
         nameLbl:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -6)
 
         local pctLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        pctLbl:SetFont(STANDARD_TEXT_FONT, 17, "OUTLINE")
+        pctLbl:SetFont("Fonts\\ARIALN.TTF", 17, "OUTLINE")
         pctLbl:SetPoint("TOPRIGHT", row, "TOPRIGHT", -12, -4)
 
         local ratingLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        ratingLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        ratingLbl:SetTextColor(0.42, 0.38, 0.26, 1)
+        ratingLbl:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
+        ratingLbl:SetTextColor(0.50, 0.47, 0.42, 1)
         ratingLbl:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 10, 5)
 
         local badgeLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        badgeLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+        badgeLbl:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
         badgeLbl:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -12, 5)
 
         -- Single sub-line used for DR cap warning or VERS damage-reduction info
         local subLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        subLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+        subLbl:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
         subLbl:SetPoint("TOPLEFT", nameLbl, "BOTTOMLEFT", 0, -1)
 
         row:SetScript("OnEnter", function(btn)
@@ -296,22 +328,48 @@ function Character:BuildUI(content, sidebar)
         cy = cy - 52
     end
 
-    -- Weighted score row
+    -- Weighted score row — collapsible
     cy = cy - 4
     self.widgets.scoreDiv = Divider("WEIGHTED SCORE")
+    local scoreSectionOpen = true
     local scoreRow = CreateFrame("Frame", nil, content, "BackdropTemplate")
     scoreRow:SetSize(w, 34)
     scoreRow:SetPoint("TOPLEFT", content, "TOPLEFT", padL, cy)
     Backdrop(scoreRow, 0.06, 0.04, 0.00, 1, 1, 0.82, 0, 0.40)
 
+    -- Make weighted score divider clickable
+    if self.widgets.scoreDiv then
+        local scoreHitbox = CreateFrame("Button", nil, content)
+        scoreHitbox:SetSize(w, 18)
+        scoreHitbox:SetPoint("TOPLEFT", self.widgets.scoreDiv, "TOPLEFT", -4, 4)
+        scoreHitbox:SetPoint("BOTTOMRIGHT", self.widgets.scoreDiv, "BOTTOMRIGHT", w, -4)
+        scoreHitbox:SetScript("OnClick", function()
+            scoreSectionOpen = not scoreSectionOpen
+            if scoreSectionOpen then
+                scoreRow:Show()
+                Character.widgets.scoreDiv:SetText("\226\150\188 WEIGHTED SCORE")
+            else
+                scoreRow:Hide()
+                Character.widgets.scoreDiv:SetText("\226\150\182 WEIGHTED SCORE")
+            end
+        end)
+        scoreHitbox:SetScript("OnEnter", function()
+            Character.widgets.scoreDiv:SetTextColor(0.92, 0.90, 0.87, 1)
+        end)
+        scoreHitbox:SetScript("OnLeave", function()
+            Character.widgets.scoreDiv:SetTextColor(0.62, 0.59, 0.55, 1)
+        end)
+        self.widgets.scoreDiv:SetText("\226\150\188 WEIGHTED SCORE")
+    end
+
     self.widgets.scoreLbl = scoreRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    self.widgets.scoreLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-    self.widgets.scoreLbl:SetTextColor(0.78, 0.73, 0.48, 1)
+    self.widgets.scoreLbl:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+    self.widgets.scoreLbl:SetTextColor(0.72, 0.68, 0.60, 1)
     self.widgets.scoreLbl:SetPoint("LEFT", scoreRow, "LEFT", 12, 0)
 
     self.widgets.scoreVal = scoreRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    self.widgets.scoreVal:SetFont(STANDARD_TEXT_FONT, 17, "OUTLINE")
-    self.widgets.scoreVal:SetTextColor(1, 0.82, 0, 1)
+    self.widgets.scoreVal:SetFont("Fonts\\ARIALN.TTF", 17, "OUTLINE")
+    self.widgets.scoreVal:SetTextColor(0.92, 0.90, 0.87, 1)
     self.widgets.scoreVal:SetPoint("RIGHT", scoreRow, "RIGHT", -12, 0)
 
     cy = cy - 40

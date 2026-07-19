@@ -46,12 +46,20 @@ local CORE_GRID_SLOTS = {
 }
 
 -- ── Armor proficiency ─────────────────────────────────────────────────
-local _, playerClass = UnitClass("player")
-local PRIMARY_ARMOR_TYPE = 1
-if     playerClass == "WARRIOR" or playerClass == "PALADIN" or playerClass == "DEATHKNIGHT"  then PRIMARY_ARMOR_TYPE = 4
-elseif playerClass == "HUNTER"  or playerClass == "SHAMAN"  or playerClass == "EVOKER"       then PRIMARY_ARMOR_TYPE = 3
-elseif playerClass == "ROGUE"   or playerClass == "DRUID"   or playerClass == "MONK"
-    or playerClass == "DEMONHUNTER"                                                           then PRIMARY_ARMOR_TYPE = 2 end
+-- Resolved in Gear:Init() after PLAYER_ENTERING_WORLD guarantees UnitClass
+-- returns real data. Accessing it at file-load scope is unsafe because the
+-- player unit may not yet be fully initialised during the TOC load phase.
+local PRIMARY_ARMOR_TYPE = 1   -- default (Cloth); overwritten in Init()
+
+local function ResolveArmorType()
+    local _, cls = UnitClass("player")
+    if     cls == "WARRIOR" or cls == "PALADIN" or cls == "DEATHKNIGHT" then return 4   -- Plate
+    elseif cls == "HUNTER"  or cls == "SHAMAN"  or cls == "EVOKER"      then return 3   -- Mail
+    elseif cls == "ROGUE"   or cls == "DRUID"   or cls == "MONK"
+        or cls == "DEMONHUNTER"                                          then return 2   -- Leather
+    end
+    return 1  -- Cloth
+end
 
 -- ── Helpers ───────────────────────────────────────────────────────────
 local function CleanProxyValue(val)
@@ -131,19 +139,9 @@ local function CalculateItemScore(itemLink, specID, mode)
     if total == 0 then
         -- No recognized stat budget on this item (common for pure on-use/proc
         -- trinkets, or occasionally an item whose data hasn't finished caching).
-        -- BUG FIX: this used to be `ilvl * 100`, which put stat-less items on
-        -- a wildly different scale than the normal weighted formula below --
-        -- a real piece of gear typically scores ~500-3000 (primary stat at
-        -- ~1.6x weight plus a few hundred each of haste/crit/mastery/vers at
-        -- ~1.0-1.2x), while `ilvl * 100` gives a level-580 item a score of
-        -- 58,000. That let any stat-less item -- even a low-ilvl one -- crush
-        -- every properly-itemized comparison purely from the scale mismatch,
-        -- which is exactly the "lower stats, higher rating" bug. `ilvl * 3` is
-        -- an approximation to land in the same rough range as real gear, not
-        -- a precisely derived constant -- it exists to stop the fallback from
-        -- dominating comparisons it has no business winning.
         local wIlvl, pIlvl = GetItemIlvls(itemLink)
-        return ((mode == "pvp" and pIlvl) or wIlvl or 0) * 3
+        local baseIlvl = (mode == "pvp" and pIlvl) or wIlvl or 0
+        return baseIlvl * 3
     end
 
     local src = TA.charDB and TA.charDB.weightSource or "built-in"
@@ -151,7 +149,26 @@ local function CalculateItemScore(itemLink, specID, mode)
         local ok, val = pcall(function() return Pawn.GetSingleItemValue(itemLink, false) end)
         if ok and val then return CleanProxyValue(val) end
     end
-    return CleanProxyValue(SW:ScoreItem(stats, specID, mode))
+
+    local baseScore = CleanProxyValue(SW:ScoreItem(stats, specID, mode))
+
+    -- PvP ilvl scaling: In instanced PvP (arena/BG), items with a PvP ilvl
+    -- receive a proportional stat budget increase.  C_Item.GetItemStats() only
+    -- returns world-mode stats, so we approximate the PvP effective score by
+    -- scaling the weighted score proportionally to the ilvl uplift.
+    -- This ensures PvP-intended gear (Gladiator, Aspirant etc.) is correctly
+    -- recommended over PvE gear of equal world ilvl when pvxMode == "pvp".
+    if mode == "pvp" then
+        local wIlvl, pIlvl = GetItemIlvls(itemLink)
+        if pIlvl and wIlvl and wIlvl > 0 and pIlvl > wIlvl then
+            -- Stat budgets scale roughly linearly with ilvl in Midnight.
+            -- A PvP item at world ilvl 217 with PvP ilvl 233 gets ~7.4% more
+            -- effective stats in PvP content: (233/217) = 1.074
+            baseScore = math.floor(baseScore * (pIlvl / wIlvl))
+        end
+    end
+
+    return baseScore
 end
 
 -- ── Throttled bag scan with claim tracking ────────────────────────────
@@ -259,19 +276,19 @@ local function AuditItemEnchants(itemLink, isEnchantable)
     local _, _, enchantID = strsplit(":", itemString)
     enchantID = tonumber(enchantID) or 0
 
-    if enchantID == 0 then return false, "|cFFFF4444[!] Missing Enchant|r" end
+    if enchantID == 0 then return false, "|cFFFF4444Missing Enchant|r" end
 
     local eInfo = EMap[enchantID]
     if eInfo and eInfo.profession then
         local pKey = eInfo.profession:upper()
         if not PlayerProfessionsCache[pKey] then
-            return false, "|cFFFF4444[!] Needs " .. eInfo.profession .. "|r"
+            return false, "|cFFFF4444Needs " .. eInfo.profession .. "|r"
         end
         if eInfo.spellID and not IsSpellKnown(eInfo.spellID) then
-            return false, "|cFFFF4444[!] Recipe not learned|r"
+            return false, "|cFFFF4444Recipe not learned|r"
         end
     end
-    return true, "|cFF888780[OK] Enchanted|r"
+    return true, "|cFF888780Enchanted|r"
 end
 
 -- Debounced re-render for the bag-change events, which can fire many times
@@ -310,6 +327,8 @@ function Gear:OnEvent(event, ...)
 end
 
 function Gear:Init()
+    -- Resolve class-dependent armor type now that the player unit is ready
+    PRIMARY_ARMOR_TYPE = ResolveArmorType()
     TA.eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
     TA.eventFrame:RegisterEvent("INSPECT_READY")
     -- SKILL_LINES_CHANGED is already registered globally in Core/Init.lua's
@@ -328,7 +347,13 @@ function Gear:Render(content, sidebar)
     for _, f in ipairs(self.sideFrames) do f:Hide(); f:SetParent(nil) end
     self.sideFrames = {}
 
-    if C_PvP and C_PvP.IsWarModeDesired and C_PvP.IsWarModeDesired() then
+    -- Auto-detect PvP mode: if the player is in a PvP instance (arena/BG)
+    -- or has War Mode enabled, default to PvP scoring so PvP gear surfaces
+    -- correctly. Manual toggle always overrides this auto-detection.
+    local inInstance, instanceType = IsInInstance()
+    local isPvPContext = (instanceType == "pvp" or instanceType == "arena")
+                      or (C_PvP and C_PvP.IsWarModeDesired and C_PvP.IsWarModeDesired())
+    if isPvPContext then
         if TA.charDB then TA.charDB.pvxMode = "pvp" end
     end
 
@@ -456,9 +481,9 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
 
         -- Slot name (top-left)
         local slNameF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        slNameF:SetFont(STANDARD_TEXT_FONT, 9, "")
+        slNameF:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
         slNameF:SetText(slotDef.name:upper())
-        slNameF:SetTextColor(0.55, 0.44, 0.25, 1)
+        slNameF:SetTextColor(0.62, 0.59, 0.55, 1)
         slNameF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -6)
 
         -- iLvl display (top-right)
@@ -486,31 +511,51 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
         end
         nameF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -18)
 
-        -- Status line
+        -- Status line + modern visual indicators (glow border + status strip)
         local statusF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         statusF:SetFont(STANDARD_TEXT_FONT, 10, "")
         statusF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -34)
 
+        local M = TA.Modern  -- may be nil if UIModern not loaded
+
         if hasUpgrade then
             local pct = currentScore > 0 and math.floor(((bestBagScore - currentScore) / currentScore) * 100) or 0
-            statusF:SetText("|cFF1EFF00[+] Ready to Swap (+" .. pct .. "% score)|r")
+            statusF:SetText("|cFF1EFF00Ready to Swap (+" .. pct .. "% score)|r")
+            if M then
+                M:ApplyGlowBorder(row, 0.12, 1.00, 0.00, 0.6)
+                M:ApplyStatusStrip(row, "upgrade")
+            end
         elseif claimedBy then
-            statusF:SetText("|cFFAAAAAA[!] Upgrade claimed by " .. claimedBy .. "|r")
+            statusF:SetText("|cFFAAAAAAClaimed by " .. claimedBy .. "|r")
+            if M then M:ApplyStatusStrip(row, "warning") end
         elseif currentLink then
             if slotDef.isEnchantable then
                 local ok, auditStr = AuditItemEnchants(currentLink, true)
-                statusF:SetText(auditStr)
                 if not ok then
                     isEnchantWarning = true
+                    -- Modern: red glow border + danger strip
+                    statusF:SetText(auditStr)
                     row:SetBackdropColor(0.06, 0.02, 0.02, 0.9)
                     row:SetBackdropBorderColor(1.0, 0.27, 0.27, 0.6)
+                    if M then
+                        M:ApplyGlowBorder(row, 1.0, 0.30, 0.25, 0.7)
+                        M:ApplyStatusStrip(row, "danger")
+                    end
+                else
+                    statusF:SetText("|cFF888780Enchanted|r")
+                    if M then M:ApplyStatusStrip(row, "ok") end
                 end
             else
-                statusF:SetText("|cFF888780[OK] Equipped|r")
+                statusF:SetText("|cFF888780Equipped|r")
+                if M then M:ApplyStatusStrip(row, "ok") end
             end
         else
-            statusF:SetText("|cFFFF4444[!] Missing Item|r")
+            statusF:SetText("|cFFFF4444Missing Item|r")
             row:SetBackdropBorderColor(1.0, 0.27, 0.27, 0.6)
+            if M then
+                M:ApplyGlowBorder(row, 1.0, 0.30, 0.25, 0.8)
+                M:ApplyStatusStrip(row, "danger")
+            end
         end
 
         -- Tooltip injection
@@ -581,9 +626,9 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
     -- Currency section
     y = y - 10
     local curHdr = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    curHdr:SetFont(STANDARD_TEXT_FONT, 11, "")
+    curHdr:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
     curHdr:SetText("MIDNIGHT UPGRADE CURRENCIES")
-    curHdr:SetTextColor(0.55, 0.44, 0.25, 1)
+    curHdr:SetTextColor(0.62, 0.59, 0.55, 1)
     curHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
     table.insert(self.frames, curHdr)
     y = y - 20

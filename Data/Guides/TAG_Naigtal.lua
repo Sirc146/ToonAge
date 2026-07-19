@@ -9,8 +9,10 @@ TA.GuideData = TA.GuideData or {}
 TA.GuideData["naigtal"] = {
     id       = "naigtal",
     title    = "Midnight: Naigtal",
-    zone     = 0,   -- TODO: confirm with /coord
-    minLevel = 80,
+    -- Naigtal is a new zone in Midnight.  Map ID unknown on PTR — update with
+    -- /coord once accessible.  0 prevents false zone matches.
+    zone     = 0,
+    minLevel = 86,   -- Naigtal is the final Midnight leveling zone (86-90)
     maxLevel = 90,
     steps = {
         -- Step 1  [Void Assaults]

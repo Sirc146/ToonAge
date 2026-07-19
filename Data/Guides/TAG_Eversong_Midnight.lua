@@ -9,9 +9,14 @@ TA.GuideData = TA.GuideData or {}
 TA.GuideData["eversong_midnight"] = {
     id       = "eversong_midnight",
     title    = "Midnight: Eversong Woods",
-    zone     = 2434,   -- TODO: confirm with /coord
+    -- PTR zone ID for Eversong Woods (Midnight).  2434 is the parent zone used
+    -- by midnight_intro; Eversong should have its own sub-zone ID.
+    -- Update this with the live map ID once confirmed in-game via /coord.
+    -- Set to 0 for now so AutoSelectGuide falls through to level-only matching
+    -- instead of colliding with silvermoon_midnight (also zone=2434 stub).
+    zone     = 0,
     minLevel = 80,
-    maxLevel = 90,
+    maxLevel = 85,   -- narrowed to avoid tie-breaking with silvermoon/naigtal
     steps = {
         -- Step 1  [Eversong Woods]
         {

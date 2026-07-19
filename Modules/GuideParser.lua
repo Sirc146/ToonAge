@@ -16,9 +16,14 @@ local GP = {}
 TA:RegisterModule("GuideParser", GP)
 
 -- ── Schema constants ──────────────────────────────────────────────────
+-- 'accept' is used by QuestTracker.IsStepComplete for Smart Phrase Parsing:
+-- a step typed 'accept' is considered complete the moment the quest appears
+-- in the log (not requiring full turn-in). This is the right semantic for
+-- "Speak with NPC to accept quest X" steps.
 local VALID_TYPES = {
     quest  = true, travel = true, npc    = true,
     item   = true, action = true, text   = true,
+    accept = true,   -- quest-acceptance step; complete when questID is in log
 }
 
 -- ── Deferred log (flushed in Init) ───────────────────────────────────
@@ -52,7 +57,7 @@ local function ValidateStep(id, n, step)
     end
     local ok = true
     if type(step.type) ~= "string" or not VALID_TYPES[step.type] then
-        LogError(id, n, "invalid or missing 'type' — must be one of: quest/travel/npc/item/action/text")
+        LogError(id, n, "invalid or missing 'type' — must be one of: quest/accept/travel/npc/item/action/text")
         ok = false
     end
     if type(step.text) ~= "string" or step.text == "" then

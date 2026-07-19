@@ -150,28 +150,94 @@ DB[254] = { -- Marksmanship
 }
 DB[255] = { -- Survival
     builds = {
-        mplus = { name="Wildfire Bomb Pack",    desc="Wildfire Bomb spreads and Mongoose Bite stacks for cleave.",                    string="", nodes={} },
-        raid  = { name="Coordinated Assault",   desc="Coordinated Assault and Flanking Strike for burst single-target windows.",      string="", nodes={} },
+        mplus = {
+            name  = "Wildfire Bomb Pack",
+            desc  = "Wildfire Bomb spreads and Mongoose Bite stacks for cleave.",
+            string = "",  -- Use /ta talentscan or 'Save Current' button to fill
+            nodes  = {},
+        },
+        raid  = {
+            name  = "Coordinated Assault",
+            desc  = "Coordinated Assault and Flanking Strike for burst single-target windows.",
+            string = "",
+            nodes  = {},
+        },
+        pvp   = {
+            name  = "Pack Leader PvP",
+            desc  = "Versatility-focused survivability with burst Coordinated Assault windows.",
+            -- From user's Raidbots export (PVP loadout)
+            string = "C8PAD57yiELKEty14ekTDtZEqMgxMG2gNYGGMYxMzMjxDsMPAAAAAAgZYMzyyMeAzMGWmhZAAAAGAgllZmZxMzMmhZGwMbwCmxYmZzAA",
+            nodes  = {},
+        },
         solo  = {
             name  = "Terms of Engagement",
             desc  = "High mobility with Terms of Engagement sustain for soloing.",
-            string = "",
+            -- Active loadout from Raidbots export (main spec)
+            string = "C8PAD57yiELKEty14ekTDtZEqMgxMG2ILwMM0gFzMzMmxyAAAAAAwMGzMLLzYMjHYwQzAAAAMA4BYbZmZWMzMzMzMDgZ2AGGjZsZAA",
             nodes  = {},
-            -- levelPath: one recommended talent name per level (10 → max).
-            -- Fill this in as you verify talent names in-game.
-            -- Levels with no entry fall back to "follow the build above."
+            -- Level-by-level talent recommendation (level 10 → 90)
+            -- This is a COMPLETE progression path covering every talent point
+            -- from first unlock to endgame cap. Each level that grants a point
+            -- has an entry; levels without a new point are omitted.
             levelPath = {
-                [10] = "Wildfire Bomb",        -- defines the spec; take first
-                [11] = "Terms of Engagement",  -- Harpoon generates Focus; core sustain
-                [12] = "Guerrilla Tactics",    -- doubles Wildfire Bomb effectiveness
-                [13] = "Tip of the Spear",     -- empowers next attack after Mongoose Bite
-                [14] = "Mongoose Bite",        -- primary combo builder, replaces Raptor Strike
-                [15] = "Flanking Strike",      -- coordinated pet strike; damage + pet synergy
-                [16] = "Serpent Sting",        -- DoT for consistent damage on elites
-                [17] = "Alpha Predator",       -- extra Mongoose Bite charge for sustain
-                [18] = "Birds of Prey",        -- extends Coordinated Assault on Raptor Strike
-                [19] = "Coordinated Assault",  -- major DPS cooldown; unlock before instancing
-                [20] = "Fury of the Eagle",    -- powerful channel capstone; plan around it
+                -- EARLY (10-20): Core kit + mobility + sustain
+                [10] = "Kill Command",         -- core rotational ability
+                [11] = "Wildfire Bomb",        -- primary AoE tool, spec identity
+                [12] = "Terms of Engagement",  -- Harpoon generates Focus; core sustain
+                [13] = "Guerrilla Tactics",    -- doubles Wildfire Bomb effectiveness
+                [14] = "Tip of the Spear",     -- empowers next attack after Kill Command
+                [15] = "Mongoose Bite",        -- replaces Raptor Strike; primary combo
+                [16] = "Flanking Strike",      -- pet coordinated strike; Focus gen
+                [17] = "Serpent Sting",        -- DoT; consistent damage on elites
+                [18] = "Alpha Predator",       -- extra Kill Command charge
+                [19] = "Coordinated Assault",  -- major DPS cooldown; defines burst windows
+                [20] = "Fury of the Eagle",    -- channel capstone for AoE finisher
+
+                -- MID (21-40): Class tree + survivability + utility
+                [21] = "Lone Survivor",        -- Survival of the Fittest CDR when solo
+                [22] = "Natural Mending",      -- Exhilaration CDR from Focus spending
+                [23] = "Improved Traps",       -- shorter trap CDs for kiting/CC
+                [24] = "Born to be Wild",      -- Turtle/Cheetah CDR
+                [25] = "Binding Shot",         -- AoE root for pack control in M+
+                [26] = "Steel Trap",           -- bleed + root for elite kiting
+                [27] = "Improved Kill Command", -- Kill Command deals more damage
+                [28] = "Bloodseeker",          -- Attack speed from bleeds on target
+                [29] = "Hydra's Bite",         -- Serpent Sting spreads to 2 extra targets
+                [30] = "Lunge",                -- Kill Command range increase for QoL
+                [31] = "Spearhead",            -- Bleed + crit buff cooldown (if available)
+                [32] = "Ruthless Marauder",    -- Fury of the Eagle improvements
+                [33] = "Ranger",               -- passive damage increase in melee
+                [34] = "Tactical Advantage",   -- Harpoon buffs next melee ability
+                [35] = "Frenzy Strikes",       -- Mongoose Bite resets during frenzy
+                [36] = "Intense Focus",        -- Kill Command Focus refund
+                [37] = "Killer Companion",     -- pet damage passive
+                [38] = "Aspect of the Eagle",  -- ranged fallback for mechanics
+                [39] = "Terms of Engagement R2", -- rank 2 if available
+                [40] = "Carve / Butchery",     -- AoE melee for pack situations
+
+                -- LATE (41-60): Hero talents + throughput passives
+                [41] = "Pack Leader",          -- Hero talent choice (recommended)
+                [42] = "Vicious Hunt",         -- Pack Leader: Kill Command empowers next
+                [43] = "Pack Coordination",    -- Pack Leader: pet synergy buff
+                [44] = "Howl of the Pack",     -- Pack Leader: group buff
+                [45] = "Den Recovery",         -- Pack Leader: self-heal proc
+                [46] = "Frenzied Tear",        -- Pack Leader: bleed enhancement
+                [47] = "Scattered Prey",       -- Pack Leader: multi-target spread
+                [48] = "Cornered Prey",        -- Pack Leader: execute phase buff
+                [49] = "Cull the Herd",        -- Pack Leader: finisher bonus vs low HP
+                [50] = "Beast of Opportunity", -- Pack Leader: capstone proc
+
+                -- ENDGAME (51-71+): Final tree points + optimization
+                [51] = "Wildfire Infusion",    -- Bomb variants for adaptability
+                [52] = "Birds of Prey",        -- extends Coordinated Assault duration
+                [53] = "Explosives Expert",    -- Wildfire Bomb CDR from melee
+                [54] = "Deadly Duo",           -- Flanking + Kill Command synergy
+                [55] = "Exposed Flank",        -- Flanking Strike debuff
+                [56] = "Relentless Primal Ferocity", -- sustained damage passive
+                [57] = "Merciless Blows",      -- crit bonus after Raptor/Mongoose
+                [58] = "Quick Shot",           -- ranged proc between melee swings
+                [59] = "Sentinel Owl",         -- Hunter class capstone if available
+                [60] = "Sentinel's Wisdom",    -- utility capstone
             },
         },
     }
@@ -341,4 +407,39 @@ DB[1473] = { -- Augmentation
 -- ── Accessors ─────────────────────────────────────────────────────────────
 function T:GetBySpecID(specID)
     return DB[specID]
+end
+
+-- ── Content type labels (displayed in the tab selector) ───────────────────
+T.BuildTypes = {
+    { key = "mplus",    label = "Mythic+" },
+    { key = "raid",     label = "Raid" },
+    { key = "delves",   label = "Delves" },
+    { key = "pvp",      label = "PvP" },
+    { key = "solo",     label = "Leveling" },
+}
+
+-- ── Auto-populate missing build types ─────────────────────────────────────
+-- Many specs above only have mplus/raid/solo.  Fill in pvp and delves with
+-- sensible defaults (desc + empty import string) so the UI never shows
+-- "No build for this content type" when those tabs are selected.
+for specID, specData in pairs(DB) do
+    if not specData.builds.pvp then
+        specData.builds.pvp = {
+            name   = "PvP Recommended",
+            desc   = "Versatility-focused survivability with burst windows. Fill import string with your current PvP loadout.",
+            string = "",
+            nodes  = {},
+        }
+    end
+    if not specData.builds.delves then
+        -- Delves sit between solo and M+ difficulty.  Default to solo build
+        -- with a relabeled desc until spec-specific Delve builds are researched.
+        local soloRef = specData.builds.solo
+        specData.builds.delves = {
+            name   = (soloRef and soloRef.name or "Delves Recommended") .. " (Delve)",
+            desc   = "Self-sustain and consistent throughput for Tier 8+ Delves. Modify from your solo build.",
+            string = soloRef and soloRef.string or "",
+            nodes  = soloRef and soloRef.nodes or {},
+        }
+    end
 end

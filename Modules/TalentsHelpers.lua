@@ -6,22 +6,14 @@ local function safeInsert(t, v)
   if v and type(v) == "number" then table.insert(t, v) end
 end
 
-local function parseExportStringForIDs(export)
-  local ids = {}
-  if not export or type(export) ~= "string" then return ids end
-  -- Many export strings include numeric node IDs; extract sequences of digits
-  for num in export:gmatch("(%d+)") do
-    local n = tonumber(num)
-    if n then table.insert(ids, n) end
-  end
-  -- Remove duplicates while preserving order
-  local seen = {}
-  local uniq = {}
-  for _, v in ipairs(ids) do
-    if not seen[v] then seen[v] = true; table.insert(uniq, v) end
-  end
-  return uniq
-end
+-- Export-string parsing is intentionally NOT used here.
+--
+-- The Blizzard talent export string is a base64-encoded binary blob.
+-- Extracting raw digit sequences from it yields version bytes, level numbers,
+-- coordinate data, and other non-node values — not reliable node IDs.
+-- The correct path is C_Traits.GetConfigInfo().nodes (see tryClassTalentsNodes).
+-- If that API is unavailable, return an empty table and surface the limitation
+-- rather than returning silently wrong data.
 
 local function tryClassTalentsNodes()
   local ids = {}
@@ -38,14 +30,12 @@ local function tryClassTalentsNodes()
           if #ids > 0 then return ids end
         end
       end
-      -- Fallback: try export string from C_ClassTalents
-      if C_ClassTalents.GetExportString then
-        local ok, export = pcall(C_ClassTalents.GetExportString, cfgID)
-        if ok and export and type(export) == "string" then
-          local parsed = parseExportStringForIDs(export)
-          if #parsed > 0 then return parsed end
-        end
-      end
+      -- C_Traits.GetConfigInfo unavailable or returned no nodes.
+      -- Export-string parsing is NOT attempted here — it extracts every digit
+      -- sequence in the blob, yielding version bytes, level values, and
+      -- coordinate data alongside any real node IDs. See the comment above
+      -- tryClassTalentsNodes for details. Return empty; callers will fall
+      -- through to tryCTraitsActiveConfig or the talent-frame scan.
     end
   end
   return ids
@@ -100,7 +90,7 @@ local function scanTalentFrameForSelectedNodes()
 end
 
 function TA.TalentsAPI.GetActiveTalentIDs()
-  -- 1. Try modern C_ClassTalents + C_Traits path
+  -- 1. Try modern C_ClassTalents + C_Traits path (preferred)
   local ids = tryClassTalentsNodes()
   if ids and #ids > 0 then return ids end
 
@@ -108,15 +98,11 @@ function TA.TalentsAPI.GetActiveTalentIDs()
   ids = tryCTraitsActiveConfig()
   if ids and #ids > 0 then return ids end
 
-  -- 3. Try parsing export strings from other APIs if present
-  -- (some addons or clients expose export strings in other places)
-  -- No-op here; already attempted export via C_ClassTalents above.
-
-  -- 4. Legacy fallback: scan talent frame if open
+  -- 3. Legacy fallback: scan talent frame if open
   ids = scanTalentFrameForSelectedNodes()
   if ids and #ids > 0 then return ids end
 
-  -- 5. Final fallback: return empty table (safe)
+  -- 4. Final fallback: return empty table (safe; callers check #ids > 0)
   return {}
 end
 

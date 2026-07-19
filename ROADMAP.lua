@@ -1,0 +1,214 @@
+-- =============================================================================
+-- ToonAge — Internal Development Roadmap
+-- =============================================================================
+-- This file is a living development reference. It is NOT loaded by the TOC.
+-- Update as features ship, priorities shift, or new PTR data becomes available.
+-- Last updated: 2026-07-18
+-- =============================================================================
+
+-- =============================================================================
+-- SECTION 1 — WHERE WE ARE TODAY (v1.0.x baseline)
+-- =============================================================================
+--
+-- Core engine: fully functional, zero external dependencies.
+--   ✓ GuideParser  — validates guide schema, registers TA.Guides at TOC load
+--   ✓ QuestTracker — floating tracker, FastForward sync, SmartMatch from log
+--   ✓ Arrow        — HUD compass arrow, lerped rotation, drag/resize/lock
+--   ✓ TravelModes  — mount speed for ETA (dragonride / flying / mounted / run)
+--   ✓ Character    — full character scan
+--   ✓ Gear         — stat-weight gear evaluation
+--   ✓ Talents      — interactive talent tree with recommended loadouts
+--   ✓ Rotation     — combat priority helper (unique vs. Zygor / Dugi / APR)
+--   ✓ Weekly       — lockout tracking
+--   ✓ Delves       — Delves progression tracker
+--   ✓ Professions  — profession skill tracking
+--   ✓ Pets         — pet journal integration
+--
+-- Automation (implemented this session):
+--   ✓ Auto-accept/complete (opt-in) — QUEST_DETAIL, PROGRESS, COMPLETE
+--   ✓ Guide-contextual GOSSIP_SHOW — matches expected questIDs before fallback
+--   ✓ 'accept' step type — steps complete when questID enters log
+--   ✓ CutsceneSkip module — CINEMATIC_START + PLAY_MOVIE, 0.3s delay (opt-in)
+--   ✓ Quest item button — floating bag-item activator for questItem steps
+--   ✓ AutoEquip module — ilvl upgrade on loot, armour-type veto, 2H guard
+--
+-- Guide content (Midnight PTR state):
+--   ✓ Exile's Reach (1-10)         — stub coords, all questIDs present
+--   ✓ Midnight Intro (1-20)        — real coords in midnight_intro
+--   ✓ Hallowfall (70-80)           — stub coords, 100+ steps in TAG_Hallowfall
+--   ~ Eversong Woods (80-85)       — stub coords, 35 steps, zone=0 placeholder
+--   ~ Silvermoon City (83-87)      — stub coords, 30 steps, zone=0 placeholder
+--   ~ Naigtal (86-90)              — stub coords, partial steps, zone=0
+--
+
+-- =============================================================================
+-- SECTION 2 — NEAR-TERM PRIORITIES (in order of player impact)
+-- =============================================================================
+
+-- 2A. FILL GUIDE COORDS (Highest impact, lowest code effort)
+-- ─────────────────────────────────────────────────────────
+-- All six guides have stub coords (map=0,x=0,y=0).  The Arrow module falls back
+-- to C_QuestLog.GetNextWaypoint() which covers ~80% of quests at runtime, but
+-- the arrow will show "No Loc" for any quest that Blizzard hasn't added a
+-- supertrack waypoint for.
+--
+-- How to fill coords:
+--   1. Log into PTR.  Run /taquestscan (DevHelpers) while leveling.
+--   2. Use /coord (any coordinate addon) at each quest giver / objective.
+--   3. Paste results into the guide file's coord = {map=X, x=X.xx, y=X.xx}.
+--
+-- Priority order (most player-hours at stake):
+--   1. TAG_Exiles_Reach.lua   — every new player lands here (level 1-10)
+--   2. TAG_Midnight_Intro.lua — expansion entry point (already has real coords)
+--   3. TAG_Eversong_Midnight.lua + TAG_Silvermoon_Midnight.lua (main leveling)
+--   4. TAG_Naigtal.lua        — endgame zone
+--   5. TAG_Hallowfall.lua     — 100+ steps, biggest data lift
+
+-- 2B. CONFIRM PTR MAP IDs (Unblocks zone auto-selection)
+-- ──────────────────────────────────────────────────────
+-- Once Eversong, Silvermoon City, and Naigtal map IDs are known:
+--   1. In-game: /run print(C_Map.GetBestMapForUnit("player")) in each zone.
+--   2. Update TAG_*.lua  zone = <real map ID>  in all three files.
+--   3. Remove the "zone=0" comments explaining why they're stubs.
+-- This allows AutoSelectGuide to select the correct guide by zone + level
+-- rather than relying on level-only mid-point matching.
+
+-- 2C. REWARD-PICKER GUIDANCE (Low effort, good UX)
+-- ─────────────────────────────────────────────────
+-- When a quest has 2+ rewards (GetNumQuestChoices() > 1), auto-quest currently
+-- does nothing (correct — player should choose).  We can add guide support for
+-- this by adding an optional  reward = itemID  field to guide steps.
+-- QuestTracker.HandleAutoQuest can then call GetQuestReward(index) for the
+-- guide-specified choice when auto-quest is on.
+-- Schema addition:  reward = 12345  (itemID of preferred reward)
+-- Implementation:   In QUEST_COMPLETE block: look up reward.itemID vs
+--                   GetQuestItemLink(i) for each choice, GetQuestReward(i).
+
+-- 2D. GROUP SYNC (Medium effort, WoW-Pro parity)
+-- ───────────────────────────────────────────────
+-- WoW-Pro offers real-time step synchronisation between party members.
+-- ToonAge can implement a lightweight version using addon message channels:
+--   • Broadcast: when the local player's stepIdx changes, fire an addon comm
+--     message on PARTY channel: "TA_STEP|guideID|stepIdx"
+--   • Receive: on GROUP_ROSTER_UPDATE or the comm message event, show a subtle
+--     indicator in the tracker showing party members' guide + step.
+-- Libraries needed: none (C_ChatInfo.SendAddonMessage is built-in).
+-- This is a genuine premium-competitor parity feature that WoW-Pro requires
+-- Grail for.  ToonAge can do it natively.
+
+-- =============================================================================
+-- SECTION 3 — MEDIUM-TERM (content + UX depth)
+-- =============================================================================
+
+-- 3A. REPUTATION TRACKING MODULE
+-- ──────────────────────────────
+-- Add Modules/Reputation.lua: a tab showing all Midnight factions, current
+-- standing, renown level, and what activities grant rep.  Cross-reference with
+-- weekly quests (Weekly.lua) to surface "worth doing for rep" highlights.
+-- Data source: C_Reputation (GetFactionInfo, GetFactionParagonInfo).
+-- No external data file needed for the standings; static data needed for
+-- faction descriptions and reward lists.
+
+-- 3B. ACHIVEMENT / LOREMASTER GUIDE LAYER
+-- ────────────────────────────────────────
+-- Add an optional "achievement mode" toggle to the tracker that shows
+-- side-quest steps in addition to the main story path.
+-- Implementation: guide steps can carry  optional = true  to mark them as
+-- achievement-path steps.  The tracker can show a "skip" vs "do" indicator.
+-- This directly counters Zygor/Dugi's achievement guide advantage without
+-- requiring a separate guide file per mode.
+
+-- 3C. GOLD / ECONOMY GUIDE LAYER
+-- ──────────────────────────────
+-- Light-weight gold guide: annotate high-value herb / ore nodes on guide travel
+-- steps using the coord field of 'travel' type steps.  No AH scanner needed —
+-- just flag route segments with  goldNote = "Rich Thorium veins near X"  in the
+-- step text.  Pairs well with the Arrow HUD naturally.
+
+-- 3D. PROFESSION ROUTE GUIDANCE
+-- ──────────────────────────────
+-- Extend TAG_Eversong_Midnight.lua and others with 'item' steps for gathering
+-- nodes that are directly on the quest route.  No detour — just "on your way,
+-- pick up X".  The questItem button and 'item' step type already support this.
+
+-- 3E. IMPROVED QUEST REWARD STAT WEIGHTS
+-- ───────────────────────────────────────
+-- When auto-quest is OFF and the player reaches QUEST_COMPLETE with multiple
+-- rewards, ToonAge can show a tooltip-style stat weight overlay on each reward
+-- option (via Gear.lua's stat weight logic) so the player picks the best one
+-- quickly.  No auto-equip needed; purely informational.
+
+-- =============================================================================
+-- SECTION 4 — LONG-TERM (content library expansion)
+-- =============================================================================
+
+-- 4A. WAR WITHIN FULL COVERAGE
+-- ─────────────────────────────
+-- Hallowfall (70-80) exists as a stub.  Remaining War Within zones to add:
+--   • Isle of Dorn (70-73)         — expansion entry zone
+--   • Ringing Deeps (72-76)
+--   • Azj-Kahet (76-80)
+-- Tools\fetch_wow_quests.py already scaffolds the Blizzard API fetch.
+-- Run it for each zone's questID range, then manually verify in-game order.
+
+-- 4B. DRAGONFLIGHT BACK-FILL
+-- ──────────────────────────
+-- Players who come to Midnight from Dragonflight will want guides for:
+--   • Dragon Isles intro (60-70)   — 5 zones
+--   • Forbidden Reach (starter)
+--   • Zaralek Cavern (70 daily)
+-- These are stable content — quest IDs and coords do not change.  The
+-- fetch_wow_quests.py tool can generate stubs; coords from Wowhead/database.
+
+-- 4C. ENDGAME DUNGEON & RAID GUIDE STUBS
+-- ────────────────────────────────────────
+-- Rotation.lua already covers combat priority.  The next step is dungeon
+-- guides: brief per-boss notes surfaced in the tracker (not full DBM — just
+-- "interrupt X, dodge Y, kill priority Z").
+-- Schema: use type='action' steps with no coord; precondition = {instance=X}.
+-- The QuestTracker can detect being inside a specific instance and surface
+-- the relevant action step automatically.
+
+-- 4E. AUTO-UPDATE MECHANISM (keeping it internal, no external client)
+-- ────────────────────────────────────────────────────────────────────
+-- Instead of a proprietary desktop app, consider:
+--   Option A: GitHub releases + a simple PowerShell installer script that
+--             copies the new files into the AddOns folder.  One script, no
+--             client, fully transparent.  Users run it whenever they see
+--             a new release notification.
+--   Option B: In-game update check: on login, fire a one-shot HTTP request
+--             (via C_WebAPI if available, or a custom launcher script) to a
+--             GitHub Releases API endpoint.  If version tag > TA.version,
+--             print a chat message: "[TA] Update available at <URL>".
+--             No auto-download (WoW sandbox doesn't allow file writes).
+-- The update problem is a distribution problem, not a code problem.  A clear
+-- GitHub README + releases page is the correct solution.  Keep the addon pure
+-- Lua inside WoW.
+
+-- =============================================================================
+-- SECTION 5 — COMPETITIVE MOAT (what ToonAge does that no competitor does)
+-- =============================================================================
+--
+-- These are ToonAge's permanent differentiators that should be protected and
+-- deepened, not sacrificed for feature parity with Zygor/Dugi:
+--
+--   1. ROTATION HELPER  — Rotation.lua + Rotations.lua gives live combat
+--      priority during leveling.  No guide addon does this.  Hekili costs
+--      nothing but is a separate addon; ToonAge wraps it into one.
+--
+--   2. ENDGAME COACHING  — Weekly.lua + Delves.lua means the addon is still
+--      useful at max level.  Zygor/Dugi go quiet.  ToonAge stays relevant.
+--
+--   3. STAT-WEIGHT GEAR  — Gear.lua + StatWeights.lua + TA_Enchants.lua gives
+--      personalised upgrade advice, not just "higher ilvl = better".  This is
+--      the Pawn addon built in.
+--
+--   4. ZERO DEPENDENCIES  — No TomTom.  No Grail.  No Ace.  Installs as a
+--      single folder.  This is a massive UX advantage for new players.
+--
+--   5. SPEC-AWARE TALENT ADVISOR  — Talents.lua recommends builds; no free
+--      competitor does this.  Zygor's advisor is basic.
+--
+-- Every new feature should either deepen one of these moats or directly fill
+-- a gap where a competitor is currently winning player decisions (e.g., no
+-- guide vs having a bad guide).

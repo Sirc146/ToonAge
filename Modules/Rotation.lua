@@ -99,12 +99,12 @@ function Rotation:RenderSidebar(parent, specID, level, groupType)
         line:SetHeight(1)
         line:SetPoint("TOPLEFT", parent, "TOPLEFT", 4, y)
         line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, y)
-        line:SetColorTexture(0.55, 0.40, 0.08, 0.4)
+        line:SetColorTexture(0.30, 0.30, 0.35, 0.4)
         y = y - 8
         table.insert(self.frames, line)
     end
 
-    AddLabel("View", 0.55, 0.40, 0.08, 9)
+    AddLabel("View", 0.62, 0.59, 0.55, 9)
     AddDivider()
 
     local views = {
@@ -152,7 +152,7 @@ function Rotation:RenderSidebar(parent, specID, level, groupType)
     end
 
     AddDivider()
-    AddLabel("Character state", 0.55, 0.40, 0.08, 9)
+    AddLabel("Character state", 0.62, 0.59, 0.55, 9)
 
     local _, specName = U.GetPlayerSpec()
     local statRows = {
@@ -252,7 +252,7 @@ function Rotation:RenderContent(content, rotData, specID, level)
             local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             f:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
             f:SetText(label)
-            f:SetTextColor(0.55, 0.40, 0.08, 1)
+            f:SetTextColor(0.62, 0.59, 0.55, 1)
             f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
             y = y - 14
             table.insert(self.frames, f)
@@ -261,7 +261,7 @@ function Rotation:RenderContent(content, rotData, specID, level)
         line:SetHeight(1)
         line:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL,  y)
         line:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
-        line:SetColorTexture(0.55, 0.40, 0.08, 0.35)
+        line:SetColorTexture(0.30, 0.30, 0.35, 0.35)
         y = y - 8
         table.insert(self.frames, line)
     end
@@ -295,11 +295,24 @@ function Rotation:RenderContent(content, rotData, specID, level)
         table.insert(self.frames, tipF)
     end
 
-    -- Split priorities into normal vs cooldown sections
-    local normal, cds = {}, {}
+    -- Split priorities into normal vs cooldown vs defensive sections
+    local normal, cds, defensives = {}, {}, {}
     for _, entry in ipairs(rotData.priorities) do
         if entry.isCd or entry.isMajorCd or not entry.priority then
-            table.insert(cds, entry)
+            -- Sub-categorize: defensives vs offensive cooldowns
+            local isDefensive = false
+            if entry.tags then
+                for _, tag in ipairs(entry.tags) do
+                    if tag == "defensive" or tag == "utility" then
+                        isDefensive = true; break
+                    end
+                end
+            end
+            if isDefensive then
+                table.insert(defensives, entry)
+            else
+                table.insert(cds, entry)
+            end
         else
             table.insert(normal, entry)
         end
@@ -313,12 +326,62 @@ function Rotation:RenderContent(content, rotData, specID, level)
         y = y - 6
     end
 
+    -- ── Cooldowns accordion ───────────────────────────────────────────
+    local M = TA.Modern
     if #cds > 0 then
-        AddDivider("COOLDOWNS")
-        for _, entry in ipairs(cds) do
-            y = y - self:RenderSpellRow(content, y, w, padL, entry, true)
+        if M and M.CreateCollapsibleSection then
+            local cdSection = M:CreateCollapsibleSection(content, {
+                title = "Cooldowns (" .. #cds .. ")",
+                width = w,
+                startOpen = true,
+                contentHeight = (#cds * 40) + 8,
+            })
+            cdSection.frame:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            table.insert(self.frames, cdSection.frame)
+
+            local cdY = -4
+            for _, entry in ipairs(cds) do
+                local h = self:RenderSpellRow(cdSection.content, cdY, w - 4, 2, entry, true)
+                cdY = cdY - h
+            end
+            cdSection:SetContentHeight(math.abs(cdY) + 4)
+            y = y - (cdSection.frame:GetHeight() + 8)
+        else
+            -- Fallback without Modern layer
+            AddDivider("COOLDOWNS")
+            for _, entry in ipairs(cds) do
+                y = y - self:RenderSpellRow(content, y, w, padL, entry, true)
+            end
+            y = y - 6
         end
-        y = y - 6
+    end
+
+    -- ── Utility / Defensives accordion ────────────────────────────────
+    if #defensives > 0 then
+        if M and M.CreateCollapsibleSection then
+            local defSection = M:CreateCollapsibleSection(content, {
+                title = "Utility / Defensives (" .. #defensives .. ")",
+                width = w,
+                startOpen = false,   -- collapsed by default to save space
+                contentHeight = (#defensives * 40) + 8,
+            })
+            defSection.frame:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            table.insert(self.frames, defSection.frame)
+
+            local defY = -4
+            for _, entry in ipairs(defensives) do
+                local h = self:RenderSpellRow(defSection.content, defY, w - 4, 2, entry, true)
+                defY = defY - h
+            end
+            defSection:SetContentHeight(math.abs(defY) + 4)
+            y = y - (defSection.frame:GetHeight() + 8)
+        else
+            AddDivider("UTILITY / DEFENSIVES")
+            for _, entry in ipairs(defensives) do
+                y = y - self:RenderSpellRow(content, y, w, padL, entry, true)
+            end
+            y = y - 6
+        end
     end
 
     if #rotData.priorities == 0 then

@@ -9,9 +9,12 @@ TA.GuideData = TA.GuideData or {}
 TA.GuideData["silvermoon_midnight"] = {
     id       = "silvermoon_midnight",
     title    = "Midnight: Silvermoon City",
-    zone     = 2434,   -- TODO: confirm with /coord
-    minLevel = 80,
-    maxLevel = 90,
+    -- Silvermoon City has its own classic map ID (2441 in live WoW 10.x).
+    -- On Midnight PTR it may have a new ID.  Confirm with /coord in-game.
+    -- Using 0 for now so we don't collide with eversong_midnight (also stub).
+    zone     = 0,
+    minLevel = 83,   -- narrowed midpoint so AutoSelectGuide prefers this guide
+    maxLevel = 87,   -- for 83-87 level band, Eversong for 80-85
     steps = {
         -- Step 1  [Silvermoon City]
         {

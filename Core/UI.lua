@@ -81,8 +81,9 @@ function TA:InitUI()
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop",  frame.StopMovingOrSizing)
     frame:SetClampedToScreen(true)
-    ApplyBackdrop(frame, 0.05, 0.04, 0.02, 0.98)
-    frame:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.70)
+    -- Main frame gets glass backdrop (applied after M loads via InitDrawer hook)
+    ApplyBackdrop(frame, 0.05, 0.05, 0.06, 0.94)
+    frame:SetBackdropBorderColor(0.30, 0.30, 0.35, 1.00)
     frame:Hide()
 
     -- ── Title bar ─────────────────────────────────────────────────────
@@ -90,7 +91,7 @@ function TA:InitUI()
     titleBar:SetPoint("TOPLEFT",  frame, "TOPLEFT",  0, 0)
     titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     titleBar:SetHeight(TITLEBAR_H)
-    ApplyBackdrop(titleBar, 0.16, 0.12, 0.00, 1.00)
+    ApplyBackdrop(titleBar, 0.10, 0.10, 0.12, 1.00)
 
     local titleIcon = titleBar:CreateTexture(nil, "ARTWORK")
     titleIcon:SetSize(18, 18)
@@ -99,15 +100,15 @@ function TA:InitUI()
     titleIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
     local titleLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    titleLabel:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+    titleLabel:SetFont("Fonts\\FRIZQT__.TTF", 13, "OUTLINE")
     titleLabel:SetText("ToonAge")
-    titleLabel:SetTextColor(1.00, 0.82, 0.00, 1.00)
+    titleLabel:SetTextColor(0.92, 0.90, 0.87, 1.00)
     titleLabel:SetPoint("LEFT", titleBar, "LEFT", 34, 0)
 
     local versionLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    versionLabel:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    versionLabel:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
     versionLabel:SetText("v" .. TA.version .. "  ·  Midnight 12.0.5")
-    versionLabel:SetTextColor(0.55, 0.44, 0.25, 1.00)
+    versionLabel:SetTextColor(0.55, 0.52, 0.45, 1.00)
     versionLabel:SetPoint("RIGHT", titleBar, "RIGHT", -36, 0)
 
     local closeBtn = CreateFrame("Button", nil, titleBar, "UIPanelCloseButton")
@@ -121,19 +122,19 @@ function TA:InitUI()
     local optIcon = optionsBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     optIcon:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
     optIcon:SetText("\226\154\153")  -- gear glyph
-    optIcon:SetTextColor(0.55, 0.40, 0.08, 1)
+    optIcon:SetTextColor(0.62, 0.59, 0.55, 1)
     optIcon:SetAllPoints(optionsBtn)
     optIcon:SetJustifyH("CENTER")
-    optionsBtn:SetScript("OnEnter", function() optIcon:SetTextColor(1, 0.82, 0, 1) end)
-    optionsBtn:SetScript("OnLeave", function() optIcon:SetTextColor(0.55, 0.40, 0.08, 1) end)
-    optionsBtn:SetScript("OnClick", function() TA:OpenOptionsFrame() end)
+    optionsBtn:SetScript("OnEnter", function() optIcon:SetTextColor(0.92, 0.90, 0.87, 1) end)
+    optionsBtn:SetScript("OnLeave", function() optIcon:SetTextColor(0.62, 0.59, 0.55, 1) end)
+    optionsBtn:SetScript("OnClick", function() TA:ToggleOptionsPanel() end)
 
     -- ── Tab bar ───────────────────────────────────────────────────────
     local tabBar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     tabBar:SetPoint("TOPLEFT",  frame, "TOPLEFT",  0, -TITLEBAR_H)
     tabBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -TITLEBAR_H)
     tabBar:SetHeight(TAB_HEIGHT)
-    ApplyBackdrop(tabBar, 0.06, 0.05, 0.01, 1.00)
+    ApplyBackdrop(tabBar, 0.07, 0.07, 0.09, 1.00)
 
     -- ── Sidebar ───────────────────────────────────────────────────────
     local sidebarTop = -(TITLEBAR_H + TAB_HEIGHT)
@@ -141,7 +142,7 @@ function TA:InitUI()
     sidebar:SetPoint("TOPLEFT",    frame, "TOPLEFT",    0, sidebarTop)
     sidebar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
     sidebar:SetWidth(SIDEBAR_WIDTH)
-    ApplyBackdrop(sidebar, 0.04, 0.03, 0.01, 1.00)
+    ApplyBackdrop(sidebar, 0.05, 0.05, 0.06, 0.96)
 
     local sideScroll = CreateFrame("ScrollFrame", "TASideScrollFrame", sidebar, "UIPanelScrollFrameTemplate")
     sideScroll:SetPoint("TOPLEFT",     sidebar, "TOPLEFT",     4, -4)
@@ -177,58 +178,9 @@ function TA:InitUI()
     frame.sideChild    = sideChild
     frame.contentChild = contentChild
 
-    -- ── Build tab buttons ─────────────────────────────────────────────
-    local tabX = 8
-    for _, tabDef in ipairs(TABS) do
-      if IsTabEnabled(tabDef.id) then
-        local btn = CreateFrame("Button", nil, tabBar)
-        btn:SetHeight(TAB_HEIGHT - 2)
-        btn:SetPoint("LEFT", tabBar, "LEFT", tabX, 1)
-
-        local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        lbl:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
-        lbl:SetText(tabDef.label)
-        lbl:SetTextColor(0.55, 0.40, 0.08, 1.00)
-        lbl:SetAllPoints(btn)
-        lbl:SetJustifyH("CENTER")
-        btn.label = lbl
-
-        -- Gold underline for active tab
-        local line = btn:CreateTexture(nil, "OVERLAY")
-        line:SetHeight(2)
-        line:SetPoint("BOTTOMLEFT",  btn, "BOTTOMLEFT",  0, 0)
-        line:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-        line:SetColorTexture(1.00, 0.82, 0.00, 1.00)
-        line:Hide()
-        btn.activeLine = line
-
-        btn.tabID  = tabDef.id
-        btn.module = tabDef.module
-
-        -- Size button to text width
-        lbl:SetWidth(0)
-        btn:SetWidth(lbl:GetStringWidth() + 26)
-        tabX = tabX + btn:GetWidth() + 2
-
-        btn:SetScript("OnClick", function()
-            frame:SetTab(tabDef.id)
-        end)
-        btn:SetScript("OnEnter", function()
-            if frame.activeTab ~= tabDef.id then
-                lbl:SetTextColor(1.00, 0.82, 0.00, 1.00)
-            end
-        end)
-        btn:SetScript("OnLeave", function()
-            if frame.activeTab ~= tabDef.id then
-                lbl:SetTextColor(0.55, 0.40, 0.08, 1.00)
-            end
-        end)
-
-        frame.tabButtons[tabDef.id] = btn
-      end
-    end
-
     -- ── SetTab ────────────────────────────────────────────────────────
+    -- Defined BEFORE RebuildTabs so RebuildTabs can call self:SetTab()
+    -- at the end of its run without getting a nil-value error.
     function frame:SetTab(tabID)
         -- A saved lastTab may point at a tab the player has since disabled
         -- (e.g. from a previous session) -- fall back to the always-on tab.
@@ -237,7 +189,7 @@ function TA:InitUI()
         -- Update tab button states
         for id, btn in pairs(self.tabButtons) do
             local isActive = (id == tabID)
-            if isActive then btn.label:SetTextColor(1.00, 0.82, 0.00, 1.00) else btn.label:SetTextColor(0.55, 0.40, 0.08, 1.00) end
+            if isActive then btn.label:SetTextColor(0.92, 0.90, 0.87, 1.00) else btn.label:SetTextColor(0.55, 0.52, 0.48, 1.00) end
             if isActive then btn.activeLine:Show() else btn.activeLine:Hide() end
         end
         self.activeTab = tabID
@@ -285,6 +237,32 @@ function TA:InitUI()
                     self.contentChild:SetHeight(200)
                 end
             end
+
+            -- ── Dynamic panel resizing ────────────────────────────────────
+            -- If the sidebar scroll child has no meaningful content (height ≤ 1
+            -- means nothing was rendered into it), hide the sidebar and expand
+            -- the content scroll to consume the full frame width.
+            local sideEmpty = (self.sideChild:GetHeight() <= 1)
+            if sideEmpty then
+                self.sidebar:Hide()
+                self.contentScroll:ClearAllPoints()
+                self.contentScroll:SetPoint("TOPLEFT",     frame, "TOPLEFT",     1, sidebarTop)
+                self.contentScroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -22, 0)
+                -- Update content child width for the wider area
+                local fullW = FRAME_WIDTH - 1 - 22
+                self.contentChild:SetWidth(fullW)
+                self.contentWidth = fullW
+            else
+                -- Restore standard sidebar + content layout
+                self.sidebar:Show()
+                self.contentScroll:ClearAllPoints()
+                local contentLeft = SIDEBAR_WIDTH + 1
+                self.contentScroll:SetPoint("TOPLEFT",     frame, "TOPLEFT",     contentLeft, sidebarTop)
+                self.contentScroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -22, 0)
+                local normalW = FRAME_WIDTH - contentLeft - 22
+                self.contentChild:SetWidth(normalW)
+                self.contentWidth = normalW
+            end
         end
     end
 
@@ -302,22 +280,138 @@ function TA:InitUI()
         self:SetTab(TA.charDB.lastTab or "character")
     end
 
+    -- ── RebuildTabs — callable at any time (e.g. from options panel) ──
+    -- Destroys all existing tab buttons and recreates them from the current
+    -- disabledTabs state, then re-selects the active tab (or "character"
+    -- if it was disabled). Called once at init, then again any time the
+    -- player toggles a tab in the options panel.
+    -- NOTE: SetTab, Refresh, and Show must be defined above this function
+    -- because RebuildTabs calls self:SetTab() at the end of its run.
+    function frame:RebuildTabs()
+        -- Destroy existing tab buttons
+        for _, btn in pairs(self.tabButtons) do
+            btn:Hide()
+            btn:SetParent(nil)
+        end
+        self.tabButtons = {}
+
+        local tabX = 8
+        for _, tabDef in ipairs(TABS) do
+            if IsTabEnabled(tabDef.id) then
+                local btn = CreateFrame("Button", nil, tabBar)
+                btn:SetHeight(TAB_HEIGHT - 2)
+                btn:SetPoint("LEFT", tabBar, "LEFT", tabX, 1)
+
+                local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                lbl:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
+                lbl:SetText(tabDef.label)
+                lbl:SetTextColor(0.55, 0.52, 0.48, 1.00)
+                lbl:SetAllPoints(btn)
+                lbl:SetJustifyH("CENTER")
+                btn.label = lbl
+
+                -- Subtle underline for active tab (white instead of gold)
+                local line = btn:CreateTexture(nil, "OVERLAY")
+                line:SetHeight(2)
+                line:SetPoint("BOTTOMLEFT",  btn, "BOTTOMLEFT",  0, 0)
+                line:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+                line:SetColorTexture(0.40, 0.75, 1.00, 1.00)
+                line:Hide()
+                btn.activeLine = line
+
+                btn.tabID  = tabDef.id
+                btn.module = tabDef.module
+
+                lbl:SetWidth(0)
+                btn:SetWidth(lbl:GetStringWidth() + 26)
+                tabX = tabX + btn:GetWidth() + 2
+
+                btn:SetScript("OnClick", function()
+                    frame:SetTab(tabDef.id)
+                end)
+                btn:SetScript("OnEnter", function()
+                    if frame.activeTab ~= tabDef.id then
+                        lbl:SetTextColor(0.92, 0.90, 0.87, 1.00)
+                    end
+                end)
+                btn:SetScript("OnLeave", function()
+                    if frame.activeTab ~= tabDef.id then
+                        lbl:SetTextColor(0.55, 0.52, 0.48, 1.00)
+                    end
+                end)
+
+                self.tabButtons[tabDef.id] = btn
+            end
+        end
+
+        -- Re-select the previously active tab, falling back to "character"
+        -- if it was just disabled.
+        local tabToShow = self.activeTab or "character"
+        if not IsTabEnabled(tabToShow) then tabToShow = "character" end
+        self:SetTab(tabToShow)
+    end
+
+    -- Initial tab build — all frame methods are now defined above this call.
+    frame:RebuildTabs()
+
     self.UI = frame
+
+    -- ── Blizzard Settings registration ───────────────────────────────────────
+    -- Done here (inside InitUI, called from OnLogin after PLAYER_ENTERING_WORLD)
+    -- so Settings and all Blizzard addon APIs are guaranteed available.
+    -- A pcall guard ensures any API hiccup on future PTR builds cannot prevent
+    -- the rest of ToonAge from loading.
+    if not self._blizzOptionsPanel then
+        local ok, err = pcall(function()
+            local blizzPanel = CreateFrame("Frame")
+            blizzPanel.name  = "ToonAge"
+            if Settings and Settings.RegisterCanvasLayoutCategory then
+                local cat = Settings.RegisterCanvasLayoutCategory(blizzPanel, blizzPanel.name)
+                Settings.RegisterAddOnCategory(cat)
+                TA._blizzOptionsPanel = blizzPanel
+            elseif InterfaceOptions_AddCategory then
+                InterfaceOptions_AddCategory(blizzPanel)
+                TA._blizzOptionsPanel = blizzPanel
+            end
+        end)
+        if not ok and TA.debug then
+            print("|cFFFFD100[TA]|r Blizzard Settings registration failed: " .. tostring(err))
+        end
+    end
+
+    -- ── Initialize the modern side-drawer ─────────────────────────────────────
+    -- The drawer anchors to the right edge of the main frame and hosts the
+    -- QuestTracker content inline (eliminating the separate floating window).
+    -- Also applies the glass backdrop to the main frame now that M is loaded.
+    if TA.Modern and TA.Modern.InitDrawer then
+        pcall(function()
+            TA.Modern:ApplyGlassBackdrop(frame)
+            TA.Modern:InitDrawer()
+        end)
+    end
 end
 
 -- ── Options panel — toggle which tabs are shown ────────────────────────
--- Takes effect after /reload (the tab bar is only built once at InitUI).
+-- Changes take effect immediately: the checkbox OnClick handler calls
+-- frame:RebuildTabs() so the tab bar is updated without a /reload.
 function TA:OpenOptionsFrame()
     if self.optionsFrame then
         self.optionsFrame:Show()
         return
     end
 
+    -- Height: header (20) + layout section (48) + divider gap (16)
+    --         + (numTabs-1) * 24 + footer (28)
+    local numTabRows = #TABS - 1  -- "character" tab is always-on, not listed
     local of = CreateFrame("Frame", "ToonAgeOptionsFrame", UIParent, "BackdropTemplate")
-    of:SetSize(280, 60 + (#TABS - 1) * 24)
+    of:SetSize(300, 116 + numTabRows * 24)
     of:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
-    ApplyBackdrop(of, 0.05, 0.04, 0.02, 0.98)
-    of:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.80)
+    ApplyBackdrop(of, 0.05, 0.05, 0.06, 0.94)
+    of:SetBackdropBorderColor(0.30, 0.30, 0.35, 1.00)
+    -- Apply glass backdrop if Modern is available
+    if TA.Modern and TA.Modern.ApplyGlassBackdrop then
+        TA.Modern:ApplyGlassBackdrop(of)
+    end
     of:SetFrameStrata("DIALOG")
     of:SetMovable(true)
     of:EnableMouse(true)
@@ -327,10 +421,60 @@ function TA:OpenOptionsFrame()
 
     local hdr = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     hdr:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-    hdr:SetText("|cFFFFD100Visible Tabs|r")
+    hdr:SetText("|cFFFFD100ToonAge Options|r")
     hdr:SetPoint("TOPLEFT", of, "TOPLEFT", 12, -10)
 
-    local y = -30
+    -- ── UI Layout Toggle ──────────────────────────────────────────────
+    local layoutHdr = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    layoutHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    layoutHdr:SetText("HUD LAYOUT")
+    layoutHdr:SetTextColor(0.55, 0.40, 0.08, 1)
+    layoutHdr:SetPoint("TOPLEFT", of, "TOPLEFT", 12, -30)
+
+    local layoutCb = CreateFrame("CheckButton", nil, of, "UICheckButtonTemplate")
+    layoutCb:SetSize(20, 20)
+    layoutCb:SetPoint("TOPLEFT", of, "TOPLEFT", 10, -46)
+    layoutCb:SetChecked(TA.db and TA.db.useUnifiedUI ~= false)
+
+    local layoutLbl = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    layoutLbl:SetFont(STANDARD_TEXT_FONT, 11, "")
+    layoutLbl:SetText("Use Unified Single-Frame HUD Layout")
+    layoutLbl:SetTextColor(0.78, 0.73, 0.48, 1)
+    layoutLbl:SetPoint("LEFT", layoutCb, "RIGHT", 2, 0)
+
+    local layoutNote = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    layoutNote:SetFont(STANDARD_TEXT_FONT, 9, "")
+    layoutNote:SetText("  Unchecked = classic independent windows")
+    layoutNote:SetTextColor(0.50, 0.47, 0.36, 1)
+    layoutNote:SetPoint("TOPLEFT", layoutCb, "BOTTOMLEFT", 22, 2)
+
+    -- OnShow: sync checkbox to current DB value each time the panel opens
+    of:SetScript("OnShow", function()
+        layoutCb:SetChecked(TA.db and TA.db.useUnifiedUI ~= false)
+    end)
+
+    layoutCb:SetScript("OnClick", function(self)
+        TA.db.useUnifiedUI = self:GetChecked()
+        TA:ApplyLayout()
+        local mode = TA.db.useUnifiedUI and "Unified HUD" or "Fragmented Windows"
+        print("|cFFFFD100[ToonAge]|r Layout switched to: " .. mode)
+    end)
+
+    -- ── Divider ───────────────────────────────────────────────────────
+    local divider = of:CreateTexture(nil, "ARTWORK")
+    divider:SetColorTexture(0.55, 0.40, 0.08, 0.40)
+    divider:SetHeight(1)
+    divider:SetPoint("TOPLEFT",  of, "TOPLEFT",  10, -76)
+    divider:SetPoint("TOPRIGHT", of, "TOPRIGHT", -10, -76)
+
+    -- ── Tab Visibility ────────────────────────────────────────────────
+    local tabsHdr = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tabsHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    tabsHdr:SetText("VISIBLE TABS")
+    tabsHdr:SetTextColor(0.55, 0.40, 0.08, 1)
+    tabsHdr:SetPoint("TOPLEFT", of, "TOPLEFT", 12, -84)
+
+    local y = -100
     for _, tabDef in ipairs(TABS) do
         if tabDef.id ~= "character" then
             local cb = CreateFrame("CheckButton", nil, of, "UICheckButtonTemplate")
@@ -347,6 +491,10 @@ function TA:OpenOptionsFrame()
             cb:SetScript("OnClick", function(self)
                 TA.db.disabledTabs = TA.db.disabledTabs or {}
                 TA.db.disabledTabs[tabDef.id] = not self:GetChecked() or nil
+                -- Apply immediately — no /reload required.
+                if TA.UI and TA.UI.RebuildTabs then
+                    TA.UI:RebuildTabs()
+                end
             end)
 
             y = y - 24
@@ -355,7 +503,7 @@ function TA:OpenOptionsFrame()
 
     local note = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     note:SetFont(STANDARD_TEXT_FONT, 9)
-    note:SetText("|cFF888780Changes apply after /reload.|r")
+    note:SetText("|cFF4AFF7AAll changes apply immediately.|r")
     note:SetPoint("BOTTOMLEFT", of, "BOTTOMLEFT", 12, 10)
 
     local closeBtn = CreateFrame("Button", nil, of, "UIPanelCloseButton")
@@ -366,3 +514,95 @@ function TA:OpenOptionsFrame()
     self.optionsFrame = of
     of:Show()
 end
+
+-- ── ApplyLayout ───────────────────────────────────────────────────────────────
+-- Switches between Unified HUD and Fragmented (independent windows) layouts.
+-- Called on login (after all module Init()s) and whenever the player toggles
+-- the setting via the options panel or the minimap button right-click.
+--
+-- Frame references:
+--   Arrow.lua   exposes its frame as  TA:GetModule("Arrow").frame
+--   QuestTracker exposes its window as TA:GetModule("QuestTracker").window
+-- We use these rather than globals so the function works regardless of naming.
+
+function TA:ApplyLayout()
+    local db = self.db
+    if not db then return end   -- called before InitDB? shouldn't happen, guard anyway
+
+    local Arrow  = self:GetModule("Arrow")
+    local QT     = self:GetModule("QuestTracker")
+    local arrowF = Arrow  and Arrow.frame
+    local guideF = QT     and QT.window
+
+    if db.useUnifiedUI then
+        -- ── UNIFIED HUD ────────────────────────────────────────────────────────
+        -- The main ToonAge tab panel (self.UI / ToonAgeFrame) already serves as
+        -- a persistent, draggable master frame.  We park the arrow and guide
+        -- tracker next to it rather than inside it (they have their own strata
+        -- and scroll-child logic that breaks when re-parented mid-session).
+        --
+        -- "Unified" in practice means: restore saved unified positions so the
+        -- three pieces snap to a coherent cluster rather than wherever the player
+        -- last scattered them.
+
+        if arrowF then
+            arrowF:ClearAllPoints()
+            local pos = db.unifiedPosition
+            -- Arrow sits just to the left of the main frame's default anchor
+            arrowF:SetPoint(pos.point, UIParent, pos.relativePoint,
+                pos.x - 50, pos.y + 10)
+            -- Restore normal interactive drag in unified mode
+            arrowF:RegisterForDrag("LeftButton")
+        end
+
+        if guideF then
+            guideF:ClearAllPoints()
+            local pos = db.unifiedPosition
+            -- Guide tracker sits just to the right of the unified anchor
+            guideF:SetPoint(pos.point, UIParent, pos.relativePoint,
+                pos.x + 10, pos.y + 10)
+        end
+
+        if self.UI and not self.UI:IsVisible() then
+            -- Don't force the tab panel open; just ensure it's un-hidden if it
+            -- was hidden by the old-layout hide path below.
+            -- The player still opens it manually via /ta or the minimap click.
+        end
+
+    else
+        -- ── FRAGMENTED (OLD) LAYOUT ────────────────────────────────────────────
+        -- Restore each window to its individually-saved position.
+
+        if arrowF then
+            arrowF:ClearAllPoints()
+            local pos = db.oldUiPositions.arrow
+            arrowF:SetPoint(pos.point, UIParent, pos.relativePoint, pos.x, pos.y)
+            arrowF:RegisterForDrag("LeftButton")
+        end
+
+        if guideF then
+            guideF:ClearAllPoints()
+            local pos = db.oldUiPositions.guide
+            guideF:SetPoint(pos.point, UIParent, pos.relativePoint, pos.x, pos.y)
+        end
+    end
+end
+
+-- ── ToggleOptionsPanel ────────────────────────────────────────────────────────
+-- Opens ToonAge's settings in the Blizzard Settings window (Patch 10.0+).
+-- Falls back to the legacy InterfaceOptionsFrame path and, as a final fallback,
+-- opens the in-addon options panel directly (so the gear button always works).
+
+function TA:ToggleOptionsPanel()
+    -- On 12.0.x PTR, Settings.OpenToCategory expects a numeric category ID
+    -- (not a string name). RegisterCanvasLayoutCategory returns a category
+    -- object but there's no reliable way to extract its numeric ID across
+    -- builds. Skip the Blizzard panel entirely and open our own — it's more
+    -- functional anyway.
+    self:OpenOptionsFrame()
+end
+
+-- ── Blizzard Settings registration ───────────────────────────────────────────
+-- Registered lazily inside InitUI() (called from OnLogin after PLAYER_ENTERING_WORLD)
+-- so Blizzard's Settings API is guaranteed to be loaded.  Doing this at file-load
+-- time risks the Settings global not existing yet and aborting the rest of the file.
