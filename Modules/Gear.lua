@@ -171,6 +171,9 @@ local function CalculateItemScore(itemLink, specID, mode)
     return baseScore
 end
 
+-- Expose for tooltip hook usage
+Gear.CalculateItemScore = CalculateItemScore
+
 -- ── Throttled bag scan with claim tracking ────────────────────────────
 -- Returns bestLink, bestScore, bestBag, bestSlot, claimedBy, claimedLink, claimedBag, claimedSlot
 -- claimedBy/claimedLink/Bag/Slot describe the best item that was already claimed by another slot.
@@ -347,6 +350,17 @@ function Gear:Render(content, sidebar)
     for _, f in ipairs(self.sideFrames) do f:Hide(); f:SetParent(nil) end
     self.sideFrames = {}
 
+    -- Place a hint in the sidebar so the dynamic resizing logic doesn't
+    -- hide the sidebar (Gear uses on-demand sidebar via click).
+    local hint = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hint:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+    hint:SetText("Click a gear slot\nfor details")
+    hint:SetTextColor(0.50, 0.47, 0.42, 1)
+    hint:SetPoint("TOP", sidebar, "TOP", 0, -20)
+    hint:SetWidth(sidebar:GetWidth() - 12)
+    hint:SetJustifyH("CENTER")
+    sidebar:SetHeight(60)  -- ensure non-zero height for dynamic resize check
+
     -- Auto-detect PvP mode: if the player is in a PvP instance (arena/BG)
     -- or has War Mode enabled, default to PvP scoring so PvP gear surfaces
     -- correctly. Manual toggle always overrides this auto-detection.
@@ -443,6 +457,7 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
     local colW, col = math.floor((w - 8) / 2), 0
     local claimedBags = {}
     local playerLevel = UnitLevel("player") or 1
+    local pendingUpgrades = {}  -- collected for "Equip All" button
 
     for _, slotDef in ipairs(CORE_GRID_SLOTS) do
         local currentLink  = GetLiveEquippedLink(slotDef, "player")
@@ -619,8 +634,95 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
             )
         end)
 
+        -- Inline Equip button (only shown when an upgrade is available)
+        if hasUpgrade and bBag and bSlot then
+            local eqBag, eqSlot, eqTargetSlot = bBag, bSlot, targetSlotID
+            local equipBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
+            equipBtn:SetSize(42, 16)
+            equipBtn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -6, 4)
+            equipBtn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+            equipBtn:SetBackdropColor(0.08, 0.20, 0.08, 1)
+            equipBtn:SetBackdropBorderColor(0.20, 0.80, 0.30, 0.8)
+            local eqLbl = equipBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            eqLbl:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+            eqLbl:SetText("Equip")
+            eqLbl:SetTextColor(0.30, 0.92, 0.40, 1)
+            eqLbl:SetAllPoints(equipBtn)
+            eqLbl:SetJustifyH("CENTER")
+            equipBtn:SetScript("OnClick", function(_, btn2)
+                if btn2 == "LeftButton" or btn2 == nil then
+                    if C_Container and C_Container.PickupContainerItem then
+                        C_Container.PickupContainerItem(eqBag, eqSlot)
+                    else
+                        PickupContainerItem(eqBag, eqSlot)
+                    end
+                    EquipCursorItem(eqTargetSlot)
+                end
+            end)
+            equipBtn:SetScript("OnEnter", function(f)
+                f:SetBackdropColor(0.12, 0.30, 0.12, 1)
+            end)
+            equipBtn:SetScript("OnLeave", function(f)
+                f:SetBackdropColor(0.08, 0.20, 0.08, 1)
+            end)
+            table.insert(self.frames, equipBtn)
+
+            -- Track for Equip All
+            table.insert(pendingUpgrades, { bag = eqBag, slot = eqSlot, target = eqTargetSlot, name = slotDef.name })
+        end
+
         col = col + 1
         if col >= 2 then col = 0; y = y - 58 end
+    end
+
+    -- ── Equip All Upgrades button ─────────────────────────────────────
+    if #pendingUpgrades > 0 then
+        y = y - 12
+        local equipAllBtn = CreateFrame("Button", nil, content, "BackdropTemplate")
+        equipAllBtn:SetSize(w, 26)
+        equipAllBtn:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        equipAllBtn:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        equipAllBtn:SetBackdropColor(0.06, 0.18, 0.06, 1)
+        equipAllBtn:SetBackdropBorderColor(0.20, 0.80, 0.30, 0.9)
+
+        local eaLbl = equipAllBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        eaLbl:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+        eaLbl:SetText("\226\156\147 Equip All Upgrades (" .. #pendingUpgrades .. ")")
+        eaLbl:SetTextColor(0.30, 0.92, 0.40, 1)
+        eaLbl:SetAllPoints(equipAllBtn)
+        eaLbl:SetJustifyH("CENTER")
+
+        equipAllBtn:SetScript("OnClick", function()
+            for _, up in ipairs(pendingUpgrades) do
+                if C_Container and C_Container.PickupContainerItem then
+                    C_Container.PickupContainerItem(up.bag, up.slot)
+                else
+                    PickupContainerItem(up.bag, up.slot)
+                end
+                EquipCursorItem(up.target)
+            end
+            -- Brief delay then re-render to reflect changes
+            C_Timer.After(0.5, function()
+                if TA.UI and TA.UI.activeTab == "gear" then
+                    self:Render(TA.UI.contentChild, TA.UI.sideChild)
+                end
+            end)
+        end)
+        equipAllBtn:SetScript("OnEnter", function(f)
+            f:SetBackdropColor(0.10, 0.28, 0.10, 1)
+            GameTooltip:SetOwner(f, "ANCHOR_TOP")
+            GameTooltip:SetText("Equip All Upgrades", 0.30, 0.92, 0.40)
+            for _, up in ipairs(pendingUpgrades) do
+                GameTooltip:AddLine("  " .. up.name, 0.8, 0.8, 0.8)
+            end
+            GameTooltip:Show()
+        end)
+        equipAllBtn:SetScript("OnLeave", function(f)
+            f:SetBackdropColor(0.06, 0.18, 0.06, 1)
+            GameTooltip:Hide()
+        end)
+        table.insert(self.frames, equipAllBtn)
+        y = y - 32
     end
 
     -- Currency section
@@ -843,4 +945,177 @@ function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, up
     end
 
     parent:SetHeight(math.abs(y) + 10)
+end
+
+
+-- =============================================================================
+-- TOOLTIP INJECTION — ToonAge Score + Upgrade Arrow
+-- =============================================================================
+-- Hooks GameTooltip to show the item's ToonAge weighted score and whether
+-- it's an upgrade over the currently equipped item in that slot.
+-- Inspired by Pawn's approach but using ToonAge's own stat weight system.
+
+local TOOLTIP_INJECTED_KEY = "TA_INJECTED"  -- prevent double-injection
+
+-- Slot ID lookup from equip location strings returned by GetItemInfoInstant
+local EQUIP_LOC_TO_SLOT = {
+    INVTYPE_HEAD      = 1,  INVTYPE_NECK      = 2,  INVTYPE_SHOULDER  = 3,
+    INVTYPE_BODY      = 4,  INVTYPE_CHEST     = 5,  INVTYPE_ROBE      = 5,
+    INVTYPE_WAIST     = 6,  INVTYPE_LEGS      = 7,  INVTYPE_FEET      = 8,
+    INVTYPE_WRIST     = 9,  INVTYPE_HAND      = 10,
+    INVTYPE_FINGER    = 11, INVTYPE_TRINKET   = 13,
+    INVTYPE_CLOAK     = 15, INVTYPE_WEAPON    = 16,
+    INVTYPE_SHIELD    = 17, INVTYPE_2HWEAPON  = 16,
+    INVTYPE_WEAPONMAINHAND = 16, INVTYPE_WEAPONOFFHAND = 17,
+    INVTYPE_HOLDABLE  = 17, INVTYPE_RANGED    = 16,
+    INVTYPE_RANGEDRIGHT = 16,
+}
+
+local function InjectTooltipScore(tooltip, itemLink)
+    if not itemLink then return end
+    if not TA.charDB then return end
+
+    -- Prevent double injection (tooltip can fire multiple times for same item)
+    if tooltip[TOOLTIP_INJECTED_KEY] == itemLink then return end
+    tooltip[TOOLTIP_INJECTED_KEY] = itemLink
+
+    local specID = U.GetPlayerSpec()
+    if not specID then return end
+
+    local pvxMode = (TA.charDB and TA.charDB.pvxMode) or "pve"
+    local score   = CalculateItemScore(itemLink, specID, pvxMode)
+    if not score or score <= 0 then return end
+
+    -- Determine the equip slot to compare against
+    local _, _, _, equipLoc = GetItemInfoInstant(itemLink)
+    if not equipLoc or equipLoc == "" then return end
+    local slotID = EQUIP_LOC_TO_SLOT[equipLoc]
+    if not slotID then return end
+
+    -- Get currently equipped item score for comparison
+    local equippedLink = GetInventoryItemLink("player", slotID)
+    local equippedScore = 0
+    if equippedLink then
+        equippedScore = CalculateItemScore(equippedLink, specID, pvxMode)
+    end
+
+    -- For rings/trinkets, check both slots and use the lower score
+    if equipLoc == "INVTYPE_FINGER" then
+        local link2 = GetInventoryItemLink("player", 12)
+        if link2 then
+            local score2 = CalculateItemScore(link2, specID, pvxMode)
+            equippedScore = math.min(equippedScore, score2)
+        end
+    elseif equipLoc == "INVTYPE_TRINKET" then
+        local link2 = GetInventoryItemLink("player", 14)
+        if link2 then
+            local score2 = CalculateItemScore(link2, specID, pvxMode)
+            equippedScore = math.min(equippedScore, score2)
+        end
+    end
+
+    -- Build the tooltip line
+    tooltip:AddLine(" ")
+    tooltip:AddLine("ToonAge Score", 0.40, 0.75, 1.00)
+
+    local diff = score - equippedScore
+    if equippedScore > 0 and diff > 0 then
+        local pct = math.floor((diff / equippedScore) * 100)
+        tooltip:AddDoubleLine(
+            string.format("Score: %d", math.floor(score)),
+            "|TInterface\\Buttons\\UI-GroupLoot-Dice-Up:14:14:0:0|t |cFF4AFF7A+" .. pct .. "% upgrade|r",
+            0.92, 0.90, 0.87,
+            0.30, 0.92, 0.40
+        )
+    elseif equippedScore > 0 and diff < 0 then
+        local pct = math.floor((math.abs(diff) / equippedScore) * 100)
+        tooltip:AddDoubleLine(
+            string.format("Score: %d", math.floor(score)),
+            "|cFFFF6666-" .. pct .. "% downgrade|r",
+            0.92, 0.90, 0.87,
+            1.00, 0.40, 0.40
+        )
+    else
+        tooltip:AddDoubleLine(
+            string.format("Score: %d", math.floor(score)),
+            equippedScore > 0 and "|cFFAAAAAAAAequal|r" or "|cFFAAAAAAAAno comparison|r",
+            0.92, 0.90, 0.87,
+            0.60, 0.60, 0.60
+        )
+    end
+
+    tooltip:Show()
+end
+
+-- ── Hook GameTooltip methods ──────────────────────────────────────────────────
+-- We hook after the tooltip is populated (hooksecurefunc runs AFTER the
+-- original), extract the item link, and inject our score line.
+
+local function OnTooltipSetItem(tooltip)
+    if not tooltip or not tooltip.GetItem then return end
+    local _, itemLink = tooltip:GetItem()
+    if itemLink then
+        InjectTooltipScore(tooltip, itemLink)
+    end
+end
+
+-- Clear injection flag when tooltip is cleared
+local function OnTooltipCleared(tooltip)
+    if tooltip then
+        tooltip[TOOLTIP_INJECTED_KEY] = nil
+    end
+end
+
+-- Register hooks on Gear:Init() — deferred so we don't hook before the game
+-- has fully loaded tooltip infrastructure.
+local origInit = Gear.Init
+function Gear:Init()
+    origInit(self)
+
+    -- Hook the primary GameTooltip
+    if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall then
+        -- Retail 10.0.2+ tooltip data system
+        TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
+            if tooltip == GameTooltip or tooltip == ItemRefTooltip then
+                local _, itemLink = tooltip:GetItem()
+                if itemLink then
+                    InjectTooltipScore(tooltip, itemLink)
+                end
+            end
+        end)
+    else
+        -- Legacy hook path
+        hooksecurefunc(GameTooltip, "SetBagItem", function(tt, bag, slot)
+            local itemLink = C_Container and C_Container.GetContainerItemLink(bag, slot)
+                          or GetContainerItemLink(bag, slot)
+            if itemLink then InjectTooltipScore(tt, itemLink) end
+        end)
+        hooksecurefunc(GameTooltip, "SetInventoryItem", function(tt, unit, slot)
+            local itemLink = GetInventoryItemLink(unit, slot)
+            if itemLink then InjectTooltipScore(tt, itemLink) end
+        end)
+        hooksecurefunc(GameTooltip, "SetHyperlink", function(tt, link)
+            if link and link:match("^item:") then
+                InjectTooltipScore(tt, link)
+            end
+        end)
+        hooksecurefunc(GameTooltip, "SetMerchantItem", function(tt, index)
+            local itemLink = GetMerchantItemLink(index)
+            if itemLink then InjectTooltipScore(tt, itemLink) end
+        end)
+        hooksecurefunc(GameTooltip, "SetQuestItem", function(tt, type, index)
+            local itemLink = GetQuestItemLink(type, index)
+            if itemLink then InjectTooltipScore(tt, itemLink) end
+        end)
+        hooksecurefunc(GameTooltip, "SetQuestLogItem", function(tt, type, index)
+            local itemLink = GetQuestLogItemLink(type, index)
+            if itemLink then InjectTooltipScore(tt, itemLink) end
+        end)
+    end
+
+    -- Clear flag on tooltip hide
+    GameTooltip:HookScript("OnTooltipCleared", OnTooltipCleared)
+    if ItemRefTooltip then
+        ItemRefTooltip:HookScript("OnTooltipCleared", OnTooltipCleared)
+    end
 end

@@ -15,8 +15,8 @@ TA:RegisterModule("Arrow", Arrow)
 Arrow.frame        = nil
 Arrow.throttle     = 0
 Arrow.currentAngle = nil   -- lerped rotation state; nil = snap on next Tick
-local UPDATE_HZ  = 0.05   -- 20 Hz for smooth rotation
-local LERP_RATE  = 0.15   -- fraction of the remaining angle closed per tick
+local UPDATE_HZ  = 0.03   -- ~33 Hz for smooth rotation
+local LERP_RATE  = 0.35   -- fraction of the remaining angle closed per tick (higher = more responsive)
 
 local ARROW_W, ARROW_H = 80, 100
 
@@ -51,18 +51,47 @@ end
 -- powers the default UI's built-in supertracking arrow — real, verified
 -- per-quest data instead of a guessed zone-center/last-NPC fallback.
 local function GetEffectiveCoord(step)
-    local coordMap = step.coord.map or 0
-    local cx, cy   = step.coord.x, step.coord.y
-
-    if coordMap == 0 and cx == 0 and cy == 0
-       and step.questID and C_QuestLog.GetNextWaypoint then
-        local wpMap, wpX, wpY = C_QuestLog.GetNextWaypoint(step.questID)
-        if wpMap and wpX and wpY then
-            return wpMap, wpX, wpY
+    -- PRIORITY 1: Blizzard's live quest waypoint system.
+    -- GetNextWaypoint only works for supertracked/watched quests.
+    if step.questID and C_QuestLog.GetNextWaypoint then
+        -- Make sure the quest is tracked so waypoint data is available
+        local questID = step.questID
+        local logIdx = C_QuestLog.GetLogIndexForQuestID(questID)
+        if logIdx then
+            local wpMap, wpX, wpY = C_QuestLog.GetNextWaypoint(questID)
+            if wpMap and wpX and wpY and (wpX ~= 0 or wpY ~= 0) then
+                return wpMap, wpX, wpY
+            end
         end
     end
 
-    return coordMap, cx, cy
+    -- PRIORITY 2: Quest POI markers on the map (works for most tracked quests)
+    if step.questID and C_QuestLog.GetLogIndexForQuestID then
+        local questID = step.questID
+        local logIdx = C_QuestLog.GetLogIndexForQuestID(questID)
+        if logIdx then
+            local currentMap = C_Map.GetBestMapForUnit("player")
+            if currentMap and C_Map.GetMapPosFromWorldPos then
+                -- Try to get quest POI via the map system
+                if QuestPOIGetIconInfo then
+                    local completed, posX, posY = QuestPOIGetIconInfo(questID)
+                    if posX and posY and (posX ~= 0 or posY ~= 0) then
+                        return currentMap, posX, posY
+                    end
+                end
+            end
+        end
+    end
+
+    -- PRIORITY 3: Manual guide coords
+    local coordMap = step.coord.map or 0
+    local cx, cy   = step.coord.x, step.coord.y
+    if coordMap ~= 0 or cx ~= 0 or cy ~= 0 then
+        return coordMap, cx, cy
+    end
+
+    -- Nothing available
+    return 0, 0, 0
 end
 -- Exposed on the module table so QuestTracker.lua can reuse the exact same
 -- resolution (including the live-waypoint fallback) for its distance/ETA
@@ -185,6 +214,27 @@ function Arrow:InitFrame()
     self.frame = f
 end
 
+-- ── Color gradient helper ─────────────────────────────────────────────────
+-- Interpolates between 3 colors based on t (0..1): bad → mid → good
+local function ColorGradient(t, br,bg,bb, mr,mg,mb, gr,gg,gb)
+    if t >= 1 then return gr, gg, gb end
+    if t <= 0 then return br, bg, bb end
+    if t < 0.5 then
+        local p = t * 2
+        return br + (mr - br) * p, bg + (mg - bg) * p, bb + (mb - bb) * p
+    else
+        local p = (t - 0.5) * 2
+        return mr + (gr - mr) * p, mg + (gg - mg) * p, mb + (gb - mb) * p
+    end
+end
+
+-- ETA speed smoothing state
+local speedSamples = { 0, 0 }
+local lastDist     = nil
+local lastTime     = 0
+local ARRIVAL_DIST = 10   -- yards — threshold for arrival state
+local ARRIVAL_PULSE_RATE = 3  -- pulses per second
+
 -- ── Per-tick update ───────────────────────────────────────────────────────
 
 function Arrow:Tick(f)
@@ -196,6 +246,7 @@ function Arrow:Tick(f)
         f.distF:SetText("---")
         f.etaF:SetText("")
         f.titleF:SetText("No Waypoint")
+        self._arrived = false
         return
     end
 
@@ -207,6 +258,7 @@ function Arrow:Tick(f)
         f.distF:SetText("")
         f.etaF:SetText("")
         f.titleF:SetText(step.text or "")
+        self._arrived = false
         return
     end
 
@@ -229,6 +281,7 @@ function Arrow:Tick(f)
         f.greyTex:Show()
         f.distF:SetText("No Loc")
         f.etaF:SetText("")
+        self._arrived = false
         return
     end
 
@@ -241,6 +294,7 @@ function Arrow:Tick(f)
         f.greyTex:Show()
         f.distF:SetText("Diff Zone")
         f.etaF:SetText("")
+        self._arrived = false
         return
     end
 
@@ -248,22 +302,124 @@ function Arrow:Tick(f)
     if not pos then return end
     local px, py = pos:GetXY()
 
+    local dx          = cx - px
+    local dy          = cy - py
+    -- WoW map: Y increases southward. atan2(dx, -dy) gives clockwise bearing.
+    -- GetPlayerFacing() returns counter-clockwise radians from north.
+    -- The difference gives the screen-space rotation for the arrow texture.
+    local bearing     = math.atan2(dx, -dy)
+    local facing      = GetPlayerFacing()
+
+    -- GetPlayerFacing() returns nil in instances/indoors on some builds,
+    -- AND may be restricted entirely on 12.0 PTR builds. Fallback: infer
+    -- facing direction from consecutive position samples.
+    if not facing then
+        -- Infer facing from movement direction
+        if self._lastPx and self._lastPy then
+            local mdx = px - self._lastPx
+            local mdy = py - self._lastPy
+            local moved = math.sqrt(mdx * mdx + mdy * mdy)
+            if moved > 0.0001 then
+                -- Player moved — use movement direction as facing
+                facing = math.atan2(mdx, -mdy)
+            else
+                -- Standing still — use last known facing or 0
+                facing = self._lastFacing or 0
+            end
+        else
+            facing = 0
+        end
+    end
+    self._lastPx = px
+    self._lastPy = py
+    self._lastFacing = facing
+
+    local targetAngle = bearing - facing
+
+    local yards = U.ComputeDistance(px, py, cx, cy)
+
+    -- ── ARRIVAL STATE ─────────────────────────────────────────────────
+    if yards <= ARRIVAL_DIST then
+        if not self._arrived then
+            self._arrived = true
+            self.currentAngle = nil  -- reset lerp on next non-arrived tick
+        end
+        f.greyTex:Hide()
+        f.arrowTex:Show()
+        f.arrowTex:SetRotation(0)  -- point straight up
+
+        -- Pulsing green glow to indicate arrival
+        local pulse = 0.6 + 0.4 * math.sin(GetTime() * ARRIVAL_PULSE_RATE * math.pi * 2)
+        f.arrowTex:SetVertexColor(0.20, 0.92, 0.40, pulse)
+
+        f.distF:SetText("|cFF4AFF7AArrived|r")
+        f.etaF:SetText("")
+        return
+    end
+
+    self._arrived = false
     f.greyTex:Hide()
     f.arrowTex:Show()
 
-    local dx          = cx - px
-    local dy          = cy - py
-    local bearing     = math.atan2(dx, -dy)
-    local facing      = GetPlayerFacing() or 0
-    local targetAngle = bearing - facing
+    -- ── DIRECTIONAL COLOR GRADIENT ────────────────────────────────────
+    -- perc = 1.0 when facing the waypoint, 0.0 when facing directly away
+    local perc = math.abs((math.pi - math.abs(targetAngle)) / math.pi)
+    -- Clamp to 0..1 (angles can slightly exceed pi due to lerp overshoot)
+    perc = math.max(0, math.min(1, perc))
 
-    self.currentAngle = self.currentAngle or targetAngle
-    self.currentAngle = LerpAngle(self.currentAngle, targetAngle, LERP_RATE)
-    f.arrowTex:SetRotation(self.currentAngle)
+    local r, g, b = ColorGradient(perc,
+        0.90, 0.20, 0.15,   -- red (facing away)
+        1.00, 0.80, 0.10,   -- yellow (sideways)
+        0.20, 0.92, 0.40    -- green (facing toward)
+    )
 
-    local yards = U.ComputeDistance(px, py, cx, cy)
+    -- ── ROTATION (direct, no lerp) ───────────────────────────────────
+    -- Set arrow rotation directly each frame so it responds instantly
+    -- when the player turns. TomTom/APR use the same approach.
+    f.arrowTex:SetRotation(targetAngle)
+    f.arrowTex:SetVertexColor(r, g, b, 1)
+
+    -- ── DISTANCE ──────────────────────────────────────────────────────
     f.distF:SetText(U.FormatDistance(yards))
-    f.etaF:SetText(U.FormatETA(yards, GetTravelSpeed()))
+
+    -- ── SPEED-SMOOTHED ETA ────────────────────────────────────────────
+    -- Track distance changes over time and average over 2 samples to
+    -- prevent ETA jitter from micro-movement and position snapping.
+    local now = GetTime()
+    local dt  = now - lastTime
+    if dt > 0.1 and lastDist then
+        local moved = lastDist - yards  -- positive if getting closer
+        local instantSpeed = moved / dt
+        -- Shift samples
+        speedSamples[1] = speedSamples[2]
+        speedSamples[2] = instantSpeed
+    end
+    lastDist = yards
+    lastTime = now
+
+    local avgSpeed = (speedSamples[1] + speedSamples[2]) / 2
+    if avgSpeed > 0.5 then
+        -- Player is actually moving toward the target
+        local eta = yards / avgSpeed
+        if eta < 3600 then
+            local mins = math.floor(eta / 60)
+            local secs = math.floor(eta % 60)
+            f.etaF:SetText(string.format("|cFFCCCCCC%d:%02d ETA|r", mins, secs))
+        else
+            f.etaF:SetText("")
+        end
+    elseif avgSpeed < -0.5 then
+        -- Moving away
+        f.etaF:SetText("|cFFFF6666moving away|r")
+    else
+        -- Standing still or moving perpendicular — use fallback speed
+        local fallbackSpeed = GetTravelSpeed()
+        if fallbackSpeed > 0 then
+            f.etaF:SetText(U.FormatETA(yards, fallbackSpeed))
+        else
+            f.etaF:SetText("")
+        end
+    end
 end
 
 -- ── Public API ────────────────────────────────────────────────────────────

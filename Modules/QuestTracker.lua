@@ -825,6 +825,7 @@ function QT:InitWindow()
         self.statusThrottle = 0
         self:RenderStatusLine()
         self:UpdateQuestItemButton()
+        self:CheckProximityAdvance()
     end)
 
     -- ── Quest Item Button ─────────────────────────────────────────────────────
@@ -1259,6 +1260,67 @@ QT.SlashCommands = {
     diag     = function(self) self:Diagnose() end,
     diagnose = function(self) self:Diagnose() end,
 }
+
+
+-- =============================================================================
+-- PROXIMITY-BASED AUTO-ADVANCE (APR-style)
+-- =============================================================================
+-- When the current step is a 'travel' or 'Waypoint'-type step (no quest
+-- action, just movement), auto-advance to the next step when the player
+-- arrives within range. This eliminates manual "Mark Done" for travel steps.
+
+local PROXIMITY_RANGE = 15  -- yards — advance when within this distance
+
+function QT:CheckProximityAdvance()
+    if not self.guideID then return end
+    local guide = TA.Guides and TA.Guides[self.guideID]
+    if not guide then return end
+    local step = guide.steps[self.stepIdx]
+    if not step then return end
+
+    -- Only auto-advance travel/waypoint steps (not quest pickup/turnin/action)
+    local stepType = step.type or ""
+    if stepType ~= "travel" and stepType ~= "waypoint" and stepType ~= "run" then
+        return
+    end
+
+    -- Need a coord to measure distance against
+    if not step.coord then return end
+    local Arrow = TA:GetModule("Arrow")
+    if not Arrow or not Arrow.GetEffectiveCoord then return end
+
+    local coordMap, cx, cy = Arrow.GetEffectiveCoord(step)
+    if coordMap == 0 and cx == 0 and cy == 0 then return end
+
+    local currentMap = C_Map.GetBestMapForUnit("player")
+    if not currentMap then return end
+    if coordMap ~= 0 and coordMap ~= currentMap then return end
+
+    local pos = C_Map.GetPlayerMapPosition(currentMap, "player")
+    if not pos then return end
+    local px, py = pos:GetXY()
+
+    local yards = TA.Utils.ComputeDistance(px, py, cx, cy)
+    if yards <= PROXIMITY_RANGE then
+        -- Auto-advance: mark current step done and move to next incomplete
+        step._manualDone = true
+        for i = self.stepIdx + 1, #guide.steps do
+            if not self:IsStepComplete(guide.steps[i]) then
+                self.stepIdx = i
+                self:SaveState()
+                self:UpdateWindow()
+                -- Subtle chat notification
+                print(string.format("|cFF4AFF7A[TA]|r Arrived — advancing to step %d.", i))
+                return
+            end
+        end
+        -- All subsequent steps done
+        self.stepIdx = #guide.steps
+        self:SaveState()
+        self:UpdateWindow()
+    end
+end
+
 
 
 -- =============================================================================

@@ -240,9 +240,17 @@ function TA:InitUI()
 
             -- ── Dynamic panel resizing ────────────────────────────────────
             -- If the sidebar scroll child has no meaningful content (height ≤ 1
-            -- means nothing was rendered into it), hide the sidebar and expand
-            -- the content scroll to consume the full frame width.
+            -- means nothing was rendered into it) AND the module didn't parent
+            -- persistent frames directly to the sidebar (like 3D models), hide
+            -- the sidebar and expand content to consume the full frame width.
             local sideEmpty = (self.sideChild:GetHeight() <= 1)
+            -- Check if the module parented persistent frames to the sidebar
+            if sideEmpty and tabDef then
+                local mod2 = TA:GetModule(tabDef.module)
+                if mod2 and mod2.sideFrames and #mod2.sideFrames > 0 then
+                    sideEmpty = false
+                end
+            end
             if sideEmpty then
                 self.sidebar:Hide()
                 self.contentScroll:ClearAllPoints()
