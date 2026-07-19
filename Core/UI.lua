@@ -594,6 +594,14 @@ function TA:ApplyLayout()
             guideF:SetPoint(pos.point, UIParent, pos.relativePoint, pos.x, pos.y)
         end
     end
+
+    -- After repositioning: ensure tracker is populated and visible if a guide is active
+    if QT then
+        if QT.guideID and guideF then
+            guideF:Show()
+            QT:UpdateWindow()
+        end
+    end
 end
 
 -- ── ToggleOptionsPanel ────────────────────────────────────────────────────────
@@ -603,11 +611,96 @@ end
 
 function TA:ToggleOptionsPanel()
     -- On 12.0.x PTR, Settings.OpenToCategory expects a numeric category ID
-    -- (not a string name). RegisterCanvasLayoutCategory returns a category
-    -- object but there's no reliable way to extract its numeric ID across
-    -- builds. Skip the Blizzard panel entirely and open our own — it's more
-    -- functional anyway.
-    self:OpenOptionsFrame()
+    -- (not a string name). Open a settings drawer below the main frame instead.
+    self:ToggleSettingsDrawer()
+end
+
+-- ── Settings Drawer ───────────────────────────────────────────────────────────
+-- A panel that slides down from the bottom of the main ToonAge frame.
+-- Keeps settings separate from the playable tabs.
+
+function TA:ToggleSettingsDrawer()
+    local mainFrame = self.UI
+
+    -- Create drawer on first use
+    if not self._settingsDrawer then
+        local drawer = CreateFrame("Frame", "TASettingsDrawer", UIParent, "BackdropTemplate")
+        drawer:SetSize(FRAME_WIDTH, 400)
+        drawer:SetFrameStrata("DIALOG")
+        drawer:SetMovable(true)
+        drawer:EnableMouse(true)
+        drawer:RegisterForDrag("LeftButton")
+        drawer:SetScript("OnDragStart", drawer.StartMoving)
+        drawer:SetScript("OnDragStop", drawer.StopMovingOrSizing)
+        drawer:SetClampedToScreen(true)
+        ApplyBackdrop(drawer, 0.04, 0.04, 0.05, 0.97)
+        drawer:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.8)
+        drawer:Hide()
+
+        -- Title bar
+        local titleLbl = drawer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        titleLbl:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        titleLbl:SetText("|cFFFFD100ToonAge Settings|r")
+        titleLbl:SetPoint("TOPLEFT", drawer, "TOPLEFT", 10, -8)
+
+        local closeBtn = CreateFrame("Button", nil, drawer, "UIPanelCloseButton")
+        closeBtn:SetSize(22, 22)
+        closeBtn:SetPoint("TOPRIGHT", drawer, "TOPRIGHT", -2, -2)
+
+        -- Scroll frame inside drawer
+        local scroll = CreateFrame("ScrollFrame", "TASettingsDrawerScroll", drawer, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", drawer, "TOPLEFT", 4, -26)
+        scroll:SetPoint("BOTTOMRIGHT", drawer, "BOTTOMRIGHT", -26, 4)
+
+        local content = CreateFrame("Frame", nil, scroll)
+        content:SetWidth(FRAME_WIDTH - 30)
+        content:SetHeight(1)
+        scroll:SetScrollChild(content)
+
+        -- Dummy sidebar (Settings module expects one)
+        local sidebar = CreateFrame("Frame", nil, drawer)
+        sidebar:SetSize(1, 1)
+        sidebar:Hide()
+
+        drawer.scroll  = scroll
+        drawer.content = content
+        drawer.sidebar = sidebar
+        self._settingsDrawer = drawer
+    end
+
+    local drawer = self._settingsDrawer
+
+    if drawer:IsShown() then
+        drawer:Hide()
+        return
+    end
+
+    -- Position: below main frame if visible, otherwise center of screen
+    drawer:ClearAllPoints()
+    if mainFrame and mainFrame:IsVisible() then
+        drawer:SetPoint("TOPLEFT", mainFrame, "BOTTOMLEFT", 0, -2)
+    else
+        drawer:SetPoint("CENTER", UIParent, "CENTER", 0, -50)
+    end
+
+    -- Rebuild content each time (settings may have changed)
+    local old = drawer.scroll:GetScrollChild()
+    if old then old:Hide(); old:SetParent(nil) end
+
+    local content = CreateFrame("Frame", nil, drawer.scroll)
+    content:SetWidth(FRAME_WIDTH - 30)
+    content:SetHeight(1)
+    drawer.scroll:SetScrollChild(content)
+    drawer.scroll:SetVerticalScroll(0)
+    drawer.content = content
+
+    -- Render settings into the drawer
+    local Settings = self:GetModule("Settings")
+    if Settings and Settings.Render then
+        Settings:Render(content, drawer.sidebar)
+    end
+
+    drawer:Show()
 end
 
 -- ── Blizzard Settings registration ───────────────────────────────────────────

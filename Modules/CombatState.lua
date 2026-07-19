@@ -48,21 +48,30 @@ local dirty         = true   -- set true on any event, cleared after snapshot
 
 local function UpdateHealth()
     local s = CS.state
-    s.health    = UnitHealth("player") or 0
-    s.healthMax = UnitHealthMax("player") or 1
-    s.healthPct = (s.healthMax > 0) and (s.health / s.healthMax * 100) or 100
+    s.health    = tonumber(UnitHealth("player")) or 0
+    s.healthMax = tonumber(UnitHealthMax("player")) or 1
+    if s.healthMax > 0 then
+        s.healthPct = s.health / s.healthMax * 100
+    else
+        s.healthPct = 100
+    end
 end
 
 local function UpdatePower()
     local s = CS.state
     s.powerType = UnitPowerType("player") or 0
-    s.power     = UnitPower("player") or 0
-    s.powerMax  = UnitPowerMax("player") or 1
-    s.powerPct  = (s.powerMax > 0) and (s.power / s.powerMax * 100) or 0
+    s.power     = tonumber(UnitPower("player")) or 0
+    s.powerMax  = tonumber(UnitPowerMax("player")) or 1
+    if s.powerMax > 0 then
+        s.powerPct = s.power / s.powerMax * 100
+    else
+        s.powerPct = 0
+    end
 
     -- Combo points (if applicable)
-    if s.powerType == Enum.PowerType.ComboPoints or UnitPowerMax("player", Enum.PowerType.ComboPoints) > 0 then
-        s.comboPoints = UnitPower("player", Enum.PowerType.ComboPoints) or 0
+    local cpMax = tonumber(UnitPowerMax("player", Enum.PowerType.ComboPoints)) or 0
+    if s.powerType == Enum.PowerType.ComboPoints or cpMax > 0 then
+        s.comboPoints = tonumber(UnitPower("player", Enum.PowerType.ComboPoints)) or 0
     else
         s.comboPoints = 0
     end
@@ -72,8 +81,8 @@ local function UpdateTarget()
     local s = CS.state
     s.targetExists = UnitExists("target") and not UnitIsDead("target") and UnitCanAttack("player", "target")
     if s.targetExists then
-        local h = UnitHealth("target") or 0
-        local hMax = UnitHealthMax("target") or 1
+        local h = tonumber(UnitHealth("target")) or 0
+        local hMax = tonumber(UnitHealthMax("target")) or 1
         s.targetHealth = h
         s.targetPct    = (hMax > 0) and (h / hMax * 100) or 100
     else
@@ -165,13 +174,13 @@ end
 function CS:Snapshot()
     local s = self.state
     s.inCombat = UnitAffectingCombat("player") or false
-    UpdateHealth()
-    UpdatePower()
-    UpdateTarget()
-    UpdateBuffs()
-    UpdateDebuffsOnTarget()
-    UpdateGCD()
-    UpdateAoeCount()
+    pcall(UpdateHealth)
+    pcall(UpdatePower)
+    pcall(UpdateTarget)
+    pcall(UpdateBuffs)
+    pcall(UpdateDebuffsOnTarget)
+    pcall(UpdateGCD)
+    pcall(UpdateAoeCount)
     dirty = false
 end
 
@@ -232,40 +241,45 @@ function CS:GetNextAbility(priorities, playerLevel)
     local now = GetTime()
 
     for i, entry in ipairs(priorities) do
-        -- Skip cooldowns section (those are situational)
-        if entry.isCd or entry.isMajorCd then goto continue end
+        local dominated = false
+        repeat  -- single-pass block for "continue" via break
 
-        -- Level gate
-        if entry.unlockLv and playerLevel < entry.unlockLv then goto continue end
+            -- Skip cooldowns section (those are situational)
+            if entry.isCd or entry.isMajorCd then dominated = true; break end
 
-        -- Must be a known spell
-        if entry.spellID then
-            local isKnown = IsSpellKnown(entry.spellID) or IsPlayerSpell(entry.spellID)
-            if not isKnown then goto continue end
+            -- Level gate
+            if entry.unlockLv and playerLevel < entry.unlockLv then dominated = true; break end
 
-            -- Must be off cooldown (or have charges available)
-            local cdInfo = C_Spell.GetSpellCooldown(entry.spellID)
-            if cdInfo and cdInfo.duration > 1.5 then
-                -- On real cooldown (not just GCD)
-                local remaining = (cdInfo.startTime + cdInfo.duration) - now
-                if remaining > 0.1 then
-                    -- Check charges
-                    local charges = C_Spell.GetSpellCharges(entry.spellID)
-                    if not charges or charges.currentCharges == 0 then
-                        goto continue
+            -- Must be a known spell
+            if entry.spellID then
+                local isKnown = IsSpellKnown(entry.spellID) or IsPlayerSpell(entry.spellID)
+                if not isKnown then dominated = true; break end
+
+                -- Must be off cooldown (or have charges available)
+                local cdInfo = C_Spell.GetSpellCooldown(entry.spellID)
+                if cdInfo and cdInfo.duration > 1.5 then
+                    -- On real cooldown (not just GCD)
+                    local remaining = (cdInfo.startTime + cdInfo.duration) - now
+                    if remaining > 0.1 then
+                        -- Check charges
+                        local charges = C_Spell.GetSpellCharges(entry.spellID)
+                        if not charges or charges.currentCharges == 0 then
+                            dominated = true; break
+                        end
                     end
                 end
+
+                -- Must be usable (resource, etc.)
+                local usable = C_Spell.IsSpellUsable(entry.spellID)
+                if usable == false then dominated = true; break end
             end
 
-            -- Must be usable (resource, etc.)
-            local usable = C_Spell.IsSpellUsable(entry.spellID)
-            if usable == false then goto continue end
-        end
+        until true
 
         -- This ability passes all checks — it's the "next best" action
-        return i, entry
-
-        ::continue::
+        if not dominated then
+            return i, entry
+        end
     end
 
     return nil, nil
@@ -313,8 +327,15 @@ function CS:Init()
     ef:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     ef:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
 
-    -- Initial snapshot
-    self:Snapshot()
+    -- Do NOT snapshot during Init — UnitHealth() is tainted during addon load.
+    -- Defer first snapshot until the player is fully in the world (2s delay)
+    -- and the ticker will keep it updated after that.
+    C_Timer.After(2, function()
+        local ok, err = pcall(CS.Snapshot, CS)
+        if not ok and TA.debug then
+            print("|cFFFF4444[TA CombatState]|r Deferred snapshot failed: " .. tostring(err))
+        end
+    end)
 
     -- Start polling ticker (only does work in combat or when dirty)
     pollTicker = C_Timer.NewTicker(POLL_INTERVAL, OnPoll)

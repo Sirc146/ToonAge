@@ -3,8 +3,8 @@
         <Size x="24" y="24"/>
         <Scripts>
             <OnLoad method="OnLoad"/>
-            <OnMouseEnter method="OnMouseEnter"/>
-            <OnMouseLeave method="OnMouseLeave"/>
+            <OnEnter method="OnMouseEnter"/>
+            <OnLeave method="OnMouseLeave"/>
         </Scripts>
     </Frame>
 </Ui>

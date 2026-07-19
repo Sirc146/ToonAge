@@ -40,7 +40,18 @@ local PIN_COLORS = {
 
 MapPins.DataProvider = CreateFromMixins(MapCanvasDataProviderMixin)
 
+-- Frame pool for pin recycling (avoids GC pressure from creating/destroying pins)
+MapPins._pinPool = {}
+MapPins._activePins = {}
+
 function MapPins.DataProvider:RemoveAllData()
+    -- Release all active pins back to the pool
+    for _, pin in ipairs(MapPins._activePins) do
+        pin:Hide()
+        pin:ClearAllPoints()
+        table.insert(MapPins._pinPool, pin)
+    end
+    wipe(MapPins._activePins)
     self:GetMap():RemoveAllPinsByTemplate(PIN_TEMPLATE)
 end
 
@@ -62,37 +73,38 @@ function MapPins.DataProvider:RefreshAllData(fromOnShow)
 
     for i = QT.stepIdx, #guide.steps do
         local step = guide.steps[i]
-        if not step then break end
-        if step.type == "text" then goto continue end
-        if step.noArrow then goto continue end
-        if GP and not GP:IsStepApplicable(step) then goto continue end
+        if not step then break end  -- stop scanning (real break)
+        if pinCount >= MAX_PINS then break end  -- stop scanning (real break)
 
-        -- Resolve coordinates
-        local coordMap, cx, cy = 0, 0, 0
-        if Arrow and Arrow.GetEffectiveCoord then
-            coordMap, cx, cy = Arrow.GetEffectiveCoord(step)
-        elseif step.coord then
-            coordMap, cx, cy = step.coord.map or 0, step.coord.x, step.coord.y
-        end
+        repeat  -- continue wrapper
+            if step.type == "text" then break end
+            if step.noArrow then break end
+            if GP and not GP:IsStepApplicable(step) then break end
 
-        -- Skip pins with no valid coordinates
-        if coordMap == 0 and cx == 0 and cy == 0 then goto continue end
+            -- Resolve coordinates
+            local coordMap, cx, cy = 0, 0, 0
+            if Arrow and Arrow.GetEffectiveCoord then
+                coordMap, cx, cy = Arrow.GetEffectiveCoord(step)
+            elseif step.coord then
+                coordMap, cx, cy = step.coord.map or 0, step.coord.x, step.coord.y
+            end
 
-        -- Only show pins for the current map zone
-        -- Allow coordMap=0 (placeholder) to show on any map
-        if coordMap ~= 0 and coordMap ~= mapID then goto continue end
+            -- Skip pins with no valid coordinates
+            if coordMap == 0 and cx == 0 and cy == 0 then break end
 
-        -- Valid pin — place it
-        pinCount = pinCount + 1
-        if pinCount > MAX_PINS then break end
+            -- Only show pins for the current map zone
+            -- Allow coordMap=0 (placeholder) to show on any map
+            if coordMap ~= 0 and coordMap ~= mapID then break end
 
-        local relNum = i - QT.stepIdx + 1
-        local color  = PIN_COLORS[step.type] or PIN_COLORS.default
-        local isCurrent = (i == QT.stepIdx)
+            -- Valid pin — place it
+            pinCount = pinCount + 1
 
-        self:GetMap():AcquirePin(PIN_TEMPLATE, cx, cy, step, relNum, color, isCurrent)
+            local relNum = i - QT.stepIdx + 1
+            local color  = PIN_COLORS[step.type] or PIN_COLORS.default
+            local isCurrent = (i == QT.stepIdx)
 
-        ::continue::
+            self:GetMap():AcquirePin(PIN_TEMPLATE, cx, cy, step, relNum, color, isCurrent)
+        until true
     end
 end
 

@@ -5,6 +5,9 @@
 ## Version: 1.0.0
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB
+## AddonCompartmentFunc: ToonAge_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: ToonAge_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: ToonAge_OnAddonCompartmentLeave
 
 Libs\LibStub.lua
 
@@ -31,22 +34,38 @@ Data\Guides\TAG_Naigtal.lua
 
 Modules\TalentsHelpers.lua
 Modules\DevHelpers.lua
+Modules\ErrorLog.lua
 
 Modules\Character.lua
 Modules\Gear.lua
+Modules\DungeonGear.lua
 Modules\Talents.lua
 Modules\CombatState.lua
+Modules\TargetMarker.lua
+Modules\PullPlanner.lua
 Modules\Rotation.lua
 Modules\Professions.lua
+Modules\ProfQuesting.lua
 Modules\Pets.lua
 Modules\Weekly.lua
 Modules\Delves.lua
 Modules\TravelModes.lua
+Modules\TravelRouter.lua
 Modules\GuideParser.lua
+Modules\GuideImporter.lua
+Modules\GuideBrowser.lua
 Modules\QuestTracker.lua
 Modules\Arrow.lua
 Modules\NavHud.lua
 Modules\MapPins.xml
 Modules\MapPins.lua
+Modules\XPTracker.lua
+Modules\RestOptimizer.lua
+Modules\SpecAdaptive.lua
+Modules\SocialAwareness.lua
+Modules\DeathRecovery.lua
+Modules\Retrospective.lua
 Modules\CutsceneSkip.lua
 Modules\AutoEquip.lua
+Modules\Settings.lua
+Modules\Onboarding.lua

@@ -531,6 +531,12 @@ function QT:HandleAutoQuest(event)
         local questID = GetQuestID and GetQuestID()
         if questID and QUEST_BLOCKLIST[questID] then return end
 
+        -- Guide-Only Accept Mode: only auto-accept quests the guide expects
+        if TA.charDB.tracker.autoQuestGuideOnly and questID then
+            local expectedIDs = GetGuideExpectedQuestIDs(self)
+            if not expectedIDs[questID] then return end
+        end
+
         -- Safety: Don't auto-accept quests shared by unknown players.
         -- (QuestGetAutoAccept returns true for auto-accepted world quests)
         local offeredByPlayer = (QuestIsFromAreaTrigger and not QuestIsFromAreaTrigger())
@@ -728,6 +734,7 @@ function QT:Init()
     if t.replaceBlizzTracker == nil then t.replaceBlizzTracker = false end
     if t.cutsceneSkip        == nil then t.cutsceneSkip        = false end
     if t.autoEquip           == nil then t.autoEquip           = false end
+    if t.autoQuestGuideOnly  == nil then t.autoQuestGuideOnly  = false end
 
     if t.guideID and TA.Guides and TA.Guides[t.guideID] then
         self.guideID = t.guideID
@@ -866,8 +873,8 @@ function QT:InitWindow()
     ApplyBD(titleBar, 0.18, 0.13, 0.01, 1.00, 0.55, 0.40, 0.08)
 
     local titleLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    titleLabel:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-    titleLabel:SetText("|cFFFFD100CA Guide Tracker|r")
+    titleLabel:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    titleLabel:SetText("|cFFFFD100ToonAge|r")
     titleLabel:SetPoint("LEFT", titleBar, "LEFT", PAD, 0)
 
     local xBtn = MakeBtn(titleBar, 22, 22, "x", function() self:ToggleWindow() end)
@@ -884,7 +891,7 @@ function QT:InitWindow()
 
     -- ── Options panel ────────────────────────────────────────────────────────
     local optPanel = CreateFrame("Frame", nil, win, "BackdropTemplate")
-    optPanel:SetSize(W, 102)
+    optPanel:SetSize(W, 150)
     optPanel:SetFrameStrata("HIGH")
     optPanel:SetPoint("TOP", win, "BOTTOM", 0, -2)
     ApplyBD(optPanel, 0.04, 0.03, 0.01, 0.98, 0.55, 0.40, 0.08)
@@ -905,17 +912,61 @@ function QT:InitWindow()
         "replaceBlizzTracker",
         function() self:UpdateBlizzardTrackerVisibility() end)
 
-    MakeCheckbox(optPanel, PAD, -46,
+    MakeCheckbox(optPanel, PAD, -40,
         "Auto-accept & auto-turn-in quests  (hold Shift to pause)",
         "autoQuest", nil)
 
-    MakeCheckbox(optPanel, PAD, -62,
+    MakeCheckbox(optPanel, PAD, -56,
+        "  └ Only accept quests in active guide",
+        "autoQuestGuideOnly", nil)
+
+    MakeCheckbox(optPanel, PAD, -72,
         "Skip cutscenes automatically",
         "cutsceneSkip", nil)
 
-    MakeCheckbox(optPanel, PAD, -78,
+    MakeCheckbox(optPanel, PAD, -88,
         "Auto-equip looted upgrades  (hold Shift to pause)",
         "autoEquip", nil)
+
+    -- ── Feature toggles (direct, no reload needed) ───────────────────────────
+    local featTitle = optPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    featTitle:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    featTitle:SetText("FEATURES")
+    featTitle:SetTextColor(0.55, 0.40, 0.08, 1)
+    featTitle:SetPoint("TOPLEFT", optPanel, "TOPLEFT", PAD, -108)
+
+    -- NavHud toggle button (instant show/hide, no reload)
+    local hudBtn = MakeBtn(optPanel, 90, 18, "NavHud: ON", function()
+        local NH = TA:GetModule("NavHud")
+        if NH then
+            NH:Toggle()
+            local isOn = NH:IsVisible()
+            hudBtn._lbl:SetText("NavHud: " .. (isOn and "|cFF4AFF7AON|r" or "|cFFFF4444OFF|r"))
+        end
+    end)
+    hudBtn:SetPoint("TOPLEFT", optPanel, "TOPLEFT", PAD, -124)
+    -- Set initial label
+    local NH = TA:GetModule("NavHud")
+    if NH and NH.IsVisible and NH:IsVisible() then
+        hudBtn._lbl:SetText("NavHud: |cFF4AFF7AON|r")
+    else
+        hudBtn._lbl:SetText("NavHud: |cFFFF4444OFF|r")
+    end
+
+    -- Arrow toggle button
+    local arrowBtn = MakeBtn(optPanel, 90, 18, "Arrow: ON", function()
+        local Arrow = TA:GetModule("Arrow")
+        if Arrow then Arrow:Toggle() end
+        local isOn = Arrow and Arrow.frame and Arrow.frame:IsVisible()
+        arrowBtn._lbl:SetText("Arrow: " .. (isOn and "|cFF4AFF7AON|r" or "|cFFFF4444OFF|r"))
+    end)
+    arrowBtn:SetPoint("LEFT", hudBtn, "RIGHT", 6, 0)
+    local Arrow = TA:GetModule("Arrow")
+    if Arrow and Arrow.frame and Arrow.frame:IsVisible() then
+        arrowBtn._lbl:SetText("Arrow: |cFF4AFF7AON|r")
+    else
+        arrowBtn._lbl:SetText("Arrow: |cFFFF4444OFF|r")
+    end
 
     -- ── Guide navigation row ─────────────────────────────────────────────────
     local prevBtn = MakeBtn(win, 24, 20, "<", function() self:CycleGuide(-1) end)
@@ -924,11 +975,29 @@ function QT:InitWindow()
     local nextBtn = MakeBtn(win, 24, 20, ">", function() self:CycleGuide(1) end)
     nextBtn:SetPoint("TOPRIGHT", win, "TOPRIGHT", -PAD, -34)
 
+    -- Browse button (opens guide shelf/picker)
+    local browseBtn = MakeBtn(win, 20, 20, "☰", function()
+        local GB = TA:GetModule("GuideBrowser")
+        if GB then GB:ShowBrowser() end
+    end)
+    browseBtn:SetPoint("RIGHT", nextBtn, "LEFT", -2, 0)
+    browseBtn:SetScript("OnEnter", function(f)
+        f:SetBackdropColor(0.30, 0.22, 0.03, 0.95)
+        GameTooltip:SetOwner(f, "ANCHOR_TOP")
+        GameTooltip:SetText("Browse All Guides")
+        GameTooltip:AddLine("Organized by expansion & zone", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    browseBtn:SetScript("OnLeave", function(f)
+        f:SetBackdropColor(0.18, 0.13, 0.01, 0.90)
+        GameTooltip:Hide()
+    end)
+
     win.guideTitleF = win:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     win.guideTitleF:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
     win.guideTitleF:SetTextColor(1.00, 0.95, 0.75, 1)
     win.guideTitleF:SetPoint("LEFT",  prevBtn, "RIGHT", 4, 0)
-    win.guideTitleF:SetPoint("RIGHT", nextBtn, "LEFT", -4, 0)
+    win.guideTitleF:SetPoint("RIGHT", browseBtn, "LEFT", -4, 0)
     win.guideTitleF:SetJustifyH("CENTER")
 
     -- ── Step area ────────────────────────────────────────────────────────────
@@ -973,6 +1042,16 @@ function QT:InitWindow()
     win.questStatusF:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", PAD, 38)
     win.questStatusF:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -PAD, 38)
     win.questStatusF:SetJustifyH("LEFT")
+
+    -- Contextual tip line: rotating insights from XPTracker, RestOptimizer,
+    -- SpecAdaptive, SocialAwareness, ProfQuesting, etc.
+    win.tipF = win:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    win.tipF:SetFont(STANDARD_TEXT_FONT, 9, "")
+    win.tipF:SetTextColor(0.55, 0.75, 0.90, 1)
+    win.tipF:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", PAD, 24)
+    win.tipF:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -PAD, 24)
+    win.tipF:SetJustifyH("LEFT")
+    win.tipF:SetWordWrap(false)
 
     -- ── Bottom buttons ────────────────────────────────────────────────────────
     local backBtn = MakeBtn(win, 60, 22, "< Back", function()
@@ -1405,6 +1484,65 @@ function QT:RenderStatusLine()
     end
 
     win.questStatusF:SetText(base .. distStr)
+
+    -- Travel suggestion: show when step is in a different zone
+    local TR = TA:GetModule("TravelRouter")
+    if TR and TR.GetSuggestionForCurrentStep and not hasLiveTarget then
+        local suggestion = TR:GetSuggestionForCurrentStep()
+        if suggestion then
+            win.questStatusF:SetText(suggestion)
+        end
+    end
+
+    -- ── Contextual tip rotation ──────────────────────────────────────────────
+    -- Cycles through available module tips every 5 seconds, showing the most
+    -- relevant contextual information without requiring user action.
+    if win.tipF then
+        local tips = {}
+
+        -- XP ETA (highest priority when leveling)
+        local XPMod = TA:GetModule("XPTracker")
+        if XPMod and XPMod.GetETAString then
+            local eta = XPMod:GetETAString()
+            if eta and eta ~= "" then table.insert(tips, eta) end
+        end
+
+        -- Rest suggestion
+        local RO = TA:GetModule("RestOptimizer")
+        if RO and RO.GetSuggestion then
+            local rest = RO:GetSuggestion()
+            if rest then table.insert(tips, rest) end
+        end
+
+        -- Spec-adaptive dungeon tip
+        local SA = TA:GetModule("SpecAdaptive")
+        if SA and SA.GetDungeonSuggestion then
+            local dung = SA:GetDungeonSuggestion()
+            if dung then table.insert(tips, dung) end
+        end
+
+        -- Social awareness
+        local Soc = TA:GetModule("SocialAwareness")
+        if Soc and Soc.GetSuggestion then
+            local social = Soc:GetSuggestion()
+            if social then table.insert(tips, social) end
+        end
+
+        -- Profession tip
+        local PQ = TA:GetModule("ProfQuesting")
+        if PQ and PQ.GetGatheringTip then
+            local prof = PQ:GetGatheringTip()
+            if prof then table.insert(tips, prof) end
+        end
+
+        if #tips > 0 then
+            -- Rotate every 5 seconds
+            local idx = math.floor(GetTime() / 5) % #tips + 1
+            win.tipF:SetText(tips[idx])
+        else
+            win.tipF:SetText("")
+        end
+    end
 end
 
 -- ── ToggleWindow ──────────────────────────────────────────────────────────────

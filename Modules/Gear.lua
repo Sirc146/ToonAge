@@ -769,6 +769,41 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
         cName:SetPoint("TOPLEFT", curBox, "TOPLEFT", 8, -20)
         cx = cx + 122
     end
+    -- ── Dungeon Gear Suggestions ─────────────────────────────────────────────
+    local DG = TA:GetModule("DungeonGear")
+    if DG and DG.GetFormattedSuggestions then
+        local suggestions = DG:GetFormattedSuggestions()
+        if #suggestions > 0 then
+            y = y - 16
+            local dgHdr = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            dgHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+            dgHdr:SetText("DUNGEON UPGRADES — Your weakest slots")
+            dgHdr:SetTextColor(0.55, 0.40, 0.08, 1)
+            dgHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            table.insert(self.frames, dgHdr)
+            y = y - 4
+
+            local dgLine = content:CreateTexture(nil, "ARTWORK")
+            dgLine:SetHeight(1)
+            dgLine:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL, y)
+            dgLine:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+            dgLine:SetColorTexture(0.40, 0.32, 0.08, 0.5)
+            table.insert(self.frames, dgLine)
+            y = y - 8
+
+            for _, line in ipairs(suggestions) do
+                local sF = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                sF:SetFont(STANDARD_TEXT_FONT, 10, "")
+                sF:SetText("  " .. line)
+                sF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                sF:SetWidth(w)
+                sF:SetJustifyH("LEFT")
+                table.insert(self.frames, sF)
+                y = y - 14
+            end
+        end
+    end
+
     content:SetHeight(math.abs(y) + 60)
 end
 

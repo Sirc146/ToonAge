@@ -249,78 +249,79 @@ function NavHud:UpdatePins(playerX, playerY, bearing, currentMap)
 
     for i = QT.stepIdx, math.min(QT.stepIdx + MAX_PINS - 1, #guide.steps) do
         local step = guide.steps[i]
-        if not step then break end
-        if not step.coord then goto continue end
-        if step.type == "text" then goto continue end
-        if step.noArrow then goto continue end
+        if not step then break end  -- stop scanning (real break)
 
-        -- Get effective coord (falls back to Blizzard waypoint data)
-        local coordMap, cx, cy = 0, 0, 0
-        if Arrow and Arrow.GetEffectiveCoord then
-            coordMap, cx, cy = Arrow.GetEffectiveCoord(step)
-        elseif step.coord then
-            coordMap, cx, cy = step.coord.map or 0, step.coord.x, step.coord.y
-        end
+        repeat  -- continue wrapper
+            if not step.coord then break end
+            if step.type == "text" then break end
+            if step.noArrow then break end
 
-        if coordMap == 0 and cx == 0 and cy == 0 then goto continue end
+            -- Get effective coord (falls back to Blizzard waypoint data)
+            local coordMap, cx, cy = 0, 0, 0
+            if Arrow and Arrow.GetEffectiveCoord then
+                coordMap, cx, cy = Arrow.GetEffectiveCoord(step)
+            elseif step.coord then
+                coordMap, cx, cy = step.coord.map or 0, step.coord.x, step.coord.y
+            end
 
-        -- Zone check: skip pins from other zones
-        if coordMap ~= 0 and coordMap ~= currentMap then goto continue end
+            if coordMap == 0 and cx == 0 and cy == 0 then break end
 
-        pinIdx = pinIdx + 1
-        if pinIdx > MAX_PINS then break end
+            -- Zone check: skip pins from other zones
+            if coordMap ~= 0 and coordMap ~= currentMap then break end
 
-        local pin = self.pins[pinIdx]
+            pinIdx = pinIdx + 1
+            if pinIdx > MAX_PINS then break end
 
-        -- Calculate screen position relative to player
-        local dx = cx - playerX
-        local dy = cy - playerY
-        local dist = math.sqrt(dx * dx + dy * dy)
+            local pin = self.pins[pinIdx]
 
-        -- Angle from player to target (world space)
-        local angle = math.atan2(dx, -dy)  -- same convention as Arrow.lua
+            -- Calculate screen position relative to player
+            local dx = cx - playerX
+            local dy = cy - playerY
+            local dist = math.sqrt(dx * dx + dy * dy)
 
-        -- Rotate by player bearing so "ahead" is always up
-        local screenAngle = angle - bearing
+            -- Angle from player to target (world space)
+            local angle = math.atan2(dx, -dy)  -- same convention as Arrow.lua
 
-        -- Scale distance into HUD radius. Normalize using a sensible max range.
-        -- At max zoom (0), minimap covers ~500 yards. Use 0.15 as max normalized
-        -- distance on the map (roughly equivalent to minimap edge).
-        local maxNorm = 0.15
-        local normDist = math.min(dist / maxNorm, 1.0)
+            -- Rotate by player bearing so "ahead" is always up
+            local screenAngle = angle - bearing
 
-        -- Position within HUD
-        local hudDist = normDist * self.hudRadius * 0.85  -- 85% of radius (leave room for cardinals)
-        local screenX = math.sin(screenAngle) * hudDist
-        local screenY = math.cos(screenAngle) * hudDist
+            -- Scale distance into HUD radius. Normalize using a sensible max range.
+            -- At max zoom (0), minimap covers ~500 yards. Use 0.15 as max normalized
+            -- distance on the map (roughly equivalent to minimap edge).
+            local maxNorm = 0.15
+            local normDist = math.min(dist / maxNorm, 1.0)
 
-        pin:ClearAllPoints()
-        pin:SetPoint("CENTER", self.frame, "CENTER", screenX, screenY)
-        pin:Show()
+            -- Position within HUD
+            local hudDist = normDist * self.hudRadius * 0.85  -- 85% of radius (leave room for cardinals)
+            local screenX = math.sin(screenAngle) * hudDist
+            local screenY = math.cos(screenAngle) * hudDist
 
-        -- Color by step type
-        local color = PIN_COLORS[step.type] or PIN_COLORS.default
-        pin.tex:SetVertexColor(unpack(color))
+            pin:ClearAllPoints()
+            pin:SetPoint("CENTER", self.frame, "CENTER", screenX, screenY)
+            pin:Show()
 
-        -- Number label (relative to current step)
-        local relNum = i - QT.stepIdx + 1
-        pin.numLabel:SetText(relNum)
+            -- Color by step type
+            local color = PIN_COLORS[step.type] or PIN_COLORS.default
+            pin.tex:SetVertexColor(unpack(color))
 
-        -- First pin (current step) is larger and shows distance
-        if i == QT.stepIdx then
-            pin:SetSize(PIN_SIZE * 1.5, PIN_SIZE * 1.5)
-            local yards = U.ComputeDistance(playerX, playerY, cx, cy)
-            self.frame.distText:SetText(U.FormatDistance(yards))
+            -- Number label (relative to current step)
+            local relNum = i - QT.stepIdx + 1
+            pin.numLabel:SetText(relNum)
 
-            -- Step text (truncate)
-            local text = step.text or ""
-            if #text > 40 then text = text:sub(1, 37) .. "..." end
-            self.frame.stepText:SetText(text)
-        else
-            pin:SetSize(PIN_SIZE, PIN_SIZE)
-        end
+            -- First pin (current step) is larger and shows distance
+            if i == QT.stepIdx then
+                pin:SetSize(PIN_SIZE * 1.5, PIN_SIZE * 1.5)
+                local yards = U.ComputeDistance(playerX, playerY, cx, cy)
+                self.frame.distText:SetText(U.FormatDistance(yards))
 
-        ::continue::
+                -- Step text (truncate)
+                local text = step.text or ""
+                if #text > 40 then text = text:sub(1, 37) .. "..." end
+                self.frame.stepText:SetText(text)
+            else
+                pin:SetSize(PIN_SIZE, PIN_SIZE)
+            end
+        until true
     end
 
     -- Hide unused pins

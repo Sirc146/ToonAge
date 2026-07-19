@@ -1,0 +1,14 @@
+<Bindings>
+	<Binding name="TOONAGE_TOGGLE_PANEL" header="TOONAGE" category="ADDONS">
+		ToonAge_TogglePanel();
+	</Binding>
+	<Binding name="TOONAGE_TOGGLE_NAVHUD" category="ADDONS">
+		ToonAge_ToggleNavHud();
+	</Binding>
+	<Binding name="TOONAGE_TOGGLE_ARROW" category="ADDONS">
+		ToonAge_ToggleArrow();
+	</Binding>
+	<Binding name="TOONAGE_TOGGLE_TRACKER" category="ADDONS">
+		ToonAge_ToggleTracker();
+	</Binding>
+</Bindings>
