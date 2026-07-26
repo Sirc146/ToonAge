@@ -13,6 +13,7 @@ Libs\LibStub.lua
 
 Core\Init.lua
 Core\Utils.lua
+Core\State.lua
 Core\UI.lua
 Core\UIModern.lua
 Core\MinimapButton.lua

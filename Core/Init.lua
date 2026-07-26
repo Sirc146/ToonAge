@@ -238,6 +238,13 @@ TA.eventFrame:SetScript("OnEvent", function(self, event, ...)
         TA:OnLogin()
 
     else
+        -- Invalidate cached display state BEFORE modules run, so a module
+        -- handling this event recomputes from a cleared cache instead of
+        -- reading back its own stale value from the previous tick. Ordering
+        -- here is the whole point — invalidating afterwards would hand every
+        -- handler the very data the event just made wrong.
+        if TA.State then TA.State:Invalidate(event) end
+
         -- All persistent events: dispatch to modules immediately (they do their
         -- own throttling), but coalesce the UI rebuild — see QueueUIRefresh.
         TA:UpdateModules(event, ...)
@@ -354,6 +361,10 @@ function TA:SlashCommand(msg)
             -- the reset and the reload went into a table nothing would save.
             ToonAgeDB = nil
             self:InitDB()
+            -- Cached display state was derived from the old DB. Dropping it
+            -- forces every value to be recomputed rather than surviving a
+            -- reset that was supposed to clear everything.
+            if TA.State then TA.State:Wipe() end
             -- Modules that cached a sub-table of the old db still hold the
             -- orphan, which is why the reload is still required.
             print("|cFFFFD100[TA]|r Settings reset. Please reload UI (/reload).")
