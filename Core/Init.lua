@@ -39,6 +39,11 @@ local DB_DEFAULTS = {
         DungeonGuide       = true,
     },
 
+    -- Safe Mode boot flag. Persisted deliberately: the whole point is to
+    -- survive a reload when the addon is too broken to reach its own UI.
+    -- Cleared only by the user via /ta safemode.
+    safeMode = false,
+
     -- UI layout toggle
     -- true  = Unified HUD (compass + tracker parented inside one draggable frame)
     -- false = Fragmented (each window floats independently, classic feel)
@@ -156,13 +161,62 @@ function TA:GetHealthReport()
     return report
 end
 
+-- ── Safe Mode ─────────────────────────────────────────────────────────
+-- Two independent mechanisms with the same goal: keep one broken module from
+-- taking the whole addon down with it.
+--
+-- 1. Automatic, per session. A module whose OnEvent throws repeatedly gets
+--    switched off for the rest of the session. This is NOT persisted — a
+--    transient failure should not silently disable something forever, so a
+--    reload always gives every module another chance.
+--
+-- 2. Manual, persisted. `/ta safemode` sets a flag that survives reload and
+--    boots with only the core set initialised. This is the one to reach for
+--    when the addon breaks badly enough that you cannot get to its UI.
+
+-- Errors on one module in one session before it is switched off. High enough
+-- that a one-off does not trip it, low enough to stop a module that fails on a
+-- high-frequency event from erroring hundreds of times.
+local ERROR_DISABLE_THRESHOLD = 10
+
+-- Stop printing after this many. A module failing on BAG_UPDATE can emit
+-- hundreds of identical lines and scroll away whatever you were trying to read.
+-- Every error still reaches the ErrorLog; only the chat spam is capped.
+local ERROR_PRINT_LIMIT = 3
+
+-- Initialised even in safe mode. The seven core modules the addon is unusable
+-- without, plus ErrorLog — safe mode exists to diagnose a problem, and
+-- disabling the thing that records problems would defeat it entirely.
+local SAFE_MODE_KEEP = {
+    ErrorLog = true,
+    Character = true, Gear = true, Talents = true, Rotation = true,
+    QuestTracker = true, Arrow = true, GuideParser = true,
+}
+
 function TA:InitModules()
+    local safe = self.db and self.db.safeMode
+
+    if safe then
+        print("|cFFFF9A1A[ToonAge] SAFE MODE|r — only core modules loaded. "
+              .. "|cFF888780/ta safemode to turn off, then /reload.|r")
+    end
+
     for name, mod in pairs(self.modules) do
-        -- Check if this optional module is disabled by the user
-        if self.db and self.db.modules and self.db.modules[name] == false then
+        -- Reset per-session failure state. Without this a module auto-disabled
+        -- last session would look disabled on a fresh login even though its
+        -- counter is gone.
+        mod._errorCount = 0
+        mod._autoDisabled = false
+
+        local userDisabled = self.db and self.db.modules and self.db.modules[name] == false
+        local safeSkipped  = safe and not SAFE_MODE_KEEP[name]
+
+        if userDisabled or safeSkipped then
             mod._disabled = true
+            mod._safeSkipped = safeSkipped or nil
         else
             mod._disabled = false
+            mod._safeSkipped = nil
             if mod.Init then
                 local ok, err = pcall(mod.Init, mod)
                 if not ok then
@@ -180,8 +234,29 @@ function TA:UpdateModules(event, ...)
         if mod.OnEvent and not mod._disabled then
             local ok, err = pcall(mod.OnEvent, mod, event, ...)
             if not ok then
-                print("|cFFFF4444[TA] Module " .. name .. " OnEvent error:|r " .. tostring(err))
-                    if TA.ErrorLog then TA.ErrorLog:Log(name .. " OnEvent", tostring(err), "") end
+                mod._errorCount = (mod._errorCount or 0) + 1
+
+                if mod._errorCount <= ERROR_PRINT_LIMIT then
+                    print("|cFFFF4444[TA] Module " .. name .. " OnEvent error:|r " .. tostring(err))
+                elseif mod._errorCount == ERROR_PRINT_LIMIT + 1 then
+                    print("|cFFFF9A1A[TA]|r " .. name .. " keeps failing — muting further errors. "
+                          .. "|cFF888780/ta errors to read them.|r")
+                end
+
+                -- Pass the event as the stack field. Which event triggered a
+                -- failure is usually the fastest way to find it, and this was
+                -- previously logged as an empty string.
+                if TA.ErrorLog then TA.ErrorLog:Log(name .. " OnEvent", tostring(err), event or "") end
+
+                if mod._errorCount >= ERROR_DISABLE_THRESHOLD then
+                    mod._disabled = true
+                    mod._autoDisabled = true
+                    local msg = name .. " disabled after " .. mod._errorCount
+                                .. " errors this session"
+                    print("|cFFFF9A1A[ToonAge Safe Mode]|r " .. msg
+                          .. ". |cFF888780Reload to re-enable. /ta health for status.|r")
+                    if TA.ErrorLog then TA.ErrorLog:Log("SafeMode", msg, event or "") end
+                end
             end
         end
     end
@@ -375,6 +450,51 @@ function TA:SlashCommand(msg)
             local mode = self.db.useUnifiedUI and "|cFF4AFF7AUnified HUD|r" or "|cFFFF9A1AFragmented Windows|r"
             print("|cFFFFD100[ToonAge]|r Layout: " .. mode)
         end,
+        safemode = function()
+            self.db.safeMode = not self.db.safeMode
+            if self.db.safeMode then
+                print("|cFFFF9A1A[ToonAge]|r Safe Mode |cFFFF9A1AON|r — next load initialises "
+                      .. "core modules only. |cFF888780/reload to apply.|r")
+            else
+                print("|cFFFFD100[ToonAge]|r Safe Mode |cFF4AFF7AOFF|r. "
+                      .. "|cFF888780/reload to load everything again.|r")
+            end
+        end,
+        health   = function()
+            local report = self:GetHealthReport()
+            local loaded, off, errored = 0, 0, 0
+
+            print("|cFFFFD100━━━ ToonAge Module Health ━━━|r")
+            for _, entry in ipairs(report) do
+                local mod = self.modules[entry.name]
+                if entry.status == "loaded" then
+                    loaded = loaded + 1
+                elseif entry.status == "errored" then
+                    errored = errored + 1
+                    print(("  |cFFFF4444✗ %s|r — init failed: %s"):format(entry.name, tostring(entry.error)))
+                else
+                    off = off + 1
+                    -- Distinguish the three ways a module ends up off. "Disabled"
+                    -- alone is not actionable: turned off on purpose, skipped by
+                    -- safe mode, and switched off for misbehaving want different
+                    -- responses from you.
+                    local why = "off by /ta toggle"
+                    if mod and mod._autoDisabled then
+                        why = ("auto-disabled after %d errors — /ta errors"):format(mod._errorCount or 0)
+                    elseif mod and mod._safeSkipped then
+                        why = "skipped by Safe Mode"
+                    end
+                    print(("  |cFF888780○ %s — %s|r"):format(entry.name, why))
+                end
+            end
+
+            print(("  |cFF4AFF7A%d loaded|r · |cFF888780%d off|r · |cFFFF4444%d errored|r")
+                  :format(loaded, off, errored))
+            if self.db.safeMode then
+                print("  |cFFFF9A1ASafe Mode is ON.|r |cFF888780/ta safemode to turn it off.|r")
+            end
+            print("|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+        end,
         help     = function() self:PrintInteractiveHelp() end,
     }
 
@@ -558,7 +678,8 @@ function TA:GetAllCommandNames()
     local names = {}
     -- Built-in commands
     local builtins = {"gear","talents","rotation","prof","pets","weekly","guide",
-                      "options","debug","reset","layout","help","toggle","open"}
+                      "options","debug","reset","layout","help","toggle","open",
+                      "safemode","health"}
     for _, n in ipairs(builtins) do names[#names+1] = n end
 
     -- Module commands
