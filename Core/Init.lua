@@ -39,12 +39,21 @@ local DB_DEFAULTS = {
         DungeonGuide       = true,
     },
 
-    -- Guided first-run flow. "character" (default) runs it once for each new
-    -- character, since build advice is per-spec and genuinely useful on a fresh
-    -- alt. "account" runs it once ever, for people with many alts who do not
-    -- want to see it again. /ta onboard account|character switches.
-    onboardScope     = "character",
-    onboardedAccount = false,
+    -- What happens when a character is seen for the first time. One setting
+    -- rather than a web of booleans: the old onboardScope/onboardedAccount pair
+    -- could disagree with each other, and nothing defined which won.
+    --
+    --   "wizard"  — (default) show the guided setup popup, once per character.
+    --   "inherit" — no popup. Apply defaultPreset silently and print one line.
+    --   "off"     — do nothing at all. No popup, no message.
+    --
+    -- /ta onboard <wizard|inherit|off> switches. /ta onboard with no argument
+    -- always runs the wizard on demand, whatever this is set to.
+    newCharBehavior = "wizard",
+
+    -- Which preset "inherit" applies. Set by the wizard whenever a character
+    -- completes it, so the choice you made last is the one your alts get.
+    defaultPreset   = "auto",
 
     -- Safe Mode boot flag. Persisted deliberately: the whole point is to
     -- survive a reload when the addon is too broken to reach its own UI.
@@ -124,6 +133,27 @@ function TA:InitDB()
                 db.modules[k] = CopyDefault(v)
             end
         end
+    end
+
+    -- Migrate the old two-flag onboarding model onto newCharBehavior.
+    -- Runs here, with the other defaults, so it completes before any module
+    -- Init reads the value. The old keys are dropped once translated; leaving
+    -- them would recreate exactly the ambiguity this replaces.
+    --
+    -- Only "account scope, already done" maps to a hard off. Account scope that
+    -- had not fired yet becomes "wizard" and will now run for each new
+    -- character rather than once ever -- the closest honest equivalent, since
+    -- the new model has no run-once-then-disable state.
+    if db.onboardScope ~= nil or db.onboardedAccount ~= nil then
+        if db.newCharBehavior == nil or db.newCharBehavior == DB_DEFAULTS.newCharBehavior then
+            if db.onboardScope == "account" and db.onboardedAccount then
+                db.newCharBehavior = "off"
+            else
+                db.newCharBehavior = "wizard"
+            end
+        end
+        db.onboardScope     = nil
+        db.onboardedAccount = nil
     end
 
     self.db = db

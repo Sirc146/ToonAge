@@ -80,6 +80,58 @@ local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
     return y - 26
 end
 
+--- A row that cycles through a fixed set of values on click, for settings with
+--- more than two states. Mirrors MakeToggleRow's (parent, y, width, ...) -> newY
+--- convention so it drops into the same layout flow.
+--- @param options table array of { value = string, text = string }
+local function MakeChoiceRow(parent, y, width, label, options, getValue, setValue)
+    local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    row:SetSize(width - 28, 22)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y)
+    row:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+    row:SetBackdropColor(0.06, 0.06, 0.06, 1)
+    row:SetBackdropBorderColor(0.30, 0.25, 0.08, 0.4)
+
+    local indicator = row:CreateTexture(nil, "ARTWORK")
+    indicator:SetSize(10, 10)
+    indicator:SetPoint("LEFT", row, "LEFT", 6, 0)
+    indicator:SetColorTexture(0.85, 0.70, 0.20, 1)
+
+    local lbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
+    lbl:SetText(label)
+    lbl:SetTextColor(0.88, 0.83, 0.65, 1)
+    lbl:SetPoint("LEFT", row, "LEFT", 22, 0)
+
+    local statusLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    statusLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    statusLbl:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+
+    local function IndexOf(value)
+        for i, opt in ipairs(options) do
+            if opt.value == value then return i end
+        end
+        return 1
+    end
+
+    local function Refresh()
+        statusLbl:SetText(options[IndexOf(getValue())].text)
+    end
+
+    row:SetScript("OnClick", function()
+        -- Wrap round to the first option past the end.
+        local nextIdx = (IndexOf(getValue()) % #options) + 1
+        setValue(options[nextIdx].value)
+        Refresh()
+    end)
+    row:SetScript("OnEnter", function(f) f:SetBackdropColor(0.12, 0.10, 0.04, 1) end)
+    row:SetScript("OnLeave", function(f) f:SetBackdropColor(0.06, 0.06, 0.06, 1) end)
+
+    Refresh()
+    table.insert(Settings.frames, row)
+    return y - 26
+end
+
 --- A labeled slider row for numeric settings (scale, opacity, etc.).
 --- Mirrors MakeToggleRow's (parent, y, width, ...) -> newY convention.
 local function MakeSliderRow(parent, y, width, label, minVal, maxVal, step, getValue, setValue)
@@ -443,6 +495,45 @@ function Settings:Render(content, sidebar)
     y = y - 8
 
     -- ═══════════════════════════════════════════════════════════════════
+    -- NEW CHARACTERS (account-wide — governs alts you have not rolled yet)
+    -- ═══════════════════════════════════════════════════════════════════
+    y = MakeSection(content, y, w, "NEW CHARACTERS (account-wide)")
+
+    y = MakeChoiceRow(content, y, w, "On first login", {
+        { value = "wizard",  text = "|cFFFFD100SETUP WIZARD|r" },
+        { value = "inherit", text = "|cFF4AFF7AINHERIT SILENTLY|r" },
+        { value = "off",     text = "|cFF888780DO NOTHING|r" },
+    }, function()
+        return (TA.db and TA.db.newCharBehavior) or "wizard"
+    end, function(v)
+        if TA.db then TA.db.newCharBehavior = v end
+    end)
+
+    y = MakeChoiceRow(content, y, w, "Preset new characters inherit", {
+        { value = "auto",   text = "|cFF4AFF7AFULL AUTO|r" },
+        { value = "manual", text = "|cFFFFD100MANUAL|r" },
+    }, function()
+        return (TA.db and TA.db.defaultPreset) or "auto"
+    end, function(v)
+        if TA.db then TA.db.defaultPreset = v end
+    end)
+
+    y = y - 4
+    local ncNote = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    ncNote:SetFont(STANDARD_TEXT_FONT, 9, "")
+    ncNote:SetText("|cFF888780Inherit applies the preset above with no popup — automation, "
+                 .. "prediction bar and arrow only. Window positions and per-character tuning "
+                 .. "are not copied. |cFFFFD100/ta onboard|r|cFF888780 runs the wizard on any "
+                 .. "character on demand.|r")
+    ncNote:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
+    ncNote:SetWidth(w - 28)
+    ncNote:SetJustifyH("LEFT")
+    table.insert(self.frames, ncNote)
+    y = y - 34
+
+    y = y - 8
+
+    -- ═══════════════════════════════════════════════════════════════════
     -- MODULES (advanced — disable features you don't use)
     -- ═══════════════════════════════════════════════════════════════════
     y = MakeSection(content, y, w, "MODULES (toggle features — reload to apply)")
@@ -497,7 +588,7 @@ function Settings:Render(content, sidebar)
     y = y - 16
     local note = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     note:SetFont(STANDARD_TEXT_FONT, 9, "")
-    note:SetText("|cFF888780All settings are saved per-character. Module toggles require /reload to take effect.\nFeature toggles (Arrow, NavHud, Auto-Quest) apply instantly.|r")
+    note:SetText("|cFF888780Settings are saved per-character except where a section says otherwise. Module toggles require /reload to take effect.\nFeature toggles (Arrow, NavHud, Auto-Quest) apply instantly.|r")
     note:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
     note:SetWidth(w - 28)
     note:SetJustifyH("LEFT")

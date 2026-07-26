@@ -87,9 +87,15 @@ end
 
 local function IsReturningAlt()
     if not TA.charDB then return false end
-    local lastSeen = TA.charDB.lastLoginTime or 0
-    local elapsed = time() - lastSeen
-    return elapsed > RETURNING_ALT_THRESHOLD
+
+    -- No recorded login means this character has never been seen before, which
+    -- is the opposite of returning. Defaulting to 0 here made time() - 0 a
+    -- 56-year gap, so every brand-new character cleared the threshold and got
+    -- welcomed back to a character it had never played.
+    local lastSeen = TA.charDB.lastLoginTime
+    if not lastSeen then return false end
+
+    return (time() - lastSeen) > RETURNING_ALT_THRESHOLD
 end
 
 -- ── Panel Creation ────────────────────────────────────────────────────────────

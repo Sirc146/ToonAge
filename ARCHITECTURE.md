@@ -163,10 +163,10 @@ Verified from source. **I** = has `Init`, **E** = has `OnEvent`, **R** = has `Re
 
 | Module | File | LOC | | Purpose |
 |---|---|--:|---|---|
-| Settings | `Settings.lua` | 615 | IRS | Unified settings panel |
+| Settings | `Settings.lua` | 705 | IRS | Unified settings panel |
 | DevHelpers | `DevHelpers.lua` | 482 | IE | `/taquestscan`, `/tacoord`, quest recorder |
 | ErrorLog | `ErrorLog.lua` | 238 | IS | Persistent error capture, 200 entries |
-| Onboarding | `Onboarding.lua` | 221 | IS | First-login experience |
+| Onboarding | `Onboarding.lua` | 373 | IS | First-login experience (`newCharBehavior`: wizard/inherit/off) |
 | AutoMount | `AutoMount.lua` | 260 | IES | Mounts after `PLAYER_REGEN_ENABLED` outdoors |
 
 ### Files that participate without registering

@@ -40,14 +40,18 @@ local WELCOME_LINES = {
 function Onboarding:Init()
     if not TA.charDB then return end
 
-    local db    = TA.db
-    local scope = (db and db.onboardScope) or "character"
-
-    -- "account" scope: once ever, however many characters you roll.
-    if scope == "account" and db and db.onboardedAccount then return end
-
-    -- "character" scope (default): once per character.
+    -- Already seen this character.
     if TA.charDB.onboarded then return end
+
+    local behavior = (TA.db and TA.db.newCharBehavior) or "wizard"
+
+    -- "off": nothing at all. Deliberately does not claim the login below, so
+    -- AltQuickStart keeps its ordinary behaviour -- which for a character with
+    -- no lastLoginTime means it stays shut anyway.
+    if behavior == "off" then
+        TA.charDB.onboarded = true
+        return
+    end
 
     -- Mark as onboarded immediately to prevent re-triggering
     TA.charDB.onboarded = true
@@ -63,10 +67,71 @@ function Onboarding:Init()
     -- deterministic. By the time either callback fires, both Inits have run.
     TA._onboardingActive = true
 
+    -- "inherit": no popup and no windows. Settings are applied silently and
+    -- the player gets a single chat line telling them what happened.
+    if behavior == "inherit" then
+        self:RunSilentInherit()
+        return
+    end
+
     -- Delay the welcome message slightly so it appears after all module
     -- init messages and the login splash has settled.
     C_Timer.After(3, function()
         self:RunFirstLogin()
+    end)
+end
+
+--- The opt-out path: apply the remembered preset, say so once, open no panels.
+---
+--- "Silent" means no wizard popup, no main window and no Quick Start panel. It
+--- does NOT mean an empty screen: the preset asks for the arrow and prediction
+--- bar, both of which are HUD elements rather than windows, so they appear.
+--- Writing visible=true and then leaving the frames hidden would be the one
+--- genuinely inconsistent outcome.
+function Onboarding:RunSilentInherit()
+    local preset = (TA.db and TA.db.defaultPreset) or "auto"
+
+    -- Synchronous, so any module whose Init runs after this one reads the
+    -- finished settings rather than a half-written table.
+    self:ApplyPresetConfig(preset)
+
+    C_Timer.After(3, function()
+        -- Reconcile the modules that sample these flags once at Init and never
+        -- again. Module Init order comes from pairs() and is not deterministic
+        -- (see the note in Init above), so whether Arrow:Init and QT:Init ran
+        -- before or after the writes above is a coin flip -- and the losing
+        -- side leaves the arrow hidden and the Blizzard tracker still showing.
+        -- The wizard path never hit this because its display half force-showed
+        -- everything. Doing it here, on a timer, is the equivalent that does
+        -- not open any windows. All three calls are idempotent.
+        local Arrow = TA:GetModule("Arrow")
+        if Arrow and Arrow.frame and TA.charDB.arrow and TA.charDB.arrow.visible then
+            Arrow.frame:Show()
+        end
+
+        local QT = TA:GetModule("QuestTracker")
+        if QT and QT.UpdateBlizzardTrackerVisibility then
+            QT:UpdateBlizzardTrackerVisibility()
+        end
+
+        local Rot = TA:GetModule("Rotation")
+        if Rot and Rot.predictBar and TA.charDB.predictBar
+           and TA.charDB.predictBar.visible then
+            Rot.predictBar:Show()
+        end
+
+        -- Printed here rather than from Init so the one clean line lands after
+        -- the module init messages instead of buried in them -- the same reason
+        -- the wizard path delays its welcome by 3 seconds.
+        local label = (preset == "auto") and "Full Auto" or "Manual"
+        print("|cFFFFD100[ToonAge]|r New character detected. Inheriting |cFFFFD100"
+              .. label .. "|r setup.  |cFF888780/ta onboard for the full setup"
+              .. " wizard, /ta options to change.|r")
+
+        -- Release the claim only now: held past AltQuickStart's 2s auto-show so
+        -- "silent" stays silent, cleared afterwards because a flag that is
+        -- never reset is a trap for the next reader.
+        TA._onboardingActive = false
     end)
 end
 
@@ -80,8 +145,12 @@ end
 --- exception — they are replaceable by design, so a maxed one is an expected
 --- swap point rather than a gear gap (Gear.lua's GetItemIlvls already returns
 --- a heirloomCap for this).
+---
+--- Safe to call from a manual /ta onboard as well as from first login: it no
+--- longer writes any "do not run again" flag. It used to set onboardedAccount
+--- unconditionally, so anyone on account scope who typed /ta onboard just to
+--- look at the panel silently burned the account-wide flag for every alt.
 function Onboarding:CompleteFlow()
-    if TA.db then TA.db.onboardedAccount = true end
     TA._onboardingActive = false
 
     -- Step 3: the main screen. Short delay so it does not appear in the same
@@ -98,36 +167,66 @@ end
 
 -- ── Slash commands ────────────────────────────────────────────────────────────
 
+local BEHAVIOR_DESC = {
+    wizard  = "show the setup wizard on each new character",
+    inherit = "apply the saved preset silently, one chat line, no windows",
+    off     = "do nothing on new characters",
+}
+
 Onboarding.SlashCommands = {
     onboard = function(self, args)
-        local sub = ((args or ""):match("^(%S*)") or ""):lower()
+        args = args or ""
+        local sub  = (args:match("^(%S*)") or ""):lower()
+        local rest = (args:match("^%S*%s+(%S+)") or ""):lower()
 
+        if BEHAVIOR_DESC[sub] then
+            if TA.db then TA.db.newCharBehavior = sub end
+            print("|cFFFFD100[ToonAge]|r New characters: |cFFFFD100" .. sub .. "|r — "
+                  .. BEHAVIOR_DESC[sub] .. ".")
+            return
+        end
+
+        -- Back-compat for muscle memory from the old two-flag model.
         if sub == "account" or sub == "character" then
-            if TA.db then TA.db.onboardScope = sub end
-            local desc = sub == "account" and "once per account"
-                                           or "once per character"
-            print("|cFFFFD100[ToonAge]|r First-run setup: |cFFFFD100" .. desc .. "|r.")
+            local mapped = (sub == "account") and "off" or "wizard"
+            if TA.db then TA.db.newCharBehavior = mapped end
+            print("|cFFFFD100[ToonAge]|r |cFF888780Scopes were replaced by modes.|r "
+                  .. "New characters: |cFFFFD100" .. mapped .. "|r — "
+                  .. BEHAVIOR_DESC[mapped] .. ".")
+            return
+        end
+
+        if sub == "preset" then
+            if rest ~= "auto" and rest ~= "manual" then
+                local cur = (TA.db and TA.db.defaultPreset) or "auto"
+                print("|cFFFFD100[ToonAge]|r Inherited preset: |cFFFFD100" .. cur
+                      .. "|r.  |cFF888780/ta onboard preset auto|manual to change.|r")
+                return
+            end
+            if TA.db then TA.db.defaultPreset = rest end
+            print("|cFFFFD100[ToonAge]|r New characters will inherit the |cFFFFD100"
+                  .. rest .. "|r preset.")
             return
         end
 
         if sub == "reset" then
             if TA.charDB then TA.charDB.onboarded = nil end
-            if TA.db then TA.db.onboardedAccount = false end
-            print("|cFFFFD100[ToonAge]|r First-run setup will run again next login. "
-                  .. "|cFF888780/ta onboard runs it now.|r")
+            print("|cFFFFD100[ToonAge]|r This character will be treated as new next login. "
+                  .. "|cFF888780/ta onboard runs the wizard now.|r")
             return
         end
 
         if sub ~= "" then
             print("|cFFFFD100[ToonAge]|r Unknown: /ta onboard " .. sub
-                  .. "  |cFF888780(try: account, character, reset)|r")
+                  .. "  |cFF888780(try: wizard, inherit, off, preset, reset)|r")
             return
         end
 
-        -- No argument: run the flow now, without touching the saved flags.
-        local scope = (TA.db and TA.db.onboardScope) or "character"
-        print("|cFFFFD100[ToonAge]|r Setup — currently |cFFFFD100" .. scope .. "|r scope. "
-              .. "|cFF888780/ta onboard account|character to change.|r")
+        -- No argument: the manual override. Runs the wizard on this character
+        -- whatever newCharBehavior says, and touches no saved flags.
+        local mode = (TA.db and TA.db.newCharBehavior) or "wizard"
+        print("|cFFFFD100[ToonAge]|r Setup wizard — new characters are set to |cFFFFD100"
+              .. mode .. "|r.  |cFF888780/ta onboard wizard|inherit|off to change.|r")
         self:ShowPopup()
     end,
 }
@@ -257,39 +356,52 @@ end
 
 -- ── Presets ───────────────────────────────────────────────────────────────────
 
-function Onboarding:ApplyPreset(preset)
+--- Writes a preset's settings into charDB and nothing else -- no windows, no
+--- chat output. Split out from ApplyPreset so the silent inherit path can
+--- reuse it: the display half below calls TA:ToggleUI(), which is a *toggle*,
+--- so on a silent login it would either open the main window (contradicting
+--- "open nothing") or close one that something else had already opened.
+--- @param preset string "auto" | "manual"
+function Onboarding:ApplyPresetConfig(preset)
+    if not TA.charDB then return end
+    local auto = (preset == "auto")
+
     local t = TA.charDB.tracker or {}
+    t.autoQuest           = auto
+    t.cutsceneSkip        = auto
+    t.autoEquip           = auto
+    t.replaceBlizzTracker = auto
+    TA.charDB.tracker = t
+
+    -- On in both presets: the prediction bar is passive information, not
+    -- automation, so Manual mode still gets it.
+    TA.charDB.predictBar = TA.charDB.predictBar or {}
+    TA.charDB.predictBar.visible = true
+
+    TA.charDB.arrow = TA.charDB.arrow or {}
+    TA.charDB.arrow.visible = true
+end
+
+--- The wizard's version: applies the preset, reports it, and opens the UI.
+function Onboarding:ApplyPreset(preset)
+    self:ApplyPresetConfig(preset)
+
+    -- Remember the choice so alts created later can inherit it under
+    -- newCharBehavior = "inherit".
+    if TA.db then TA.db.defaultPreset = (preset == "auto") and "auto" or "manual" end
 
     if preset == "auto" then
-        -- Enable all automation
-        t.autoQuest      = true
-        t.cutsceneSkip   = true
-        t.autoEquip      = true
-        t.replaceBlizzTracker = true
-        TA.charDB.predictBar = TA.charDB.predictBar or {}
-        TA.charDB.predictBar.visible = true
         print("|cFF4AFF7A[ToonAge]|r Full Auto enabled! Quests auto-accept, cutscenes skip, combat bar active.")
         print("|cFF888780Hold Shift at any NPC to pause automation.|r")
     else
-        -- Manual mode — show info only, no automation
-        t.autoQuest      = false
-        t.cutsceneSkip   = false
-        t.autoEquip      = false
-        t.replaceBlizzTracker = false
-        TA.charDB.predictBar = TA.charDB.predictBar or {}
-        TA.charDB.predictBar.visible = true  -- still show prediction bar (it's passive info)
         print("|cFFFFD100[ToonAge]|r Manual mode. Arrow + tracker + prediction active. No auto-quest.")
     end
-
-    TA.charDB.tracker = t
 
     -- Show main panel instead of standalone tracker
     TA:ToggleUI()
     local Arrow = TA:GetModule("Arrow")
     if Arrow and Arrow.frame then
         Arrow.frame:Show()
-        TA.charDB.arrow = TA.charDB.arrow or {}
-        TA.charDB.arrow.visible = true
     end
     -- Show prediction bar
     local Rot = TA:GetModule("Rotation")
@@ -297,5 +409,3 @@ function Onboarding:ApplyPreset(preset)
         Rot.predictBar:Show()
     end
 end
-
-Onboarding.SlashCommands = {}
