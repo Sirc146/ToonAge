@@ -227,9 +227,15 @@ Both pointers now carry the raw `/dump` lines instead. If a probe command does
 get built, seed it with measured values, not guesses.
 
 ### 17. Opportunistic API migration
-19 bare `GetItemInfo` calls remain across `Gear.lua`, `AutoEquip.lua`,
+21 bare `GetItemInfo` calls remain across `Gear.lua`, `AutoEquip.lua`,
 `RoleMorph.lua`, and others. Not on a deprecation path, and `U.GetItemInfo`
 exists for new code — migrate when already editing the surrounding function.
+
+**Verified safe 2026-07-26.** `U.GetItemInfo` prefers `C_Item.GetItemInfo`, and
+nobody had ever confirmed that returns the same tuple as the global. It does —
+18 values, every position identical (see `.rules.md` for the one-line re-check).
+That matters because three call sites read by position, and a mismatch would
+have given wrong values silently. Migration is safe to continue.
 
 ---
 
