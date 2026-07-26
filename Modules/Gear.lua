@@ -189,7 +189,32 @@ local function ScanBagsForUpgrades(slotID, specID, mode, currentScore, itemDef, 
             for slot = 1, (C_Container.GetContainerNumSlots(bag) or 0) do
                 local info = C_Container.GetContainerItemInfo(bag, slot)
                 if info and info.hyperlink then
-                    table.insert(Gear.bagCache.items, { bag = bag, slot = slot, link = info.hyperlink })
+                    -- Decode once, here, rather than per slot below.
+                    --
+                    -- RenderPlayerGrid calls this function once for each of the
+                    -- 18 grid slots, and the loop underneath used to call
+                    -- GetItemInfo on every cached bag item every time. Those
+                    -- three fields describe the item, not the slot being
+                    -- considered, so they cannot change between iterations --
+                    -- with 100 items in bags that was ~1800 calls per render to
+                    -- recompute 100 answers.
+                    --
+                    -- Safe to decode at build time only because GetItemInfo
+                    -- returning nil for an uncached item is self-correcting
+                    -- here: OnEvent zeroes bagCache.time on
+                    -- GET_ITEM_INFO_RECEIVED, so the entry is rebuilt and
+                    -- re-decoded as soon as the server delivers the data.
+                    -- Until then equipLoc stays nil and the item is skipped,
+                    -- which is what the old per-slot call did anyway.
+                    local _, _, _, _, _, _, _, _, eLoc, _, _, cID, scID = U.GetItemInfo(info.hyperlink)
+                    table.insert(Gear.bagCache.items, {
+                        bag  = bag,
+                        slot = slot,
+                        link = info.hyperlink,
+                        equipLoc       = eLoc,
+                        itemClassID    = cID,
+                        itemSubClassID = scID,
+                    })
                 end
             end
         end
@@ -198,7 +223,7 @@ local function ScanBagsForUpgrades(slotID, specID, mode, currentScore, itemDef, 
 
     for _, item in ipairs(Gear.bagCache.items) do
         local bagSlotKey = item.bag .. "_" .. item.slot
-        local _, _, _, _, _, _, _, _, equipLoc, _, _, itemClassID, itemSubClassID = GetItemInfo(item.link)
+        local equipLoc, itemClassID, itemSubClassID = item.equipLoc, item.itemClassID, item.itemSubClassID
 
         if equipLoc then
             local isValid = false
