@@ -1,4 +1,4 @@
-## Interface: 120007
+## Interface: 120007, 120100
 ## Title: |cFFFFD100ToonAge|r
 ## Notes: Full character scanner — gear, talents, rotation, professions, pets, and weekly guidance.
 ## Author: Chris

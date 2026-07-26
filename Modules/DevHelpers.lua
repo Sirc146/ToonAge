@@ -1,9 +1,15 @@
 -- ToonAge/Modules/DevHelpers.lua
 -- Developer tools: quest recorder, coordinate capture, quest log scanner, talent scanner.
 --
+-- Every command that produces data you need OUT of the game writes to the shared
+-- export window (TADevExportFrame) instead of the chat frame. Chat is for status
+-- only. See the Universal Export Window section below for why.
+--
 -- Slash commands:
 --   /coord           -- print current map position as a guide coord line
---   /taquestscan     -- dump active quest log with IDs and positions
+--   /coord dump      -- open the accumulated map-ID log in the export window
+--   /taquestscan     -- export active quest log as paste-ready guide steps
+--   /tateleports     -- export known teleports as CLASS_TELEPORTS entries
 --   /tarecord        -- show recorder status
 --   /tarecord start [Guide Title]   -- begin recording quests in play order
 --   /tarecord stop                  -- pause recording
@@ -22,6 +28,125 @@ DH.recording = false
 
 local function p(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cFF4AFF7A[TA-Dev]|r " .. msg)
+end
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Universal Export Window
+-- ══════════════════════════════════════════════════════════════════════════════
+-- One selectable, scrollable text box shared by every dev command that produces
+-- data meant to leave the game.
+--
+-- This generalises the old TACoordCopyFrame, which was built inline inside
+-- CoordLogDump and therefore reachable only from `/coord dump`. Every other
+-- command printed to DEFAULT_CHAT_FRAME, which is actively hostile to Lua:
+-- it wraps long lines mid-token, strips leading whitespace (so nesting is
+-- lost), and silently drops the top of the dump once the buffer's line cap is
+-- hit — which a 400-line quest scan reaches immediately.
+--
+-- Single instance, created on first use and reused forever; per .rules.md the
+-- addon never abandons frames.
+
+local EXPORT_W, EXPORT_H = 720, 440
+
+local function ExportFrame()
+    if DH._export then return DH._export end
+
+    local f = CreateFrame("Frame", "TADevExportFrame", UIParent, "BackdropTemplate")
+    f:SetSize(EXPORT_W, EXPORT_H)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetBackdrop({ bgFile   = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    f:SetBackdropColor(0.05, 0.05, 0.06, 0.97)
+    f:SetBackdropBorderColor(0.35, 0.32, 0.28, 1)
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop",  f.StopMovingOrSizing)
+
+    f.heading = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.heading:SetPoint("TOPLEFT", 12, -10)
+
+    local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetPoint("TOPLEFT", 12, -28)
+    hint:SetText("Ctrl+A select all  ·  Ctrl+C copy  ·  Esc close")
+
+    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", 0, 2)
+
+    local scroll = CreateFrame("ScrollFrame", "TADevExportScroll", f,
+                               "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", 12, -46)
+    scroll:SetPoint("BOTTOMRIGHT", -32, 12)
+
+    -- The scroll frame is sized by two anchors rather than SetSize, so
+    -- GetWidth() can still be 0 on the frame it was created in -- layout has
+    -- not run yet. Fall back to the width those anchors will resolve to
+    -- (EXPORT_W minus the left inset and the scrollbar gutter) so the edit box
+    -- is never handed a zero or negative width.
+    local EB_INSET = 4
+    local function WrapWidth(w)
+        w = (w and w > 0) and w or scroll:GetWidth()
+        if not w or w <= 0 then w = EXPORT_W - 12 - 32 end
+        return math.max(1, w - EB_INSET)
+    end
+
+    local eb = CreateFrame("EditBox", nil, scroll)
+    eb:SetMultiLine(true)
+    eb:SetFontObject(ChatFontNormal)
+    eb:SetAutoFocus(false)
+    eb:SetWidth(WrapWidth())
+    eb:SetScript("OnEscapePressed", function() f:Hide() end)
+    scroll:SetScrollChild(eb)
+
+    -- Keep the edit box's wrap width in step with the window, or resizing just
+    -- reveals empty space while the text stays at its original wrap point.
+    scroll:SetScript("OnSizeChanged", function(_, w)
+        eb:SetWidth(WrapWidth(w))
+    end)
+
+    -- Resize grip. SetResizeBounds replaced SetMinResize/SetMaxResize in 10.0;
+    -- both calls are guarded so a client lacking them still gets a usable
+    -- fixed-size window rather than an error at frame construction.
+    if f.SetResizable then
+        f:SetResizable(true)
+        if f.SetResizeBounds then f:SetResizeBounds(420, 240) end
+        local grip = CreateFrame("Button", nil, f)
+        grip:SetSize(16, 16)
+        grip:SetPoint("BOTTOMRIGHT", -4, 4)
+        grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+        grip:SetScript("OnMouseDown", function() f:StartSizing("BOTTOMRIGHT") end)
+        grip:SetScript("OnMouseUp",   function() f:StopMovingOrSizing() end)
+    end
+
+    tinsert(UISpecialFrames, "TADevExportFrame")   -- Esc closes the window
+
+    f.editBox = eb
+    f.scroll  = scroll
+    DH._export = f
+    return f
+end
+
+-- Show text in the shared export window, selected and ready to copy.
+--   label — heading, e.g. "Quest Scan — Hallowfall"
+--   body  — string, or a list of lines which is joined with newlines
+function DH:ShowExport(label, body)
+    if type(body) == "table" then body = table.concat(body, "\n") end
+    body = body or ""
+
+    local f = ExportFrame()
+    local _, newlines = body:gsub("\n", "")
+    f.heading:SetText(string.format("|cFFFFD100%s|r  |cFF888888(%d lines)|r",
+                                    label or "ToonAge Export", newlines + 1))
+    f.editBox:SetText(body)
+    f:Show()
+    f.scroll:UpdateScrollChildRect()
+    f.editBox:SetCursorPosition(0)
+    f.editBox:HighlightText()
+    f.editBox:SetFocus()
+    return f
 end
 
 -- ── Quest Recorder ────────────────────────────────────────────────────────────
@@ -118,18 +243,14 @@ function DH:DumpRecording()
     lines[#lines+1] = "    },"
     lines[#lines+1] = "}"
 
-    -- Print to chat (scrollable; copy from here or from SavedVariables)
-    p("===== GUIDE STUB START (" .. #r.steps .. " steps) =====")
-    for _, line in ipairs(lines) do
-        DEFAULT_CHAT_FRAME:AddMessage(line)
-    end
-    p("===== GUIDE STUB END =====")
+    local text = table.concat(lines, "\n")
 
-    -- Also stash the full text in SavedVariables so it survives a /reload
-    -- and can be copied from WTF/Account/.../ToonAgeDB.lua
-    TA.charDB.recorder.lastDump = table.concat(lines, "\n")
-    p("Full stub also saved to ToonAgeDB.lua under key 'recorder.lastDump'.")
-    p("Find it at: WTF/Account/<name>/<server>/<char>/ToonAgeDB.lua")
+    -- Stash in SavedVariables first, so the export survives a /reload or a
+    -- disconnect even if the window is closed without copying.
+    TA.charDB.recorder.lastDump = text
+
+    DH:ShowExport(string.format("Guide Stub — %s (%d steps)", r.title, #r.steps), text)
+    p(string.format("Exported %d step(s). Also saved to ToonAgeDB.lua under 'recorder.lastDump'.", #r.steps))
 end
 
 -- ── Guide list helper ────────────────────────────────────────────────────────
@@ -264,35 +385,62 @@ end
 
 SLASH_TAQUESTSCAN1 = "/taquestscan"
 SlashCmdList["TAQUESTSCAN"] = function()
+    local numEntries = C_QuestLog.GetNumQuestLogEntries() or 0
+    if numEntries == 0 then p("Quest log is empty."); return end
+
     local mapID   = C_Map.GetBestMapForUnit("player")
     local mapInfo = mapID and C_Map.GetMapInfo(mapID)
     local zone    = mapInfo and mapInfo.name or "Unknown"
 
-    p(string.format("=== Quest Scan  [%s  map=%s] ===", zone, tostring(mapID)))
+    -- Read the player's position ONCE. The old version called this per quest
+    -- inside the loop, which cost N calls to return the same answer N times --
+    -- there is one player and they are in one place for the whole scan.
+    local px, py = 0, 0
+    if mapID then
+        local pos = C_Map.GetPlayerMapPosition(mapID, "player")
+        if pos then px, py = pos:GetXY() end
+    end
 
-    local numEntries = C_QuestLog.GetNumQuestLogEntries()
-    if numEntries == 0 then p("Quest log is empty."); return end
-
-    local count = 0
+    local steps, count = {}, 0
     for i = 1, numEntries do
         local info = C_QuestLog.GetInfo(i)
         if info and not info.isHeader and info.questID then
-            local qid  = info.questID
-            local done = C_QuestLog.IsQuestFlaggedCompleted(qid) and "complete"
-                      or (info.isComplete and "turnin" or "inprogress")
-            local pos  = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
-            local px, py = "?", "?"
-            if pos then
-                local rx, ry = pos:GetXY()
-                px = string.format("%.2f", rx)
-                py = string.format("%.2f", ry)
-            end
-            p(string.format("  %d  %-40s  %-10s  (%.2s, %.2s)", qid, info.title or "?", done, px, py))
+            local qid    = info.questID
+            local status = C_QuestLog.IsQuestFlaggedCompleted(qid) and "complete"
+                        or (info.isComplete and "turnin" or "inprogress")
             count = count + 1
+            steps[#steps + 1] = string.format(
+                '    { type = "quest", questID = %d, text = "%s",\n' ..
+                '      coord = { map = %d, x = %.2f, y = %.2f } },  -- %s',
+                qid, EscLua(info.title or "?"), mapID or 0, px, py, status)
         end
     end
-    if count == 0 then p("No active quests (only headers).")
-    else p("--- " .. count .. " quest(s) ---") end
+
+    if count == 0 then p("No active quests (only headers)."); return end
+
+    local out = {
+        "-- ==============================================================",
+        string.format("-- TA Quest Scan -- %s (map %s)", zone, tostring(mapID)),
+        string.format("-- %d active quest(s), captured at player position %.2f, %.2f",
+                      count, px, py),
+        "--",
+        "-- READ THIS BEFORE PASTING: every coord below is the PLAYER'S position",
+        "-- at scan time, so they are all identical. They are NOT each quest's",
+        "-- objective location. Either stand at the objective and re-scan one",
+        "-- quest at a time, or treat these as placeholders and correct by hand.",
+        "--",
+        "-- TODO(pending API dump): C_QuestLog.GetNextWaypointForMap would give a",
+        "-- real per-quest waypoint here. Not wired up -- that namespace is not yet",
+        "-- verified on 12.1.0 and this file does not guess at APIs.",
+        "--",
+        "-- Paste the entries into a guide's `steps = { ... }` block.",
+        "-- ==============================================================",
+        "",
+    }
+    for _, line in ipairs(steps) do out[#out + 1] = line end
+
+    DH:ShowExport(string.format("Quest Scan — %s (%d quests)", zone, count), out)
+    p(string.format("Exported %d quest(s) from %s.", count, zone))
 end
 
 -- ── /coord — print current position as a guide coord line ─────────────────────
@@ -341,47 +489,8 @@ local function CoordLogDump()
         lines[#lines + 1] = string.format("%2d. %-28s map=%-6d %s",
             i, e.zone or "?", e.map or 0, e.parents or "")
     end
-    local text = table.concat(lines, "\n")
 
-    if not DH._coordCopy then
-        local f = CreateFrame("Frame", "TACoordCopyFrame", UIParent, "BackdropTemplate")
-        f:SetSize(620, 320)
-        f:SetPoint("CENTER")
-        f:SetFrameStrata("DIALOG")
-        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8",
-                        edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        f:SetBackdropColor(0.05, 0.05, 0.06, 0.97)
-        f:SetBackdropBorderColor(0.35, 0.32, 0.28, 1)
-        f:EnableMouse(true); f:SetMovable(true); f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop",  f.StopMovingOrSizing)
-
-        local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        title:SetPoint("TOPLEFT", 12, -10)
-        title:SetText("|cFFFFD100ToonAge Coord Log|r  (Ctrl+A, Ctrl+C)")
-
-        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-        close:SetPoint("TOPRIGHT", 0, 2)
-
-        local scroll = CreateFrame("ScrollFrame", "TACoordCopyScroll", f,
-                                   "UIPanelScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT", 12, -34)
-        scroll:SetPoint("BOTTOMRIGHT", -32, 12)
-
-        local eb = CreateFrame("EditBox", nil, scroll)
-        eb:SetMultiLine(true); eb:SetFontObject(ChatFontNormal)
-        eb:SetWidth(560); eb:SetAutoFocus(false)
-        eb:SetScript("OnEscapePressed", function() f:Hide() end)
-        scroll:SetScrollChild(eb)
-
-        f.editBox = eb
-        DH._coordCopy = f
-    end
-
-    DH._coordCopy.editBox:SetText(text)
-    DH._coordCopy:Show()
-    DH._coordCopy.editBox:HighlightText()
-    DH._coordCopy.editBox:SetFocus()
+    DH:ShowExport(string.format("Coord Log — %d zone(s)", #log), lines)
 end
 
 SLASH_TACOORD1 = "/coord"
@@ -445,11 +554,10 @@ end
 SLASH_TATELEPORTS1 = "/tateleports"
 SlashCmdList["TATELEPORTS"] = function()
     local _, class = UnitClass("player")
-    p(string.format("=== Teleports/Portals known by %s (%s) ===",
-        UnitName("player") or "?", class or "?"))
 
-    local found = 0
-    local seen  = {}
+    local found  = 0
+    local seen   = {}
+    local hits   = {}
 
     local function report(name, spellID)
         if not name or not spellID or seen[spellID] then return end
@@ -460,8 +568,12 @@ SlashCmdList["TATELEPORTS"] = function()
         end
         seen[spellID] = true
         found = found + 1
-        p(string.format('  { spellID = %-7d toZone = ?,  class = "%s", label = "%s" },',
-            spellID, class or "?", name))
+        -- toZone is nil, not `?`. The old version emitted a bare `?`, which is
+        -- not a Lua expression -- every dump this command ever produced failed
+        -- to parse on paste and had to be hand-edited first.
+        hits[#hits + 1] = string.format(
+            '    { spellID = %d, toZone = nil, class = "%s", label = "%s" },  -- TODO: toZone',
+            spellID, class or "?", EscLua(name))
     end
 
     -- 11.0+ spellbook API, with a guard so this still runs on older clients.
@@ -482,11 +594,29 @@ SlashCmdList["TATELEPORTS"] = function()
     end
 
     if found == 0 then
-        p("  None found. If you know you have some, the spellbook API may have")
-        p("  changed again — check C_SpellBook in /api or report the client build.")
-    else
-        p(string.format("  %d found. Fill in toZone by taking each one and running /coord on arrival.", found))
+        p("No teleports found. If you know you have some, the spellbook API may have")
+        p("changed again — check C_SpellBook in /api or report the client build.")
+        return
     end
+
+    local out = {
+        "-- ==============================================================",
+        string.format("-- TA Teleport Scan -- %s (%s)", UnitName("player") or "?", class or "?"),
+        string.format("-- %d spell(s) matched. Paste into TravelRouter.CLASS_TELEPORTS.", found),
+        "--",
+        "-- spellID and label are read straight from the spellbook and are exact.",
+        "-- toZone is nil on purpose: fill it by casting each teleport and running",
+        "-- /coord on arrival, then /coord dump to read the map IDs back out.",
+        "--",
+        "-- Matching is by English name substring (Teleport/Portal/Dreamwalk/Recall/",
+        "-- Death Gate/Zen Pilgrimage), so this finds nothing on a localised client.",
+        "-- ==============================================================",
+        "",
+    }
+    for _, line in ipairs(hits) do out[#out + 1] = line end
+
+    DH:ShowExport(string.format("Teleports — %s (%d)", class or "?", found), out)
+    p(string.format("Exported %d teleport(s). Fill toZone via /coord on arrival.", found))
 end
 
 -- ── /taweekly — dump raw C_WeeklyRewards data for schema verification ─────────

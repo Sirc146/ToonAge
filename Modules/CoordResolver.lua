@@ -180,7 +180,25 @@ local function QuerySuperTrack(questID)
     local tracked = C_SuperTrack.GetSuperTrackedQuestID()
     if tracked ~= questID then return nil end
 
-    -- The super-tracked quest's waypoint is available via C_Navigation
+    -- ⚠ DEAD ON 12.1.0 — C_Navigation.GetDestination was verified nil by live
+    -- dump on 2026-07-26. Because the call sits behind an existence check, this
+    -- whole source has been returning nil silently, not erroring. Every step
+    -- that should have resolved via SuperTrack has been falling through to APR
+    -- and then to the guide's stored coord for as long as that has been true.
+    --
+    -- NOT yet rewritten, deliberately. C_Navigation gained GetNextWaypointForMap,
+    -- but its signature is unknown and every other member of that namespace
+    -- (GetFrame/GetDistance/GetTargetState/HasValidScreenPosition) operates on
+    -- the single active arrow rather than an arbitrary questID — so it may take
+    -- (uiMapID) and not (questID, uiMapID).
+    --
+    -- To settle it, supertrack a quest and dump these. Check the FIRST one first:
+    -- C_QuestLog.GetNextWaypointForMap is the API that takes a questID, so if it
+    -- survived 12.1.0 this source rewires to C_QuestLog and C_Navigation stays
+    -- arrow-only, and the signature question above is moot.
+    --   /dump C_QuestLog.GetNextWaypointForMap(C_SuperTrack.GetSuperTrackedQuestID(), C_Map.GetBestMapForUnit("player"))
+    --   /dump C_QuestLog.GetNextWaypoint(C_SuperTrack.GetSuperTrackedQuestID())
+    --   /run print(pcall(C_Navigation.GetNextWaypointForMap, C_Map.GetBestMapForUnit("player")))
     if C_Navigation and C_Navigation.GetDestination then
         local ok, destMapID, destX, destY = pcall(C_Navigation.GetDestination)
         if ok and destMapID and destX then
@@ -321,7 +339,13 @@ CR.SlashCommands = {
         end
         if C_TaskQuest then table.insert(sources, "C_TaskQuest") end
         if C_SuperTrack then table.insert(sources, "C_SuperTrack") end
-        if C_Navigation then table.insert(sources, "C_Navigation") end
+        -- Test the MEMBER, not the namespace. `if C_Navigation then` was true on
+        -- 12.1.0 even though the function this module actually calls
+        -- (GetDestination) had been removed -- so this line reported a working
+        -- source while QuerySuperTrack silently returned nil every time.
+        if C_Navigation and C_Navigation.GetNextWaypointForMap then
+            table.insert(sources, "C_Navigation (arrow only)")
+        end
         print("|cFFFFD100[ToonAge CoordResolver]|r Available sources: " .. table.concat(sources, ", "))
     end,
 }

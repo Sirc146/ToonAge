@@ -1,7 +1,14 @@
 # ToonAge — Working TODO
 
-**Written 2026-07-25, end of session.** This is the working queue.
+**Written 2026-07-25. Refreshed 2026-07-26.** This is the working queue.
 `IMPROVEMENT_PLAN.md` is the strategic roadmap; this is what to actually pick up next.
+
+**Done since it was written** (verified against the tree, not assumed):
+item 1 (committed — `48f9c4d`, `25c3ee3`), item 5 (`Core/GuideManager.lua` deleted),
+item 15 (`Data/Zones.lua` → `Data/ItemLevels.lua`), item 16 (`.context.md`,
+`.competitors.md`, `ASSESSMENT_2026-07-25.md` all gone; `Archive/` and `Monk/` are
+now untracked). Struck through below rather than deleted, so the numbering that
+other docs reference still holds.
 
 Items are grouped by *why they matter*, not by size. Each says what it is, where it
 lives, and — where it isn't obvious — why it's worth doing.
@@ -10,10 +17,9 @@ lives, and — where it isn't obvious — why it's worth doing.
 
 ## 🔴 P0 — Do these first, in this order
 
-### 1. Commit the work
-70 files uncommitted against 7 total commits. Tonight produced engine changes,
-22 verified map IDs, and four bug fixes that exist **only on this disk**. Branch,
-then commit. Everything below is lower priority than not losing this.
+### 1. ~~Commit the work~~ ✅ DONE 2026-07-26
+Landed in `48f9c4d` (snapshot) and `25c3ee3` (doc purge + GuideManager removal +
+Zones→ItemLevels rename), on branch `chore/pre-refactor-snapshot`.
 
 ### 2. `/reload` and smoke-test
 Everything except the map-ID data was written but **never executed**. Watch
@@ -77,11 +83,9 @@ instead of a walking job. Worth sending the email before committing days to it.
 
 ## 🟡 P2 — Code debt with real consequences
 
-### 5. `Core/GuideManager.lua` is dead code
-168 lines, 13 public methods, a listener pattern — and **zero callers**. Its own
-header carries a TODO to migrate `QuestTracker` onto it; that never happened.
-It loads on every login. Finish the migration or delete the file. Leaving it is
-worse than either, because it reads as infrastructure something depends on.
+### 5. ~~`Core/GuideManager.lua` is dead code~~ ✅ DONE 2026-07-26
+Deleted in `25c3ee3`. The file is gone from `Core/`; `QuestTracker` was never
+migrated onto it and now never will be.
 
 ### 6. Split `TAG_Naigtal.lua`
 Only 4 of its 21 steps are Naigtal. The other 17 are the Void Assaults chain,
@@ -161,19 +165,28 @@ project's own static-data-lives-in-`Data/` rule — and it's why `.rules.md` tel
 you to update `Data/Zones.lua` with portal connections, which is the wrong file.
 Move to `Data/Portals.lua`.
 
-### 15. `Data/Zones.lua` is misnamed
-It holds Season 1 item-level track data (`Z.TYPE`, `Z.TRACKS`, `Z.READINESS`,
-`Z.UPGRADE_SOURCES`), not zone geography. Rename when convenient, and fix the
-`.rules.md` line that describes it wrongly.
+### 15. ~~`Data/Zones.lua` is misnamed~~ ✅ DONE 2026-07-26
+Renamed to `Data/ItemLevels.lua` in `25c3ee3`. Note this invalidates item 14's
+premise: `.rules.md` no longer points you at `Zones.lua` for portal connections,
+but `TravelRouter.PORTALS` is still a large literal inside a module and still
+belongs in `Data/Portals.lua`.
 
-### 16. Finish the doc consolidation
-`.context.md` and `.competitors.md` are marked superseded in `.bootstrap.md` but
-still present — deletion is the owner's call. `ASSESSMENT_2026-07-25.md` is a
-dated point-in-time audit; fold its findings into `IMPROVEMENT_PLAN.md` and
-delete, or keep it dated and never update it.
+### 16. ~~Finish the doc consolidation~~ ✅ DONE 2026-07-26
+`.context.md`, `.competitors.md` and `ASSESSMENT_2026-07-25.md` are deleted.
+`Monk/` and `Archive/` are untracked. `.bootstrap.md`'s SUPERSEDED section now
+describes files that no longer exist and can be trimmed on the next doc pass.
 
-Also: `Monk/` (2-file skeleton) and `Archive/` are tracked in git and probably
-shouldn't be.
+### 18. 12.1.0 API audit — unfinished business
+`Modules/CoordResolver.lua`'s `QuerySuperTrack` is **knowingly dead** pending a
+live dump of the waypoint APIs (see the comment block in that function for the
+exact `/dump` lines). Until it's rewired, every step that should resolve via
+SuperTrack silently falls through to APR and then to the guide's stored coord.
+
+Related: `.rules.md` and that same comment previously told you to run
+`/taapiprobe`. **No such command has ever existed** — `DevHelpers.lua` defines
+only `/tarecord`, `/taquestscan`, `/coord`, `/tateleports`, `/taweekly`, `/tadev`.
+Both pointers now carry the raw `/dump` lines instead. If a probe command does
+get built, seed it with measured values, not guesses.
 
 ### 17. Opportunistic API migration
 19 bare `GetItemInfo` calls remain across `Gear.lua`, `AutoEquip.lua`,
