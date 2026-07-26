@@ -70,10 +70,19 @@ local function ExportFrame()
 
     local hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     hint:SetPoint("TOPLEFT", 12, -28)
-    hint:SetText("Ctrl+A select all  ·  Ctrl+C copy  ·  Esc close")
+    hint:SetText("Ctrl+C copy  ·  Esc close")
 
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", 0, 2)
+
+    -- Select All. WoW gives addons no way to write the system clipboard, so
+    -- this focuses the box and selects everything instead -- one click plus
+    -- Ctrl+C, rather than click-into-box, Ctrl+A, Ctrl+C. This window is how
+    -- captured data leaves the game, so the keystrokes are worth saving.
+    local selectAll = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    selectAll:SetSize(80, 20)
+    selectAll:SetPoint("TOPRIGHT", close, "TOPLEFT", -2, -4)
+    selectAll:SetText("Select All")
 
     local scroll = CreateFrame("ScrollFrame", "TADevExportScroll", f,
                                "UIPanelScrollFrameTemplate")
@@ -99,6 +108,14 @@ local function ExportFrame()
     eb:SetWidth(WrapWidth())
     eb:SetScript("OnEscapePressed", function() f:Hide() end)
     scroll:SetScrollChild(eb)
+
+    -- Attached here rather than at creation: the button is anchored above, but
+    -- `eb` does not exist until this point, so the handler could not close over
+    -- it any earlier.
+    selectAll:SetScript("OnClick", function()
+        eb:SetFocus()
+        eb:HighlightText()
+    end)
 
     -- Keep the edit box's wrap width in step with the window, or resizing just
     -- reveals empty space while the text stays at its original wrap point.

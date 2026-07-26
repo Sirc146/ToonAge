@@ -500,10 +500,17 @@ end
 
 -- ── Slash commands ────────────────────────────────────────────────────────────
 
-NavHud.SlashCommands = {
-    hud = function(self) self:Toggle() end,
+-- Same dispatch bug ErrorLog had. Init.lua:335 splits "/ta hud settings" into
+-- cmd="hud", args="settings" and Init.lua:409 looks up SlashCommands[cmd], so a
+-- ["hud settings"] key is unreachable — nothing ever constructs a two-word key.
+-- Worse than ErrorLog's version, because `hud` toggled the HUD unconditionally:
+-- "/ta hud settings" and "/ta hud set showCoords false" both just turned the
+-- HUD on or off, silently discarding the subcommand.
+--
+-- Subcommands are now dispatched from `args`, so these are reachable functions
+-- rather than dead table keys.
 
-    ["hud settings"] = function(self)
+local function PrintHudSettings()
         print("|cFFFFD100[ToonAge NavHud Settings]|r")
         print("  |cFFFFD100scale|r = " .. GetSetting("scale") .. "  (HUD size)")
         print("  |cFFFFD100opacity|r = " .. GetSetting("opacity") .. "  (overall transparency)")
@@ -519,10 +526,10 @@ NavHud.SlashCommands = {
         print("  Change: |cFFFFD100/ta hud set <key> <value>|r")
         print("  Example: |cFFFFD100/ta hud set showCoords false|r")
         print("  Keybind: Key Bindings → Addons → ToonAge → Toggle NavHud")
-    end,
+end
 
-    ["hud set"] = function(self, msg)
-        if not msg then
+local function ApplyHudSetting(msg)
+        if not msg or msg == "" then
             print("|cFFFFD100[TA]|r Usage: /ta hud set <key> <value>")
             return
         end
@@ -558,5 +565,21 @@ NavHud.SlashCommands = {
             NavHud:ApplySettings()
         end
         print("|cFFFFD100[TA NavHud]|r " .. key .. " = " .. tostring(value))
+end
+
+NavHud.SlashCommands = {
+    hud = function(self, args)
+        local sub, rest = (args or ""):match("^(%S*)%s*(.*)$")
+        sub = (sub or ""):lower()
+
+        if sub == "" then
+            self:Toggle()
+        elseif sub == "settings" then
+            PrintHudSettings()
+        elseif sub == "set" then
+            ApplyHudSetting(rest)
+        else
+            print("|cFFFFD100[TA]|r Unknown subcommand '" .. sub .. "'. Try: settings, set")
+        end
     end,
 }

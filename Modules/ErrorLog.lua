@@ -126,14 +126,33 @@ function EL:ShowCopyFrame()
         editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
         scroll:SetScrollChild(editBox)
 
+        -- Select All button.
+        --
+        -- WoW gives addons no way to write the system clipboard, so this cannot
+        -- literally copy. What it can do is put the caret in the box and select
+        -- everything, which turns "click into the box, Ctrl+A, Ctrl+C" into one
+        -- click plus Ctrl+C. The frame already selects all when it opens, but
+        -- the selection is lost the moment you click anywhere, and until now
+        -- there was no way to get it back without closing and reopening.
+        local selectBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        selectBtn:SetSize(90, 22)
+        selectBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
+        selectBtn:SetText("Select All")
+        selectBtn:SetScript("OnClick", function()
+            editBox:SetFocus()
+            editBox:HighlightText()
+            print("|cFFFFD100[ToonAge]|r Log selected — press Ctrl+C to copy.")
+        end)
+
         -- Clear button
         local clearBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         clearBtn:SetSize(80, 22)
-        clearBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
+        clearBtn:SetPoint("LEFT", selectBtn, "RIGHT", 6, 0)
         clearBtn:SetText("Clear Log")
         clearBtn:SetScript("OnClick", function()
             EL:Clear()
             editBox:SetText("Log cleared.")
+            f.countLbl:SetText("0 errors")
         end)
 
         -- Count label
@@ -197,8 +216,32 @@ end
 
 -- ── Slash commands ────────────────────────────────────────────────────────────
 
+-- Init.lua:335 splits input as msg:match("^(%S+)%s*(.*)$"), so "/ta errors copy"
+-- arrives as cmd="errors", args="copy", and Init.lua:409 looks up
+-- SlashCommands[cmd] -- it never builds a two-word lookup key. Subcommands
+-- therefore have to be dispatched from `args` here.
+--
+-- This table previously held ["errors clear"] and ["errors copy"] entries.
+-- Nothing could ever reach them: every "/ta errors <anything>" matched the
+-- plain `errors` handler, which did not declare `args` at all and so discarded
+-- the subcommand and reprinted the list. Both documented in the listing footer,
+-- neither functional.
 EL.SlashCommands = {
-    errors = function(self)
+    errors = function(self, args)
+        local sub = ((args or ""):match("^(%S*)") or ""):lower()
+
+        if sub == "clear" then
+            self:Clear()
+            print("|cFFFFD100[ToonAge]|r Error log cleared.")
+            return
+        elseif sub == "copy" then
+            self:ShowCopyFrame()
+            return
+        elseif sub ~= "" then
+            print("|cFFFFD100[ToonAge]|r Unknown subcommand '" .. sub .. "'. Try: copy, clear")
+            return
+        end
+
         local log = self:GetLog()
         if #log == 0 then
             print("|cFFFFD100[ToonAge]|r ✓ No errors recorded. Everything is working!")
@@ -220,14 +263,6 @@ EL.SlashCommands = {
         end
     end,
 
-    ["errors clear"] = function(self)
-        self:Clear()
-        print("|cFFFFD100[ToonAge]|r Error log cleared.")
-    end,
-
-    ["errors copy"] = function(self)
-        self:ShowCopyFrame()
-    end,
 }
 
 -- ── Public API for other modules ──────────────────────────────────────────────
