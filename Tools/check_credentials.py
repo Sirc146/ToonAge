@@ -101,10 +101,12 @@ def main():
     print()
     print("[OK] Credentials work. Tools/fetch_wow_*.py will authenticate.")
     print()
-    print("     Note: the Game Data API returns quest metadata only -- title,")
-    print("     description, area, requirements, rewards. It has no x/y")
-    print("     coordinates, so this does not help the guide coordinate gap")
-    print("     (TODO item 4). Use it for quest/talent metadata refreshes.")
+    print("     Note: /data/wow/quest/{id} -- the endpoint fetch_wow_quests.py")
+    print("     uses -- returns title, description, area, requirements and")
+    print("     rewards, with no x/y. So that endpoint cannot close the guide")
+    print("     coordinate gap (TODO item 4). Scope of this claim is that one")
+    print("     endpoint; the journal and map endpoint families have not been")
+    print("     examined.")
     return 0
 
 
