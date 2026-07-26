@@ -167,23 +167,51 @@ function AQS:PopulatePanel()
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -4)
     closeBtn:SetScript("OnClick", function() f:Hide() end)
 
-    -- "Don't show again" checkbox
-    local dontShow = CreateFrame("Button", nil, f)
-    dontShow:SetSize(120, 14)
-    dontShow:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 8)
+    -- "Don't show on login" — an actual checkbox.
+    --
+    -- Was a bare Button carrying a 9pt label coloured |cFF888780, the same grey
+    -- this codebase uses everywhere for de-emphasised hint text, with no box, no
+    -- border and no hover state. It read as a caption rather than a control, so
+    -- the way to stop the panel appearing was effectively hidden on the panel
+    -- itself. It was also one-way: clicking only ever set disabled = true, and
+    -- nothing in the UI could turn it back on.
+    local dontShow = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+    dontShow:SetSize(22, 22)
+    dontShow:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 6)
+
     local dsLbl = dontShow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    dsLbl:SetFont(STANDARD_TEXT_FONT, 9, "")
-    dsLbl:SetText("|cFF888780Don't show on login|r")
-    dsLbl:SetAllPoints(dontShow)
-    dsLbl:SetJustifyH("RIGHT")
-    dontShow:SetScript("OnClick", function()
+    dsLbl:SetFont(STANDARD_TEXT_FONT, 11, "")
+    dsLbl:SetText("Don't show on login")
+    dsLbl:SetTextColor(0.88, 0.88, 0.86)
+    dsLbl:SetPoint("RIGHT", dontShow, "LEFT", -2, 0)
+
+    -- Reflect the stored value rather than always rendering unchecked, so the
+    -- box shows the current setting when the panel is reopened.
+    dontShow:SetChecked(
+        (TA.charDB and TA.charDB.altQuickStart and TA.charDB.altQuickStart.disabled) and true or false)
+
+    dontShow:SetScript("OnEnter", function(selfBtn)
+        GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+        GameTooltip:SetText("Don't show on login", 1, 0.82, 0)
+        GameTooltip:AddLine("Stops this panel opening by itself for this character.",
+                            0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine("You can still open it any time with /ta quickstart.",
+                            0.6, 0.6, 0.6, true)
+        GameTooltip:Show()
+    end)
+    dontShow:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    dontShow:SetScript("OnClick", function(selfBtn)
+        local off = selfBtn:GetChecked() and true or false
         if TA.charDB then
             TA.charDB.altQuickStart = TA.charDB.altQuickStart or {}
-            TA.charDB.altQuickStart.disabled = true
+            TA.charDB.altQuickStart.disabled = off
         end
-        f:Hide()
-        local QT = TA:GetModule("QuestTracker")
-        if QT and QT.ShowToast then QT:ShowToast("Quick Start disabled for this character") end
+        if off then
+            f:Hide()
+            local QT = TA:GetModule("QuestTracker")
+            if QT and QT.ShowToast then QT:ShowToast("Quick Start disabled for this character") end
+        end
     end)
 
     -- ── Divider ───────────────────────────────────────────────────────────────
@@ -561,10 +589,29 @@ function AQS:PopulatePanel()
         end
 
         -- From Gear: any empty/very low slots?
+        --
+        -- Off Hand (17) is skipped when the Main Hand holds something that
+        -- physically occupies both hands. A Survival Hunter with a polearm, or
+        -- any Hunter with a bow, has no off hand to fill — reporting "Empty
+        -- slot! Equip anything." there is advice that cannot be followed, and
+        -- because an empty slot scores 0 and breaks the loop immediately, it
+        -- also masked whatever the genuinely weakest slot was.
+        --
+        -- Gear.lua's RenderPlayerGrid already suppresses off-hand *upgrade
+        -- suggestions* for the same reason (see its twoHandEquipped guard);
+        -- this warning path was never given the same check.
+        local mhLink = GetInventoryItemLink("player", 16)
+        local mhEquipLoc = mhLink and select(9, U.GetItemInfo(mhLink)) or nil
+        local twoHanded = mhEquipLoc == "INVTYPE_2HWEAPON"
+                       or mhEquipLoc == "INVTYPE_RANGED"
+                       or mhEquipLoc == "INVTYPE_RANGEDRIGHT"
+
         local lowestSlot = nil
         local lowestIlvl = 9999
         for slotID = 1, 17 do
-            if slotID ~= 4 then -- skip shirt
+            if slotID ~= 4                          -- skip shirt
+               and not (slotID == 17 and twoHanded) -- no off hand to fill
+            then
                 local link = GetInventoryItemLink("player", slotID)
                 if not link then
                     lowestSlot = slotID
