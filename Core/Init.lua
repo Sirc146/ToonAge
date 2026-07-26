@@ -320,6 +320,14 @@ TA.eventFrame:SetScript("OnEvent", function(self, event, ...)
         -- handler the very data the event just made wrong.
         if TA.State then TA.State:Invalidate(event) end
 
+        -- Resolve pending item-data requests after invalidation but before
+        -- modules run, so a module handling this event sees the item already
+        -- populated rather than racing the callback that fills it in.
+        if event == "GET_ITEM_INFO_RECEIVED" and TA.Utils and TA.Utils.OnItemInfoReceived then
+            local itemID, success = ...
+            TA.Utils.OnItemInfoReceived(itemID, success)
+        end
+
         -- All persistent events: dispatch to modules immediately (they do their
         -- own throttling), but coalesce the UI rebuild — see QueueUIRefresh.
         TA:UpdateModules(event, ...)
@@ -490,6 +498,14 @@ function TA:SlashCommand(msg)
 
             print(("  |cFF4AFF7A%d loaded|r · |cFF888780%d off|r · |cFFFF4444%d errored|r")
                   :format(loaded, off, errored))
+
+            -- Outstanding item-data requests. Should sit at 0 most of the time;
+            -- a number that climbs and never falls means GET_ITEM_INFO_RECEIVED
+            -- is not resolving them and the 10s timeout is doing all the work.
+            local pending = TA.Utils and TA.Utils.PendingItemCount and TA.Utils.PendingItemCount()
+            if pending and pending > 0 then
+                print(("  |cFF888780%d item request(s) awaiting GET_ITEM_INFO_RECEIVED|r"):format(pending))
+            end
             if self.db.safeMode then
                 print("  |cFFFF9A1ASafe Mode is ON.|r |cFF888780/ta safemode to turn it off.|r")
             end

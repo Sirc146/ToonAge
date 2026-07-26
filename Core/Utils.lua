@@ -271,6 +271,114 @@ function U.GetItemInfo(item)
     return GetItemInfo(item)
 end
 
+-- ── Async item data ───────────────────────────────────────────────────
+--
+-- GetItemInfo returns nil for an item the client has not cached yet — common
+-- right after login and whenever an item is seen for the first time. The usual
+-- workaround is a retry loop on a timer. This is not that, because the game
+-- already tells us exactly when the data lands.
+--
+-- GET_ITEM_INFO_RECEIVED is registered in Core/Init.lua's PERSISTENT_EVENTS and
+-- fires with (itemID, success). Measured on 12.1.0, 2026-07-26:
+--
+--     GIIR#1  122284  true
+--
+-- Two things that measurement settled, neither of which was safe to assume:
+--
+--   * arg2 is a success boolean, so a genuinely bad item ID is distinguishable
+--     from one that simply has not arrived. A fixed retry count cannot tell
+--     those apart — it burns the same attempts on both and then gives up on
+--     the good one, which is the failure it was supposed to prevent.
+--   * the event fires repeatedly for the same itemID. Resolution therefore has
+--     to be idempotent: callbacks are cleared before they run, so a duplicate
+--     event finds nothing left to do.
+
+local pendingItems = {}   -- itemID -> { callbacks = {fn,...}, requested = time }
+
+-- Nothing should wait forever. If the event never arrives for an ID -- the
+-- request silently dropped, or an ID the server never answers for at all --
+-- callbacks would leak and their callers would hang waiting. This is the only
+-- place a timer is involved, and it is a backstop, not the mechanism.
+local ITEM_REQUEST_TIMEOUT = 10
+
+--- Extract a numeric itemID from an ID or an item link.
+--- Parsed rather than resolved through an API, so it cannot break when
+--- Blizzard moves item functions between namespaces.
+local function ToItemID(item)
+    if type(item) == "number" then return item end
+    if type(item) ~= "string" then return nil end
+    return tonumber(item:match("item:(%d+)")) or tonumber(item)
+end
+
+--- Resolve `item`'s data now if the client has it, otherwise ask the server and
+--- invoke `callback` when it arrives.
+--- @param item number|string — itemID or item link
+--- @param callback function|nil — called as callback(itemID, success)
+--- @return boolean cached — true if data was already available (callback ran immediately)
+function U.RequestItemInfo(item, callback)
+    local itemID = ToItemID(item)
+    if not itemID then
+        if callback then callback(nil, false) end
+        return false
+    end
+
+    -- Already cached? A non-nil name is the signal the whole tuple is populated.
+    if U.GetItemInfo(itemID) then
+        if callback then callback(itemID, true) end
+        return true
+    end
+
+    local entry = pendingItems[itemID]
+    if not entry then
+        entry = { callbacks = {}, requested = GetTime() }
+        pendingItems[itemID] = entry
+
+        -- Test the member, not the namespace. C_Navigation.GetDestination was
+        -- removed in 12.1.0 while C_Navigation itself stayed, and the resulting
+        -- nil failed silently for weeks.
+        if C_Item and C_Item.RequestLoadItemDataByID then
+            C_Item.RequestLoadItemDataByID(itemID)
+        end
+
+        C_Timer.After(ITEM_REQUEST_TIMEOUT, function()
+            local stale = pendingItems[itemID]
+            if stale and stale.requested == entry.requested then
+                U.OnItemInfoReceived(itemID, false)
+            end
+        end)
+    end
+
+    if callback then table.insert(entry.callbacks, callback) end
+    return false
+end
+
+--- Called from Core/Init.lua's dispatcher on GET_ITEM_INFO_RECEIVED.
+--- @param itemID number
+--- @param success boolean — false means the server could not resolve this ID
+function U.OnItemInfoReceived(itemID, success)
+    local entry = pendingItems[itemID]
+    if not entry then return end
+
+    -- Clear BEFORE running callbacks. The event repeats for the same itemID,
+    -- and a callback that requests another item must not see a half-torn-down
+    -- entry for this one.
+    pendingItems[itemID] = nil
+
+    for _, callback in ipairs(entry.callbacks) do
+        local ok, err = pcall(callback, itemID, success and true or false)
+        if not ok and TA.ErrorLog then
+            TA.ErrorLog:Log("RequestItemInfo callback", tostring(err), tostring(itemID))
+        end
+    end
+end
+
+--- How many item requests are outstanding. Diagnostics only.
+function U.PendingItemCount()
+    local n = 0
+    for _ in pairs(pendingItems) do n = n + 1 end
+    return n
+end
+
 function U.GetItemIlvl(itemLink)
     if not itemLink then return 0 end
     local _, _, _, ilvl = U.GetItemInfo(itemLink)
