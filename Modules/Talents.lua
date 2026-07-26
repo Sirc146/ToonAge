@@ -556,8 +556,8 @@ function Talents:RenderContent(content, activeSpecID)
     if specID == activeSpecID
     and C_ClassTalents and C_ClassTalents.GetActiveConfigID then
         local cfgID = C_ClassTalents.GetActiveConfigID()
-        if cfgID and C_ClassTalents.GetExportString then
-            local exportStr = C_ClassTalents.GetExportString(cfgID)
+        if cfgID and C_Traits and C_Traits.GenerateImportString then
+            local exportStr = C_Traits.GenerateImportString(cfgID)
             if exportStr and exportStr ~= "" then
                 AddLine()
                 AddText("|cFF555555Your loadout:|r  " .. U.Truncate(exportStr, 68), 9, 0.45, 0.45, 0.45)
@@ -1130,7 +1130,7 @@ function Talents:OpenImportFrame()
             print("|cFFFF4444[TA]|r No active talent config found.")
             return
         end
-        local str = C_ClassTalents.GetExportString and C_ClassTalents.GetExportString(cfgID)
+        local str = C_Traits and C_Traits.GenerateImportString and C_Traits.GenerateImportString(cfgID)
         if not str or str == "" then
             print("|cFFFF4444[TA]|r Could not generate export string from active loadout.")
             return

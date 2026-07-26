@@ -736,8 +736,8 @@ local function TalentScan()
 
     if cfgID then
         -- Active loadout
-        if C_ClassTalents.GetExportString then
-            local str = C_ClassTalents.GetExportString(cfgID)
+        if C_Traits and C_Traits.GenerateImportString then
+            local str = C_Traits.GenerateImportString(cfgID)
             if str and str ~= "" then
                 export[activeSpecID] = export[activeSpecID] or {}
                 export[activeSpecID].active = str
@@ -759,8 +759,8 @@ local function TalentScan()
                                 if ok2 and info then
                                     local loadoutName = info.name or ("Loadout " .. cid)
                                     -- Try to generate export string for this config
-                                    if C_ClassTalents.GetExportString then
-                                        local ok3, expStr = pcall(C_ClassTalents.GetExportString, cid)
+                                    if C_Traits.GenerateImportString then
+                                        local ok3, expStr = pcall(C_Traits.GenerateImportString, cid)
                                         if ok3 and expStr and expStr ~= "" then
                                             export[specID][loadoutName] = expStr
                                             p(string.format("  [%d] %s: %s", specID, loadoutName, expStr:sub(1, 50) .. "..."))

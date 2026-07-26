@@ -226,6 +226,52 @@ only `/tarecord`, `/taquestscan`, `/coord`, `/tateleports`, `/taweekly`, `/tadev
 Both pointers now carry the raw `/dump` lines instead. If a probe command does
 get built, seed it with measured values, not guesses.
 
+**Confirmed removed 2026-07-26 — `C_ClassTalents.GetExportString` is `nil`.**
+Live dump on this 12.0 client:
+
+    /dump type(C_ClassTalents.GetExportString), type(C_ClassTalents.ImportLoadout), type(C_Traits.GenerateImportString)
+    [1]="nil"   [2]="function"   [3]="function"
+    /dump C_Traits.GetLoadoutSerializationVersion()   →   2
+
+Four call sites, every one guarded with `if C_ClassTalents.GetExportString then`,
+so nothing errors — they simply never run. Silent dead code, the same failure
+mode as the 12.1.0 removals:
+
+- `Modules/Talents.lua:559` — captures the live tree into `builds.*.string`.
+  **This is why all 39 specs still have `string=""`**: the filler has been inert.
+- `Modules/Talents.lua:1133` — user-facing export command, falls to its error branch
+- `DevHelpers.lua:739`, `:762` — dev dump, silently skipped
+
+Replacement is `C_Traits.GenerateImportString(configID)` — exists, and is already
+used at `Core/Utils.lua:407`. Same input, same output.
+
+**✅ Migrated and verified in-game 2026-07-26.** All 8 occurrences across
+`Modules/Talents.lua` and `Modules/DevHelpers.lua` swapped;
+`Modules/DungeonTalents.lua:99` already used the correct call, so the codebase is
+now consistent. `check_lua.py` passes on all 77 files.
+
+Runtime confirmation — existence was never the question, a non-empty return was:
+
+    /dump C_Traits.GenerateImportString(C_ClassTalents.GetActiveConfigID())
+    [1]="C8PAD57yiELKEty14ekTDtZEqMgxMG2lbwMM0gFzMzMGPwy8AAAAAAAmhxMLLz4BMz
+         YYZGNDAAAwAAssMzMLmZmxMMzAmZDWwMGzMbGAA"
+
+Real, dense string on a fully-spent tree. The capture path is live: the "Save as
+Recommended" button at `Modules/Talents.lua:559` and `/tadev`'s loadout export
+both work again for the first time since the removal.
+
+Namespace guards restored to match the project's own idiom at
+`DungeonTalents.lua:99` — `if C_Traits and C_Traits.GenerateImportString then`.
+A bare symbol swap had left three sites indexing `C_Traits` unguarded while the
+enclosing `if` still checked `C_ClassTalents`. `DevHelpers.lua:762` stays bare
+on purpose: it is nested inside `:757`'s `if C_Traits and …`.
+
+Guard *policy* deliberately unchanged: these guards convert a missing API into a
+silent no-op rather than an error, which is exactly what hid this removal for
+weeks. Worth deciding project-wide whether they should warn once instead of
+failing quietly — but altering failure semantics is a bigger change than a
+symbol swap, so it is not bundled here.
+
 ### 17. Opportunistic API migration
 21 bare `GetItemInfo` calls remain across `Gear.lua`, `AutoEquip.lua`,
 `RoleMorph.lua`, and others. Not on a deprecation path, and `U.GetItemInfo`
@@ -236,6 +282,146 @@ nobody had ever confirmed that returns the same tuple as the global. It does —
 18 values, every position identical (see `.rules.md` for the one-line re-check).
 That matters because three call sites read by position, and a mismatch would
 have given wrong values silently. Migration is safe to continue.
+
+### 19. Talent build strings — source found, one test outstanding
+`Data/Talents.lua` holds 39 specs × 3 builds with `string=""` and `nodes={}`;
+`Data/TalentsPvP.lua` is the same. The copy button is gated on a non-empty
+`string` (`Modules/Talents.lua:322`), which is why a recommended build shows a
+name and description but no importable code. Item 18's dead capture path is the
+upstream cause — this is a data gap sitting on top of an API regression.
+
+**Icy Veins publishes Midnight 12.0.7 strings at level 90.** Verified by fetch
+2026-07-26; plain text in the HTML, no JS rendering required. URL pattern:
+
+    https://www.icy-veins.com/wow/{spec}-{class}-pve-{role}-spec-builds-talents
+
+Confirmed on `unholy-death-knight-pve-dps-…` and `survival-hunter-pve-dps-…`.
+Role slot is `dps|tank|healer`; tank/healer unverified — derive it from the
+`SPECS` table in `Tools/fetch_talent_builds.py`, do not probe the site to find
+out. Note the Survival M+ and Delves strings are byte-identical, so the parser
+must tolerate duplicates.
+
+Survival Hunter, single-target, Pack Leader, 12.0.7:
+
+    C8PAAAAAAAAAAAAAAAAAAAAAAMgxMGWgNYGGawixMzMzYZAAAAAAwMmZmhZMmxMYMNDAAAADAMWWmZmFzMzMegZGDYmNADjxM2MA
+
+**TESTED 2026-07-26 — partial import. The cause is a patch mismatch.**
+
+    .build.info:  wow (retail) = 12.0.7.68887
+                  wowt (PTR)   = 12.1.0.68914   ← _ptr_, what we develop against
+
+Icy Veins documents **12.0.7**, i.e. live retail. This PTR is **12.1.0**. The
+string parses — serialization version is still 2 — and places every node that
+still exists, leaving gaps where 12.1.0 moved or changed them. That is the
+partial fill observed on Ellacait (Survival, Pack Leader).
+
+**Conclusion: no external site can supply valid 12.1.0 strings**, and none will
+until 12.1.0 ships. Icy Veins, Wowhead and mmobuilds all track live 12.0.7.
+In-game capture on the PTR is the only source of correct 12.1.0 data. This
+reverses the earlier reading of the Icy Veins find — it is a real source, just
+for a different patch than the one we build against.
+
+Which makes item 18's `GetExportString` → `C_Traits.GenerateImportString`
+migration a hard prerequisite rather than an optional cleanup: it is the only
+working capture path, and nothing else can fill `string` on 12.1.0.
+
+**Open decision — the TOC declares both patches:** `## Interface: 120007, 120100`.
+So the addon targets retail 12.0.7 *and* PTR 12.1.0, and a single `string` field
+cannot be correct for both. Either scope the data to one patch, or key strings
+by interface version and select at runtime. Decide before filling 39 specs.
+
+**Direction chosen 2026-07-26: harvest Icy Veins regardless of importability.**
+A string that will not import is not the only useful output. Talent *names and
+order* survive a patch bump far better than node IDs or encoded strings, so the
+same page that yields a 12.0.7 string also yields guidance that is still correct
+on 12.1.0 — "take Wildfire Bomb, then Guerrilla Tactics" guides a player through
+the tree by hand when the code does not apply. That maps onto fields the schema
+already has:
+
+- `string`    — patch-specific, best-effort. Correct only for the patch it came
+                from; hide the copy button when it does not match the client.
+- `levelPath` — patch-resilient. The durable layer, and the one that makes the
+                data worth collecting even when import fails.
+- `nodes`     — patch-specific (C_Traits node IDs), same caveat as `string`.
+
+Scope covers **PvE and PvP** builds, which also fills `Data/TalentsPvP.lua`
+(every `importString` there is still `""`).
+
+Same harvest should carry **stat weights/priorities**, which Icy Veins publishes
+per spec. That feeds `weightSource` (currently `"built-in"` in SavedVariables)
+and the Phase 3 "custom stat-weight import" item. Stat priorities are ordinary
+text, so unlike loadout strings they carry across patches intact — likely the
+highest-durability data on the page.
+
+Wowhead and mmobuilds.com remain **unevaluated** (two guessed Wowhead URLs
+404'd; scheme unknown, and JS-rendered pages may not yield to a simple fetcher).
+Neither is worth probing while they track 12.0.7 — the constraint is the
+client's tree, not the website.
+
+**Capture works across spec switches** (verified 2026-07-26: switched spec,
+re-ran the dump, got a different valid string). So the workflow is switch-spec →
+dump → repeat, three specs per character, no relogging. That is what makes bulk
+capture practical rather than theoretical.
+
+Capture ceiling: **11 of 13 classes are already copied to
+the PTR — 33 of 39 specs reachable with no further copies.** Missing are Priest
+(Traeintha, 80) and Death Knight (Ellaeura, 71). Only Ellacait is level 90, so
+every other capture would encode an 80-point spend — which is not what
+`builds.mplus` and `builds.raid` imply. If level-appropriate strings are the
+goal instead, the schema must record the level each string was captured at, or
+71-, 80-, 82- and 90-point builds mix silently under one field name.
+
+**Direct talent application WORKS on 12.1.0 — verified 2026-07-26.** Tested from
+an insecure `/run` in the chat box, the same taint domain an addon runs in:
+
+    /run C=C_ClassTalents.GetActiveConfigID() T=C_Traits.GetConfigInfo(C).treeIDs[1]
+    /run print(pcall(C_Traits.PurchaseRank,C,94961)) print(pcall(C_ClassTalents.CommitConfig,C))
+    → true true
+      true true
+
+`PurchaseRank` succeeded and `CommitConfig` committed. No "Interface action
+failed because of an AddOn". `PurchaseRank`, `CommitConfig` and
+`ResetTreeByCurrency` all exist and are callable.
+
+Scope of the claim: this proves one node purchase plus a commit. A full build
+(reset → many purchases → commit) is more surface, and some paths may still want
+a hardware event. Strong signal, not a completed feature.
+
+**This is how BtWLoadouts does it** (`Interface/AddOns/BtWLoadouts`, v1.20.22 —
+Dragonflight-era, a design reference not a working Midnight example). It uses no
+import strings at all: `PurchaseRank` + `SetSelection` to spend, `CommitConfig`
+to apply, `ResetTreeByCurrency` / `RollbackConfig` around it. It absorbs patch
+skew as bulk data — one ~1.4MB dataset per interface version
+(`DFTalents.100002/100005/100007/100100.lua`), the TOC loading exactly one.
+Version detection is runtime, not TOC: `select(4, GetBuildInfo())` in
+`Versions.lua`, which is what distinguishes 12.0.7 from 12.1.0 at runtime —
+`## Interface` cannot.
+
+Consequence for the data model: `nodes` is now the highest-value field, not
+`string`. Node IDs are patch-specific but **capturable in-game** from a built
+tree, so they sidestep the external-source patch problem entirely. Division of
+labour that falls out of this:
+
+- **Icy Veins** → *which* talents (names, order, stat weights). Patch-resilient
+  content, and the part that cannot be captured from a client.
+- **In-game capture** → node IDs for the running patch. Enables direct apply.
+- **Import strings** → optional convenience, patch-locked, lowest priority.
+
+Blocked on: `U.IsNodeSelected` (`Core/Utils.lua:410`) passes `treeID` to
+`C_Traits.GetNodeInfo` where the working form is `(configID, nodeID)` — confirmed
+against `TalentsHelpers.lua:448`, `TalentsPvP.lua:89`, and the live test above.
+Zero callers today, so no present impact, but it is exactly what a match-scoring
+feature would call, and it would silently return false for every node.
+
+Two constraints on any fetcher, both raised by the user:
+
+- **Rate limiting is a requirement, not a nicety.** 39 specs is 39+ requests.
+  Cache every response to disk, never re-fetch a cached page, sleep between
+  requests, and identify honestly in the User-Agent. A bulk run with no cache
+  is what gets an IP blocked — and re-fetches everything on the next run.
+- **Redistribution.** These are Icy Veins' curated builds. Attribution in the
+  data file and in the UI at minimum. See item 12 for the licensing precedent
+  this project already follows.
 
 ---
 

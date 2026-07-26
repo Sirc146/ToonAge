@@ -407,16 +407,22 @@ function U.GetTalentString()
     return C_Traits.GenerateImportString(configID)
 end
 
+-- True plus the spent rank when nodeID has points in the active config.
+--
+-- This passed treeID to C_Traits.GetNodeInfo until 2026-07-26. The signature is
+-- (configID, nodeID) -- confirmed live in-game, and against TalentsHelpers.lua:448
+-- and TalentsPvP.lua:89, which always had it right. The wrong form returned nil
+-- for every node, so a fully-matching build scored as matching nothing, with no
+-- error to explain it. Nothing called this yet, which is why it never surfaced.
+--
+-- The loop over config.treeIDs went with it: a node resolves from the config,
+-- not from a tree, so iterating trees only repeated the same lookup.
 function U.IsNodeSelected(nodeID)
     local configID = C_ClassTalents.GetActiveConfigID()
     if not configID then return false end
-    local config = C_Traits.GetConfigInfo(configID)
-    if not config then return false end
-    for _, treeID in ipairs(config.treeIDs) do
-        local nodeInfo = C_Traits.GetNodeInfo(treeID, nodeID)
-        if nodeInfo and nodeInfo.activeRank and nodeInfo.activeRank > 0 then
-            return true, nodeInfo.activeRank
-        end
+    local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
+    if nodeInfo and nodeInfo.activeRank and nodeInfo.activeRank > 0 then
+        return true, nodeInfo.activeRank
     end
     return false
 end
