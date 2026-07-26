@@ -21,6 +21,8 @@ import time
 import requests
 from html.parser import HTMLParser
 
+from paths import GUIDES_DIR, ensure
+
 HEADERS  = {"User-Agent": "Mozilla/5.0 (CharacterAdvisor/1.0 guide-stub-generator)"}
 BASE     = "https://www.wowhead.com/quest={}"
 BASE_PTR = "https://www.wowhead.com/ptr-2/quest={}"
@@ -256,14 +258,21 @@ if __name__ == "__main__":
             max_level   = chain.get("max_level", 60),
         )
 
-        out = chain.get("output", f"CAG_{chain['guide_id']}.lua")
+        # Writes straight into Data/Guides/ now. It used to write a bare
+        # filename into the current directory and then tell you to copy it,
+        # which put generated data outside the repo and made the destination
+        # depend on where you happened to be standing.
+        out = chain.get("output") or (ensure(GUIDES_DIR) / f"CAG_{chain['guide_id']}.lua")
         with open(out, "w", encoding="utf-8") as f:
             f.write(lua)
 
         print(f"\n  {len(quests)} quest stubs written to {out}")
         print(f"\n  Next steps:")
-        print(f"    1. Copy {out} -> Data/Guides/ in the addon folder")
-        print(f"    2. Add the filename to CharacterAdvisor.toc before GuideParser.lua")
+        print(f"    1. Rename CAG_ -> TAG_ . The addon's convention is")
+        print(f"       TAG_ZoneName.lua; this generator still emits the old")
+        print(f"       CharacterAdvisor prefix, and the body it writes still")
+        print(f"       references the CA global, so it will NOT load as-is.")
+        print(f"    2. Add the filename to ToonAge.toc before GuideParser.lua")
         print(f"    3. /reload in-game -- tracker shows the stub steps")
         print(f"    4. Stand at each accept NPC and run /coord to fill coords")
         print(f"    5. Replace stub text with real guide prose as you play through")

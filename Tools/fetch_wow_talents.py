@@ -54,7 +54,11 @@ from pathlib import Path
 
 from blizzard_api import add_credential_args, api_get, get_access_token, require_credentials
 
-OUTPUT_DIR = Path(r"E:\OneDrive\Desktop\wowdb")
+from paths import DATA_DIR
+
+# See paths.py. Was a hardcoded personal Desktop path; .rules.md requires
+# generated data to land in the repo. Override per-run with --out.
+OUTPUT_DIR = DATA_DIR
 
 
 def fetch_spec_index(token):

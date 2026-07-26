@@ -2,11 +2,11 @@
 """
 CharacterAdvisor -- Midnight PTR Guide Stub Generator
 ======================================================
-Reads the local WoWDB CSV (produced by crawl_wowdb_quests.py) and writes
+Reads Data/quests_database.csv (produced by fetch_wow_quests.py) and writes
 one guide stub .lua per Midnight zone into Data/Guides/.
 
 Quest ORDER is sorted by questID (ascending) as an approximation.
-Verify real order in-game with /caquestscan, then re-order steps.
+Verify real order in-game with /taquestscan, then re-order steps.
 Fill coords with /coord at each quest-turn-in NPC.
 
 Usage:
@@ -16,11 +16,13 @@ Usage:
 import csv, os, sys
 from pathlib import Path
 
-CSV_PATH = Path(r"E:\OneDrive\Desktop\wowdb\quests_database.csv")
+from paths import GUIDES_DIR, QUESTS_CSV
 
-# Resolve output dir relative to this script's location
-SCRIPT_DIR = Path(__file__).parent
-OUT_DIR    = SCRIPT_DIR.parent / "Data" / "Guides"
+# Both were resolved separately before: the CSV from a hardcoded personal
+# Desktop path, the output dir from __file__. Now both come from paths.py, so
+# the file fetch_wow_quests.py writes is the file this script reads.
+CSV_PATH = QUESTS_CSV
+OUT_DIR  = GUIDES_DIR
 
 # ── Zone definitions ──────────────────────────────────────────────────────────
 # categories: WoWDB "Category" column values to include (case-sensitive).

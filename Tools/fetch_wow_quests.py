@@ -55,7 +55,13 @@ from pathlib import Path
 
 from blizzard_api import add_credential_args, api_get, get_access_token, require_credentials, MIN_INTERVAL
 
-OUTPUT_DIR = Path(r"E:\OneDrive\Desktop\wowdb")   # same location the old crawler used
+from paths import DATA_DIR, ensure
+
+# .rules.md: "Output: baked into static Lua data files, committed to repo".
+# This used to be a hardcoded personal Desktop path, which put generated data
+# outside the repository and made the output location depend on whose machine
+# it ran on. Override per-run with --out.
+OUTPUT_DIR = DATA_DIR
 
 
 # ── Quest index / detail ──────────────────────────────────────────────────────

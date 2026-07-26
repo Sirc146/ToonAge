@@ -28,6 +28,8 @@ import sys
 import time
 from pathlib import Path
 
+from paths import DATA_DIR
+
 try:
     import requests
     from bs4 import BeautifulSoup
@@ -267,7 +269,11 @@ def main():
     ap.add_argument("--class", dest="cls", help="Fetch all specs for one class")
     ap.add_argument("--type", help="Single content type (mplus/raid/pvp/delves/solo)")
     ap.add_argument("--manual", action="store_true", help="Interactive paste mode")
-    ap.add_argument("--out", default="talent_builds_output.lua", help="Output file path")
+    # Was a bare relative filename, so output landed in whatever directory the
+    # script happened to be invoked from. Anchored to the repo's Data/ per
+    # .rules.md; still overridable.
+    ap.add_argument("--out", default=str(DATA_DIR / "talent_builds_output.lua"),
+                    help="Output file path (default: Data/talent_builds_output.lua)")
     args = ap.parse_args()
     
     # Filter specs
