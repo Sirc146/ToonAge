@@ -120,14 +120,16 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function Retro:Init()
-    -- Show a subtle reminder when entering a city if content was missed
+    -- Show a subtle tracker toast when entering a city if content was missed.
+    -- No chat spam — just a brief visual hint on the tracker window.
     C_Timer.After(15, function()
         if IsResting() then  -- in a city/inn
             local missed = Retro:GetMissedContent()
             if #missed > 0 then
-                local topMissed = missed[1]
-                print(string.format("|cFFFFD100[ToonAge]|r You skipped %d quests in '%s' — type |cFFFFD100/ta missed|r to see details.",
-                    topMissed.skipped, topMissed.title))
+                local QT = TA:GetModule("QuestTracker")
+                if QT and QT.ShowToast then
+                    QT:ShowToast(missed[1].skipped .. " quests skipped in " .. missed[1].title .. " — right-click tracker", 4)
+                end
             end
         end
     end)

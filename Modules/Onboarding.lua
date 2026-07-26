@@ -31,7 +31,7 @@ local WELCOME_LINES = {
     "  |cFFFFD100/ta arrow|r — toggle the navigation arrow",
     "  |cFFFFD100/ta options|r — open settings (auto-quest, layout, etc.)",
     "",
-    "|cFF888780Type /ta help for full command list.|r",
+    "|cFF888780Right-click quests to start following them.|r",
     "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r",
 }
 
@@ -56,47 +56,164 @@ end
 -- ── First login sequence ──────────────────────────────────────────────────────
 
 function Onboarding:RunFirstLogin()
-    -- 1. Print welcome message
-    for _, line in ipairs(WELCOME_LINES) do
-        print(line)
+    -- Print concise welcome
+    print("|cFFFFD100ToonAge|r loaded! Opening setup...")
+
+    -- Create the onboarding popup
+    self:ShowPopup()
+end
+
+function Onboarding:ShowPopup()
+    if self.popup then self.popup:Show(); return end
+
+    local f = CreateFrame("Frame", "TAOnboardingPopup", UIParent, "BackdropTemplate")
+    f:SetSize(420, 320)
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 80)
+    f:SetFrameStrata("DIALOG")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=2})
+    f:SetBackdropColor(0.06, 0.06, 0.08, 0.97)
+    f:SetBackdropBorderColor(0.55, 0.40, 0.08, 1)
+
+    -- Title
+    local title = f:CreateFontString(nil, "OVERLAY")
+    title:SetFont("Fonts\\FRIZQT__.TTF", 16, "OUTLINE")
+    title:SetText("|cFFFFD100ToonAge|r  —  First Time Setup")
+    title:SetPoint("TOP", f, "TOP", 0, -16)
+
+    -- Description
+    local desc = f:CreateFontString(nil, "OVERLAY")
+    desc:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
+    desc:SetWidth(380)
+    desc:SetJustifyH("CENTER")
+    desc:SetText(
+        "Welcome! ToonAge replaces Zygor, Pawn, Hekili, and TomTom\n" ..
+        "in a single lightweight addon.\n\n" ..
+        "|cFFFFD100Choose your experience:|r"
+    )
+    desc:SetTextColor(0.85, 0.83, 0.78, 1)
+    desc:SetPoint("TOP", title, "BOTTOM", 0, -14)
+
+    -- Feature list
+    local features = f:CreateFontString(nil, "OVERLAY")
+    features:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+    features:SetWidth(360)
+    features:SetJustifyH("LEFT")
+    features:SetText(
+        "|cFF4AFF7A●|r Auto-accept & turn-in quests\n" ..
+        "|cFF4AFF7A●|r Skip cutscenes automatically\n" ..
+        "|cFF4AFF7A●|r Next 3 abilities combat bar\n" ..
+        "|cFF4AFF7A●|r Nameplate kill/loot markers\n" ..
+        "|cFF4AFF7A●|r Tooltip upgrade percentages\n" ..
+        "|cFF4AFF7A●|r Smart arrow to Flight Masters"
+    )
+    features:SetTextColor(0.80, 0.78, 0.72, 1)
+    features:SetPoint("TOP", desc, "BOTTOM", 0, -10)
+
+    -- ── Full Auto button ──────────────────────────────────────────────
+    local btnAuto = CreateFrame("Button", nil, f, "BackdropTemplate")
+    btnAuto:SetSize(180, 36)
+    btnAuto:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, 60)
+    btnAuto:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+    btnAuto:SetBackdropColor(0.05, 0.15, 0.05, 1)
+    btnAuto:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.9)
+    local autoLbl = btnAuto:CreateFontString(nil, "OVERLAY")
+    autoLbl:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+    autoLbl:SetText("|cFF4AFF7A⚡|r Full Auto")
+    autoLbl:SetAllPoints(btnAuto)
+    autoLbl:SetJustifyH("CENTER")
+    local autoSub = f:CreateFontString(nil, "OVERLAY")
+    autoSub:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
+    autoSub:SetText("Enable everything — fastest leveling")
+    autoSub:SetTextColor(0.55, 0.52, 0.45, 1)
+    autoSub:SetPoint("TOP", btnAuto, "BOTTOM", 0, -3)
+
+    btnAuto:SetScript("OnClick", function()
+        self:ApplyPreset("auto")
+        f:Hide()
+    end)
+
+    -- ── Manual button ─────────────────────────────────────────────────
+    local btnManual = CreateFrame("Button", nil, f, "BackdropTemplate")
+    btnManual:SetSize(180, 36)
+    btnManual:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -20, 60)
+    btnManual:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+    btnManual:SetBackdropColor(0.08, 0.06, 0.02, 1)
+    btnManual:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.7)
+    local manLbl = btnManual:CreateFontString(nil, "OVERLAY")
+    manLbl:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+    manLbl:SetText("|cFFFFD100◆|r Manual")
+    manLbl:SetAllPoints(btnManual)
+    manLbl:SetJustifyH("CENTER")
+    local manSub = f:CreateFontString(nil, "OVERLAY")
+    manSub:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
+    manSub:SetText("Just show info — I'll click things myself")
+    manSub:SetTextColor(0.55, 0.52, 0.45, 1)
+    manSub:SetPoint("TOP", btnManual, "BOTTOM", 0, -3)
+
+    btnManual:SetScript("OnClick", function()
+        self:ApplyPreset("manual")
+        f:Hide()
+    end)
+
+    -- ── Close / Decide Later ──────────────────────────────────────────
+    local btnLater = CreateFrame("Button", nil, f)
+    btnLater:SetSize(100, 20)
+    btnLater:SetPoint("BOTTOM", f, "BOTTOM", 0, 12)
+    local laterLbl = btnLater:CreateFontString(nil, "OVERLAY")
+    laterLbl:SetFont("Fonts\\FRIZQT__.TTF", 9, "")
+    laterLbl:SetText("|cFF888780Decide Later (/ta options)|r")
+    laterLbl:SetAllPoints(btnLater)
+    laterLbl:SetJustifyH("CENTER")
+    btnLater:SetScript("OnClick", function() f:Hide() end)
+
+    self.popup = f
+end
+
+-- ── Presets ───────────────────────────────────────────────────────────────────
+
+function Onboarding:ApplyPreset(preset)
+    local t = TA.charDB.tracker or {}
+
+    if preset == "auto" then
+        -- Enable all automation
+        t.autoQuest      = true
+        t.cutsceneSkip   = true
+        t.autoEquip      = true
+        t.replaceBlizzTracker = true
+        TA.charDB.predictBar = TA.charDB.predictBar or {}
+        TA.charDB.predictBar.visible = true
+        print("|cFF4AFF7A[ToonAge]|r Full Auto enabled! Quests auto-accept, cutscenes skip, combat bar active.")
+        print("|cFF888780Hold Shift at any NPC to pause automation.|r")
+    else
+        -- Manual mode — show info only, no automation
+        t.autoQuest      = false
+        t.cutsceneSkip   = false
+        t.autoEquip      = false
+        t.replaceBlizzTracker = false
+        TA.charDB.predictBar = TA.charDB.predictBar or {}
+        TA.charDB.predictBar.visible = true  -- still show prediction bar (it's passive info)
+        print("|cFFFFD100[ToonAge]|r Manual mode. Arrow + tracker + prediction active. No auto-quest.")
     end
 
-    -- 2. Auto-select a guide if none is active
-    local QT = TA:GetModule("QuestTracker")
-    if QT and not QT.guideID then
-        QT:AutoSelectGuide()
-        if QT.guideID then
-            local guide = TA.Guides and TA.Guides[QT.guideID]
-            if guide then
-                print(string.format("|cFFFFD100[ToonAge]|r Auto-selected guide: |cFFFFFFFF%s|r", guide.title))
-            end
-        end
-    end
+    TA.charDB.tracker = t
 
-    -- 3. Show the tracker window if a guide was found
-    if QT and QT.guideID and QT.window then
-        QT.window:Show()
-        if TA.charDB.tracker then
-            TA.charDB.tracker.visible = true
-        end
-    end
-
-    -- 4. Show the arrow if a guide is active
+    -- Show main panel instead of standalone tracker
+    TA:ToggleUI()
     local Arrow = TA:GetModule("Arrow")
-    if Arrow and QT and QT.guideID then
-        if Arrow.frame then
-            Arrow.frame:Show()
-            if TA.charDB then
-                TA.charDB.arrow = TA.charDB.arrow or {}
-                TA.charDB.arrow.visible = true
-            end
-        end
+    if Arrow and Arrow.frame then
+        Arrow.frame:Show()
+        TA.charDB.arrow = TA.charDB.arrow or {}
+        TA.charDB.arrow.visible = true
     end
-
-    -- 5. Suggest NavHud for experienced players (level > 10)
-    local level = UnitLevel("player") or 1
-    if level > 10 then
-        print("|cFFFFD100[ToonAge]|r Tip: Try |cFFFFD100/ta hud|r for a transparent navigation overlay while questing.")
+    -- Show prediction bar
+    local Rot = TA:GetModule("Rotation")
+    if Rot and Rot.predictBar and TA.charDB.predictBar.visible then
+        Rot.predictBar:Show()
     end
 end
 

@@ -33,7 +33,10 @@ local DB_DEFAULTS = {
         TravelRouter = true,
         Onboarding   = true,
         CutsceneSkip = true,
-        AutoEquip    = true,
+        AutoEquip          = true,
+        AutoMount          = true,
+        QuestRewardAdvisor = true,
+        DungeonGuide       = true,
     },
 
     -- UI layout toggle
@@ -217,13 +220,51 @@ TA.eventFrame:SetScript("OnEvent", function(self, event, ...)
         TA:OnLogin()
 
     else
-        -- All persistent events: update modules then refresh UI if open
+        -- All persistent events: dispatch to modules immediately (they do their
+        -- own throttling), but coalesce the UI rebuild — see QueueUIRefresh.
         TA:UpdateModules(event, ...)
-        if TA.UI and TA.UI:IsVisible() then
-            TA.UI:Refresh(event)
-        end
+        TA:QueueUIRefresh(event)
     end
 end)
+
+-- ── Coalesced UI refresh ──────────────────────────────────────────────
+-- UI:Refresh() tears down and rebuilds the whole active tab. Some of the
+-- events above are high-frequency: BAG_UPDATE fires once per bag per change,
+-- so looting a single stack can fire it five or more times in one frame.
+-- Rebuilding the Gear tab (a full inventory scan) that many times per loot is
+-- the addon's worst stutter. Per .rules.md ("Debounce high-frequency events"),
+-- collect the events that arrive within a short window and rebuild once.
+local UI_REFRESH_DELAY = 0.15
+
+TA._pendingUIEvents = nil   -- set of event names awaiting a flush
+TA._uiRefreshQueued = false
+
+function TA:QueueUIRefresh(event)
+    -- Nothing to rebuild if the panel is closed. Drop the event rather than
+    -- queueing work that would be thrown away on flush.
+    if not (self.UI and self.UI:IsVisible()) then return end
+
+    self._pendingUIEvents = self._pendingUIEvents or {}
+    self._pendingUIEvents[event] = true
+
+    if self._uiRefreshQueued then return end
+    self._uiRefreshQueued = true
+
+    C_Timer.After(UI_REFRESH_DELAY, function()
+        local events = TA._pendingUIEvents
+        TA._pendingUIEvents = nil
+        TA._uiRefreshQueued = false
+
+        -- The panel may have been closed during the delay.
+        if not (TA.UI and TA.UI:IsVisible()) then return end
+
+        local ok, err = pcall(TA.UI.Refresh, TA.UI, events)
+        if not ok then
+            print("|cFFFF4444[TA] UI refresh error:|r " .. tostring(err))
+            if TA.ErrorLog then TA.ErrorLog:Log("UI Refresh", tostring(err), "") end
+        end
+    end)
+end
 
 -- ── Login sequence ────────────────────────────────────────────────────
 function TA:OnLogin()
@@ -254,50 +295,79 @@ function TA:OnLogin()
         TA:SlashCommand(msg)
     end
 
-    print("|cFFFFD100ToonAge|r v" .. self.version .. " loaded. Type |cFFFFD100/ta|r to open.")
+    -- Install clickable hyperlink system for interactive /ta commands
+    self:InstallSlashLinkHook()
+
+    print("|cFFFFD100ToonAge|r v" .. self.version .. " loaded. Type "
+        .. self:MakeSlashLink("help", "/ta help") .. " for clickable commands.")
 end
 
 -- ── Slash command handler ─────────────────────────────────────────────
 function TA:SlashCommand(msg)
     msg = msg and msg:lower():match("^%s*(.-)%s*$") or ""
 
-    if msg == "" or msg == "open" then
+    -- Split into command + args (e.g. "switchto 12345" → cmd="switchto", args="12345")
+    local cmd, args = msg:match("^(%S+)%s*(.*)$")
+    if not cmd then cmd = msg; args = "" end
+
+    -- ── Empty input: toggle UI ────────────────────────────────────────
+    if cmd == "" or cmd == "open" then
         self:ToggleUI()
-    elseif msg == "gear" then
-        self:OpenTab("gear")
-    elseif msg == "talents" then
-        self:OpenTab("talents")
-    elseif msg == "rotation" then
-        self:OpenTab("rotation")
-    elseif msg == "prof" then
-        self:OpenTab("professions")
-    elseif msg == "pets" then
-        self:OpenTab("pets")
-    elseif msg == "weekly" then
-        self:OpenTab("weekly")
-    elseif msg == "options" then
-        self:ToggleOptionsPanel()
-    elseif msg == "layout" then
-        -- Toggle between Unified HUD and Fragmented Windows from the command line
-        self.db.useUnifiedUI = not self.db.useUnifiedUI
-        self:ApplyLayout()
-        local mode = self.db.useUnifiedUI and "|cFF4AFF7AUnified HUD|r" or "|cFFFF9A1AFragmented Windows|r"
-        print("|cFFFFD100[ToonAge]|r Layout: " .. mode)
-    elseif msg:match("^toggle") then
-        local modName = msg:match("^toggle%s+(%S+)")
+        return
+    end
+
+    -- ── Built-in commands (exact match) ───────────────────────────────
+    local BUILTIN = {
+        gear     = function() self:OpenTab("gear") end,
+        talents  = function() self:OpenTab("talents") end,
+        rotation = function() self:OpenTab("rotation") end,
+        prof     = function() self:OpenTab("professions") end,
+        pets     = function() self:OpenTab("pets") end,
+        weekly   = function() self:OpenTab("weekly") end,
+        guide    = function() self:OpenTab("guide") end,
+        options  = function() self:ToggleOptionsPanel() end,
+        debug    = function()
+            TA.debug = not TA.debug
+            print("|cFFFFD100[TA]|r Debug mode: " .. (TA.debug and "ON" or "OFF"))
+        end,
+        reset    = function()
+            ToonAgeDB = nil
+            print("|cFFFFD100[TA]|r Settings reset. Please reload UI (/reload).")
+        end,
+        layout   = function()
+            self.db.useUnifiedUI = not self.db.useUnifiedUI
+            self:ApplyLayout()
+            local mode = self.db.useUnifiedUI and "|cFF4AFF7AUnified HUD|r" or "|cFFFF9A1AFragmented Windows|r"
+            print("|cFFFFD100[ToonAge]|r Layout: " .. mode)
+        end,
+        help     = function() self:PrintInteractiveHelp() end,
+    }
+
+    -- Check exact built-in match
+    if BUILTIN[cmd] then
+        BUILTIN[cmd]()
+        return
+    end
+
+    -- ── Toggle subcommand ─────────────────────────────────────────────
+    if cmd == "toggle" then
+        local modName = args ~= "" and args or nil
         if not modName then
             print("|cFFFFD100[TA]|r Toggleable modules:")
             for name, enabled in pairs(self.db.modules or {}) do
                 local status = enabled and "|cFF4AFF7AON|r" or "|cFFFF4444OFF|r"
-                print("  " .. name .. " — " .. status)
+                local link = self:MakeSlashLink("toggle " .. name:lower(), name .. " " .. status)
+                print("  " .. link)
             end
-            print("Usage: |cFFFFD100/ta toggle NavHud|r")
             return
         end
-        -- Find the module (case-insensitive match)
         local matchedKey = nil
         for name in pairs(self.db.modules or {}) do
             if name:lower() == modName:lower() then matchedKey = name; break end
+        end
+        if not matchedKey then
+            -- Fuzzy match for toggle
+            matchedKey = self:FuzzyMatchModule(modName)
         end
         if not matchedKey then
             print("|cFFFFD100[TA]|r Unknown module: " .. modName)
@@ -306,37 +376,212 @@ function TA:SlashCommand(msg)
         self.db.modules[matchedKey] = not self.db.modules[matchedKey]
         local status = self.db.modules[matchedKey] and "|cFF4AFF7AON|r" or "|cFFFF4444OFF|r"
         print("|cFFFFD100[TA]|r Module " .. matchedKey .. ": " .. status .. "  (reload to apply)")
-    elseif msg == "debug" then
-        TA.debug = not TA.debug
-        print("|cFFFFD100[TA]|r Debug mode: " .. (TA.debug and "ON" or "OFF"))
-    elseif msg == "reset" then
-        ToonAgeDB = nil
-        print("|cFFFFD100[TA]|r Settings reset. Please reload UI (/reload).")
-    else
-        -- Dispatch to module-registered slash commands (e.g. /ta tracker, /ta guides)
+        return
+    end
+
+    -- ── Module slash commands (exact match first) ─────────────────────
+    for _, mod in pairs(self.modules) do
+        if mod.SlashCommands then
+            local fn = mod.SlashCommands[cmd]
+            if fn then fn(mod, args); return end
+        end
+    end
+
+    -- ── Prefix / fuzzy match ──────────────────────────────────────────
+    -- Try prefix matching: "mis" → "missed", "farm" → "farmhud", etc.
+    local allCommands = self:GetAllCommandNames()
+    local prefixMatches = {}
+    local fuzzyMatches = {}
+
+    for _, name in ipairs(allCommands) do
+        if name:sub(1, #cmd) == cmd then
+            table.insert(prefixMatches, name)
+        elseif self:FuzzyScore(cmd, name) >= 0.6 then
+            table.insert(fuzzyMatches, name)
+        end
+    end
+
+    -- Single prefix match: execute it directly
+    if #prefixMatches == 1 then
+        local matchedCmd = prefixMatches[1]
+        -- Check built-in
+        if BUILTIN[matchedCmd] then
+            BUILTIN[matchedCmd]()
+            return
+        end
+        -- Check module commands
         for _, mod in pairs(self.modules) do
-            if mod.SlashCommands then
-                local fn = mod.SlashCommands[msg]
-                if fn then fn(mod); return end
+            if mod.SlashCommands and mod.SlashCommands[matchedCmd] then
+                mod.SlashCommands[matchedCmd](mod, args)
+                return
             end
         end
-        print("|cFFFFD100ToonAge|r commands:")
-        print("  |cFFFFD100/ta|r — open/close")
-        print("  |cFFFFD100/ta gear|r — gear tab")
-        print("  |cFFFFD100/ta talents|r — talents tab")
-        print("  |cFFFFD100/ta rotation|r — rotation tab")
-        print("  |cFFFFD100/ta prof|r — professions tab")
-        print("  |cFFFFD100/ta pets|r — pets tab")
-        print("  |cFFFFD100/ta weekly|r — weekly tab")
-        print("  |cFFFFD100/ta guides|r — list loaded guides")
-        print("  |cFFFFD100/ta tracker|r — toggle guide tracker window")
-        print("  |cFFFFD100/ta autoselect|r — re-run guide auto-selection")
-        print("  |cFFFFD100/ta diag|r — diagnose why tracker shows no guide")
-        print("  |cFFFFD100/ta arrow|r — toggle navigation arrow HUD")
-        print("  |cFFFFD100/ta layout|r — toggle Unified HUD ↔ Fragmented Windows")
-        print("  |cFFFFD100/ta options|r — open settings panel")
-        print("  |cFFFFD100/ta reset|r — reset saved data")
     end
+
+    -- Multiple prefix matches or fuzzy matches: suggest them as clickable links
+    if #prefixMatches > 0 or #fuzzyMatches > 0 then
+        local suggestions = #prefixMatches > 0 and prefixMatches or fuzzyMatches
+        print("|cFFFFD100[ToonAge]|r Unknown command: |cFFFF8800" .. cmd .. "|r")
+        print("  Did you mean:")
+        for _, name in ipairs(suggestions) do
+            print("    " .. self:MakeSlashLink(name, "/ta " .. name))
+        end
+        return
+    end
+
+    -- ── Nothing matched: show interactive help ────────────────────────
+    self:PrintInteractiveHelp()
+end
+
+-- ── Clickable slash command hyperlink system ──────────────────────────────────
+-- Creates clickable text in chat that executes /ta commands when clicked.
+-- Format: |Htacommand:cmd|h[display text]|h
+
+function TA:MakeSlashLink(cmd, displayText)
+    displayText = displayText or ("/ta " .. cmd)
+    return "|cFF4AE0FF|Htacommand:" .. cmd .. "|h[" .. displayText .. "]|h|r"
+end
+
+-- Hook SetItemRef to handle our tacommand: hyperlinks
+do
+    local hookInstalled = false
+    function TA:InstallSlashLinkHook()
+        if hookInstalled then return end
+        hookInstalled = true
+        hooksecurefunc("SetItemRef", function(link, text, button, chatFrame)
+            -- SetItemRef fires for every hyperlink click of any kind, and can
+            -- be called with a nil link in some cases — always guard first.
+            if not link then return end
+            local prefix, cmd = link:match("^(tacommand):(.+)$")
+            if prefix ~= "tacommand" then return end
+            -- Execute the command directly
+            TA:SlashCommand(cmd)
+        end)
+
+        -- Tooltip on hover
+        for i = 1, NUM_CHAT_WINDOWS or 10 do
+            local frame = _G["ChatFrame" .. i]
+            if frame then
+                frame:HookScript("OnHyperlinkEnter", function(_, link)
+                    if not link then return end
+                    local prefix, cmd = link:match("^(tacommand):(.+)$")
+                    if prefix ~= "tacommand" then return end
+                    GameTooltip:SetOwner(frame, "ANCHOR_CURSOR")
+                    GameTooltip:SetText("ToonAge Command", 1, 0.82, 0)
+                    GameTooltip:AddLine("Click to run: /ta " .. cmd, 0.8, 0.8, 0.8)
+                    GameTooltip:Show()
+                end)
+                frame:HookScript("OnHyperlinkLeave", function(_, link)
+                    if not link then return end
+                    if link:match("^tacommand:") then GameTooltip:Hide() end
+                end)
+            end
+        end
+    end
+end
+
+-- ── Fuzzy matching utilities ──────────────────────────────────────────────────
+
+--- Compute a simple similarity score between two strings (0-1).
+--- Uses longest common subsequence ratio.
+function TA:FuzzyScore(input, candidate)
+    if not input or not candidate then return 0 end
+    local lenA, lenB = #input, #candidate
+    if lenA == 0 or lenB == 0 then return 0 end
+
+    -- Simple character overlap ratio (faster than full LCS for short strings)
+    local matches = 0
+    local used = {}
+    for i = 1, lenA do
+        local c = input:sub(i, i)
+        for j = 1, lenB do
+            if not used[j] and candidate:sub(j, j) == c then
+                matches = matches + 1
+                used[j] = true
+                break
+            end
+        end
+    end
+    return matches / math.max(lenA, lenB)
+end
+
+--- Find the closest module name for toggle fuzzy matching.
+function TA:FuzzyMatchModule(input)
+    local best, bestScore = nil, 0
+    for name in pairs(self.db.modules or {}) do
+        local score = self:FuzzyScore(input, name:lower())
+        if score > bestScore and score >= 0.6 then
+            bestScore = score
+            best = name
+        end
+    end
+    return best
+end
+
+--- Collect all registered command names (built-in + module).
+function TA:GetAllCommandNames()
+    local names = {}
+    -- Built-in commands
+    local builtins = {"gear","talents","rotation","prof","pets","weekly","guide",
+                      "options","debug","reset","layout","help","toggle","open"}
+    for _, n in ipairs(builtins) do names[#names+1] = n end
+
+    -- Module commands
+    for _, mod in pairs(self.modules) do
+        if mod.SlashCommands then
+            for k, v in pairs(mod.SlashCommands) do
+                if type(v) == "function" then
+                    names[#names+1] = k
+                end
+            end
+        end
+    end
+    return names
+end
+
+-- ── Interactive help with clickable commands ──────────────────────────────────
+
+function TA:PrintInteractiveHelp()
+    print("|cFFFFD100ToonAge|r — click any command to run it:")
+    print("")
+    print("  " .. self:MakeSlashLink("", "Open/Close ToonAge"))
+    print("")
+    print("  |cFF888780TABS:|r")
+    print("    " .. self:MakeSlashLink("gear", "Gear")
+        .. "  " .. self:MakeSlashLink("talents", "Talents")
+        .. "  " .. self:MakeSlashLink("rotation", "Rotation"))
+    print("    " .. self:MakeSlashLink("prof", "Professions")
+        .. "  " .. self:MakeSlashLink("pets", "Pets")
+        .. "  " .. self:MakeSlashLink("weekly", "Weekly"))
+    print("    " .. self:MakeSlashLink("guide", "Guide"))
+    print("")
+    print("  |cFF888780TRACKER:|r")
+    print("    " .. self:MakeSlashLink("tracker", "Toggle Tracker")
+        .. "  " .. self:MakeSlashLink("autoselect", "Auto-Select Guide"))
+    print("    " .. self:MakeSlashLink("diag", "Diagnose Tracker")
+        .. "  " .. self:MakeSlashLink("missed", "Missed Content"))
+    print("")
+    print("  |cFF888780HUD:|r")
+    print("    " .. self:MakeSlashLink("arrow", "Toggle Arrow")
+        .. "  " .. self:MakeSlashLink("hud", "Toggle NavHud"))
+    print("    " .. self:MakeSlashLink("trail", "Toggle AntTrail")
+        .. "  " .. self:MakeSlashLink("farmhud", "Farm Optimizer"))
+    print("")
+    print("  |cFF888780TOOLS:|r")
+    print("    " .. self:MakeSlashLink("coord", "Show Coordinates")
+        .. "  " .. self:MakeSlashLink("xp", "XP Stats"))
+    print("    " .. self:MakeSlashLink("alts", "Alt Roster")
+        .. "  " .. self:MakeSlashLink("todo", "Weekly Todo"))
+    print("    " .. self:MakeSlashLink("gather", "Gather History")
+        .. "  " .. self:MakeSlashLink("errors", "Error Log"))
+    print("")
+    print("  |cFF888780SYSTEM:|r")
+    print("    " .. self:MakeSlashLink("options", "Settings")
+        .. "  " .. self:MakeSlashLink("layout", "Toggle Layout"))
+    print("    " .. self:MakeSlashLink("toggle", "Module Toggles")
+        .. "  " .. self:MakeSlashLink("reset", "Reset Data"))
+    print("")
+    print("  |cFF555555Tip: You can type partial commands — /ta mis → missed|r")
 end
 
 function TA:ToggleUI()

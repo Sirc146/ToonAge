@@ -215,9 +215,10 @@ local function ScanBagsForUpgrades(slotID, specID, mode, currentScore, itemDef, 
             elseif itemDef.isRing    and equipLoc == "INVTYPE_FINGER"  then isValid = true
             elseif itemDef.isTrinket and equipLoc == "INVTYPE_TRINKET" then isValid = true
             elseif slotID == 16 and (equipLoc == "INVTYPE_WEAPON" or equipLoc == "INVTYPE_2HWEAPON"
+                                  or equipLoc == "INVTYPE_WEAPONMAINHAND"
                                   or equipLoc == "INVTYPE_RANGED"  or equipLoc == "INVTYPE_RANGEDRIGHT") then isValid = true
-            elseif slotID == 17 and (equipLoc == "INVTYPE_WEAPON" or equipLoc == "INVTYPE_SHIELD"
-                                  or equipLoc == "INVTYPE_HOLDABLE") then isValid = true
+            elseif slotID == 17 and (equipLoc == "INVTYPE_WEAPON" or equipLoc == "INVTYPE_WEAPONOFFHAND"
+                                  or equipLoc == "INVTYPE_SHIELD" or equipLoc == "INVTYPE_HOLDABLE") then isValid = true
             end
 
             -- Reject wrong armor types (accessories bypass this check)
@@ -287,7 +288,7 @@ local function AuditItemEnchants(itemLink, isEnchantable)
         if not PlayerProfessionsCache[pKey] then
             return false, "|cFFFF4444Needs " .. eInfo.profession .. "|r"
         end
-        if eInfo.spellID and not IsSpellKnown(eInfo.spellID) then
+        if eInfo.spellID and not U.IsSpellKnown(eInfo.spellID) then
             return false, "|cFFFF4444Recipe not learned|r"
         end
     end
@@ -359,7 +360,148 @@ function Gear:Render(content, sidebar)
     hint:SetPoint("TOP", sidebar, "TOP", 0, -20)
     hint:SetWidth(sidebar:GetWidth() - 12)
     hint:SetJustifyH("CENTER")
-    sidebar:SetHeight(60)  -- ensure non-zero height for dynamic resize check
+
+    -- ── GearSets UI ───────────────────────────────────────────────────
+    local sideY = -60
+    local sideW = sidebar:GetWidth() - 12
+
+    local gsHeader = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    gsHeader:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    gsHeader:SetText("|cFF8B7040GEAR SETS|r")
+    gsHeader:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, sideY)
+    gsHeader:SetWidth(sideW)
+    table.insert(self.sideFrames, gsHeader)
+    sideY = sideY - 14
+
+    -- Divider line
+    local gsLine = sidebar:CreateTexture(nil, "ARTWORK")
+    gsLine:SetHeight(1)
+    gsLine:SetPoint("TOPLEFT",  sidebar, "TOPLEFT",  4, sideY)
+    gsLine:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -4, sideY)
+    gsLine:SetColorTexture(0.30, 0.30, 0.35, 0.4)
+    sideY = sideY - 8
+    table.insert(self.sideFrames, gsLine)
+
+    -- "Save Current" button
+    local saveBtn = CreateFrame("Button", nil, sidebar, "BackdropTemplate")
+    saveBtn:SetHeight(22)
+    saveBtn:SetPoint("TOPLEFT",  sidebar, "TOPLEFT",  4, sideY)
+    saveBtn:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -4, sideY)
+    saveBtn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8",edgeFile="Interface\\Buttons\\WHITE8X8",edgeSize=1})
+    saveBtn:SetBackdropColor(0.06, 0.10, 0.04, 1)
+    saveBtn:SetBackdropBorderColor(0.20, 0.72, 0.30, 0.7)
+    local saveLbl = saveBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    saveLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    saveLbl:SetText("|cFF4AFF7A+|r Save Current Gear")
+    saveLbl:SetPoint("LEFT", saveBtn, "LEFT", 8, 0)
+    saveLbl:SetTextColor(0.82, 0.80, 0.75, 1)
+    saveBtn:SetScript("OnClick", function()
+        -- Prompt for set name via a simple StaticPopup
+        local GS = TA:GetModule("GearSets")
+        if not GS then return end
+        -- Generate a default name from spec
+        local _, specName = U.GetPlayerSpec()
+        local defaultName = specName or "Set"
+        -- Use a timestamp-based unique name if one already exists
+        if TA.charDB.gearSets and TA.charDB.gearSets[defaultName] then
+            defaultName = defaultName .. " " .. date("%H%M")
+        end
+        GS:SaveSet(defaultName)
+        -- Refresh to show the new set
+        C_Timer.After(0.1, function()
+            if TA.UI and TA.UI.activeTab == "gear" then
+                Gear:Render(TA.UI.contentChild, TA.UI.sideChild)
+            end
+        end)
+    end)
+    sideY = sideY - 26
+    table.insert(self.sideFrames, saveBtn)
+
+    -- List existing sets as clickable rows
+    local GS = TA:GetModule("GearSets")
+    local gearSets = TA.charDB and TA.charDB.gearSets or {}
+    local setCount = 0
+    for setName, setData in pairs(gearSets) do
+        setCount = setCount + 1
+        local row = CreateFrame("Button", nil, sidebar, "BackdropTemplate")
+        row:SetHeight(20)
+        row:SetPoint("TOPLEFT",  sidebar, "TOPLEFT",  4, sideY)
+        row:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -4, sideY)
+        row:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8",edgeFile="Interface\\Buttons\\WHITE8X8",edgeSize=1})
+        row:SetBackdropColor(0.05, 0.05, 0.05, 1)
+        row:SetBackdropBorderColor(0.40, 0.32, 0.08, 0.4)
+
+        -- Count items in set
+        local itemCount = 0
+        if setData.slots then for _ in pairs(setData.slots) do itemCount = itemCount + 1 end end
+
+        local rowLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        rowLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        rowLbl:SetText(setName)
+        rowLbl:SetPoint("LEFT", row, "LEFT", 6, 0)
+        rowLbl:SetWidth(row:GetWidth() - 50)
+        rowLbl:SetJustifyH("LEFT")
+        rowLbl:SetWordWrap(false)
+        rowLbl:SetTextColor(0.80, 0.78, 0.70, 1)
+
+        local countLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        countLbl:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
+        countLbl:SetText("|cFF888780" .. itemCount .. " pc|r")
+        countLbl:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+
+        -- Left-click to equip
+        row:SetScript("OnClick", function(_, button)
+            if button == "RightButton" then
+                -- Right-click to delete
+                if GS then
+                    GS:DeleteSet(setName)
+                    C_Timer.After(0.1, function()
+                        if TA.UI and TA.UI.activeTab == "gear" then
+                            Gear:Render(TA.UI.contentChild, TA.UI.sideChild)
+                        end
+                    end)
+                end
+            else
+                if GS then GS:EquipSet(setName) end
+            end
+        end)
+        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+        row:SetScript("OnEnter", function(self2)
+            self2:SetBackdropBorderColor(1, 0.82, 0, 0.8)
+            GameTooltip:SetOwner(self2, "ANCHOR_RIGHT")
+            GameTooltip:SetText(setName, 1, 0.82, 0)
+            GameTooltip:AddLine("Left-click: Equip this set", 1, 1, 1)
+            GameTooltip:AddLine("Right-click: Delete this set", 0.7, 0.3, 0.3)
+            if setData.specID then
+                local _, sn = GetSpecializationInfoByID(setData.specID)
+                GameTooltip:AddLine("Auto-equip: " .. (sn or "spec change"), 0.5, 0.8, 1)
+            end
+            if setData.pvp then
+                GameTooltip:AddLine("Auto-equip: PvP instances", 0.5, 0.8, 1)
+            end
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function(self2)
+            self2:SetBackdropBorderColor(0.40, 0.32, 0.08, 0.4)
+            GameTooltip:Hide()
+        end)
+
+        sideY = sideY - 22
+        table.insert(self.sideFrames, row)
+    end
+
+    if setCount == 0 then
+        local emptyLbl = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        emptyLbl:SetFont(STANDARD_TEXT_FONT, 9, "")
+        emptyLbl:SetText("No saved sets yet")
+        emptyLbl:SetTextColor(0.45, 0.42, 0.38, 1)
+        emptyLbl:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, sideY)
+        sideY = sideY - 14
+        table.insert(self.sideFrames, emptyLbl)
+    end
+
+    sidebar:SetHeight(math.abs(sideY) + 10)
 
     -- Auto-detect PvP mode: if the player is in a PvP instance (arena/BG)
     -- or has War Mode enabled, default to PvP scoring so PvP gear surfaces
@@ -426,6 +568,12 @@ function Gear:Render(content, sidebar)
     end)
     table.insert(self.frames, srcBtn)
 
+    -- Constrain the header to stop before the button row (anchored to
+    -- srcBtn, the left-most button) so long weight-source labels don't
+    -- run underneath the buttons; wrap instead of overflowing.
+    hdr:SetPoint("RIGHT", srcBtn, "LEFT", -10, 0)
+    hdr:SetWordWrap(true)
+
     y = y - 30
     local disc = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     disc:SetFont(STANDARD_TEXT_FONT, 10, "")
@@ -459,15 +607,43 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
     local playerLevel = UnitLevel("player") or 1
     local pendingUpgrades = {}  -- collected for "Equip All" button
 
+    -- Tracks the currently-equipped Main Hand state. CORE_GRID_SLOTS always
+    -- lists Main Hand (16) immediately before Off Hand (17), so this is set
+    -- before the Off Hand iteration reads it. Off Hand is meaningless without
+    -- checking Main Hand first — a two-handed weapon makes it physically
+    -- unusable, and an EMPTY Main Hand means gearing Off Hand is putting the
+    -- cart before the horse. Without this, Main Hand and Off Hand were scored
+    -- as fully independent slots and would perpetually suggest swapping into
+    -- each other (equip an Off Hand "upgrade" -> game auto-unequips the 2H,
+    -- or sits oddly next to an empty Main Hand -> next render flags Main Hand
+    -- as needing attention -> repeat).
+    local twoHandEquipped = false
+    local mainHandEmpty   = false
+
     for _, slotDef in ipairs(CORE_GRID_SLOTS) do
         local currentLink  = GetLiveEquippedLink(slotDef, "player")
         local currentScore = CalculateItemScore(currentLink, specID, pvxMode)
         local wIlvl, pIlvl, heirloomCap = GetItemIlvls(currentLink)
         local heirloomWarn = heirloomCap and playerLevel >= (heirloomCap - 2)
 
+        if slotDef.slotID == 16 then
+            local _, _, _, _, _, _, _, _, mhEquipLoc = currentLink and GetItemInfo(currentLink)
+            twoHandEquipped = (mhEquipLoc == "INVTYPE_2HWEAPON")
+            mainHandEmpty   = (currentLink == nil)
+        end
+
         local bestBagLink, bestBagScore, bBag, bSlot, claimedBy, claimedLink, claimedBag, claimedSlot =
             ScanBagsForUpgrades(slotDef.slotID, specID, pvxMode, currentScore, slotDef, claimedBags)
         local hasUpgrade = bestBagLink ~= nil and (bestBagScore - currentScore) > 0.0001
+
+        -- Off Hand is inert while a two-handed weapon is equipped, and
+        -- premature while Main Hand is empty — don't suggest swapping it in
+        -- either case, and don't flag its own empty state as a problem.
+        local offHandBlockedByTwoHand = (slotDef.slotID == 17 and twoHandEquipped)
+        local offHandBlockedByEmptyMH = (slotDef.slotID == 17 and mainHandEmpty)
+        if offHandBlockedByTwoHand or offHandBlockedByEmptyMH then
+            hasUpgrade = false
+        end
 
         if hasUpgrade and bBag and bSlot then
             claimedBags[bBag .. "_" .. bSlot] = slotDef.name
@@ -527,9 +703,12 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
         nameF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -18)
 
         -- Status line + modern visual indicators (glow border + status strip)
+        -- Right edge reserves room for the inline Equip button (42px wide,
+        -- anchored -6 from row's right) so status text never renders under it.
         local statusF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         statusF:SetFont(STANDARD_TEXT_FONT, 10, "")
         statusF:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -34)
+        statusF:SetPoint("RIGHT", row, "RIGHT", -54, 0)
 
         local M = TA.Modern  -- may be nil if UIModern not loaded
 
@@ -564,6 +743,15 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
                 statusF:SetText("|cFF888780Equipped|r")
                 if M then M:ApplyStatusStrip(row, "ok") end
             end
+        elseif offHandBlockedByTwoHand then
+            -- Empty Off Hand is correct, not a problem, while wielding a 2H weapon.
+            statusF:SetText("|cFF888780Two-Handed weapon equipped|r")
+            if M then M:ApplyStatusStrip(row, "ok") end
+        elseif offHandBlockedByEmptyMH then
+            -- Off Hand isn't the real problem here — Main Hand being empty is.
+            statusF:SetText("|cFFFF9A1AEquip a Main Hand weapon first|r")
+            row:SetBackdropBorderColor(1.0, 0.60, 0.10, 0.5)
+            if M then M:ApplyStatusStrip(row, "warning") end
         else
             statusF:SetText("|cFFFF4444Missing Item|r")
             row:SetBackdropBorderColor(1.0, 0.27, 0.27, 0.6)

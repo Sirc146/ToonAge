@@ -83,9 +83,23 @@ local function GetSpecNameByID(specID)
 end
 
 -- ── Main render entry ─────────────────────────────────────────────────────
+
+--- Aggressively hide all talent-related content panels and child frames.
+--- Called before any render to prevent Z-index pileups from interrupted renders.
+local function HideAllTalentPanels(frames, sideFrames)
+    -- Hide tracked frames
+    for _, f in ipairs(frames) do
+        if f and f.Hide then f:Hide() end
+        if f and f.SetParent then f:SetParent(nil) end
+    end
+    for _, f in ipairs(sideFrames) do
+        if f and f.Hide then f:Hide() end
+        if f and f.SetParent then f:SetParent(nil) end
+    end
+end
+
 function Talents:Render(content, sidebar)
-    for _, f in ipairs(self.frames)     do f:Hide(); f:SetParent(nil) end
-    for _, f in ipairs(self.sideFrames) do f:Hide(); f:SetParent(nil) end
+    HideAllTalentPanels(self.frames, self.sideFrames)
     self.frames     = {}
     self.sideFrames = {}
 
@@ -96,7 +110,18 @@ function Talents:Render(content, sidebar)
     if not self.viewBuildType  then self.viewBuildType  = GetGroupMode() end
 
     self:RenderSidebar(sidebar, activeSpecID)
-    self:RenderContent(content, activeSpecID)
+    local ok, err = pcall(self.RenderContent, self, content, activeSpecID)
+    if not ok then
+        -- On render failure, ensure no partial frames leak
+        HideAllTalentPanels(self.frames, self.sideFrames)
+        local errF = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        errF:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        errF:SetText("|cFFFF4444Talent render error:|r\n" .. tostring(err))
+        errF:SetPoint("TOPLEFT", content, "TOPLEFT", 14, -14)
+        errF:SetWidth(content:GetWidth() - 28)
+        errF:SetWordWrap(true)
+        table.insert(self.frames, errF)
+    end
 end
 
 -- ── Content ───────────────────────────────────────────────────────────────
@@ -182,6 +207,26 @@ function Talents:RenderContent(content, activeSpecID)
         bx = bx + btnW + 3
     end
     y = y - 32
+
+    -- Visual break between the build-type row and whatever comes next
+    -- (the Class/Spec/Hero/PvP tab row, or the recommended-build card) —
+    -- these are two separate control groups and were reading as one
+    -- crowded block with only a few px between them.
+    AddLine()
+    y = y - 6
+
+    -- ── PvP mode: delegate to TalentsPvP module for the full advisor ────
+    if self.viewBuildType == "pvp" then
+        local PvPAdvisor = TA:GetModule("TalentsPvP")
+        if PvPAdvisor and PvPAdvisor.Render then
+            -- Pass the current cursor position so PvPAdvisor draws BELOW the
+            -- header + build-type row already drawn above, instead of both
+            -- starting at the top of the same content frame and overlapping.
+            PvPAdvisor:Render(content, sidebar, y)
+            return
+        end
+        -- Fall through to generic build display if PvP module unavailable
+    end
 
     -- ── Fetch build data ────────────────────────────────────────────────
     local dbSpec = T:GetBySpecID(specID)
@@ -299,13 +344,6 @@ function Talents:RenderContent(content, activeSpecID)
     cDesc:SetWordWrap(false)
 
     if hasString then
-        local cStr = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        cStr:SetFont(STANDARD_TEXT_FONT, 9)
-        cStr:SetText(U.Truncate(build.string, 60))
-        cStr:SetTextColor(0.38, 0.38, 0.38, 1)
-        cStr:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 10, 34)
-        cStr:SetWidth(w - 170)
-
         local cpBtn = CreateFrame("Button", nil, card, "BackdropTemplate")
         cpBtn:SetSize(150, 26)
         cpBtn:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -8, 8)
@@ -345,6 +383,17 @@ function Talents:RenderContent(content, activeSpecID)
         impBtn:SetScript("OnClick", function()
             self:OpenImportFrame()
         end)
+
+        -- Anchored to impBtn's left edge (not a fixed width) so it never
+        -- runs underneath either button, regardless of how many buttons
+        -- end up sharing this row in the future.
+        local cStr = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        cStr:SetFont(STANDARD_TEXT_FONT, 9)
+        cStr:SetText(U.Truncate(build.string, 60))
+        cStr:SetTextColor(0.38, 0.38, 0.38, 1)
+        cStr:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 10, 34)
+        cStr:SetPoint("RIGHT", impBtn, "LEFT", -8, 0)
+        cStr:SetWordWrap(false)
     else
         -- No import string available — show Import button prominently
         local impBtn = CreateFrame("Button", nil, card, "BackdropTemplate")

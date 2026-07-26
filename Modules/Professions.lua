@@ -138,11 +138,39 @@ function Professions:RenderContent(parent)
         return
     end
 
+    -- Determine expansion era for this profession
+    local era = profData.expansion or P:GetExpansionEra(self.selectedSkillLine)
+    local eraInfo = P.EXPANSION_ERAS[era]
+    local hasSpecs = eraInfo and eraInfo.hasSpecializations or false
+    local hasGear  = eraInfo and eraInfo.hasGear or false
+
     -- Title & Benefit
     AddLabel(string.upper(profData.name) .. " ADVISOR", 13, 1, 0.82, 0)
+    if eraInfo then
+        local eraNote = "|cFF4AAFFF" .. (eraInfo.label or era) .. " Profession System|r"
+        if eraInfo.specUnlock then
+            eraNote = eraNote .. "  |cFF888780(Specializations unlock at skill " .. eraInfo.specUnlock .. ")|r"
+        end
+        AddLabel(eraNote, 9, 0.4, 0.6, 0.9)
+    end
     y = y - 4
     AddLabel("|cFFFFD100Strategic Benefit:|r " .. (profData.personalBenefit or profData.benefit or "Utility profession."), 10, 0.78, 0.73, 0.48)
     y = y - 10
+
+    -- Pre-Dragonflight professions: no specialization trees
+    if not hasSpecs then
+        AddLabel("|cFF888780" .. (eraInfo.label or era) .. " Profession System|r", 10, 0.5, 0.5, 0.5)
+        AddLabel("Linear skill progression (1–" .. (eraInfo.maxSkill or "?") .. "). No specialization trees, profession gear, or crafting stats.", 9, 0.4, 0.4, 0.4)
+        if eraInfo.note then
+            AddLabel("|cFF4AAFFF" .. eraInfo.note .. "|r", 9, 0.4, 0.6, 0.9)
+        end
+        AddLabel("", 6)
+        AddLabel("Specialization trees, profession gear (tool + accessories), and crafting stats (Resourcefulness, Inspiration, Multicraft) were introduced in |cFFFFD100Dragonflight|r and carry through |cFFFFD100The War Within|r and |cFFFFD100Midnight|r.", 9, 0.55, 0.55, 0.55)
+        AddLabel("Specializations unlock at |cFFFFD100skill 25|r in those expansion tiers.", 9, 0.55, 0.55, 0.55)
+        y = y - 10
+        parent:SetHeight(math.abs(y) + 20)
+        return
+    end
 
     -- Standard vs Secondary Profession Fork
     if profData.type == "secondary" then
@@ -151,45 +179,146 @@ function Professions:RenderContent(parent)
         return
     end
 
-    -- Gear Slots Array Mapping
-    if profData.gearSlots then
-        AddLabel("RECOMMENDED EQUIPMENT OPTIMIZATION", 10, 0.55, 0.40, 0.08)
+    -- Gear Slots Array Mapping (Dragonflight+ only)
+    if hasGear and profData.gearSlots then
+        AddLabel("PROFESSION EQUIPMENT", 10, 0.55, 0.40, 0.08)
         y = y - 2
-        
+
+        -- Detect currently equipped profession gear via C_ProfSpec or profession slots
+        local equippedGear = {}
+        if C_TradeSkillUI and C_TradeSkillUI.GetProfessionSlots then
+            local ok, slots = pcall(C_TradeSkillUI.GetProfessionSlots)
+            if ok and slots then
+                for _, slotInfo in ipairs(slots) do
+                    local link = GetInventoryItemLink("player", slotInfo.slotIndex)
+                    if link then
+                        equippedGear[slotInfo.slotType or "unknown"] = {
+                            link = link,
+                            name = GetItemInfo(link) or "?",
+                        }
+                    end
+                end
+            end
+        end
+
         for slotKey, slotInfo in pairs(profData.gearSlots) do
             local row = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-            row:SetSize(w, 36)
+            row:SetSize(w, 48)
             row:SetPoint("TOPLEFT", parent, "TOPLEFT", padL, y)
             row:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
-            row:SetBackdropColor(0.04, 0.04, 0.04, 1)
-            row:SetBackdropBorderColor(0.35, 0.28, 0.06, 0.3)
+
+            -- Check if this slot has the right gear for the chosen path
+            local isBestForPath = (slotInfo.bestForPath == nil) or (slotInfo.bestForPath == profData.firstPath)
+            local equipped = equippedGear[slotKey]
+
+            if isBestForPath then
+                row:SetBackdropColor(0.02, 0.06, 0.02, 1)
+                row:SetBackdropBorderColor(0.29, 1.00, 0.48, 0.4)
+            else
+                row:SetBackdropColor(0.04, 0.04, 0.04, 1)
+                row:SetBackdropBorderColor(0.35, 0.28, 0.06, 0.3)
+            end
             table.insert(self.frames, row)
 
             local sTitle = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             sTitle:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
             sTitle:SetText(slotInfo.name or slotKey:upper())
             sTitle:SetTextColor(0.55, 0.44, 0.25, 1)
-            sTitle:SetPoint("LEFT", row, "LEFT", 10, 6)
+            sTitle:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -6)
+
+            -- Show "Best for: [Path]" badge if applicable
+            if slotInfo.bestForPath then
+                local pathBadge = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                pathBadge:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
+                pathBadge:SetText("|cFF4AAFFF★ Best for: " .. slotInfo.bestForPath .. "|r")
+                pathBadge:SetPoint("TOPRIGHT", row, "TOPRIGHT", -8, -6)
+            end
 
             local sRec = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             sRec:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-            sRec:SetText(slotInfo.recommended)
-            sRec:SetTextColor(1, 0.82, 0, 1)
-            sRec:SetPoint("LEFT", row, "LEFT", 130, 6)
+            sRec:SetText("|cFFFFD100" .. slotInfo.recommended .. "|r")
+            sRec:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -20)
 
             local sStats = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             sStats:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
             sStats:SetText(slotInfo.bonuses .. "  |cFF888780(" .. slotInfo.source .. ")|r")
-            sStats:SetPoint("LEFT", row, "LEFT", 10, -8)
+            sStats:SetPoint("TOPLEFT", row, "TOPLEFT", 10, -34)
+            sStats:SetWidth(w - 20)
 
-            y = y - 40
+            y = y - 52
         end
         y = y - 10
     end
 
-    -- Talent Nodes Priority Tracker
-    if profData.talentTree then
-        AddLabel("KNOWLEDGE POINT (KP) DEPLOYMENT PATH", 10, 0.55, 0.40, 0.08)
+    -- Skill Milestone Progress (Dragonflight+ only)
+    if hasSpecs and P.SPEC_MILESTONES then
+        AddLabel("SKILL MILESTONES", 10, 0.55, 0.40, 0.08)
+        y = y - 2
+
+        -- Get current skill for this profession
+        local currentSkill = 0
+        local playerProfs = U.GetProfessions()
+        for _, prof in ipairs(playerProfs) do
+            if prof.skillLine == self.selectedSkillLine then
+                currentSkill = prof.rank or 0
+                break
+            end
+        end
+
+        for _, milestone in ipairs(P.SPEC_MILESTONES) do
+            local reached = (currentSkill >= milestone.skill)
+            local isCurrent = (not reached) and (currentSkill < milestone.skill)
+                              and (milestone == P.SPEC_MILESTONES[1] or currentSkill >= (P.SPEC_MILESTONES[1].skill or 0))
+
+            local row = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+            row:SetSize(w, 22)
+            row:SetPoint("TOPLEFT", parent, "TOPLEFT", padL, y)
+            row:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+            if reached then
+                row:SetBackdropColor(0.02, 0.05, 0.02, 0.8)
+                row:SetBackdropBorderColor(0.29, 1.00, 0.48, 0.3)
+            else
+                row:SetBackdropColor(0.03, 0.03, 0.03, 0.6)
+                row:SetBackdropBorderColor(0.15, 0.15, 0.15, 0.2)
+            end
+            table.insert(self.frames, row)
+
+            local badge = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            badge:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+            if reached then
+                badge:SetText("|cFF4AFF7A✓|r")
+            elseif currentSkill > 0 and milestone.skill <= currentSkill + 25 then
+                badge:SetText("|cFFFF9A1A→|r")
+            else
+                badge:SetText("|cFF555555○|r")
+            end
+            badge:SetPoint("LEFT", row, "LEFT", 6, 0)
+
+            local skillLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            skillLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+            skillLbl:SetText("|cFFFFD100Skill " .. milestone.skill .. "|r  " .. milestone.label)
+            skillLbl:SetTextColor(reached and 0.6 or 0.45, reached and 0.6 or 0.45, reached and 0.6 or 0.45, 1)
+            skillLbl:SetPoint("LEFT", row, "LEFT", 22, 0)
+            skillLbl:SetWidth(w - 30)
+
+            y = y - 24
+        end
+        y = y - 8
+    end
+
+    -- Talent Nodes Priority Tracker (Dragonflight+ only)
+    if hasSpecs and profData.talentTree then
+        -- Use expansion-specific terminology if available
+        local expTerms = profData.expansionTerms and profData.expansionTerms[profData.expansion or "Midnight"]
+        local kpLabel  = expTerms and expTerms.kpName or "Knowledge Points"
+        AddLabel(string.upper(kpLabel) .. " DEPLOYMENT PATH", 10, 0.55, 0.40, 0.08)
+
+        -- Show available specialization paths with correct expansion names
+        if expTerms and expTerms.specPaths then
+            local pathStr = "|cFF4AAFFF" .. table.concat(expTerms.specPaths, " · ") .. "|r"
+            AddLabel("Paths: " .. pathStr, 9, 0.45, 0.45, 0.45)
+            y = y - 2
+        end
         
         if profData.talentTree.permanenceWarning then
             AddLabel("⚠ " .. profData.talentTree.permanenceWarning, 9, 1, 0.4, 0.4)

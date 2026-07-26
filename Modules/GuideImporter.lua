@@ -82,7 +82,56 @@ end
 -- Instead of hardcoded zone lists, we iterate BtWQuests' Database directly
 -- for ALL registered chains and categorize them by their category/expansion.
 
+-- BtWQuests expansion modules are LoadOnDemand — they must be explicitly
+-- loaded before their chain data becomes available.
+local BTWQUESTS_MODULES = {
+    "BtWQuestsMidnight",
+    "BtWQuestsTheWarWithin",
+    "BtWQuestsDragonflight",
+    "BtWQuestsDragonflightPrologue",
+    "BtWQuestsShadowlands",
+    "BtWQuestsShadowlandsPrologue",
+    "BtWQuestsBattleForAzeroth",
+    "BtWQuestsBattleForAzerothPrologue",
+    "BtWQuestsLegion",
+    "BtWQuestsWarlordsOfDraenor",
+    "BtWQuestsMistsOfPandaria",
+    "BtWQuestsCataclysm",
+    "BtWQuestsWrathOfTheLichKing",
+    "BtWQuestsTheBurningCrusade",
+    "BtWQuestsClassic",
+}
+
+local function LoadBtWQuestsModules()
+    local LoadAddOn = C_AddOns and C_AddOns.LoadAddOn or LoadAddOn
+    if not LoadAddOn then return end
+
+    for _, addonName in ipairs(BTWQUESTS_MODULES) do
+        -- Check if addon exists and isn't already loaded
+        local isLoaded = TA.Utils.IsAddOnLoaded(addonName)
+
+        if not isLoaded then
+            -- Check if it's available (installed but not loaded)
+            local exists = false
+            if C_AddOns and C_AddOns.GetAddOnInfo then
+                local ok, name = pcall(C_AddOns.GetAddOnInfo, addonName)
+                exists = ok and name ~= nil
+            elseif GetAddOnInfo then
+                local ok, name = pcall(GetAddOnInfo, addonName)
+                exists = ok and name ~= nil
+            end
+
+            if exists then
+                pcall(LoadAddOn, addonName)
+            end
+        end
+    end
+end
+
 function GI:ImportAllFromBtWQuests()
+    -- First, ensure BtWQuests expansion modules are loaded
+    LoadBtWQuestsModules()
+
     if not BtWQuests or not BtWQuests.Database then return 0 end
 
     local Database = BtWQuests.Database
@@ -110,7 +159,45 @@ function GI:ImportAllFromBtWQuests()
         for expansionName, zones in pairs(BtWQuests.Constant.Chain) do
             if type(zones) == "table" then
                 for zoneName, chains in pairs(zones) do
-                    if type(chains) == "table" then
+                    if type(chains) == "number" then
+                        -- Single flat chain ID (common for prologues: Chain.Shadowlands.PrologueAlliance = 90091)
+                        local chainID = chains
+                        local chainData = nil
+                        if Database.GetChainByID then
+                            local ok, data = pcall(Database.GetChainByID, Database, chainID)
+                            if ok then chainData = data end
+                        end
+                        if not chainData and Database.chains then
+                            chainData = Database.chains[chainID]
+                        end
+
+                        if chainData and chainData.items then
+                            local questIDs = LinearizeChain(chainData.items)
+                            if #questIDs > 0 then
+                                local guideID = "btw_" .. expansionName:lower():gsub("[^%a%d]", "") .. "_" .. zoneName:lower():gsub("[^%a%d]", "")
+                                if not TA.Guides[guideID] or TA.Guides[guideID]._imported then
+                                    local title = expansionName .. ": " .. zoneName .. " (auto)"
+                                    local levelRange = chainData.range
+                                    local mapID = 0
+                                    if chainData.category then
+                                        local catData = Database.categories and Database.categories[chainData.category]
+                                        if catData and catData.mapID then mapID = catData.mapID end
+                                    end
+
+                                    local guide = GenerateGuide(guideID, title, mapID, levelRange, questIDs)
+                                    guide._chainInfo = {{ name = chainData.name or zoneName, major = chainData.major or false, count = #questIDs }}
+                                    TA.Guides[guideID] = guide
+                                    TA.GuideData = TA.GuideData or {}
+                                    TA.GuideData[guideID] = guide
+                                    for _, qid in ipairs(questIDs) do
+                                        self.questToGuide[qid] = guideID
+                                    end
+                                    count = count + 1
+                                end
+                            end
+                        end
+
+                    elseif type(chains) == "table" then
                         local allQuestIDs = {}
                         local chainNames = {}
 
@@ -355,7 +442,9 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function GI:Init()
-    -- Delay import to let BtWQuests fully initialize
+    -- Delay import to let BtWQuests fully initialize.
+    -- BtWQuests may load its Database lazily (via ADDON_LOADED of expansion
+    -- sub-modules). We try at 4s, then retry at 12s if count is low.
     C_Timer.After(4, function()
         local count = GI:ImportAllFromBtWQuests()
         if count > 0 then
@@ -368,10 +457,36 @@ function GI:Init()
             print(string.format("|cFFFFD100[ToonAge]|r Imported %d questline(s) from Blizzard API.", qlCount))
         end
 
-        -- Re-run auto-select if no guide active
+        -- Re-run auto-select if no guide active — BUT respect the user's saved choice.
+        -- If charDB has a saved guideID that now exists (because BtWQuests just loaded),
+        -- restore it instead of auto-selecting a different one.
         local QT = TA:GetModule("QuestTracker")
-        if QT and not QT.guideID then
-            QT:AutoSelectGuide()
+        if QT then
+            local savedID = TA.charDB and TA.charDB.tracker and TA.charDB.tracker.guideID
+            if savedID and TA.Guides[savedID] then
+                -- Restore the user's saved guide (it just became available)
+                if QT.guideID ~= savedID then
+                    QT:SetGuide(savedID)
+                end
+            elseif not QT.guideID then
+                QT:AutoSelectGuide()
+            end
+        end
+
+        -- If BtWQuests is loaded but returned 0, retry after more time
+        -- (some BtWQuests expansion modules load their data lazily)
+        if count == 0 and (BtWQuests or TA.Utils.IsAddOnLoaded("BtWQuests")) then
+            C_Timer.After(8, function()
+                local retry = GI:ImportAllFromBtWQuests()
+                if retry > 0 then
+                    print(string.format("|cFFFFD100[ToonAge]|r Late import: %d additional guide(s) from BtWQuests.", retry))
+                    -- Refresh browser if open
+                    local GB = TA:GetModule("GuideBrowser")
+                    if GB and GB.frame and GB.frame:IsShown() then
+                        GB:RefreshBrowser()
+                    end
+                end
+            end)
         end
 
         if TA.debug then
@@ -384,13 +499,32 @@ end
 
 GI.SlashCommands = {
     import = function(self)
+        -- Show diagnostic info about BtWQuests data availability
+        if BtWQuests then
+            print("|cFFFFD100[ToonAge]|r BtWQuests global: found")
+            if BtWQuests.Database then
+                print("|cFFFFD100[ToonAge]|r BtWQuests.Database: found")
+            else
+                print("|cFFFF4444[ToonAge]|r BtWQuests.Database: nil (not loaded yet?)")
+            end
+            if BtWQuests.Constant and BtWQuests.Constant.Chain then
+                local expCount = 0
+                for _ in pairs(BtWQuests.Constant.Chain) do expCount = expCount + 1 end
+                print("|cFFFFD100[ToonAge]|r BtWQuests.Constant.Chain: " .. expCount .. " expansion(s)")
+            else
+                print("|cFFFF4444[ToonAge]|r BtWQuests.Constant.Chain: nil")
+            end
+        else
+            print("|cFFFF4444[ToonAge]|r BtWQuests not loaded. Install BtWQuests + expansion modules.")
+        end
+
         local count = self:ImportAllFromBtWQuests()
         local qlCount = self:ImportFromQuestLineAPI()
         local total = count + qlCount
         if total > 0 then
             print(string.format("|cFFFFD100[ToonAge]|r Imported %d guide(s). Total: %d. Use /ta guides to list.", total, U.TableLength(TA.Guides or {})))
         else
-            print("|cFFFFD100[ToonAge]|r No new guides found. Install BtWQuests expansions for full coverage.")
+            print("|cFFFFD100[ToonAge]|r No new guides found. Total available: " .. U.TableLength(TA.Guides or {}))
         end
     end,
 

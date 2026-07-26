@@ -17,6 +17,7 @@ local ROW_PAD       = 6    -- extra vertical space between rows
 -- what to do with it (Delves/Weekly), then side systems (Professions/Pets).
 local TABS = {
     { id = "character",   label = "Character",   module = "Character"   },
+    { id = "guide",       label = "Guide",       module = "QuestTracker" },
     { id = "gear",        label = "Gear",        module = "Gear"        },
     { id = "talents",     label = "Talents",     module = "Talents"     },
     { id = "rotation",    label = "Rotation",    module = "Rotation"    },
@@ -44,14 +45,54 @@ end
 -- ── Clean a frame's content completely ───────────────────────────────
 -- WoW's GetChildren() only returns Frame objects, not FontStrings or
 -- Textures. To truly clear a content pane we destroy and recreate it.
+-- Frame recycler pool (file-scope, persists across tab switches)
+local _framePool = { content = {}, side = {} }
+
 local function RebuildChild(scrollFrame, width)
+    -- Frame recycler pool: prevents memory inflation from creating new frames
+    -- on every tab switch. WoW's C-engine does NOT release unparented widget
+    -- memory — so we reuse frames instead of abandoning them.
+    -- Pool is defined at file scope (persists across calls).
     local old = scrollFrame:GetScrollChild()
     if old then
         old:Hide()
+        -- Purge child regions (FontStrings, Textures) to prevent bleed-through
+        for _, region in ipairs({ old:GetRegions() }) do
+            region:Hide()
+            if region.SetText then region:SetText("") end
+        end
+        -- Hide all child frames
+        for _, child in ipairs({ old:GetChildren() }) do
+            child:Hide()
+            child:SetParent(nil)
+        end
         old:SetParent(nil)
+        -- Return to pool based on width heuristic
+        local key = (width > 200) and "content" or "side"
+        table.insert(_framePool[key], old)
     end
-    local child = CreateFrame("Frame", nil, scrollFrame)
-    child:SetSize(width, 1)
+
+    -- Try to reuse a pooled frame
+    local key = (width > 200) and "content" or "side"
+    local child = table.remove(_framePool[key])
+    if child then
+        child:SetParent(scrollFrame)
+        child:SetSize(width, 1)
+        child:Show()
+        -- Re-purge in case anything lingered
+        for _, region in ipairs({ child:GetRegions() }) do
+            region:Hide()
+            if region.SetText then region:SetText("") end
+        end
+        for _, c in ipairs({ child:GetChildren() }) do
+            c:Hide()
+            c:SetParent(nil)
+        end
+    else
+        child = CreateFrame("Frame", nil, scrollFrame)
+        child:SetSize(width, 1)
+    end
+
     scrollFrame:SetScrollChild(child)
     scrollFrame:SetVerticalScroll(0)
     return child
@@ -109,16 +150,17 @@ function TA:InitUI()
     versionLabel:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
     versionLabel:SetText("v" .. TA.version .. "  ·  Midnight 12.0.5")
     versionLabel:SetTextColor(0.55, 0.52, 0.45, 1.00)
-    versionLabel:SetPoint("RIGHT", titleBar, "RIGHT", -36, 0)
-
+    -- Right-to-left anchor chain: Close → Options → Version
     local closeBtn = CreateFrame("Button", nil, titleBar, "UIPanelCloseButton")
     closeBtn:SetSize(24, 24)
-    closeBtn:SetPoint("RIGHT", titleBar, "RIGHT", -6, 0)
+    closeBtn:SetPoint("TOPRIGHT", titleBar, "TOPRIGHT", -5, -5)
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
     local optionsBtn = CreateFrame("Button", nil, titleBar, "BackdropTemplate")
     optionsBtn:SetSize(20, 20)
     optionsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
+
+    versionLabel:SetPoint("RIGHT", optionsBtn, "LEFT", -10, 0)
     local optIcon = optionsBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     optIcon:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
     optIcon:SetText("\226\154\153")  -- gear glyph
@@ -238,6 +280,18 @@ function TA:InitUI()
                 end
             end
 
+            -- ── Guide tab conditional behavior ────────────────────────────
+            -- In fragmented (independent windows) mode, clicking the Guide tab
+            -- should also ensure the standalone tracker is visible, since the
+            -- drawer is suppressed.
+            if tabID == "guide" and TA.db and not TA.db.useUnifiedUI then
+                local QT = TA:GetModule("QuestTracker")
+                if QT and QT.window and QT.guideID and not QT.window:IsVisible() then
+                    QT.window:Show()
+                    QT:UpdateWindow()
+                end
+            end
+
             -- ── Dynamic panel resizing ────────────────────────────────────
             -- If the sidebar scroll child has no meaningful content (height ≤ 1
             -- means nothing was rendered into it) AND the module didn't parent
@@ -275,17 +329,132 @@ function TA:InitUI()
     end
 
     -- ── Refresh on events ─────────────────────────────────────────────
-    function frame:Refresh(event)
-        if self.activeTab then
-            self:SetTab(self.activeTab)
+    -- Which events can actually change what a given tab displays. Anything
+    -- not listed for the active tab is skipped rather than triggering a full
+    -- SetTab teardown/rebuild.
+    --
+    -- IMPORTANT — this is deliberately NOT a plain allow-list. Modules register
+    -- their own events on TA.eventFrame (QuestTracker alone adds nine), so the
+    -- set of events reaching Refresh is much larger than Init.lua's
+    -- PERSISTENT_EVENTS and will grow as modules are added. A strict allow-list
+    -- would silently stop refreshing a tab the day someone registers a new
+    -- event — a bug that looks like "the tab is just stale sometimes."
+    --
+    -- So: an event that no tab claims and that isn't explicitly listed as
+    -- UI-irrelevant below forces a rebuild. Unknown means "assume it matters."
+    -- The filtering win comes from UI_IRRELEVANT, which is where the genuinely
+    -- high-frequency churn lives.
+    local TAB_EVENTS = {
+        guide = {
+            QUEST_ACCEPTED = true, QUEST_TURNED_IN = true,
+            QUEST_LOG_UPDATE = true, UNIT_QUEST_LOG_CHANGED = true,
+            QUEST_WATCH_LIST_CHANGED = true, QUEST_COMPLETE = true,
+            QUEST_FINISHED = true, SUPER_TRACKING_CHANGED = true,
+            ZONE_CHANGED = true, ZONE_CHANGED_NEW_AREA = true,
+            PLAYER_LEVEL_UP = true, PLAYER_XP_UPDATE = true,
+        },
+        character = {
+            PLAYER_LEVEL_UP = true, PLAYER_EQUIPMENT_CHANGED = true,
+            UNIT_INVENTORY_CHANGED = true, PLAYER_SPECIALIZATION_CHANGED = true,
+            ACTIVE_TALENT_GROUP_CHANGED = true, SKILL_LINES_CHANGED = true,
+            ZONE_CHANGED_NEW_AREA = true,
+        },
+        gear = {
+            PLAYER_EQUIPMENT_CHANGED = true, UNIT_INVENTORY_CHANGED = true,
+            BAG_UPDATE = true, GET_ITEM_INFO_RECEIVED = true,
+            PLAYER_SPECIALIZATION_CHANGED = true, PLAYER_LEVEL_UP = true,
+        },
+        talents = {
+            PLAYER_TALENT_UPDATE = true, ACTIVE_TALENT_GROUP_CHANGED = true,
+            TRAIT_CONFIG_UPDATED = true, PLAYER_SPECIALIZATION_CHANGED = true,
+            PLAYER_LEVEL_UP = true,
+        },
+        rotation = {
+            PLAYER_TALENT_UPDATE = true, ACTIVE_TALENT_GROUP_CHANGED = true,
+            TRAIT_CONFIG_UPDATED = true, PLAYER_SPECIALIZATION_CHANGED = true,
+            PLAYER_LEVEL_UP = true,
+        },
+        professions = {
+            SKILL_LINES_CHANGED = true, PLAYER_LEVEL_UP = true,
+            GET_ITEM_INFO_RECEIVED = true,
+        },
+        pets = {
+            PET_STABLE_UPDATE = true, UNIT_PET = true, PLAYER_LEVEL_UP = true,
+        },
+        weekly = {
+            PLAYER_LEVEL_UP = true, CHAT_MSG_SYSTEM = true,
+            ZONE_CHANGED_NEW_AREA = true, GROUP_ROSTER_UPDATE = true,
+        },
+        delves = {
+            PLAYER_LEVEL_UP = true, ZONE_CHANGED_NEW_AREA = true,
+            CHAT_MSG_SYSTEM = true, GROUP_ROSTER_UPDATE = true,
+        },
+    }
+
+    -- Events that no tab renders: combat/nameplate churn, cinematics, and
+    -- death/res transitions. These are the high-frequency ones worth filtering
+    -- (NAME_PLATE_UNIT_ADDED/REMOVED fire constantly in combat). Anything not
+    -- listed here and not claimed by a tab falls through to a rebuild.
+    local UI_IRRELEVANT = {
+        NAME_PLATE_UNIT_ADDED = true, NAME_PLATE_UNIT_REMOVED = true,
+        CINEMATIC_START = true, PLAY_MOVIE = true,
+        PLAYER_REGEN_ENABLED = true, PLAYER_REGEN_DISABLED = true,
+        PLAYER_DEAD = true, PLAYER_ALIVE = true, PLAYER_UNGHOST = true,
+        READY_CHECK = true, PLAYER_LEAVING_WORLD = true,
+    }
+
+    -- Union of every event any tab claims. Used to tell "this event is known
+    -- and simply isn't for the active tab" from "nobody has accounted for
+    -- this event" — only the former is safe to skip.
+    local CLAIMED_EVENTS = {}
+    for _, events in pairs(TAB_EVENTS) do
+        for event in pairs(events) do CLAIMED_EVENTS[event] = true end
+    end
+
+    --- Should this batch of events cause the active tab to rebuild?
+    local function BatchAffectsTab(events, activeTab)
+        local relevant = TAB_EVENTS[activeTab]
+        for event in pairs(events) do
+            if relevant and relevant[event] then
+                return true   -- directly affects what's on screen
+            end
+            if not (UI_IRRELEVANT[event] or CLAIMED_EVENTS[event]) then
+                return true   -- unaccounted-for event: fail open, rebuild
+            end
         end
+        return false
+    end
+
+    --- @param events table|string|nil — set of event names from the coalescing
+    ---        queue in Init.lua, a single event name, or nil to force a rebuild.
+    function frame:Refresh(events)
+        if not self.activeTab then return end
+
+        if events then
+            if type(events) ~= "table" then events = { [events] = true } end
+            if not BatchAffectsTab(events, self.activeTab) then return end
+        end
+
+        self:SetTab(self.activeTab)
     end
 
     -- ── Show: open to last tab ────────────────────────────────────────
     local origShow = frame.Show
     function frame:Show()
         origShow(self)
-        self:SetTab(TA.charDB.lastTab or "character")
+        self:SetTab(TA.charDB.lastTab or "guide")
+    end
+
+    -- The Settings drawer (TASettingsDrawer) is parented to UIParent, not to
+    -- this frame, so it can be positioned independently below the main
+    -- window — but that also means closing the main window never closed it
+    -- on its own. Close it here so it can't be left open and orphaned.
+    local origHide = frame.Hide
+    function frame:Hide()
+        origHide(self)
+        if TA._settingsDrawer and TA._settingsDrawer:IsShown() then
+            TA._settingsDrawer:Hide()
+        end
     end
 
     -- ── RebuildTabs — callable at any time (e.g. from options panel) ──
@@ -535,52 +704,64 @@ end
 
 function TA:ApplyLayout()
     local db = self.db
-    if not db then return end   -- called before InitDB? shouldn't happen, guard anyway
+    if not db then return end
 
     local Arrow  = self:GetModule("Arrow")
     local QT     = self:GetModule("QuestTracker")
     local arrowF = Arrow  and Arrow.frame
     local guideF = QT     and QT.window
+    local M      = self.Modern
+    local drawer = M and M.drawer
 
     if db.useUnifiedUI then
         -- ── UNIFIED HUD ────────────────────────────────────────────────────────
-        -- The main ToonAge tab panel (self.UI / ToonAgeFrame) already serves as
-        -- a persistent, draggable master frame.  We park the arrow and guide
-        -- tracker next to it rather than inside it (they have their own strata
-        -- and scroll-child logic that breaks when re-parented mid-session).
-        --
-        -- "Unified" in practice means: restore saved unified positions so the
-        -- three pieces snap to a coherent cluster rather than wherever the player
-        -- last scattered them.
+        -- The drawer (attached to main frame) is the primary tracker view.
+        -- The standalone floating window is hidden.
 
+        -- 1) Hide standalone tracker window
+        if guideF then
+            guideF:Hide()
+        end
+
+        -- 2) Position arrow at unified position
         if arrowF then
             arrowF:ClearAllPoints()
             local pos = db.unifiedPosition
-            -- Arrow sits just to the left of the main frame's default anchor
             arrowF:SetPoint(pos.point, UIParent, pos.relativePoint,
                 pos.x - 50, pos.y + 10)
-            -- Restore normal interactive drag in unified mode
             arrowF:RegisterForDrag("LeftButton")
         end
 
-        if guideF then
-            guideF:ClearAllPoints()
-            local pos = db.unifiedPosition
-            -- Guide tracker sits just to the right of the unified anchor
-            guideF:SetPoint(pos.point, UIParent, pos.relativePoint,
-                pos.x + 10, pos.y + 10)
-        end
+        -- 3) Allow the drawer's OnShow hook to function normally
+        self._drawerSuppressed = false
 
-        if self.UI and not self.UI:IsVisible() then
-            -- Don't force the tab panel open; just ensure it's un-hidden if it
-            -- was hidden by the old-layout hide path below.
-            -- The player still opens it manually via /ta or the minimap click.
+        -- 4) Show drawer if main frame is visible and drawer exists
+        if drawer and self.UI and self.UI:IsVisible() then
+            if not drawer:IsVisible() then
+                drawer:Show()
+                drawer:SetWidth((M.DRAWER_WIDTH) or 280)
+                drawer:SetAlpha(1)
+            end
+            -- Populate drawer content
+            if QT and QT.UpdateDrawer then
+                QT:UpdateDrawer()
+            end
         end
 
     else
-        -- ── FRAGMENTED (OLD) LAYOUT ────────────────────────────────────────────
-        -- Restore each window to its individually-saved position.
+        -- ── FRAGMENTED (INDEPENDENT WINDOWS) ───────────────────────────────────
+        -- The standalone tracker window is the primary view.
+        -- The drawer is hidden and suppressed from auto-opening.
 
+        -- 1) Suppress the drawer — prevents mainFrame OnShow hook from reopening it
+        self._drawerSuppressed = true
+
+        -- 2) Hide the drawer immediately
+        if drawer and drawer:IsVisible() then
+            drawer:Hide()
+        end
+
+        -- 3) Position arrow at its saved independent position
         if arrowF then
             arrowF:ClearAllPoints()
             local pos = db.oldUiPositions.arrow
@@ -588,18 +769,17 @@ function TA:ApplyLayout()
             arrowF:RegisterForDrag("LeftButton")
         end
 
+        -- 4) Show and position standalone tracker window
         if guideF then
             guideF:ClearAllPoints()
             local pos = db.oldUiPositions.guide
             guideF:SetPoint(pos.point, UIParent, pos.relativePoint, pos.x, pos.y)
-        end
-    end
 
-    -- After repositioning: ensure tracker is populated and visible if a guide is active
-    if QT then
-        if QT.guideID and guideF then
-            guideF:Show()
-            QT:UpdateWindow()
+            -- Show tracker if a guide is active
+            if QT and QT.guideID then
+                guideF:Show()
+                QT:UpdateWindow()
+            end
         end
     end
 end

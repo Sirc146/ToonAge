@@ -29,6 +29,48 @@ local MAX_PINS        = 5      -- max upcoming guide step pins shown
 local PIN_SIZE        = 16     -- pixels per waypoint pin
 local HUD_ALPHA       = 1.0    -- blip visibility (minimap bg is always 0)
 
+-- ── NavHud Settings (saved in charDB.navhud) ──────────────────────────────────
+-- These provide user control over what appears on the HUD.
+-- Changed via /ta hud settings or the Settings panel.
+local NAVHUD_DEFAULTS = {
+    visible         = false,  -- HUD shown on login
+    scale           = 1.4,    -- HUD size multiplier
+    opacity         = 0.85,   -- overall HUD opacity (0-1)
+    showCardinals   = true,   -- N/S/E/W labels
+    showCoords      = true,   -- player coordinate text
+    showDistance     = true,   -- distance to current waypoint
+    showStepText    = true,   -- current step description
+    showRing        = true,   -- proximity/range circle
+    showGatherDots  = true,   -- remembered gather node positions (GatherTracker)
+    showTrail       = true,   -- ant-trail breadcrumb dots (AntTrail)
+    showPins        = true,   -- guide step waypoint pins
+    gatherDotAlpha  = 0.4,    -- gather dot opacity
+    trailAlpha      = 0.7,    -- trail dot opacity
+    pinSize         = 16,     -- waypoint pin size in pixels
+    maxPins         = 5,      -- max upcoming pins shown
+}
+
+--- Get a NavHud setting value (reads from charDB with fallback to defaults)
+local function GetSetting(key)
+    if TA.charDB and TA.charDB.navhud and TA.charDB.navhud[key] ~= nil then
+        return TA.charDB.navhud[key]
+    end
+    return NAVHUD_DEFAULTS[key]
+end
+
+--- Set a NavHud setting value
+local function SetSetting(key, value)
+    if not TA.charDB then return end
+    TA.charDB.navhud = TA.charDB.navhud or {}
+    TA.charDB.navhud[key] = value
+end
+
+-- Exposed as plain (dot-call) module functions, same (key)/(key, value)
+-- signatures, so other modules (Settings.lua) can read/write NavHud settings
+-- without needing their own copy of the charDB/defaults fallback logic.
+NavHud.GetSetting = GetSetting
+NavHud.SetSetting = SetSetting
+
 -- Pin colors by step type
 local PIN_COLORS = {
     pickup    = { 0.29, 1.00, 0.48, 1.0 },  -- green
@@ -78,15 +120,16 @@ function NavHud:CreateHud()
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 
     -- ── Minimap widget (native tracking blips) ────────────────────────
-    -- WoW supports multiple Minimap widgets. We create one embedded in the
-    -- HUD frame with alpha=0 (invisible background) and rotateMinimap on.
-    -- The blip icons (herbs, ore, NPCs) render at full opacity on their own
-    -- sublayer even when the minimap background is invisible.
-    local mm = CreateFrame("Minimap", "TANavHudMinimap", f)
+    -- NOTE: CreateFrame("Minimap") is NOT supported on modern WoW clients.
+    -- The game only allows a single Minimap instance (the default one).
+    -- Instead we use a plain Frame as a container. Native tracking blips
+    -- (herbs/ore/NPCs) remain visible on the player's actual minimap.
+    -- Our custom pin system and GatherTracker dots provide HUD-based
+    -- navigation without needing a second minimap widget.
+    local mm = CreateFrame("Frame", "TANavHudMinimap", f)
     mm:SetAllPoints(f)
     mm:SetAlpha(0)
     mm:EnableMouse(false)
-    mm:SetZoom(0)  -- max zoom-out for widest detection range
     f.minimap = mm
 
     -- ── Range/proximity circle ────────────────────────────────────────
@@ -207,24 +250,43 @@ function NavHud:Tick()
     end
 
     -- ── Update cardinal labels ────────────────────────────────────────
+    local showCardinals = GetSetting("showCardinals")
     local radius = self.hudRadius * CARDINAL_RADIUS
     for _, fs in ipairs(self.cardinals) do
-        local x = math.sin(fs.rad + bearing) * radius
-        local y = math.cos(fs.rad + bearing) * radius
-        fs:ClearAllPoints()
-        fs:SetPoint("CENTER", self.frame, "CENTER", x, y)
+        if showCardinals then
+            local x = math.sin(fs.rad + bearing) * radius
+            local y = math.cos(fs.rad + bearing) * radius
+            fs:ClearAllPoints()
+            fs:SetPoint("CENTER", self.frame, "CENTER", x, y)
+            fs:Show()
+        else
+            fs:Hide()
+        end
     end
 
     -- ── Update coordinate display ─────────────────────────────────────
+    local showCoords = GetSetting("showCoords")
+    local showDist   = GetSetting("showDistance")
+    local showStep   = GetSetting("showStepText")
+    if self.frame.coordText then self.frame.coordText:SetShown(showCoords) end
+    if self.frame.distText  then self.frame.distText:SetShown(showDist) end
+    if self.frame.stepText  then self.frame.stepText:SetShown(showStep) end
+
     local currentMap = C_Map.GetBestMapForUnit("player")
     if currentMap then
         local pos = C_Map.GetPlayerMapPosition(currentMap, "player")
         if pos then
             local px, py = pos:GetXY()
-            self.frame.coordText:SetFormattedText("%.1f, %.1f", px * 100, py * 100)
+            if showCoords then
+                self.frame.coordText:SetFormattedText("%.1f, %.1f", px * 100, py * 100)
+            end
 
             -- ── Update waypoint pins ──────────────────────────────────
-            self:UpdatePins(px, py, bearing, currentMap)
+            if GetSetting("showPins") then
+                self:UpdatePins(px, py, bearing, currentMap)
+            else
+                self:HideAllPins()
+            end
         end
     end
 end
@@ -355,9 +417,22 @@ function NavHud:Toggle()
     end
 end
 
+--- Apply scale/opacity/ring settings to the live frame. Called on Show and
+--- whenever a setting changes while the HUD is already visible — these are
+--- cheap, one-shot property sets, unlike the pin/cardinal math in Tick().
+function NavHud:ApplySettings()
+    if not self.frame then return end
+    self.frame:SetScale(GetSetting("scale") or 1.0)
+    self.frame:SetAlpha(GetSetting("opacity") or 1.0)
+    local showRing = GetSetting("showRing")
+    if self.frame.ring       then self.frame.ring:SetShown(showRing) end
+    if self.frame.rangeCircle then self.frame.rangeCircle:SetShown(showRing) end
+end
+
 function NavHud:Show()
     if not self.frame then self:CreateHud() end
     self.frame:Show()
+    self:ApplySettings()
 
     -- Force rotate minimap on (restore on hide)
     self._prevRotate = GetCVar("rotateMinimap")
@@ -405,18 +480,83 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function NavHud:Init()
-    -- Defer frame creation until first use (lightweight at login)
+    -- Apply defaults to charDB
+    if TA.charDB then
+        TA.charDB.navhud = TA.charDB.navhud or {}
+        for k, v in pairs(NAVHUD_DEFAULTS) do
+            if TA.charDB.navhud[k] == nil then
+                TA.charDB.navhud[k] = v
+            end
+        end
+    end
+
     -- Restore visibility from saved state
-    if TA.charDB and TA.charDB.navhud and TA.charDB.navhud.visible then
-        -- Slight delay to let other modules initialize first (Arrow, QuestTracker)
+    if GetSetting("visible") then
         C_Timer.After(1, function()
             NavHud:Show()
         end)
     end
 end
 
--- ── Slash command ─────────────────────────────────────────────────────────────
+-- ── Slash commands ────────────────────────────────────────────────────────────
 
 NavHud.SlashCommands = {
     hud = function(self) self:Toggle() end,
+
+    ["hud settings"] = function(self)
+        print("|cFFFFD100[ToonAge NavHud Settings]|r")
+        print("  |cFFFFD100scale|r = " .. GetSetting("scale") .. "  (HUD size)")
+        print("  |cFFFFD100opacity|r = " .. GetSetting("opacity") .. "  (overall transparency)")
+        print("  |cFFFFD100showCardinals|r = " .. tostring(GetSetting("showCardinals")) .. "  (N/S/E/W)")
+        print("  |cFFFFD100showCoords|r = " .. tostring(GetSetting("showCoords")) .. "  (coordinates)")
+        print("  |cFFFFD100showDistance|r = " .. tostring(GetSetting("showDistance")) .. "  (yards to waypoint)")
+        print("  |cFFFFD100showStepText|r = " .. tostring(GetSetting("showStepText")) .. "  (step description)")
+        print("  |cFFFFD100showRing|r = " .. tostring(GetSetting("showRing")) .. "  (proximity circle)")
+        print("  |cFFFFD100showGatherDots|r = " .. tostring(GetSetting("showGatherDots")) .. "  (gather nodes)")
+        print("  |cFFFFD100showTrail|r = " .. tostring(GetSetting("showTrail")) .. "  (ant-trail)")
+        print("  |cFFFFD100showPins|r = " .. tostring(GetSetting("showPins")) .. "  (waypoint pins)")
+        print("")
+        print("  Change: |cFFFFD100/ta hud set <key> <value>|r")
+        print("  Example: |cFFFFD100/ta hud set showCoords false|r")
+        print("  Keybind: Key Bindings → Addons → ToonAge → Toggle NavHud")
+    end,
+
+    ["hud set"] = function(self, msg)
+        if not msg then
+            print("|cFFFFD100[TA]|r Usage: /ta hud set <key> <value>")
+            return
+        end
+        local key, valStr = msg:match("^(%S+)%s+(.+)$")
+        if not key then
+            print("|cFFFFD100[TA]|r Usage: /ta hud set showCoords false")
+            return
+        end
+
+        -- Validate key exists in defaults
+        if NAVHUD_DEFAULTS[key] == nil then
+            print("|cFFFFD100[TA]|r Unknown setting: " .. key)
+            return
+        end
+
+        -- Parse value based on type
+        local defaultVal = NAVHUD_DEFAULTS[key]
+        local value
+        if type(defaultVal) == "boolean" then
+            value = (valStr == "true" or valStr == "1" or valStr == "on")
+        elseif type(defaultVal) == "number" then
+            value = tonumber(valStr)
+            if not value then
+                print("|cFFFFD100[TA]|r Value must be a number for '" .. key .. "'")
+                return
+            end
+        else
+            value = valStr
+        end
+
+        SetSetting(key, value)
+        if key == "scale" or key == "opacity" or key == "showRing" then
+            NavHud:ApplySettings()
+        end
+        print("|cFFFFD100[TA NavHud]|r " .. key .. " = " .. tostring(value))
+    end,
 }

@@ -297,16 +297,196 @@ end
 
 -- ── /coord — print current position as a guide coord line ─────────────────────
 
+-- Readings accumulate so a multi-zone verification trip survives zoning,
+-- reloads, and logouts. `/coord dump` shows them all in one selectable box;
+-- `/coord clear` wipes it.
+--
+-- Stored account-wide in TA.db, deliberately NOT per-character. A map ID is a
+-- fact about the world, not about a character, and a verification run usually
+-- spans several alts — one to reach a level-gated zone, a mage for the portal
+-- room. Keying this per-character silently split those readings into separate
+-- logs, so /coord dump only ever showed the current character's handful.
+local function CoordLog()
+    if not TA.db then return nil end
+    TA.db.coordLog = TA.db.coordLog or {}
+
+    -- One-time migration: fold any per-character logs from the original
+    -- implementation into the shared one.
+    if TA.db.char then
+        for _, cdb in pairs(TA.db.char) do
+            if type(cdb) == "table" and type(cdb.coordLog) == "table" then
+                for _, e in ipairs(cdb.coordLog) do
+                    local dup = false
+                    for _, x in ipairs(TA.db.coordLog) do
+                        if x.map == e.map then dup = true; break end
+                    end
+                    if not dup then TA.db.coordLog[#TA.db.coordLog + 1] = e end
+                end
+                cdb.coordLog = nil
+            end
+        end
+    end
+
+    return TA.db.coordLog
+end
+
+local function CoordLogDump()
+    local log = CoordLog()
+    if not log or #log == 0 then
+        p("Coord log is empty. Run /coord in each zone first.")
+        return
+    end
+    local lines = {}
+    for i, e in ipairs(log) do
+        lines[#lines + 1] = string.format("%2d. %-28s map=%-6d %s",
+            i, e.zone or "?", e.map or 0, e.parents or "")
+    end
+    local text = table.concat(lines, "\n")
+
+    if not DH._coordCopy then
+        local f = CreateFrame("Frame", "TACoordCopyFrame", UIParent, "BackdropTemplate")
+        f:SetSize(620, 320)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8",
+                        edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        f:SetBackdropColor(0.05, 0.05, 0.06, 0.97)
+        f:SetBackdropBorderColor(0.35, 0.32, 0.28, 1)
+        f:EnableMouse(true); f:SetMovable(true); f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop",  f.StopMovingOrSizing)
+
+        local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        title:SetPoint("TOPLEFT", 12, -10)
+        title:SetText("|cFFFFD100ToonAge Coord Log|r  (Ctrl+A, Ctrl+C)")
+
+        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", 0, 2)
+
+        local scroll = CreateFrame("ScrollFrame", "TACoordCopyScroll", f,
+                                   "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 12, -34)
+        scroll:SetPoint("BOTTOMRIGHT", -32, 12)
+
+        local eb = CreateFrame("EditBox", nil, scroll)
+        eb:SetMultiLine(true); eb:SetFontObject(ChatFontNormal)
+        eb:SetWidth(560); eb:SetAutoFocus(false)
+        eb:SetScript("OnEscapePressed", function() f:Hide() end)
+        scroll:SetScrollChild(eb)
+
+        f.editBox = eb
+        DH._coordCopy = f
+    end
+
+    DH._coordCopy.editBox:SetText(text)
+    DH._coordCopy:Show()
+    DH._coordCopy.editBox:HighlightText()
+    DH._coordCopy.editBox:SetFocus()
+end
+
 SLASH_TACOORD1 = "/coord"
-SlashCmdList["TACOORD"] = function()
+SlashCmdList["TACOORD"] = function(msg)
+    msg = (msg or ""):lower():match("^%s*(.-)%s*$")
+
+    if msg == "dump" or msg == "list" then CoordLogDump(); return end
+    if msg == "clear" or msg == "wipe" then
+        if TA.db then TA.db.coordLog = {} end
+        p("Coord log cleared.")
+        return
+    end
+
     local mapID = C_Map.GetBestMapForUnit("player")
     if not mapID then p("No map data available here."); return end
     local pos = C_Map.GetPlayerMapPosition(mapID, "player")
     if not pos then p("Cannot read position on this map."); return end
     local x, y = pos:GetXY()
-    local zoneName = (C_Map.GetMapInfo(mapID) or {}).name or "Unknown"
+    local info = C_Map.GetMapInfo(mapID) or {}
+    local zoneName = info.name or "Unknown"
     p(string.format("[%s  map=%d]  coord = { map = %d, x = %.2f, y = %.2f },",
         zoneName, mapID, mapID, x, y))
+
+    -- Parent chain. Two reasons this matters:
+    --   1. Guide `zone` fields are matched by MapIsInZone(), which walks parents
+    --      upward — so a guide keyed to a parent also matches inside its children.
+    --      If two guides sit on a parent/child pair, the one with the LOWER
+    --      minLevel wins the AutoSelectGuide loop regardless of which is more
+    --      specific. Knowing the chain tells you whether that can happen.
+    --   2. It's how you confirm a suspected parent ID (e.g. 2434) actually
+    --      exists, rather than inferring it from a child's data.
+    local chain, cur, guard = {}, info.parentMapID, 0
+    while cur and cur > 0 and guard < 12 do
+        local pInfo = C_Map.GetMapInfo(cur)
+        if not pInfo then break end
+        chain[#chain + 1] = string.format("%s (%d)", pInfo.name or "?", cur)
+        cur = pInfo.parentMapID
+        guard = guard + 1
+    end
+    local parentStr = #chain > 0 and table.concat(chain, "  >  ")
+                                  or "none (top-level map)"
+    p("  parents: " .. parentStr)
+
+    -- Record it. Replace any earlier reading for the same map so walking back
+    -- through a zone doesn't fill the log with duplicates.
+    local log = CoordLog()
+    if log then
+        for i, e in ipairs(log) do
+            if e.map == mapID then table.remove(log, i); break end
+        end
+        log[#log + 1] = { map = mapID, zone = zoneName, parents = parentStr }
+        p(string.format("  |cFF888888logged (%d total) — /coord dump to copy them all|r", #log))
+    end
+end
+
+-- ── /tateleports — dump known teleport/portal spells with IDs ────────────────
+-- TravelRouter.CLASS_TELEPORTS is hand-written and badly incomplete (three mage
+-- entries, when a max-level mage has a dozen). Run this on each class you play
+-- and paste the output into that table. Prints spellID so no lookup is needed.
+
+SLASH_TATELEPORTS1 = "/tateleports"
+SlashCmdList["TATELEPORTS"] = function()
+    local _, class = UnitClass("player")
+    p(string.format("=== Teleports/Portals known by %s (%s) ===",
+        UnitName("player") or "?", class or "?"))
+
+    local found = 0
+    local seen  = {}
+
+    local function report(name, spellID)
+        if not name or not spellID or seen[spellID] then return end
+        if not (name:find("Teleport") or name:find("Portal") or name:find("Dreamwalk")
+                or name:find("Recall") or name:find("Death Gate")
+                or name:find("Zen Pilgrimage")) then
+            return
+        end
+        seen[spellID] = true
+        found = found + 1
+        p(string.format('  { spellID = %-7d toZone = ?,  class = "%s", label = "%s" },',
+            spellID, class or "?", name))
+    end
+
+    -- 11.0+ spellbook API, with a guard so this still runs on older clients.
+    if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
+        local numLines = C_SpellBook.GetNumSpellBookSkillLines() or 0
+        for i = 1, numLines do
+            local line = C_SpellBook.GetSpellBookSkillLineInfo(i)
+            if line then
+                local from = (line.itemIndexOffset or 0) + 1
+                local to   = (line.itemIndexOffset or 0) + (line.numSpellBookItems or 0)
+                for j = from, to do
+                    local ok, info = pcall(C_SpellBook.GetSpellBookItemInfo,
+                                           j, Enum.SpellBookSpellBank.Player)
+                    if ok and info then report(info.name, info.spellID) end
+                end
+            end
+        end
+    end
+
+    if found == 0 then
+        p("  None found. If you know you have some, the spellbook API may have")
+        p("  changed again — check C_SpellBook in /api or report the client build.")
+    else
+        p(string.format("  %d found. Fill in toZone by taking each one and running /coord on arrival.", found))
+    end
 end
 
 -- ── /taweekly — dump raw C_WeeklyRewards data for schema verification ─────────

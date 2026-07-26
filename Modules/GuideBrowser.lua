@@ -104,64 +104,12 @@ end
 -- ── Browser frame ─────────────────────────────────────────────────────────────
 
 function GB:ShowBrowser()
-    if self.frame then
-        if self.frame:IsShown() then self.frame:Hide(); return end
-        self:RefreshBrowser()
-        self.frame:Show()
-        return
+    -- Deprecated standalone floating browser.
+    -- Route to the unified 3-panel Guide tab in the main ToonAge window.
+    if TA.UI then
+        if not TA.UI:IsVisible() then TA.UI:Show() end
+        TA.UI:SetTab("guide")
     end
-
-    -- Create the browser frame
-    local f = CreateFrame("Frame", "TAGuideBrowser", UIParent, "BackdropTemplate")
-    f:SetSize(420, 500)
-    f:SetPoint("CENTER", UIParent, "CENTER", 0, 50)
-    f:SetFrameStrata("DIALOG")
-    f:SetMovable(true)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    f:SetScript("OnDragStart", f.StartMoving)
-    f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 2,
-    })
-    f:SetBackdropColor(0.04, 0.04, 0.04, 0.98)
-    f:SetBackdropBorderColor(0.55, 0.40, 0.08, 1)
-
-    -- Title
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
-    title:SetText("|cFFFFD100ToonAge Guide Browser|r")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -10)
-
-    -- Close button
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
-
-    -- Guide count
-    f.countLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f.countLabel:SetFont(STANDARD_TEXT_FONT, 9, "")
-    f.countLabel:SetTextColor(0.55, 0.50, 0.40, 1)
-    f.countLabel:SetPoint("TOPRIGHT", closeBtn, "TOPLEFT", -8, -8)
-
-    -- Scroll frame
-    local scroll = CreateFrame("ScrollFrame", "TAGuideBrowserScroll", f, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -34)
-    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 8)
-
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetWidth(scroll:GetWidth() - 4)
-    content:SetHeight(1)
-    scroll:SetScrollChild(content)
-
-    f.scroll = scroll
-    f.content = content
-    f.rows = {}
-    self.frame = f
-
-    self:RefreshBrowser()
-    f:Show()
 end
 
 function GB:RefreshBrowser()

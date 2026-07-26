@@ -8,10 +8,28 @@ TA.GuideData = TA.GuideData or {}
 
 TA.GuideData["naigtal"] = {
     id       = "naigtal",
-    title    = "Midnight: Naigtal",
-    -- Naigtal is a new zone in Midnight.  Map ID unknown on PTR — update with
-    -- /coord once accessible.  0 prevents false zone matches.
-    zone     = 0,
+    title    = "Midnight: Void Assaults & Naigtal",
+    expansion = "midnight",
+
+    -- Keyed to Quel'Thalas (2537), the region, NOT to Naigtal (2600).
+    --
+    -- Despite the file name, only 4 of this guide's 21 steps are Naigtal steps.
+    -- The other 17 are the Void Assaults chain, which starts in Zul'Aman and
+    -- runs through Voidstorm before reaching Naigtal at all. Keying the guide to
+    -- its *final* zone meant those 17 steps could never be auto-selected — the
+    -- player is in Zul'Aman, the guide claims 2600, no match. Naigtal is also
+    -- gated content, so the 17 open-world steps are the part most players can
+    -- actually reach first.
+    --
+    -- 2537 matches anywhere in Quel'Thalas. That is safe now that
+    -- QuestTracker's MapZoneDistance ranks by specificity: standing in Eversong,
+    -- the Eversong guide wins at distance 0 and this one loses at distance 1.
+    -- In Zul'Aman it matches uncontested.
+    --
+    -- Proper fix is to split this into a Void Assaults guide and a Naigtal
+    -- guide, which the step tags already imply. Until then, per-step coord.map
+    -- is the right place to record each step's real zone — all 21 are stubs.
+    zone     = 2537,
     minLevel = 86,   -- Naigtal is the final Midnight leveling zone (86-90)
     maxLevel = 90,
     steps = {

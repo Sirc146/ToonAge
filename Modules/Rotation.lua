@@ -31,6 +31,15 @@ function Rotation:Init()
     else
         self.currentView = "aoe"
     end
+
+    -- Initialize the floating prediction bar
+    self:InitPredictBar()
+
+    -- Default to visible on first login (key missing = new install)
+    TA.charDB.predictBar = TA.charDB.predictBar or { visible = true }
+    if TA.charDB.predictBar.visible then
+        self.predictBar:Show()
+    end
 end
 
 -- ── Event handler ──────────────────────────────────────────────────────
@@ -58,6 +67,24 @@ function Rotation:OnEvent(event, ...)
             self.currentView = "aoe"
         end
     end
+end
+
+--- Get a priority list for prediction, falling back when the active view has none.
+--- Three views in Data/Rotations.lua ship a `chain` (a fixed teaching sequence)
+--- instead of `priorities`: Preservation Evoker aoe, Augmentation Evoker aoe, and
+--- Survival Hunter aoe. GetNextN needs `priorities`, so on those specs the
+--- next-3 bar silently went blank — and since `currentView` is set to "aoe" for
+--- any 5-man group, that happened every dungeon. Fall back to the spec's solo
+--- list so the bar keeps working, rather than showing nothing.
+--- @return table|nil priorities, boolean usedFallback
+function Rotation:GetPredictionPriorities(specID, view)
+    local rotData = R:Get(specID, view)
+    if rotData and rotData.priorities then return rotData.priorities, false end
+
+    local soloData = R:Get(specID, "solo")
+    if soloData and soloData.priorities then return soloData.priorities, true end
+
+    return nil, false
 end
 
 -- ── Main render ────────────────────────────────────────────────────────
@@ -107,10 +134,11 @@ function Rotation:RenderSidebar(parent, specID, level, groupType)
     AddLabel("View", 0.62, 0.59, 0.55, 9)
     AddDivider()
 
+    local viewLabels = self:GetViewLabels()
     local views = {
-        { id="solo", label="Solo / Leveling", dot={0.33, 0.60, 1.00} },
-        { id="aoe",  label="Group AoE (M+)",  dot={1.00, 0.60, 0.10} },
-        { id="st",   label="Group ST (Raid)", dot={0.29, 1.00, 0.48} },
+        { id="solo", label=viewLabels.solo,  dot={0.33, 0.60, 1.00} },
+        { id="aoe",  label=viewLabels.aoe,   dot={1.00, 0.60, 0.10} },
+        { id="st",   label=viewLabels.st,    dot={0.29, 1.00, 0.48} },
     }
 
     for _, view in ipairs(views) do
@@ -169,6 +197,36 @@ function Rotation:RenderSidebar(parent, specID, level, groupType)
         y = y - 16
         table.insert(self.frames, f)
     end
+
+    AddDivider()
+    AddLabel("Overlay", 0.62, 0.59, 0.55, 9)
+
+    -- Prediction bar toggle
+    local predictBtn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    predictBtn:SetHeight(22)
+    predictBtn:SetPoint("TOPLEFT",  parent, "TOPLEFT",  4, y)
+    predictBtn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, y)
+    predictBtn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8",edgeFile="Interface\\Buttons\\WHITE8X8",edgeSize=1})
+
+    local isBarVisible = self.predictBar and self.predictBar:IsVisible()
+    predictBtn:SetBackdropColor(isBarVisible and 0.08 or 0.04, isBarVisible and 0.12 or 0.04, isBarVisible and 0.06 or 0.04, 1)
+    predictBtn:SetBackdropBorderColor(isBarVisible and 0.20 or 0.35, isBarVisible and 0.92 or 0.28, isBarVisible and 0.40 or 0.06, 0.8)
+
+    local predictLbl = predictBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    predictLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    predictLbl:SetText((isBarVisible and "|cFF4AFF7A●|r " or "|cFF666666●|r ") .. "Next 3 Bar")
+    predictLbl:SetPoint("LEFT", predictBtn, "LEFT", 8, 0)
+    predictLbl:SetTextColor(isBarVisible and 0.92 or 0.55, isBarVisible and 0.90 or 0.44, isBarVisible and 0.87 or 0.30, 1)
+
+    predictBtn:SetScript("OnClick", function()
+        self:TogglePredictBar()
+        -- Refresh sidebar to update button state
+        if TA.UI and TA.UI.activeTab == "rotation" then
+            self:Render(TA.UI.contentChild, TA.UI.sideChild)
+        end
+    end)
+    y = y - 26
+    table.insert(self.frames, predictBtn)
 
     parent:SetHeight(math.abs(y) + 10)
 end
@@ -416,5 +474,398 @@ function Rotation:RenderContent(content, rotData, specID, level)
         y = y - 20
     end
 
+    -- ── Simulated Lookahead (Next 3) ──────────────────────────────────
+    -- Rendered below the priority list — shows which 3 abilities would be
+    -- pressed next based on current combat state evaluation.
+    if rotData and rotData.priorities and #rotData.priorities > 0 then
+        y = y - 8
+        y = self:RenderPredictionInline(content, y, w, padL, rotData, level)
+    end
+
     content:SetHeight(math.abs(y) + 20)
 end
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- ── "Next 3" Prediction Bar ─────────────────────────────────────────────────
+-- A horizontal bar showing the predicted next 3 abilities based on current
+-- CombatState (resources, cooldowns, buffs). Renders both inline in the tab
+-- and as a standalone floating bar during combat.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+local PREDICTION_COUNT  = 3
+local ICON_SIZE         = 40
+local ICON_GAP          = 6
+local PREDICT_UPDATE_HZ = 0.15  -- refresh rate for prediction bar (slightly slower than CombatState)
+
+-- ── Role-aware view labels ─────────────────────────────────────────────────────
+-- Returns context-appropriate names for the 3 prediction bar views based on
+-- the player's current spec role: DPS gets Solo/AoE/ST, Healers get DPS/Heal/AoE Heal,
+-- Tanks get DPS/Tank/AoE Tank.
+
+function Rotation:GetViewLabels()
+    local SW = TA.Data.StatWeights
+    local specID = self.currentSpecID or U.GetPlayerSpec()
+    local data = specID and SW and SW[specID]
+    local role = data and data.role or "DAMAGER"
+
+    if role == "HEALER" then
+        return {
+            solo = "DPS",
+            aoe  = "Heal (M+)",
+            st   = "Heal (Raid)",
+        }
+    elseif role == "TANK" then
+        return {
+            solo = "DPS",
+            aoe  = "Tank (M+)",
+            st   = "Tank (Boss)",
+        }
+    else
+        return {
+            solo = "Solo",
+            aoe  = "AoE (M+)",
+            st   = "ST (Raid)",
+        }
+    end
+end
+
+-- ── Floating Prediction Bar (combat overlay) ──────────────────────────────────
+
+Rotation.predictBar = nil
+Rotation.predictIcons = {}
+Rotation._predictThrottle = 0
+
+function Rotation:InitPredictBar()
+    if self.predictBar then return end
+
+    local bar = CreateFrame("Button", "TARotationPredictBar", UIParent, "BackdropTemplate")
+    local totalW = (ICON_SIZE * PREDICTION_COUNT) + (ICON_GAP * (PREDICTION_COUNT - 1)) + 16
+    bar:SetSize(totalW, ICON_SIZE + 16)
+    bar:SetFrameStrata("HIGH")
+    bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 180)
+    bar:SetMovable(true)
+    bar:EnableMouse(true)
+    bar:RegisterForDrag("LeftButton")
+    bar:SetClampedToScreen(true)
+    bar:SetScript("OnDragStart", bar.StartMoving)
+    bar:SetScript("OnDragStop", function(f)
+        f:StopMovingOrSizing()
+        if TA.charDB then
+            TA.charDB.predictBar = TA.charDB.predictBar or {}
+            TA.charDB.predictBar.x = f:GetLeft()
+            TA.charDB.predictBar.y = f:GetTop()
+        end
+    end)
+
+    bar:SetBackdrop({
+        bgFile   = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+    })
+    bar:SetBackdropColor(0.02, 0.02, 0.02, 0.85)
+    bar:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.70)
+
+    -- Scroll-wheel resize (0.5x – 2.5x)
+    bar:EnableMouseWheel(true)
+    bar:SetScript("OnMouseWheel", function(f, delta)
+        local s = math.max(0.5, math.min(f:GetScale() + delta * 0.1, 2.5))
+        f:SetScale(s)
+        if TA.charDB then
+            TA.charDB.predictBar = TA.charDB.predictBar or {}
+            TA.charDB.predictBar.scale = s
+        end
+    end)
+
+    -- Right-click context: cycle view + lock toggle
+    bar:EnableMouse(true)
+    bar:RegisterForClicks("RightButtonUp")
+    bar:SetScript("OnClick", function(_, button)
+        if button == "RightButton" then
+            -- Cycle view: solo → aoe → st → solo
+            if self.currentView == "solo" then
+                self.currentView = "aoe"
+            elseif self.currentView == "aoe" then
+                self.currentView = "st"
+            else
+                self.currentView = "solo"
+            end
+            local labels = self:GetViewLabels()
+            print("|cFFFFD100[TA Rotation]|r View: " .. (labels[self.currentView] or self.currentView))
+            self:UpdatePrediction()
+        end
+    end)
+
+    bar:SetScript("OnEnter", function(f)
+        GameTooltip:SetOwner(f, "ANCHOR_TOP")
+        GameTooltip:SetText("Next 3 Abilities", 1, 0.82, 0)
+        local labels = self:GetViewLabels()
+        GameTooltip:AddLine("View: " .. (labels[self.currentView] or self.currentView), 1, 1, 1)
+        GameTooltip:AddLine(" ", 1, 1, 1)
+        local hint = labels.solo .. " / " .. labels.aoe .. " / " .. labels.st
+        GameTooltip:AddLine("Right-click: Cycle (" .. hint .. ")", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("Scroll: Resize", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("Drag: Move", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    -- Restore saved scale
+    local savedBar = TA.charDB and TA.charDB.predictBar
+    if savedBar and savedBar.scale then bar:SetScale(savedBar.scale) end
+
+    -- Header label
+    local header = bar:CreateFontString(nil, "OVERLAY")
+    header:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
+    header:SetText("|cFF8B7040NEXT|r")
+    header:SetPoint("TOPLEFT", bar, "TOPLEFT", 4, -2)
+
+    -- Create icon frames
+    local icons = {}
+    for i = 1, PREDICTION_COUNT do
+        local frame = CreateFrame("Frame", nil, bar, "BackdropTemplate")
+        frame:SetSize(ICON_SIZE, ICON_SIZE)
+        frame:SetPoint("LEFT", bar, "LEFT", 8 + (i - 1) * (ICON_SIZE + ICON_GAP), -2)
+        frame:SetBackdrop({
+            bgFile   = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+        })
+
+        local tex = frame:CreateTexture(nil, "ARTWORK")
+        tex:SetSize(ICON_SIZE - 4, ICON_SIZE - 4)
+        tex:SetPoint("CENTER")
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        frame.icon = tex
+
+        local numLabel = frame:CreateFontString(nil, "OVERLAY")
+        numLabel:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        numLabel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+        numLabel:SetTextColor(1, 0.82, 0, 0.9)
+        numLabel:SetText(tostring(i))
+        frame.numLabel = numLabel
+
+        local nameLabel = frame:CreateFontString(nil, "OVERLAY")
+        nameLabel:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
+        nameLabel:SetPoint("TOP", frame, "BOTTOM", 0, -1)
+        nameLabel:SetWidth(ICON_SIZE + 10)
+        nameLabel:SetJustifyH("CENTER")
+        nameLabel:SetWordWrap(false)
+        frame.nameLabel = nameLabel
+
+        icons[i] = frame
+    end
+    self.predictIcons = icons
+
+    -- OnUpdate ticker for live prediction refresh
+    bar:SetScript("OnUpdate", function(_, elapsed)
+        self._predictThrottle = self._predictThrottle + elapsed
+        if self._predictThrottle < PREDICT_UPDATE_HZ then return end
+        self._predictThrottle = 0
+        self:UpdatePrediction()
+    end)
+
+    -- Restore position
+    local saved = TA.charDB and TA.charDB.predictBar
+    if saved and saved.x and saved.y then
+        bar:ClearAllPoints()
+        bar:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", saved.x, saved.y)
+    end
+
+    bar:Hide()  -- starts hidden; shown during combat
+    self.predictBar = bar
+end
+
+function Rotation:UpdatePrediction()
+    local CS = TA:GetModule("CombatState")
+    if not CS then return end
+
+    -- Auto-show the bar when entering combat (if user has it enabled)
+    local inCombat = CS.state and CS.state.inCombat
+    if inCombat and not self._wasInCombat then
+        local saved = TA.charDB and TA.charDB.predictBar
+        if saved and saved.visible and self.predictBar and not self.predictBar:IsVisible() then
+            self.predictBar:Show()
+        end
+    end
+    self._wasInCombat = inCombat or false
+
+    local specID    = self.currentSpecID or U.GetPlayerSpec()
+    local level     = self.currentLevel  or U.GetPlayerLevel()
+    local priorities = self:GetPredictionPriorities(specID, self.currentView)
+
+    if not priorities then
+        -- Hide all icons
+        for i = 1, PREDICTION_COUNT do
+            self.predictIcons[i]:Hide()
+        end
+        return
+    end
+
+    local next3 = CS:GetNextN(priorities, level, PREDICTION_COUNT)
+
+    for i = 1, PREDICTION_COUNT do
+        local iconFrame = self.predictIcons[i]
+        local prediction = next3[i]
+
+        if prediction then
+            local entry = prediction.entry
+            local tex = entry.spellID and U.GetSpellTexture(entry.spellID)
+            iconFrame.icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
+            iconFrame.nameLabel:SetText(entry.name or "")
+
+            -- Color: first = bright green, second = gold, third = dimmer gold
+            if i == 1 then
+                iconFrame:SetBackdropColor(0.04, 0.12, 0.02, 0.98)
+                iconFrame:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.95)
+                iconFrame.nameLabel:SetTextColor(0.20, 0.92, 0.40)
+            elseif i == 2 then
+                iconFrame:SetBackdropColor(0.06, 0.04, 0.00, 0.98)
+                iconFrame:SetBackdropBorderColor(1.00, 0.82, 0.00, 0.80)
+                iconFrame.nameLabel:SetTextColor(1.00, 0.82, 0.00)
+            else
+                iconFrame:SetBackdropColor(0.04, 0.03, 0.00, 0.98)
+                iconFrame:SetBackdropBorderColor(0.70, 0.55, 0.10, 0.60)
+                iconFrame.nameLabel:SetTextColor(0.70, 0.55, 0.10)
+            end
+
+            iconFrame:Show()
+        else
+            iconFrame:Hide()
+        end
+    end
+end
+
+function Rotation:ShowPredictBar()
+    if not self.predictBar then self:InitPredictBar() end
+    self.predictBar:Show()
+    self:UpdatePrediction()
+end
+
+function Rotation:HidePredictBar()
+    if self.predictBar then self.predictBar:Hide() end
+end
+
+function Rotation:TogglePredictBar()
+    if not self.predictBar then self:InitPredictBar() end
+    if self.predictBar:IsVisible() then
+        self:HidePredictBar()
+        if TA.charDB then TA.charDB.predictBar = TA.charDB.predictBar or {}; TA.charDB.predictBar.visible = false end
+        print("|cFFFFD100[TA Rotation]|r Prediction bar hidden.")
+    else
+        self:ShowPredictBar()
+        if TA.charDB then TA.charDB.predictBar = TA.charDB.predictBar or {}; TA.charDB.predictBar.visible = true end
+        print("|cFFFFD100[TA Rotation]|r Prediction bar shown.")
+    end
+end
+
+-- ── Inline "Next 3" in the Rotation tab content ───────────────────────────────
+
+function Rotation:RenderPredictionInline(content, y, w, padL, rotData, level)
+    local CS = TA:GetModule("CombatState")
+    if not CS then return y end
+
+    -- Same chain-vs-priorities fallback as the floating bar.
+    local priorities = rotData and rotData.priorities
+    if not priorities then
+        priorities = self:GetPredictionPriorities(
+            self.currentSpecID or U.GetPlayerSpec(), self.currentView)
+    end
+    if not priorities then return y end
+
+    local next3 = CS:GetNextN(priorities, level, PREDICTION_COUNT)
+    if #next3 == 0 then return y end
+
+    -- Section header
+    local headerLbl = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    headerLbl:SetText("SIMULATED LOOKAHEAD")
+    headerLbl:SetTextColor(0.62, 0.59, 0.55, 1)
+    headerLbl:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    table.insert(self.frames, headerLbl)
+    y = y - 14
+
+    local line = content:CreateTexture(nil, "ARTWORK")
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL,  y)
+    line:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+    line:SetColorTexture(0.30, 0.30, 0.35, 0.35)
+    y = y - 10
+    table.insert(self.frames, line)
+
+    -- Render 3 icon buttons in a horizontal row
+    local inlineSize = 44
+    local inlineGap  = 10
+    local totalW2 = (inlineSize * PREDICTION_COUNT) + (inlineGap * (PREDICTION_COUNT - 1))
+    local startX = padL + (w - totalW2) / 2  -- centered
+
+    for i, prediction in ipairs(next3) do
+        local entry = prediction.entry
+        local frame = CreateFrame("Frame", nil, content, "BackdropTemplate")
+        frame:SetSize(inlineSize, inlineSize)
+        frame:SetPoint("TOPLEFT", content, "TOPLEFT", startX + (i - 1) * (inlineSize + inlineGap), y)
+        frame:SetBackdrop({
+            bgFile   = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+        })
+
+        if i == 1 then
+            frame:SetBackdropColor(0.04, 0.12, 0.02, 0.98)
+            frame:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.95)
+        elseif i == 2 then
+            frame:SetBackdropColor(0.06, 0.04, 0.00, 0.98)
+            frame:SetBackdropBorderColor(1.00, 0.82, 0.00, 0.80)
+        else
+            frame:SetBackdropColor(0.04, 0.03, 0.00, 0.98)
+            frame:SetBackdropBorderColor(0.70, 0.55, 0.10, 0.60)
+        end
+
+        local tex = frame:CreateTexture(nil, "ARTWORK")
+        tex:SetSize(inlineSize - 6, inlineSize - 6)
+        tex:SetPoint("CENTER")
+        tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        local texPath = entry.spellID and U.GetSpellTexture(entry.spellID)
+        tex:SetTexture(texPath or "Interface\\Icons\\INV_Misc_QuestionMark")
+
+        local numLbl = frame:CreateFontString(nil, "OVERLAY")
+        numLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        numLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", 3, -2)
+        numLbl:SetText("|cFFFFD100" .. tostring(i) .. "|r")
+
+        local nameLbl = frame:CreateFontString(nil, "OVERLAY")
+        nameLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+        nameLbl:SetPoint("TOP", frame, "BOTTOM", 0, -2)
+        nameLbl:SetWidth(inlineSize + 16)
+        nameLbl:SetJustifyH("CENTER")
+        nameLbl:SetWordWrap(false)
+        nameLbl:SetText(entry.name or "")
+        if i == 1 then
+            nameLbl:SetTextColor(0.20, 0.92, 0.40)
+        elseif i == 2 then
+            nameLbl:SetTextColor(1.00, 0.82, 0.00)
+        else
+            nameLbl:SetTextColor(0.70, 0.55, 0.10)
+        end
+
+        table.insert(self.frames, frame)
+        table.insert(self.frames, nameLbl)
+    end
+
+    y = y - inlineSize - 20  -- space for icons + name labels
+
+    return y
+end
+
+-- ── Extended event handling for prediction bar visibility ──────────────────────
+
+-- The prediction bar's OnUpdate already refreshes at 0.15s.
+-- We hook into it to auto-show/hide the bar based on combat state.
+-- PLAYER_REGEN events are not on TA.eventFrame, so we check state directly.
+Rotation._wasInCombat = false
+
+-- ── Slash commands ────────────────────────────────────────────────────────────
+
+Rotation.SlashCommands = {
+    rotation = function(self) TA:OpenTab("rotation") end,
+    predict  = function(self) self:TogglePredictBar() end,
+}

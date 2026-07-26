@@ -5,6 +5,60 @@ local TA = ToonAge
 TA.Utils = {}
 local U = TA.Utils
 
+-- ══════════════════════════════════════════════════════════════════════════════
+-- ── TAINT SAFETY UTILITIES (12.0 PTR) ─────────────────────────────────────────
+-- WoW 12.0 PTR marks many API return values as "secret numbers" when addon
+-- execution is tainted. These can't be used in arithmetic or comparisons.
+-- SafeNum strips the taint via tonumber(tostring(x)). SafeCall wraps an
+-- entire function in pcall so taint errors are silently caught.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+--- Convert a potentially tainted "secret number" to a safe Lua number.
+--- Returns the number, or the fallback (default 0) if conversion fails.
+--- @param val any — the potentially tainted value
+--- @param fallback number|nil — value to return on failure (default 0)
+--- @return number
+function U.SafeNum(val, fallback)
+    if val == nil then return fallback or 0 end
+    local n = tonumber(tostring(val))
+    return n or (fallback or 0)
+end
+
+--- Safely call a WoW API function that might return tainted values.
+--- Returns: ok (bool), followed by sanitized return values (numbers are cleaned).
+--- On failure, returns false and the fallback values.
+--- @param func function — the function to call
+--- @param ... any — arguments to pass
+--- @return boolean, any...
+function U.SafeCall(func, ...)
+    local results = { pcall(func, ...) }
+    if results[1] then
+        -- Success — sanitize numeric returns
+        for i = 2, #results do
+            if type(results[i]) == "number" or type(results[i]) == "userdata" then
+                results[i] = tonumber(tostring(results[i])) or 0
+            end
+        end
+        return unpack(results)
+    else
+        return false
+    end
+end
+
+--- Safely get a numeric value from a WoW API, returning fallback on taint/error.
+--- Usage: local hp = U.SafeGetNum(UnitHealth, "player", 0)
+--- @param func function
+--- @param ... any — args to func (last numeric arg is NOT the fallback)
+--- @return number
+function U.SafeGetNum(func, ...)
+    local ok, val = pcall(func, ...)
+    if ok and val ~= nil then
+        local n = tonumber(tostring(val))
+        return n or 0
+    end
+    return 0
+end
+
 -- ── Colour helpers ────────────────────────────────────────────────────
 U.GOLD    = "|cFFFFD100"
 U.GREEN   = "|cFF4AFF7A"
@@ -141,13 +195,64 @@ function U.GetSpellTexture(spellID)
 end
 
 function U.IsSpellKnown(spellID)
-    return IsSpellKnown(spellID) or IsPlayerSpell(spellID)
+    if C_SpellBook and C_SpellBook.IsSpellKnown then
+        if C_SpellBook.IsSpellKnown(spellID) then return true end
+    elseif IsSpellKnown and IsSpellKnown(spellID) then
+        return true
+    end
+    return IsPlayerSpell(spellID) or false
 end
 
+--- Cooldown for a spell, normalised to the pre-11.0 (start, duration) shape.
+--- Every caller in the addon should go through this rather than touching
+--- C_Spell.GetSpellCooldown or the bare global directly — see .rules.md.
+--- @return number start, number duration — both 0 when off cooldown/unknown
 function U.GetSpellCooldown(spellID)
+    if C_Spell and C_Spell.GetSpellCooldown then
+        local info = C_Spell.GetSpellCooldown(spellID)
+        if not info then return 0, 0 end
+        return info.startTime or 0, info.duration or 0
+    end
     local start, duration = GetSpellCooldown(spellID)
     if not start then return 0, 0 end
     return start, duration
+end
+
+--- Spell name/icon/castTime lookup. C_Spell.GetSpellInfo returns a table in
+--- 11.0+; the bare global is a compat shim that Blizzard has been retiring
+--- API-by-API, so route through here instead of calling either directly.
+--- @return string|nil name, number|nil iconID, number|nil castTime
+function U.GetSpellInfo(spellID)
+    if not spellID then return nil end
+    if C_Spell and C_Spell.GetSpellInfo then
+        local info = C_Spell.GetSpellInfo(spellID)
+        if not info then return nil end
+        return info.name, info.iconID, info.castTime
+    end
+    local name, _, icon, castTime = GetSpellInfo(spellID)
+    return name, icon, castTime
+end
+
+-- ── Addon-presence utilities ──────────────────────────────────────────
+--- Is another addon loaded? Used for optional interop checks only — ToonAge
+--- never hard-depends on another addon (see .rules.md).
+function U.IsAddOnLoaded(name)
+    if C_AddOns and C_AddOns.IsAddOnLoaded then
+        return C_AddOns.IsAddOnLoaded(name)
+    elseif IsAddOnLoaded then
+        return IsAddOnLoaded(name)
+    end
+    return false
+end
+
+--- Returns the addon's display title, or nil if it isn't installed.
+function U.GetAddOnTitle(name)
+    if C_AddOns and C_AddOns.GetAddOnInfo then
+        return select(2, C_AddOns.GetAddOnInfo(name))
+    elseif GetAddOnInfo then
+        return select(2, GetAddOnInfo(name))
+    end
+    return nil
 end
 
 -- ── Item utilities ────────────────────────────────────────────────────
@@ -155,15 +260,26 @@ function U.GetEquippedItemID(slot)
     return GetInventoryItemID("player", slot)
 end
 
+--- Single call site for GetItemInfo. The bare global is still current at
+--- Interface 120007, but C_Item is where Blizzard is moving it — keeping one
+--- wrapper means a future removal is a one-line fix, not a 19-site hunt.
+function U.GetItemInfo(item)
+    if not item then return nil end
+    if C_Item and C_Item.GetItemInfo then
+        return C_Item.GetItemInfo(item)
+    end
+    return GetItemInfo(item)
+end
+
 function U.GetItemIlvl(itemLink)
     if not itemLink then return 0 end
-    local _, _, _, ilvl = GetItemInfo(itemLink)
+    local _, _, _, ilvl = U.GetItemInfo(itemLink)
     return ilvl or 0
 end
 
 function U.GetItemQuality(itemLink)
     if not itemLink then return 1 end
-    local _, _, quality = GetItemInfo(itemLink)
+    local _, _, quality = U.GetItemInfo(itemLink)
     return quality or 1
 end
 
@@ -272,7 +388,9 @@ end
 
 function U.FormatDistance(yards)
     if yards >= 1000 then
-        return string.format("%.1f km", yards / 1000)
+        -- Convert yards to meters (1 yd = 0.9144 m) before dividing into km —
+        -- yards/1000 was being mislabeled "km", ~9% short of the real value.
+        return string.format("%.1f km", (yards * 0.9144) / 1000)
     end
     return string.format("%d yds", math.floor(yards))
 end

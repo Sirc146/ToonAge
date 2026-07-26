@@ -330,3 +330,166 @@ function Weekly:Render(content, sidebar)
 
     content:SetHeight(math.abs(y) + 20)
 end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- CUSTOM TASKS SYSTEM (BtWTodo-inspired)
+-- Configurable per-character weekly/daily checklist with auto-reset.
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- Default tasks (user can add/remove via /ta todo add "description")
+local DEFAULT_TASKS = {
+    { id = "worldboss",   text = "Kill World Boss",           reset = "weekly", category = "PvE" },
+    { id = "vault_m4",    text = "Run 4 M+ dungeons (Vault)", reset = "weekly", category = "PvE" },
+    { id = "vault_m8",    text = "Run 8 M+ dungeons (Vault)", reset = "weekly", category = "PvE" },
+    { id = "delve_bount", text = "Complete 4 Bountiful Delves", reset = "weekly", category = "PvE" },
+    { id = "conquest",    text = "Cap Conquest (PvP)",        reset = "weekly", category = "PvP" },
+    { id = "spark",       text = "Collect Spark of Omens",    reset = "weekly", category = "Crafting" },
+    { id = "weeklyquest", text = "Complete Weekly Quest",     reset = "weekly", category = "General" },
+    { id = "profession",  text = "Do profession weekly quests", reset = "weekly", category = "Crafting" },
+    { id = "callings",    text = "Complete today's Calling",  reset = "daily",  category = "General" },
+}
+
+--- Initialize the tasks system.
+function Weekly:InitTasks()
+    if not TA.charDB then return end
+    TA.charDB.tasks = TA.charDB.tasks or {}
+
+    -- Seed with defaults if empty
+    if not TA.charDB.tasks.list then
+        TA.charDB.tasks.list = {}
+        for _, t in ipairs(DEFAULT_TASKS) do
+            table.insert(TA.charDB.tasks.list, {
+                id       = t.id,
+                text     = t.text,
+                reset    = t.reset,
+                category = t.category,
+                done     = false,
+            })
+        end
+    end
+
+    -- Check for resets
+    self:CheckResets()
+end
+
+--- Check if weekly/daily resets have occurred and clear done status.
+function Weekly:CheckResets()
+    if not TA.charDB or not TA.charDB.tasks then return end
+    local tasks = TA.charDB.tasks
+
+    local now = time()
+    local weeklyReset = tasks.lastWeeklyReset or 0
+    local dailyReset  = tasks.lastDailyReset or 0
+
+    -- Get next reset timestamps from WoW API
+    local nextWeekly = GetWeeklyQuestResetTime and (time() + GetWeeklyQuestResetTime()) or 0
+    local nextDaily  = C_DateAndTime and C_DateAndTime.GetSecondsUntilDailyReset
+                       and (time() + C_DateAndTime.GetSecondsUntilDailyReset()) or 0
+
+    -- Detect if a weekly reset happened since last check
+    -- Simple heuristic: if stored lastReset is older than 7 days ago
+    if weeklyReset > 0 and (now - weeklyReset) > 604800 then
+        -- Weekly reset occurred — clear all weekly tasks
+        for _, task in ipairs(tasks.list or {}) do
+            if task.reset == "weekly" then task.done = false end
+        end
+        tasks.lastWeeklyReset = now
+    elseif weeklyReset == 0 then
+        tasks.lastWeeklyReset = now
+    end
+
+    -- Daily reset: if stored lastReset was before today
+    if dailyReset > 0 and (now - dailyReset) > 86400 then
+        for _, task in ipairs(tasks.list or {}) do
+            if task.reset == "daily" then task.done = false end
+        end
+        tasks.lastDailyReset = now
+    elseif dailyReset == 0 then
+        tasks.lastDailyReset = now
+    end
+end
+
+--- Toggle a task's done status.
+function Weekly:ToggleTask(taskID)
+    if not TA.charDB or not TA.charDB.tasks then return end
+    for _, task in ipairs(TA.charDB.tasks.list or {}) do
+        if task.id == taskID then
+            task.done = not task.done
+            return
+        end
+    end
+end
+
+--- Add a custom task.
+function Weekly:AddTask(text, reset)
+    if not TA.charDB or not TA.charDB.tasks then return end
+    TA.charDB.tasks.list = TA.charDB.tasks.list or {}
+    local id = "custom_" .. time() .. "_" .. math.random(1000, 9999)
+    table.insert(TA.charDB.tasks.list, {
+        id       = id,
+        text     = text,
+        reset    = reset or "weekly",
+        category = "Custom",
+        done     = false,
+    })
+    print("|cFFFFD100[ToonAge]|r Added task: " .. text .. " (" .. (reset or "weekly") .. " reset)")
+end
+
+--- Remove a task by ID.
+function Weekly:RemoveTask(taskID)
+    if not TA.charDB or not TA.charDB.tasks then return end
+    local list = TA.charDB.tasks.list or {}
+    for i, task in ipairs(list) do
+        if task.id == taskID then
+            table.remove(list, i)
+            print("|cFFFFD100[ToonAge]|r Removed task: " .. task.text)
+            return
+        end
+    end
+end
+
+--- Get tasks organized by category.
+function Weekly:GetTasksByCategory()
+    if not TA.charDB or not TA.charDB.tasks then return {} end
+    local cats = {}
+    for _, task in ipairs(TA.charDB.tasks.list or {}) do
+        local cat = task.category or "General"
+        cats[cat] = cats[cat] or {}
+        table.insert(cats[cat], task)
+    end
+    return cats
+end
+
+--- Get summary stats.
+function Weekly:GetTaskSummary()
+    if not TA.charDB or not TA.charDB.tasks then return 0, 0 end
+    local total, done = 0, 0
+    for _, task in ipairs(TA.charDB.tasks.list or {}) do
+        total = total + 1
+        if task.done then done = done + 1 end
+    end
+    return total, done
+end
+
+
+-- ── Module Init ───────────────────────────────────────────────────────────────
+function Weekly:Init()
+    self:InitTasks()
+end
+
+Weekly.SlashCommands = {
+    todo = function(self)
+        local total, done = self:GetTaskSummary()
+        print(string.format("|cFFFFD100[ToonAge Weekly]|r %d/%d tasks done this week.", done, total))
+        local cats = self:GetTasksByCategory()
+        for cat, tasks in pairs(cats) do
+            print("  |cFFFFD100" .. cat .. ":|r")
+            for _, t in ipairs(tasks) do
+                local status = t.done and "|cFF4AFF7A✓|r" or "|cFFFF4444○|r"
+                print("    " .. status .. " " .. t.text)
+            end
+        end
+        print("|cFF888780/ta todo add \"text\" weekly|daily — add custom task|r")
+        print("|cFF888780/ta todo done <id> — toggle task completion|r")
+    end,
+}

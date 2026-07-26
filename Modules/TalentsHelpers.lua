@@ -1,5 +1,6 @@
 -- Modules/TalentsHelpers.lua
 local TA = ToonAge
+local U  = TA.Utils
 TA.TalentsAPI = TA.TalentsAPI or {}
 
 local function safeInsert(t, v)
@@ -400,4 +401,161 @@ function TA.TalentsAPI.ScoreProfile(activeIDs, profileNodes)
     if active[id] then hits = hits + 1 end
   end
   return math.floor((hits / #profileNodes) * 100)
+end
+
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- SECTION: Algorithmic Leveling Path Generator
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- Given an endgame import string, compute the optimal level-by-level talent
+-- point order by topologically sorting nodes based on tree prerequisites.
+-- This eliminates manual levelPath data entry for all 39 specs.
+--
+-- Algorithm:
+--   1. Decode the import string → get list of selected nodeIDs
+--   2. Query C_Traits for each node's prerequisites (edges[nodeID] = {prereqIDs})
+--   3. Topological sort: nodes with no prereqs first, then depth-first
+--   4. Map sorted order to levels (10, 11, 12, ...) based on WoW's talent
+--      point grant schedule
+--   5. Return a levelPath table: { [10]="Talent A", [11]="Talent B", ... }
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+--- Generate a leveling path from an import string for the current spec.
+--- Must be called while the player is in the target spec (C_Traits needs it).
+--- @param importString string — the endgame build import string
+--- @return table|nil levelPath — { [level] = "Talent Name", ... } or nil on failure
+function TA.TalentsAPI.GenerateLevelingPath(importString)
+    if not importString or importString == "" then return nil end
+    if not C_Traits or not C_Traits.GetConfigIDBySystemID then return nil end
+
+    -- Step 1: Get selected node IDs from the import string
+    local selectedNodes = TA.TalentsAPI.GetNodeIDsFromString(importString)
+    if not selectedNodes or #selectedNodes == 0 then return nil end
+
+    -- Step 2: Get the active talent config to query tree structure
+    local configID = C_ClassTalents and C_ClassTalents.GetActiveConfigID
+                  and C_ClassTalents.GetActiveConfigID()
+    if not configID then return nil end
+
+    -- Step 3: Build dependency graph for selected nodes
+    local nodeInfo = {}   -- [nodeID] = { name, prereqs={}, depth=0 }
+    local selectedSet = {}
+    for _, nodeID in ipairs(selectedNodes) do
+        selectedSet[nodeID] = true
+    end
+
+    for _, nodeID in ipairs(selectedNodes) do
+        local info = C_Traits.GetNodeInfo(configID, nodeID)
+        if info then
+            local name = ""
+            -- Get talent name from the first entry
+            if info.entryIDs and info.entryIDs[1] then
+                local entryInfo = C_Traits.GetEntryInfo(configID, info.entryIDs[1])
+                if entryInfo and entryInfo.definitionID then
+                    local defInfo = C_Traits.GetDefinitionInfo(entryInfo.definitionID)
+                    if defInfo then
+                        name = defInfo.overrideName or (defInfo.spellID and U.GetSpellInfo(defInfo.spellID)) or ""
+                    end
+                end
+            end
+
+            -- Get prerequisites (only those also in our selected set)
+            local prereqs = {}
+            if info.visibleEdges then
+                for _, edge in ipairs(info.visibleEdges) do
+                    if edge.targetNode and selectedSet[edge.targetNode] then
+                        -- Note: edges point FROM prereq TO this node
+                    end
+                end
+            end
+            -- Check incoming edges via the node's prerequisiteIDs
+            if info.prerequisiteIDs then
+                for _, prereqID in ipairs(info.prerequisiteIDs) do
+                    if selectedSet[prereqID] then
+                        table.insert(prereqs, prereqID)
+                    end
+                end
+            end
+
+            nodeInfo[nodeID] = {
+                name = name,
+                prereqs = prereqs,
+                depth = 0,
+                row = info.posY or 0,  -- tree row position (higher = deeper in tree)
+            }
+        end
+    end
+
+    -- Step 4: Calculate depth for each node (max depth of any prereq + 1)
+    local function CalcDepth(nID, visited)
+        if visited[nID] then return nodeInfo[nID] and nodeInfo[nID].depth or 0 end
+        visited[nID] = true
+        local ni = nodeInfo[nID]
+        if not ni then return 0 end
+        local maxPrereqDepth = 0
+        for _, pID in ipairs(ni.prereqs) do
+            local pd = CalcDepth(pID, visited)
+            if pd >= maxPrereqDepth then maxPrereqDepth = pd + 1 end
+        end
+        ni.depth = math.max(ni.depth, maxPrereqDepth)
+        return ni.depth
+    end
+
+    local visited = {}
+    for nodeID in pairs(nodeInfo) do
+        CalcDepth(nodeID, visited)
+    end
+
+    -- Step 5: Sort nodes by depth (shallowest first), then by row position
+    local sorted = {}
+    for nodeID, info in pairs(nodeInfo) do
+        if info.name and info.name ~= "" then
+            table.insert(sorted, { nodeID = nodeID, name = info.name, depth = info.depth, row = info.row })
+        end
+    end
+    table.sort(sorted, function(a, b)
+        if a.depth ~= b.depth then return a.depth < b.depth end
+        return a.row < b.row
+    end)
+
+    -- Step 6: Map to levels. WoW grants talent points at: 10, 11, 12, ... up to max.
+    -- Each spec has slightly different point counts but ~60-70 total points.
+    local levelPath = {}
+    local startLevel = 10
+    for i, node in ipairs(sorted) do
+        local level = startLevel + (i - 1)
+        levelPath[level] = node.name
+    end
+
+    return levelPath
+end
+
+--- Convenience: generate and cache the leveling path for the player's current spec.
+--- Stores result in TA.charDB.computedLevelPaths[specID].
+function TA.TalentsAPI.ComputeAndCacheLevelPath()
+    local specIndex = GetSpecialization()
+    if not specIndex then return nil end
+    local specID = GetSpecializationInfo(specIndex)
+    if not specID then return nil end
+
+    -- Get the endgame build string for this spec
+    local T = TA.Data and TA.Data.Talents
+    local specData = T and T:GetBySpecID(specID)
+    if not specData or not specData.builds then return nil end
+
+    -- Prefer mplus build (most popular), fallback to raid, then solo
+    local buildStr = (specData.builds.mplus and specData.builds.mplus.string)
+                  or (specData.builds.raid and specData.builds.raid.string)
+                  or (specData.builds.solo and specData.builds.solo.string)
+    if not buildStr or buildStr == "" then return nil end
+
+    local path = TA.TalentsAPI.GenerateLevelingPath(buildStr)
+    if path then
+        TA.charDB.computedLevelPaths = TA.charDB.computedLevelPaths or {}
+        TA.charDB.computedLevelPaths[specID] = path
+        local count = 0
+        for _ in pairs(path) do count = count + 1 end
+        print(string.format("|cFF4AFF7A[ToonAge]|r Generated leveling path for spec %d (%d talents).", specID, count))
+    end
+    return path
 end

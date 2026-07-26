@@ -29,6 +29,7 @@ TM.enabled         = true
 local ICON_SIZE = 24
 local ICON_TEXTURE = "Interface\\GossipFrame\\AvailableQuestIcon"  -- yellow ! / quest star
 local ICON_GLOW_TEXTURE = "Interface\\Buttons\\UI-ActionButton-Border"
+local UPDATE_HZ = 0.033  -- ~30 FPS cap for the pulse-glow ticker (see .rules.md performance rules)
 
 -- ── Objective scanning ────────────────────────────────────────────────────────
 
@@ -95,14 +96,21 @@ local function IsObjectiveTarget(unitToken)
     return TM.activeObjectives[name:lower()] ~= nil
 end
 
---- Attach a quest objective icon above a nameplate.
-function TM:MarkNameplate(namePlate, unitToken)
-    if self.markedPlates[namePlate] then return end  -- already marked
+-- ── Icon frame pool ───────────────────────────────────────────────────────────
+-- Nameplates churn constantly — every mob that enters and leaves render range
+-- adds and removes one. Creating a frame per mark and dropping it on unmark
+-- leaks, because WoW never garbage-collects frames even after SetParent(nil)
+-- (see .rules.md, "Frame pool: reuse, never abandon"). Released icons are
+-- parked on UIParent, hidden, and handed back out on the next mark. A hidden
+-- frame's OnUpdate doesn't fire, so parked icons cost nothing per frame.
+TM.iconPool = {}
 
-    -- Create the icon frame
-    local icon = CreateFrame("Frame", nil, namePlate)
+local function AcquireIcon()
+    local icon = table.remove(TM.iconPool)
+    if icon then return icon end
+
+    icon = CreateFrame("Frame", nil, UIParent)
     icon:SetSize(ICON_SIZE, ICON_SIZE)
-    icon:SetPoint("BOTTOM", namePlate, "TOP", 0, 4)
     icon:SetFrameStrata("HIGH")
 
     -- Quest icon texture (yellow !)
@@ -121,25 +129,60 @@ function TM:MarkNameplate(namePlate, unitToken)
     glow:SetBlendMode("ADD")
     icon.glow = glow
 
-    -- Pulse animation via simple OnUpdate
-    local elapsed = 0
+    -- Pulse animation via simple OnUpdate, throttled to UPDATE_HZ. Timers live
+    -- on the frame so a recycled icon restarts its pulse cleanly.
+    icon.elapsed = 0
+    icon.sinceLastTick = 0
     icon:SetScript("OnUpdate", function(self, dt)
-        elapsed = elapsed + dt
-        local alpha = 0.3 + 0.3 * math.sin(elapsed * 3)
-        glow:SetAlpha(alpha)
+        self.elapsed = self.elapsed + dt
+        self.sinceLastTick = self.sinceLastTick + dt
+        if self.sinceLastTick < UPDATE_HZ then return end
+        self.sinceLastTick = 0
+
+        self.glow:SetAlpha(0.3 + 0.3 * math.sin(self.elapsed * 3))
     end)
 
+    return icon
+end
+
+local function ReleaseIcon(icon)
+    icon:Hide()
+    icon:ClearAllPoints()
+    -- Reparent to UIParent, never nil — an unparented frame is unreachable but
+    -- still alive, which is exactly the leak this pool exists to avoid.
+    icon:SetParent(UIParent)
+    TM.iconPool[#TM.iconPool + 1] = icon
+end
+
+--- Attach a quest objective icon above a nameplate.
+function TM:MarkNameplate(namePlate, unitToken)
+    if self.markedPlates[namePlate] then return end  -- already marked
+
+    local icon = AcquireIcon()
+    icon:SetParent(namePlate)
+    icon:ClearAllPoints()
+    icon:SetPoint("BOTTOM", namePlate, "TOP", 0, 4)
+    icon.elapsed = 0
+    icon.sinceLastTick = 0
     icon:Show()
+
     self.markedPlates[namePlate] = icon
 end
 
---- Remove the quest icon from a nameplate.
+--- Remove the quest icon from a nameplate and return it to the pool.
 function TM:UnmarkNameplate(namePlate)
     local icon = self.markedPlates[namePlate]
     if icon then
-        icon:Hide()
-        icon:SetParent(nil)
         self.markedPlates[namePlate] = nil
+        ReleaseIcon(icon)
+    end
+end
+
+--- Release every marked icon (used when the module is switched off).
+function TM:UnmarkAll()
+    for namePlate, icon in pairs(self.markedPlates) do
+        self.markedPlates[namePlate] = nil
+        ReleaseIcon(icon)
     end
 end
 

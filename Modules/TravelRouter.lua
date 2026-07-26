@@ -27,45 +27,161 @@ TR.PORTALS = {
     -- Stormwind portals
     { from = 84,   to = 1978, method = "portal", label = "SW → Dragon Isles" },
     { from = 84,   to = 2112, method = "portal", label = "SW → Valdrakken" },
-    { from = 84,   to = 2215, method = "portal", label = "SW → Emerald Dream" },
-    { from = 84,   to = 2248, method = "portal", label = "SW → Khaz Algar" },
-    { from = 84,   to = 2339, method = "portal", label = "SW → Hallowfall" },
-    { from = 84,   to = 2434, method = "portal", label = "SW → Quel'Thalas (Midnight)" },
+    { from = 84,   to = 2339, method = "portal", label = "SW → Dornogal (Khaz Algar)" },
+    { from = 84,   to = 2537, method = "portal", label = "SW → Quel'Thalas (Midnight)" },
+    -- Removed 2026-07-25: a "SW → Hallowfall" entry pointing at 2339, which is
+    -- Dornogal — it duplicated the Khaz Algar portal above under a wrong name.
+    -- Also removed "SW → Emerald Dream" pointing at 2215, which is Hallowfall.
+    -- Re-add the Emerald Dream portal once its real map ID is confirmed in-game.
     { from = 84,   to = 619,  method = "portal", label = "SW → Jade Forest" },
 
     -- Orgrimmar portals
     { from = 85,   to = 1978, method = "portal", label = "Org → Dragon Isles" },
     { from = 85,   to = 2112, method = "portal", label = "Org → Valdrakken" },
-    { from = 85,   to = 2215, method = "portal", label = "Org → Emerald Dream" },
-    { from = 85,   to = 2248, method = "portal", label = "Org → Khaz Algar" },
-    { from = 85,   to = 2339, method = "portal", label = "Org → Hallowfall" },
-    { from = 85,   to = 2434, method = "portal", label = "Org → Quel'Thalas (Midnight)" },
+    { from = 85,   to = 2339, method = "portal", label = "Org → Dornogal (Khaz Algar)" },
+    { from = 85,   to = 2537, method = "portal", label = "Org → Quel'Thalas (Midnight)" },
+    -- Same two removals as the Stormwind block above.
     { from = 85,   to = 619,  method = "portal", label = "Org → Jade Forest" },
 
     -- Valdrakken hub portals
     { from = 2112, to = 84,   method = "portal", label = "Valdrakken → Stormwind" },
     { from = 2112, to = 85,   method = "portal", label = "Valdrakken → Orgrimmar" },
-    { from = 2112, to = 2248, method = "portal", label = "Valdrakken → Khaz Algar" },
-    { from = 2112, to = 2434, method = "portal", label = "Valdrakken → Quel'Thalas" },
+    { from = 2112, to = 2339, method = "portal", label = "Valdrakken → Dornogal (Khaz Algar)" },
+    { from = 2112, to = 2537, method = "portal", label = "Valdrakken → Quel'Thalas" },
 
     -- Oribos (Shadowlands hub)
     { from = 1670, to = 84,   method = "portal", label = "Oribos → Stormwind" },
     { from = 1670, to = 85,   method = "portal", label = "Oribos → Orgrimmar" },
 
-    -- Midnight zones internal connections
-    { from = 2434, to = 2435, method = "portal", label = "Quel'Thalas → Eversong" },
-    { from = 2434, to = 2436, method = "portal", label = "Quel'Thalas → Silvermoon" },
-    { from = 2434, to = 2437, method = "portal", label = "Quel'Thalas → Naigtal" },
+    -- Midnight zones internal connections.
+    -- Corrected 2026-07-25. Previous values were 2435/2436/2437 off a 2434 hub —
+    -- every one of them wrong. 2437 is Zul'Aman; 2435/2436 aren't Midnight maps;
+    -- and 2434 is Dead Scar, a sub-area of Eversong (see Data/Zones.lua:158),
+    -- not the Quel'Thalas hub it was being used as.
+    { from = 2537, to = 2395, method = "portal", label = "Quel'Thalas → Eversong Woods" },
+    { from = 2537, to = 2393, method = "portal", label = "Quel'Thalas → Silvermoon City" },
+    { from = 2537, to = 2600, method = "portal", label = "Quel'Thalas → Naigtal" },
 }
 
--- Class teleports (known by checking IsSpellKnown)
+-- MAP ID VERIFICATION STATUS
+--
+-- All of the following were confirmed in-game via /coord on the Midnight PTR,
+-- 2026-07-25. Treat this block as the reference when adding routes — every ID
+-- here has been stood on, which is a stronger guarantee than any addon's data
+-- files provide.
+--
+--   Midnight    2537 Quel'Thalas    2395 Eversong Woods   2393 Silvermoon City
+--               2405 Voidstorm      2413 Harandar         2576 The Den
+--               2541 Arcantina      2600 Naigtal*
+--   Khaz Algar  2274 Khaz Algar     2248 Isle of Dorn     2339 Dornogal
+--               2215 Hallowfall
+--   Hubs        84  Stormwind        85  Orgrimmar*       87  Ironforge
+--               103 The Exodar      111  Shattrath City   125 Dalaran (Northrend)
+--               627 Dalaran (Broken Isles)              734 Hall of the Guardian
+--               622 Stormshield     390  Vale of Eternal Blossoms
+--               1161 Boralus        1670 Oribos          2112 Valdrakken
+--   Zones       62  Darkshore        70  Dustwallow Marsh  81 Silithus
+--               245 Tol Barad Pen.  1355 Nazjatar
+--   Continents  12 Kalimdor  13 Eastern Kingdoms  101 Outland  113 Northrend
+--               424 Pandaria  572 Draenor  619 Broken Isles  876 Kul Tiras
+--               1550 The Shadowlands  1978 Dragon Isles  947 Azeroth
+--
+--   * 85 Orgrimmar is the one hub ID not personally verified — Alliance
+--     character. It is long-standing and low risk.
+--
+-- Two Dalarans: 125 (Northrend, under Crystalsong 127) and 627 (Broken Isles).
+-- Distinct maps, distinct teleports — do not conflate them.
+--
+-- Confirmed map trees:
+--
+--   Quel'Thalas 2537  (> Eastern Kingdoms 13 > Azeroth 947 > Cosmic 946)
+--     ├── Eversong Woods 2395
+--     │     └── Silvermoon City 2393        ← city nests inside its zone
+--     ├── Harandar 2413
+--     │     └── The Den 2576
+--     ├── Voidstorm 2405
+--     ├── Arcantina 2541
+--     └── Naigtal 2600*
+--
+--   Khaz Algar 2274  (> Azeroth 947)
+--     ├── Isle of Dorn 2248
+--     │     └── Dornogal 2339
+--     └── Hallowfall 2215
+--
+-- Both regions share one shape: settlements nest inside their zone, zones are
+-- siblings under the region. Assume that for any zone not yet walked
+-- (Zul'Aman 2437, Val 2599, Broken Throne 2585, Daggerspine Point 2594) rather
+-- than assuming a flat list — the nesting is what makes specificity ranking
+-- necessary in MapZoneDistance.
+--
+-- * Naigtal 2600 has not been walked personally, but is confirmed twice over:
+--   HandyNotes_Midnight/zones/naigtal.lua binds it as the primary map, and
+--   HandyNotes_NaigtalTeleports/Core.lua:11 carries the note "Confirmed in-game
+--   via: /dump C_Map.GetBestMapForUnit". HandyNotes_Midnight has since matched
+--   6 of 6 IDs verified independently here, so treat 2600 as reliable.
+--
+-- Hallowfall and Isle of Dorn are siblings, not parent/child. That is why
+-- TAG_Hallowfall.lua's old `zone = 2248` was worse than a stub: standing in
+-- Hallowfall, 2248 is not an ancestor, so the zone match failed outright and
+-- the guide could only ever be reached by the level-only fallback.
+--
+-- Note Silvermoon nests *inside* Eversong rather than beside it. Guide zone
+-- matching therefore has to rank by specificity, not just take the first hit —
+-- see MapZoneDistance in QuestTracker.lua.
+--
+-- ⚠ STILL UNVERIFIED:
+--   2600  Naigtal — inferred from a map binding, not yet walked.
+--   Emerald Dream portals — removed rather than left pointing at 2215
+--     (Hallowfall). Re-add once the real destination ID is confirmed.
+--
+-- A wrong ID here routes the player to the wrong zone silently, which is worse
+-- than having no route at all. Take the portal and run /coord on arrival.
+
+-- Class teleports (gated by U.IsSpellKnown at query time).
+--
+-- Destination map IDs below were confirmed in-game 2026-07-25 by taking each
+-- teleport and running /coord on arrival. The spellIDs are long-standing values
+-- but have NOT been read from a live spellbook — run /tateleports on each class
+-- to confirm them.
+--
+-- Failure modes differ, which is why it was worth shipping these unverified:
+-- a wrong spellID makes IsSpellKnown fail and the route silently not appear
+-- (benign, just a missing suggestion), whereas a wrong destination map ID would
+-- route the player to the wrong place (harmful). The harmful half is verified.
 TR.CLASS_TELEPORTS = {
-    -- Mage portals to capitals
+    -- ── Mage, Alliance ────────────────────────────────────────────────
     { spellID = 3561,   toZone = 84,   class = "MAGE",   label = "Teleport: Stormwind" },
+    { spellID = 3562,   toZone = 87,   class = "MAGE",   label = "Teleport: Ironforge" },
+    { spellID = 3565,   toZone = 62,   class = "MAGE",   label = "Teleport: Darnassus (Rut'theran, Darkshore)" },
+    { spellID = 32271,  toZone = 103,  class = "MAGE",   label = "Teleport: Exodar" },
+    { spellID = 49359,  toZone = 70,   class = "MAGE",   label = "Teleport: Theramore (Dustwallow Marsh)" },
+    { spellID = 88342,  toZone = 245,  class = "MAGE",   label = "Teleport: Tol Barad" },
+    { spellID = 176248, toZone = 622,  class = "MAGE",   label = "Teleport: Stormshield (Ashran)" },
+
+    -- ── Mage, Horde ───────────────────────────────────────────────────
+    -- Destinations NOT yet confirmed — no Horde mage has walked these. The
+    -- Alliance block above is the model: verify with /coord on arrival.
     { spellID = 3567,   toZone = 85,   class = "MAGE",   label = "Teleport: Orgrimmar" },
+
+    -- ── Mage, neutral hubs ────────────────────────────────────────────
+    -- Note the two distinct Dalarans: 125 is the Northrend city (parented to
+    -- Crystalsong Forest), 627 is the Broken Isles one. They are separate maps
+    -- and separate spells; conflating them sends the player to the wrong
+    -- expansion's hub.
+    { spellID = 33690,  toZone = 111,  class = "MAGE",   label = "Teleport: Shattrath" },
+    { spellID = 53140,  toZone = 125,  class = "MAGE",   label = "Teleport: Dalaran - Northrend" },
+    { spellID = 224869, toZone = 627,  class = "MAGE",   label = "Teleport: Dalaran - Broken Isles" },
+    { spellID = 193759, toZone = 734,  class = "MAGE",   label = "Teleport: Hall of the Guardian" },
+    { spellID = 132621, toZone = 390,  class = "MAGE",   label = "Teleport: Vale of Eternal Blossoms" },
+    { spellID = 281403, toZone = 1161, class = "MAGE",   label = "Teleport: Boralus" },
+    { spellID = 344587, toZone = 1670, class = "MAGE",   label = "Teleport: Oribos" },
     { spellID = 395277, toZone = 2112, class = "MAGE",   label = "Teleport: Valdrakken" },
-    -- Druid Dreamwalk
-    { spellID = 18960,  toZone = 2215, class = "DRUID",  label = "Dreamwalk (Emerald Dream)" },
+    { spellID = 446540, toZone = 2339, class = "MAGE",   label = "Teleport: Dornogal" },
+
+    -- Druid Dreamwalk. toZone was 2215 (Hallowfall) — wrong, that is not the
+    -- Emerald Dream. Left unset rather than guessed; Dreamwalk still shows as a
+    -- travel option, it just won't be matched to a specific destination zone.
+    { spellID = 18960,  toZone = nil,  class = "DRUID",  label = "Dreamwalk (Emerald Dream)" },
     -- DK Death Gate
     { spellID = 50977,  toZone = 23,   class = "DEATHKNIGHT", label = "Death Gate (Acherus)" },
     -- Monk Zen Pilgrimage
@@ -146,7 +262,7 @@ function TR:FindRoute(fromZone, toZone)
     -- ── Class teleport check (1 hop) ─────────────────────────────────
     for _, ct in ipairs(self.CLASS_TELEPORTS) do
         if ct.class == playerClass and ct.toZone == toZone then
-            if IsSpellKnown(ct.spellID) then
+            if U.IsSpellKnown(ct.spellID) then
                 return { method = "class", label = ct.label, hops = 1 }
             end
         end
@@ -181,7 +297,7 @@ function TR:FindRoute(fromZone, toZone)
         -- Check class teleport to hub
         if not toHub then
             for _, ct in ipairs(self.CLASS_TELEPORTS) do
-                if ct.class == playerClass and ct.toZone == hub and IsSpellKnown(ct.spellID) then
+                if ct.class == playerClass and ct.toZone == hub and U.IsSpellKnown(ct.spellID) then
                     toHub = { method = "class", label = ct.label }
                     break
                 end

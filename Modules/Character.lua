@@ -317,7 +317,10 @@ function Character:BuildUI(content, sidebar)
                 GameTooltip:AddDoubleLine("Damage reduction", string.format("%.2f%%", s.pct / 2), 0.7,0.7,0.7, 0.45,0.60,0.75)
             end
             if s.pct >= 33.0 then
+                local suggestion = s.redirectTarget and ("Redirect itemization into " .. s.redirectTarget .. " instead.")
+                                                     or "Every secondary is capped — prioritize item level instead."
                 GameTooltip:AddLine("At or past DR soft cap.", 1, 0.27, 0.27, true)
+                GameTooltip:AddLine(suggestion, 0.9, 0.7, 0.3, true)
             end
             GameTooltip:Show()
         end)
@@ -425,6 +428,19 @@ function Character:UpdateData()
     for _, s in ipairs(secondaries) do s.weight = weights[s.key] or 0.5 end
     table.sort(secondaries, function(a, b) return a.weight > b.weight end)
 
+    -- Best-weighted stat that ISN'T at/past the DR soft cap — the actual
+    -- redirect target recommended to any stat that is capped. secondaries
+    -- is already sorted highest-weight-first, so the first uncapped entry
+    -- found is the correct answer. nil only when every secondary is capped
+    -- (a real near-BiS scenario, not a bug) — handled with a distinct message.
+    local redirectTarget = nil
+    for _, s in ipairs(secondaries) do
+        if s.pct < SOFT_CAP then
+            redirectTarget = s.name
+            break
+        end
+    end
+
     local totalScore = 0
 
     for i, s in ipairs(secondaries) do
@@ -454,8 +470,11 @@ function Character:UpdateData()
         end
 
         -- Sub-line: DR cap warning takes priority; VERS shows damage reduction below cap
+        s.redirectTarget = redirectTarget  -- stashed on the stat table so the OnEnter tooltip can reuse it
         if s.pct >= SOFT_CAP then
-            row.subLbl:SetText("|cFFFF4444DR cap — redirect into " .. RANK_LABELS[1] .. " stat|r")
+            local suggestion = redirectTarget and ("redirect into " .. redirectTarget)
+                                              or "all secondaries capped — prioritize item level"
+            row.subLbl:SetText("|cFFFF4444DR cap — " .. suggestion .. "|r")
         elseif s.key == "VERS" then
             row.subLbl:SetText(string.format("|cFF7399BF%.2f%% damage reduction|r", s.pct / 2))
         else

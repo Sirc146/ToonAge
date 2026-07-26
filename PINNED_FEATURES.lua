@@ -1,0 +1,66 @@
+-- ToonAge/PINNED_FEATURES.lua
+-- Features pinned for future sessions. NOT loaded by TOC.
+--
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PINNED: Nameplate Cast Alert System
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Priority: Medium (★★★☆☆ impact, High difficulty)
+-- Reason pinned: Requires a dungeon-specific interrupt/threat database
+--
+-- Concept:
+--   Hook nameplate cast bars via UNIT_SPELLCAST_START / _CHANNEL_START.
+--   If a specific mob is casting an ability that heals the pack or fears
+--   the player, flash the nameplate border red or inject a kick icon.
+--   Tie into guide database so the UI knows which mob in a dense pack is
+--   the threat to leveling efficiency.
+--
+-- Implementation plan:
+--   1. Create Data/DangerCasts.lua — database of spellIDs to interrupt
+--      Format: { [spellID] = { priority="high"|"medium", action="kick"|"stun"|"avoid", desc="..." } }
+--   2. Hook UNIT_SPELLCAST_START on nameplate units
+--   3. Cross-reference cast spellID against DangerCasts
+--   4. If match: flash nameplate border red + show interrupt icon overlay
+--   5. Optional: play a subtle audio cue (PlaySoundFile)
+--
+-- Dependencies needed before building:
+--   - Curated list of 50-100 high-priority interrupt targets per expansion
+--   - Dungeon-specific "must kick" lists from MDT/Keystone.guru data
+--   - Testing in actual M+ environments (not solo PTR)
+-- ══════════════════════════════════════════════════════════════════════════════
+
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PINNED: Positioning Heuristics (Melee/Ranged awareness)
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Requires: UnitDistanceSquared (restricted in instances on PTR)
+-- Wait for: Retail testing where API is available
+--
+-- PINNED: XP Velocity Route Pruning
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Requires: Reliable XP/hour tracking + guide step XP yield values
+-- Wait for: More guide content + retail leveling testing
+--
+-- PINNED: Currency ROI Optimizer
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Requires: Crest weekly cap API + full upgrade vendor cost table
+-- Wait for: Retail Season 1 data + player testing at endgame
+
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PINNED: Custom Rotation Priority Editor
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Right-click prediction bar → "Custom" mode
+-- Player can build their own spell priority sequence:
+--   1. Spell picker (search/browse known spells for current spec)
+--   2. Drag-to-reorder priority list (up to 8 entries)
+--   3. Save per-spec in TA.charDB.customRotations[specID] = { spellID, spellID, ... }
+--   4. Toggle between "Suggested" (auto-calculated) and "Custom" (user-defined)
+--   5. "Custom" mode feeds the user's list into GetNextN instead of R:Get() data
+--   6. Right-click menu on bar: "Suggested" | "Custom" | "Edit Custom..."
+-- 
+-- Implementation notes:
+--   - Edit UI: small frame with 8 icon slots, "+" button opens spell picker
+--   - Spell picker: list all IsSpellKnown spells, filter by search text
+--   - Reorder: up/down arrows or drag within the 8 slots
+--   - When "Custom" is active, prediction bar border changes to blue to indicate
+-- ══════════════════════════════════════════════════════════════════════════════

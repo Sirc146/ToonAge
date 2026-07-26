@@ -15,6 +15,7 @@ TA:RegisterModule("Arrow", Arrow)
 Arrow.frame        = nil
 Arrow.throttle     = 0
 Arrow.currentAngle = nil   -- lerped rotation state; nil = snap on next Tick
+Arrow.manualWaypoint = nil -- { map=mapID, x=0-1, y=0-1, title=string } — set by /ta way
 local UPDATE_HZ  = 0.03   -- ~33 Hz for smooth rotation
 local LERP_RATE  = 0.35   -- fraction of the remaining angle closed per tick (higher = more responsive)
 
@@ -83,7 +84,83 @@ local function GetEffectiveCoord(step)
         end
     end
 
-    -- PRIORITY 3: Manual guide coords
+    -- PRIORITY 2.5: Quest NOT in log — try to find the quest giver location.
+    -- For "pick up" steps where the quest hasn't been accepted yet, use:
+    -- (a) Map quest offer POIs via C_Map / C_AreaPoiInfo
+    -- (b) Adjacent guide steps that share the same NPC/location
+    if step.questID and not C_QuestLog.GetLogIndexForQuestID(step.questID) then
+        -- 2.5a: Check if Blizzard's map system knows where this quest is offered
+        local currentMap = C_Map.GetBestMapForUnit("player")
+        if currentMap and C_TaskQuest and C_TaskQuest.GetQuestsForPlayerByMapID then
+            local ok, tasks = pcall(C_TaskQuest.GetQuestsForPlayerByMapID, currentMap)
+            if ok and tasks then
+                for _, task in ipairs(tasks) do
+                    if task.questId == step.questID and task.x and task.y then
+                        return currentMap, task.x, task.y
+                    end
+                end
+            end
+        end
+
+        -- 2.5b: Try GetQuestLocation (available in some builds)
+        if C_QuestLog.GetQuestStartLocation then
+            local ok, locMap, locX, locY = pcall(C_QuestLog.GetQuestStartLocation, step.questID)
+            if ok and locMap and locX and locY and (locX ~= 0 or locY ~= 0) then
+                return locMap, locX, locY
+            end
+        end
+
+        -- 2.5c: Borrow coordinates from adjacent guide steps.
+        -- If the previous step was a turn-in at the same NPC, or the next step
+        -- shares coordinates, use those as the pickup location (NPCs that give
+        -- AND receive quests are usually in the same spot).
+        local QT = TA:GetModule("QuestTracker")
+        if QT and QT.guideID then
+            local guide = TA.Guides and TA.Guides[QT.guideID]
+            if guide and guide.steps then
+                local stepIdx = QT.stepIdx or 1
+                -- Check previous step (often a turn-in at the same NPC)
+                local prevStep = guide.steps[stepIdx - 1]
+                if prevStep and prevStep.coord then
+                    local pm, px, py = prevStep.coord.map or 0, prevStep.coord.x or 0, prevStep.coord.y or 0
+                    if pm ~= 0 and (px ~= 0 or py ~= 0) then
+                        return pm, px, py
+                    end
+                end
+                -- Check next step (sometimes the quest objective is nearby)
+                local nextStep = guide.steps[stepIdx + 1]
+                if nextStep and nextStep.coord then
+                    local nm, nx, ny = nextStep.coord.map or 0, nextStep.coord.x or 0, nextStep.coord.y or 0
+                    if nm ~= 0 and (nx ~= 0 or ny ~= 0) then
+                        return nm, nx, ny
+                    end
+                end
+                -- Check up to 3 steps back for any valid coord in this guide
+                for back = 2, 4 do
+                    local backStep = guide.steps[stepIdx - back]
+                    if backStep and backStep.coord then
+                        local bm, bx, by = backStep.coord.map or 0, backStep.coord.x or 0, backStep.coord.y or 0
+                        if bm ~= 0 and (bx ~= 0 or by ~= 0) then
+                            return bm, bx, by
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- PRIORITY 3: CoordResolver (pulls from APR RouteQuestStepList + other sources)
+    local CR = TA:GetModule("CoordResolver")
+    if CR and step.questID then
+        local resolved = CR:Resolve(step.questID, step, step.objectiveIndex)
+        if resolved and resolved.map and resolved.map > 0
+           and resolved.x and resolved.x > 0 and resolved.x <= 1
+           and resolved.y and resolved.y > 0 and resolved.y <= 1 then
+            return resolved.map, resolved.x, resolved.y
+        end
+    end
+
+    -- PRIORITY 4: Manual guide coords
     local coordMap = step.coord.map or 0
     local cx, cy   = step.coord.x, step.coord.y
     if coordMap ~= 0 or cx ~= 0 or cy ~= 0 then
@@ -238,69 +315,149 @@ local ARRIVAL_PULSE_RATE = 3  -- pulses per second
 -- ── Per-tick update ───────────────────────────────────────────────────────
 
 function Arrow:Tick(f)
-    local step = GetTargetStep()
+    -- ── MANUAL WAYPOINT (from /ta way) takes priority over guide step ──
+    local coordMap, cx, cy, label
+    local isManualWP = false
 
-    if not step or not step.coord then
-        f.arrowTex:Hide()
-        f.greyTex:Show()
-        f.distF:SetText("---")
-        f.etaF:SetText("")
-        f.titleF:SetText("No Waypoint")
-        self._arrived = false
-        return
+    if self.manualWaypoint then
+        coordMap = self.manualWaypoint.map
+        cx       = self.manualWaypoint.x
+        cy       = self.manualWaypoint.y
+        label    = self.manualWaypoint.title or "Waypoint"
+        isManualWP = true
+    else
+        local step = GetTargetStep()
+
+        if not step or not step.coord then
+            f.arrowTex:Hide()
+            f.greyTex:Show()
+            f.distF:SetText("---")
+            f.etaF:SetText("")
+            f.titleF:SetText("No Waypoint")
+            self._arrived = false
+            return
+        end
+
+        -- Narrative / no-location steps (e.g. cutscene or flavor text): nothing
+        -- to point at, so hide the arrow entirely rather than showing "No Loc".
+        if step.type == "text" then
+            f.arrowTex:Hide()
+            f.greyTex:Hide()
+            f.distF:SetText("")
+            f.etaF:SetText("")
+            f.titleF:SetText(step.text or "")
+            self._arrived = false
+            return
+        end
+
+        -- Objective label: live quest name > step text
+        label = step.text or ""
+        if step.questID then
+            local qTitle = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(step.questID)
+            if qTitle and qTitle ~= "" then label = qTitle end
+        end
+
+        coordMap, cx, cy = GetEffectiveCoord(step)
+
+        -- Still nothing after trying the live quest-waypoint fallback — stub
+        -- coords (map=0, x=0, y=0) must NOT be treated as a real waypoint, or
+        -- the arrow would point at the map's top-left corner.
+        if coordMap == 0 and cx == 0 and cy == 0 then
+            f.arrowTex:Hide()
+            f.greyTex:Show()
+            f.distF:SetText("No Loc")
+            f.etaF:SetText("")
+            self._arrived = false
+            return
+        end
     end
 
-    -- Narrative / no-location steps (e.g. cutscene or flavor text): nothing
-    -- to point at, so hide the arrow entirely rather than showing "No Loc".
-    if step.type == "text" then
-        f.arrowTex:Hide()
-        f.greyTex:Hide()
-        f.distF:SetText("")
-        f.etaF:SetText("")
-        f.titleF:SetText(step.text or "")
-        self._arrived = false
-        return
-    end
-
-    -- Objective label: live quest name > step text
-    local label = step.text or ""
-    if step.questID then
-        local qTitle = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(step.questID)
-        if qTitle and qTitle ~= "" then label = qTitle end
-    end
+    -- Truncate long labels
     if #label > 35 then label = label:sub(1, 32) .. "..." end
     f.titleF:SetText(label)
-
-    local coordMap, cx, cy = GetEffectiveCoord(step)
-
-    -- Still nothing after trying the live quest-waypoint fallback — stub
-    -- coords (map=0, x=0, y=0) must NOT be treated as a real waypoint, or
-    -- the arrow would point at the map's top-left corner.
-    if coordMap == 0 and cx == 0 and cy == 0 then
-        f.arrowTex:Hide()
-        f.greyTex:Show()
-        f.distF:SetText("No Loc")
-        f.etaF:SetText("")
-        self._arrived = false
-        return
-    end
 
     local currentMap = C_Map.GetBestMapForUnit("player")
     if not currentMap then return end
 
     -- Cross-zone detection (coordMap=0 with real coords = assume same zone)
     if coordMap ~= 0 and coordMap ~= currentMap then
-        f.arrowTex:Hide()
-        f.greyTex:Show()
-        f.distF:SetText("Diff Zone")
-        f.etaF:SetText("")
-        self._arrived = false
-        return
+        -- Check parent-zone containment — sub-zones shouldn't trigger travel redirect
+        local isSameArea = false
+        local checkMap = currentMap
+        for _ = 1, 5 do  -- max 5 levels of parent traversal
+            local mapInfo = C_Map.GetMapInfo(checkMap)
+            if not mapInfo then break end
+            if mapInfo.parentMapID == coordMap then isSameArea = true; break end
+            if mapInfo.parentMapID and mapInfo.parentMapID > 0 then
+                checkMap = mapInfo.parentMapID
+            else
+                break
+            end
+        end
+        -- Also check reverse: target might be a sub-zone of current
+        if not isSameArea then
+            checkMap = coordMap
+            for _ = 1, 5 do
+                local mapInfo = C_Map.GetMapInfo(checkMap)
+                if not mapInfo then break end
+                if mapInfo.parentMapID == currentMap then isSameArea = true; break end
+                if mapInfo.parentMapID and mapInfo.parentMapID > 0 then
+                    checkMap = mapInfo.parentMapID
+                else
+                    break
+                end
+            end
+        end
+
+        if isSameArea then
+            -- Same area — treat coordMap as current map for bearing calculation
+            coordMap = currentMap
+        else
+            -- ── TRAVEL ROUTER INTERCEPT ───────────────────────────────────
+            local TR = TA:GetModule("TravelRouter")
+            local route = TR and TR:FindRoute(currentMap, coordMap)
+
+            if route and route.method == "fly" then
+                local fmX, fmY, fmName = self:FindNearestFlightMaster(currentMap)
+                if fmX and fmY then
+                    coordMap = currentMap
+                    cx, cy = fmX, fmY
+                    f.titleF:SetText("|cFF55CCFF✈|r " .. (fmName or "Flight Master"))
+                else
+                    f.arrowTex:Hide()
+                    f.greyTex:Show()
+                    f.distF:SetText("|cFF55CCFFDiff Zone|r")
+                    f.etaF:SetText(route.label or "")
+                    self._arrived = false
+                    return
+                end
+            elseif route then
+                f.arrowTex:Hide()
+                f.greyTex:Show()
+                f.distF:SetText("|cFF55CCFFTravel|r")
+                f.etaF:SetText(route.label or "")
+                f.titleF:SetText(label)
+                self._arrived = false
+                return
+            else
+                f.arrowTex:Hide()
+                f.greyTex:Show()
+                f.distF:SetText("Diff Zone")
+                f.etaF:SetText("")
+                self._arrived = false
+                return
+            end
+        end
     end
 
     local pos = C_Map.GetPlayerMapPosition(currentMap, "player")
     if not pos then return end
-    local px, py = pos:GetXY()
+    -- 12.0 PTR: GetXY() can return tainted "secret number" values.
+    -- Force through tonumber(tostring()) to strip the secret flag.
+    local rawPx, rawPy = pos:GetXY()
+    local px = tonumber(tostring(rawPx))
+    local py = tonumber(tostring(rawPy))
+    if not px or not py or (px == 0 and py == 0) then return end
 
     local dx          = cx - px
     local dy          = cy - py
@@ -308,11 +465,27 @@ function Arrow:Tick(f)
     -- GetPlayerFacing() returns counter-clockwise radians from north.
     -- The difference gives the screen-space rotation for the arrow texture.
     local bearing     = math.atan2(dx, -dy)
-    local facing      = GetPlayerFacing()
-
-    -- GetPlayerFacing() returns nil in instances/indoors on some builds,
-    -- AND may be restricted entirely on 12.0 PTR builds. Fallback: infer
-    -- facing direction from consecutive position samples.
+    
+    -- ── Player facing detection ───────────────────────────────────────
+    -- 12.0 PTR: GetPlayerFacing() is often restricted (returns nil or secret).
+    -- Fallback chain: GetPlayerFacing → Minimap rotation → movement inference.
+    local facing = nil
+    
+    -- Method 1: Direct API (works in open world on most builds)
+    local rawFacing = GetPlayerFacing()
+    if rawFacing then
+        facing = tonumber(tostring(rawFacing))
+    end
+    
+    -- Method 2: Minimap rotation (always available, same coordinate space)
+    if not facing and Minimap and Minimap.GetFacing then
+        local ok, rot = pcall(Minimap.GetFacing, Minimap)
+        if ok and rot then
+            facing = tonumber(tostring(rot))
+        end
+    end
+    
+    -- Method 3: Infer from movement direction
     if not facing then
         -- Infer facing from movement direction
         if self._lastPx and self._lastPy then
@@ -342,6 +515,7 @@ function Arrow:Tick(f)
     if yards <= ARRIVAL_DIST then
         if not self._arrived then
             self._arrived = true
+            self._arrivedTime = GetTime()
             self.currentAngle = nil  -- reset lerp on next non-arrived tick
         end
         f.greyTex:Hide()
@@ -354,6 +528,14 @@ function Arrow:Tick(f)
 
         f.distF:SetText("|cFF4AFF7AArrived|r")
         f.etaF:SetText("")
+
+        -- Auto-clear manual waypoints 3 seconds after arrival
+        if isManualWP and self._arrivedTime and (GetTime() - self._arrivedTime > 3) then
+            self.manualWaypoint = nil
+            self._arrived = false
+            self._arrivedTime = nil
+            print("|cFFFFD100[TA Arrow]|r Waypoint reached — cleared.")
+        end
         return
     end
 
@@ -422,7 +604,210 @@ function Arrow:Tick(f)
     end
 end
 
+-- ── Flight Master Locator ──────────────────────────────────────────────────
+-- Used by the TravelRouter intercept to redirect the arrow toward the
+-- nearest known Flight Master on the player's current map.
+
+function Arrow:FindNearestFlightMaster(currentMap)
+    local TR = TA:GetModule("TravelRouter")
+    if not TR or not TR.knownFlightPaths then return nil, nil, nil end
+
+    local pos = C_Map.GetPlayerMapPosition(currentMap, "player")
+    if not pos then return nil, nil, nil end
+    local px, py = pos:GetXY()
+
+    local bestDist = math.huge
+    local bestX, bestY, bestName = nil, nil, nil
+
+    for _, node in pairs(TR.knownFlightPaths) do
+        if node.mapID == currentMap and node.x and node.y and node.x > 0 then
+            local dx = node.x - px
+            local dy = node.y - py
+            local dist = dx * dx + dy * dy  -- squared distance (no sqrt needed for comparison)
+            if dist < bestDist then
+                bestDist = dist
+                bestX    = node.x
+                bestY    = node.y
+                bestName = node.name
+            end
+        end
+    end
+
+    -- Also try C_TaxiMap.GetAllTaxiNodes for live data if TR didn't have it
+    if not bestX and C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap then
+        local nodes = C_TaxiMap.GetTaxiNodesForMap(currentMap)
+        if nodes then
+            for _, node in ipairs(nodes) do
+                if node.position and (node.state == Enum.FlightPathState.Current or
+                   node.state == Enum.FlightPathState.Reachable) then
+                    local nx, ny = node.position.x, node.position.y
+                    local dx = nx - px
+                    local dy = ny - py
+                    local dist = dx * dx + dy * dy
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestX    = nx
+                        bestY    = ny
+                        bestName = node.name
+                    end
+                end
+            end
+        end
+    end
+
+    return bestX, bestY, bestName
+end
+
 -- ── Public API ────────────────────────────────────────────────────────────
+
+--- Set a manual waypoint that the arrow will point to, overriding guide navigation.
+--- @param mapID number — map ID (use 0 or nil for current map)
+--- @param x number — x coordinate (0–1 fraction, i.e. percentage / 100)
+--- @param y number — y coordinate (0–1 fraction)
+--- @param title string|nil — optional label shown on the arrow
+function Arrow:SetWaypoint(mapID, x, y, title)
+    -- If mapID is 0/nil, resolve to current map
+    if not mapID or mapID == 0 then
+        mapID = C_Map.GetBestMapForUnit("player") or 0
+    end
+    self.manualWaypoint = {
+        map   = mapID,
+        x     = x,
+        y     = y,
+        title = title or string.format("%.1f, %.1f", x * 100, y * 100),
+    }
+    self._arrived = false
+    self._arrivedTime = nil
+
+    -- Auto-show the arrow when setting a waypoint
+    if self.frame and not self.frame:IsVisible() then
+        self.frame:Show()
+        if TA.charDB then TA.charDB.arrow = TA.charDB.arrow or {}; TA.charDB.arrow.visible = true end
+    end
+end
+
+--- Clear the current manual waypoint, returning to guide-driven navigation.
+function Arrow:ClearWaypoint()
+    self.manualWaypoint = nil
+    self._arrived = false
+    self._arrivedTime = nil
+end
+
+--- Parse a TomTom-compatible /way string and set the arrow.
+--- Supported formats:
+---   /ta way 45.2 67.8              — current map, TomTom coords (divided by 100)
+---   /ta way 45.2 67.8 My Place     — with description
+---   /ta way 2393 45.2 67.8         — explicit mapID + coords
+---   /ta way 2393 45.2 67.8 My Spot — mapID + coords + description
+---   /ta way clear                  — remove manual waypoint
+function Arrow:ParseWayCommand(args)
+    if not args or args == "" then
+        print("|cFFFFD100[TA Arrow]|r Usage:")
+        print("  |cFFFFD100/ta way <x> <y> [description]|r — set waypoint on current map")
+        print("  |cFFFFD100/ta way <mapID> <x> <y> [description]|r — set waypoint on specific map")
+        print("  |cFFFFD100/ta way clear|r — remove manual waypoint")
+        if self.manualWaypoint then
+            local wp = self.manualWaypoint
+            print(string.format("  Current: map %d — %.1f, %.1f (%s)",
+                wp.map, wp.x * 100, wp.y * 100, wp.title or ""))
+        end
+        return
+    end
+
+    -- Normalize separators: "45,2" → "45.2", "45.2, 67.8" → "45.2 67.8"
+    args = args:gsub("(%d),(%d)", "%1.%2")    -- comma as decimal separator
+    args = args:gsub(",%s*", " ")             -- comma + space between coords
+
+    local tokens = {}
+    for token in args:gmatch("%S+") do
+        table.insert(tokens, token)
+    end
+
+    -- Handle subcommands
+    local first = tokens[1] and tokens[1]:lower()
+    if first == "clear" or first == "remove" or first == "off" then
+        self:ClearWaypoint()
+        print("|cFFFFD100[TA Arrow]|r Manual waypoint cleared.")
+        return
+    end
+
+    -- Determine if first token is a mapID or an X coordinate.
+    -- Heuristic: mapIDs are integers > 100 (all WoW map IDs are well above 100),
+    -- while display coords are typically < 100 (percentage values 0–100).
+    -- TomTom also uses #mapID format — support that too.
+    local mapID = nil
+    local xRaw, yRaw, descStart
+
+    -- Check for #mapID format (TomTom compatibility)
+    if tokens[1] and tokens[1]:match("^#(%d+)$") then
+        mapID = tonumber(tokens[1]:match("^#(%d+)$"))
+        xRaw = tonumber(tokens[2])
+        yRaw = tonumber(tokens[3])
+        descStart = 4
+    else
+        local n1 = tonumber(tokens[1])
+        local n2 = tonumber(tokens[2])
+        local n3 = tonumber(tokens[3])
+
+        if n1 and n2 and n3 then
+            -- Three numbers: first is mapID if it's an integer > 100
+            if n1 == math.floor(n1) and n1 > 100 then
+                mapID = n1
+                xRaw  = n2
+                yRaw  = n3
+                descStart = 4
+            else
+                -- All three are probably coords or something else; treat first two as x,y
+                xRaw = n1
+                yRaw = n2
+                descStart = 3
+            end
+        elseif n1 and n2 then
+            -- Two numbers: x, y on current map
+            xRaw = n1
+            yRaw = n2
+            descStart = 3
+        else
+            print("|cFFFF4444[TA Arrow]|r Invalid format. Examples:")
+            print("  |cFFFFD100/ta way 45.2 67.8|r")
+            print("  |cFFFFD100/ta way 2393 45.2 67.8 My Spot|r")
+            return
+        end
+    end
+
+    if not xRaw or not yRaw then
+        print("|cFFFF4444[TA Arrow]|r Could not parse coordinates.")
+        return
+    end
+
+    -- Validate coordinate ranges (TomTom format: 0–100 percentage display values)
+    if xRaw < 0 or xRaw > 100 or yRaw < 0 or yRaw > 100 then
+        print("|cFFFF4444[TA Arrow]|r Coordinates must be 0–100 (e.g. 45.2 67.8).")
+        return
+    end
+
+    -- Convert from display percentage (0–100) to map fraction (0–1)
+    local x = xRaw / 100
+    local y = yRaw / 100
+
+    -- Build description from remaining tokens
+    local desc = nil
+    if descStart and tokens[descStart] then
+        desc = table.concat(tokens, " ", descStart)
+    end
+
+    self:SetWaypoint(mapID, x, y, desc)
+
+    -- Confirmation message
+    local mapStr = ""
+    if mapID and mapID > 0 then
+        local mapInfo = C_Map.GetMapInfo(mapID)
+        mapStr = mapInfo and mapInfo.name or ("map " .. mapID)
+        mapStr = " in " .. mapStr
+    end
+    print(string.format("|cFFFFD100[TA Arrow]|r Waypoint set: |cFF4AFF7A%.1f, %.1f|r%s%s",
+        xRaw, yRaw, mapStr, desc and (" — " .. desc) or ""))
+end
 
 function Arrow:Toggle()
     if not self.frame then

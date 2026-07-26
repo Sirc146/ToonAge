@@ -9,9 +9,15 @@ TA.GuideData = TA.GuideData or {}
 TA.GuideData["midnight_intro"] = {
     id       = "midnight_intro",
     title    = "Midnight: Quel'Thalas Intro",
-    zone     = 2434,   -- PTR intro zone (update with live map ID)
-    minLevel = 1,
-    maxLevel = 20,
+    expansion = "midnight",
+    -- Quel'Thalas, the Midnight parent zone. Confirmed in-game 2026-07-25:
+    -- Eversong Woods (2395) > Quel'Thalas (2537) > Eastern Kingdoms (13).
+    -- Was 2434, which is Dead Scar — a sub-area of Eversong (Data/Zones.lua:158),
+    -- never the region hub it was being used as.
+    zone     = 2537,
+    minLevel = 80,
+    maxLevel = 82,
+    nextGuide = "eversong_midnight",
     steps = {
         {
             type = "text",

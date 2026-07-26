@@ -168,13 +168,41 @@ local function BestSlotForItem(itemLink, equipLoc, newIlvl)
         if ohLink then return nil end  -- has off-hand: skip auto-equip
     end
 
+    -- Score-driven comparison: use Gear.CalculateItemScore if available.
+    -- Falls back to raw ilvl if scoring fails or Gear module isn't loaded.
+    local GearMod = TA:GetModule("Gear")
+    local specIndex = GetSpecialization()
+    local specID = specIndex and GetSpecializationInfo(specIndex)
+    local useScoring = (GearMod and GearMod.CalculateItemScore and specID)
+
+    local newScore = newIlvl  -- fallback to ilvl
+    if useScoring then
+        local ok, s = pcall(GearMod.CalculateItemScore, itemLink, specID, "pve")
+        if ok and type(s) == "number" and s > 0 then newScore = s end
+    end
+
     -- For slots with two candidates (rings, trinkets, weapons), pick the
-    -- slot with the lower current ilvl.
-    local bestSlot, bestCurrentIlvl = nil, math.huge
+    -- slot where the new item is the biggest upgrade by score.
+    local bestSlot, bestCurrentScore = nil, math.huge
     for _, slotID in ipairs(candidates) do
-        local cur = EquippedIlvl(slotID)
-        if newIlvl > cur and cur < bestCurrentIlvl then
-            bestCurrentIlvl = cur
+        local curLink = GetInventoryItemLink("player", slotID)
+        local curScore = 0
+        if curLink then
+            if useScoring then
+                local ok, s = pcall(GearMod.CalculateItemScore, curLink, specID, "pve")
+                if ok and type(s) == "number" and s > 0 then
+                    curScore = s
+                else
+                    curScore = EquippedIlvl(slotID)  -- fallback
+                end
+            else
+                curScore = EquippedIlvl(slotID)
+            end
+        end
+
+        -- Only equip if new item scores HIGHER than what's in the slot
+        if newScore > curScore and curScore < bestCurrentScore then
+            bestCurrentScore = curScore
             bestSlot = slotID
         end
     end

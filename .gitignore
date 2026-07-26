@@ -9,3 +9,8 @@ Thumbs.db
 # Editor cruft
 .vscode/
 *.swp
+
+
+# AI/MCP session files (keep in repo — they're dev references)
+# .bootstrap.md, .context.md, .rules.md, .competitors.md
+# IMPROVEMENT_PLAN.md

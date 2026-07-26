@@ -195,10 +195,18 @@ local function ValidateGuide(id, guide)
     if type(guide.title) ~= "string" or guide.title == "" then
         LogError(id, nil, "missing or empty 'title'")
     end
-    if type(guide.steps) ~= "table" or #guide.steps == 0 then
-        LogError(id, nil, "missing or empty 'steps' array")
+    if type(guide.steps) ~= "table" then
+        LogError(id, nil, "missing 'steps' array")
         local errs = #_errors - errsBefore
         return false, 0, errs
+    end
+    -- Empty steps are valid — they represent stub guides that trigger
+    -- Quest Log Follow mode in the tracker. The Guide Tab still shows them
+    -- with a "coming soon" state and the tracker uses Blizzard's native
+    -- quest tracking system for arrow guidance.
+    if #guide.steps == 0 then
+        local errs = #_errors - errsBefore
+        return true, 0, errs  -- valid stub, 0 steps, no errors
     end
     -- Validate nextGuide reference (can't fully validate target exists yet)
     if guide.nextGuide ~= nil and type(guide.nextGuide) ~= "string" then

@@ -20,6 +20,8 @@ QT.optionsFrame  = nil
 QT.guideID       = nil
 QT.stepIdx       = 1
 QT.statusThrottle = 0
+QT.stickySteps   = {}     -- { stepIdx, ... } — sticky steps persist at top of display
+QT.skippedSteps  = {}     -- { [stepIdx] = true } — manually skipped steps
 local STATUS_UPDATE_HZ = 0.2   -- distance/ETA refresh rate, matches Arrow's own tick budget
 
 -- Debounce timer for high-frequency quest log events.
@@ -175,6 +177,129 @@ function QT:IsStepComplete(step)
     return false
 end
 
+-- ── WoW-Pro-Inspired Step Evaluation (Sticky, PRE, Rank, Loot, Active) ────────
+
+--- Check if a step's prerequisite chain is satisfied.
+--- step.pre = questID or {questID, ...} — all must be flagged complete.
+--- step.preOr = {questID, ...} — any one must be flagged complete.
+function QT:IsPrerequisiteMet(step)
+    if not step.pre and not step.preOr then return true end
+
+    -- AND prerequisites: all must be complete
+    if step.pre then
+        local pre = type(step.pre) == "table" and step.pre or { step.pre }
+        for _, qid in ipairs(pre) do
+            if not IsComplete(qid) then return false end
+        end
+    end
+
+    -- OR prerequisites: any one is enough
+    if step.preOr then
+        local anyDone = false
+        for _, qid in ipairs(step.preOr) do
+            if IsComplete(qid) then anyDone = true; break end
+        end
+        if not anyDone then return false end
+    end
+
+    return true
+end
+
+--- Check if a step passes the rank filter.
+--- step.rank = number (1=speed, 2=normal, 3=completionist)
+--- Player's rank stored in charDB.tracker.rank (default 2)
+function QT:PassesRankFilter(step)
+    if not step.rank then return true end
+    local playerRank = (TA.charDB and TA.charDB.tracker and TA.charDB.tracker.rank) or 2
+    if step.rank > 0 then
+        return playerRank >= step.rank
+    else
+        -- Negative rank = exact match only
+        return playerRank == math.abs(step.rank)
+    end
+end
+
+--- Check if a step should be visible based on its ACTIVE requirement.
+--- step.active = questID — only show if that quest is currently in the log.
+function QT:IsActiveConditionMet(step)
+    if not step.active then return true end
+    return IsInLog(step.active)
+end
+
+--- Check if a step's loot requirement is met (item in bags).
+--- step.lootItem = { itemID, quantity }
+function QT:IsLootMet(step)
+    if not step.lootItem then return false end
+    local itemID = step.lootItem[1]
+    local needed = step.lootItem[2] or 1
+    local count = C_Item.GetItemCount(itemID, true) or 0
+    return count >= needed
+end
+
+--- Mark a step as sticky (persists at top of display while other steps advance).
+function QT:SetSticky(stepIdx)
+    -- Avoid duplicates
+    for _, idx in ipairs(self.stickySteps) do
+        if idx == stepIdx then return end
+    end
+    table.insert(self.stickySteps, stepIdx)
+end
+
+--- Remove a sticky step (called when its unsticky condition is met).
+function QT:RemoveSticky(stepIdx)
+    for i, idx in ipairs(self.stickySteps) do
+        if idx == stepIdx then
+            table.remove(self.stickySteps, i)
+            return
+        end
+    end
+end
+
+--- Skip a step and cascade to all steps that have PRE pointing to this step's questID.
+function QT:SkipStep(stepIdx)
+    local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
+    if not guide then return end
+
+    self.skippedSteps[stepIdx] = true
+    local skippedQID = guide.steps[stepIdx] and guide.steps[stepIdx].questID
+
+    -- Cascade: skip all later steps whose PRE references this questID
+    if skippedQID then
+        for i = stepIdx + 1, #guide.steps do
+            local s = guide.steps[i]
+            if s and s.pre then
+                local preList = type(s.pre) == "table" and s.pre or { s.pre }
+                for _, pqid in ipairs(preList) do
+                    if pqid == skippedQID then
+                        self.skippedSteps[i] = true
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+
+--- Check if a step should be shown/evaluated (combines all filters).
+function QT:ShouldShowStep(step, stepIdx)
+    -- Skipped steps are never shown
+    if self.skippedSteps[stepIdx] then return false end
+
+    -- Applicability (class, race, faction, spec, level)
+    if not self:IsStepApplicable(step) then return false end
+
+    -- Prerequisite chain
+    if not self:IsPrerequisiteMet(step) then return false end
+
+    -- Rank filter
+    if not self:PassesRankFilter(step) then return false end
+
+    -- Active condition (only show if specific quest is in log)
+    if not self:IsActiveConditionMet(step) then return false end
+
+    return true
+end
+
 -- ── Fast Forward ─────────────────────────────────────────────────────────────
 -- Scans the entire guide against the quest log and quest-completion flags to
 -- find the first step that isn't done yet.
@@ -190,51 +315,141 @@ end
 -- If no completed quest is found at all (fresh guide), Pass 2 starts from
 -- step 1 and lands on the first applicable incomplete step.
 
+-- ── Spatial Routing (TSP nearest-neighbor) ────────────────────────────────────
+-- When multiple guide steps are simultaneously active (parallel quests in the
+-- same zone), reorder stepIdx to point at the CLOSEST objective. This creates
+-- the Zygor "smart routing" effect where the arrow always sends you to the
+-- nearest task first, minimizing total travel distance.
+
+function QT:ApplySpatialRouting(guide)
+    if not guide or not guide.steps then return end
+
+    local currentMap = C_Map.GetBestMapForUnit("player")
+    if not currentMap then return end
+    local pos = C_Map.GetPlayerMapPosition(currentMap, "player")
+    if not pos then return end
+    local px, py = pos:GetXY()
+    if not px or px == 0 then return end
+
+    local Arrow = TA:GetModule("Arrow")
+    local GetCoord = Arrow and Arrow.GetEffectiveCoord
+
+    -- Collect all simultaneously-active, incomplete steps in a small window
+    local candidates = {}
+    local LOOKAHEAD = 8  -- check up to 8 steps ahead for parallel quests
+
+    for i = self.stepIdx, math.min(self.stepIdx + LOOKAHEAD, #guide.steps) do
+        local step = guide.steps[i]
+        if step and not self:IsStepComplete(step) and self:ShouldShowStep(step, i) then
+            -- Must have coordinates and be in same zone
+            local coordMap, cx, cy = 0, 0, 0
+            if GetCoord and step.coord then
+                coordMap, cx, cy = GetCoord(step)
+            elseif step.coord then
+                coordMap = step.coord.map or 0
+                cx = step.coord.x or 0
+                cy = step.coord.y or 0
+            end
+
+            -- Same zone (or unspecified zone) with valid coords
+            if (coordMap == 0 or coordMap == currentMap) and (cx ~= 0 or cy ~= 0) then
+                local dx = cx - px
+                local dy = cy - py
+                local distSq = dx * dx + dy * dy
+                table.insert(candidates, { idx = i, distSq = distSq })
+            end
+        end
+    end
+
+    -- If we have multiple candidates, pick the closest
+    if #candidates > 1 then
+        table.sort(candidates, function(a, b) return a.distSq < b.distSq end)
+        local closest = candidates[1]
+        if closest.idx ~= self.stepIdx then
+            self.stepIdx = closest.idx
+            self._spatialRouted = true
+            self:SaveState()
+        else
+            self._spatialRouted = false
+        end
+    end
+end
+
 function QT:FastForward(silent)
     if not self.guideID then return end
     local guide = TA.Guides and TA.Guides[self.guideID]
     if not guide then return end
 
-    -- Pass 1: find the index of the last step that is fully complete.
-    -- We walk forward (not backward) so we get the highest index whose quest
-    -- is flagged done, giving the most accurate progress anchor.
+    -- Pass 1: find the index of the last step that is GENUINELY complete.
+    -- We only count steps that have their quest actually flagged done in the
+    -- quest log. Inapplicable/filtered steps are invisible to progress scanning.
+    -- We do NOT use IsStepComplete() here because it returns true for filtered
+    -- steps (wrong class, rank, etc.) which would falsely anchor progress.
     local lastDoneIdx = 0
     for i = 1, #guide.steps do
-        if self:IsStepComplete(guide.steps[i]) then
+        local step = guide.steps[i]
+        -- Skip filtered/inapplicable steps entirely
+        if not self:ShouldShowStep(step, i) then
+            -- invisible, don't count
+        elseif step.questID then
+            -- Real quest step — only anchor if the quest is DONE in the log
+            if C_QuestLog.IsQuestFlaggedCompleted(step.questID) then
+                lastDoneIdx = i
+            end
+        elseif step.type == "text" then
+            -- Text steps auto-complete, count them as anchors
+            lastDoneIdx = i
+        elseif step._manualDone then
             lastDoneIdx = i
         end
     end
 
     -- Pass 2: starting from the step after the anchor, find the first
-    -- incomplete step. If everything is done, land on the last step.
+    -- incomplete step that passes all filters. If everything is done, land on the last step.
     local startIdx = lastDoneIdx + 1
     for i = startIdx, #guide.steps do
-        if not self:IsStepComplete(guide.steps[i]) then
+        local step = guide.steps[i]
+        -- Skip steps that don't pass filters (rank, PRE, class, zone, etc.)
+        if not self:ShouldShowStep(step, i) then
+            -- Filtered step — treat as done for advancement purposes
+        elseif not self:IsStepComplete(step) then
             self.stepIdx = i
             self:SaveState()
+            -- Apply spatial routing: if multiple steps are active in the same
+            -- zone, pick the closest one for the arrow to point at.
+            self:ApplySpatialRouting(guide)
             self:UpdateWindow()
             if not silent then
-                print("|cFF4AFF7A[TA Tracker]|r Synced to step " .. i
-                    .. " / " .. #guide.steps .. ".")
+                self:ShowToast("Step " .. self.stepIdx .. " / " .. #guide.steps)
             end
             return
         end
     end
 
     -- All steps complete (or guide has no quest steps at all)
-    self.stepIdx = #guide.steps
+    self.stepIdx = math.max(1, #guide.steps)
     self:SaveState()
     self:UpdateWindow()
 
-    -- Route chaining: if this guide has a nextGuide, auto-transition
+    -- Route chaining: if this guide has a nextGuide, auto-transition.
+    -- BUT: only chain if the guide had actual steps. Stub guides (0 steps)
+    -- should NOT auto-chain — they represent "Quest Log Follow" mode where
+    -- the player stays in that zone until they naturally finish and move on.
+    if #guide.steps == 0 then
+        -- Stub guide — stay here, Quest Log Follow mode handles display
+        if not silent then
+            self:ShowToast("Following: " .. (guide.title or self.guideID))
+        end
+        return
+    end
+
     if guide.nextGuide and TA.Guides[guide.nextGuide] then
         local GP = TA:GetModule("GuideParser")
         local nextGuide = TA.Guides[guide.nextGuide]
         -- Only chain if the next guide is applicable to this player
         if not GP or GP:IsGuideApplicable(nextGuide) then
             if not silent then
-                print(string.format("|cFF4AFF7A[TA Tracker]|r Guide complete! Chaining to '%s'.",
-                    nextGuide.title or guide.nextGuide))
+                self:ShowToast("Guide complete! Next: " .. (nextGuide.title or guide.nextGuide))
             end
             self.guideID = guide.nextGuide
             self.stepIdx = 1
@@ -244,22 +459,38 @@ function QT:FastForward(silent)
     end
 
     if not silent then
-        print("|cFF4AFF7A[TA Tracker]|r Guide appears complete.")
+        self:ShowToast("Guide complete!")
     end
 end
 
 -- ── Guide management ──────────────────────────────────────────────────────────
 
 -- Walk map hierarchy so a sub-zone player map still matches the guide's parent zone.
-local function MapIsInZone(playerMapID, guideZone)
-    if not guideZone or guideZone == 0 then return false end
-    if playerMapID == guideZone then return true end
-    local info = C_Map.GetMapInfo(playerMapID)
-    while info and info.parentMapID and info.parentMapID > 0 do
-        if info.parentMapID == guideZone then return true end
+--- How closely does the player's current map match a guide's `zone`?
+--- @return number|nil — 0 for an exact match, 1 for parent, 2 for grandparent,
+---         and so on; nil when the guide's zone is not an ancestor at all.
+---
+--- Returning a distance rather than a boolean matters because guides legitimately
+--- sit at different levels of the map tree. TAG_Midnight_Intro is keyed to
+--- Quel'Thalas (2537) while TAG_Eversong_Midnight is keyed to Eversong (2395) —
+--- and Eversong's parent *is* Quel'Thalas, so standing in Eversong matches both.
+--- Without a specificity measure the winner came down to whichever had the lower
+--- minLevel (and then alphabetical id), so the broad parent guide could beat the
+--- specific zone guide. Callers should prefer the smallest distance.
+local function MapZoneDistance(playerMapID, guideZone)
+    if not guideZone or guideZone == 0 or not playerMapID then return nil end
+    if playerMapID == guideZone then return 0 end
+    local info, depth = C_Map.GetMapInfo(playerMapID), 0
+    while info and info.parentMapID and info.parentMapID > 0 and depth < 12 do
+        depth = depth + 1
+        if info.parentMapID == guideZone then return depth end
         info = C_Map.GetMapInfo(info.parentMapID)
     end
-    return false
+    return nil
+end
+
+local function MapIsInZone(playerMapID, guideZone)
+    return MapZoneDistance(playerMapID, guideZone) ~= nil
 end
 
 function QT:GetSortedGuideList()
@@ -278,8 +509,19 @@ function QT:SetGuide(guideID)
     if not guide then return end
     self.guideID = guideID
     self.stepIdx = 1
+    self._questLogFollowMode = (#guide.steps == 0)
     self:FastForward(true)   -- silently snap to the player's real position
     self:SaveState()
+    -- Ensure BOTH views update (standalone tracker + drawer)
+    self:UpdateWindow()
+    if TA.db and TA.db.useUnifiedUI then
+        self:UpdateDrawer()
+    end
+    -- Show the standalone tracker if not already visible
+    if self.window and not self.window:IsVisible() then
+        self.window:Show()
+        if TA.charDB then TA.charDB.tracker.visible = true end
+    end
 end
 
 function QT:SmartMatchGuideFromLog()
@@ -342,15 +584,26 @@ function QT:AutoSelectGuide()
     local currentMap = C_Map.GetBestMapForUnit("player")
     local list       = self:GetSortedGuideList()
 
-    -- Pass 1: level + zone match (most specific)
+    -- Pass 1: level + zone match, most specific zone wins.
+    -- `list` is sorted by ascending minLevel, so iterating and taking the first
+    -- hit would let a broad parent-zone guide beat the guide for the exact zone
+    -- you're standing in. Score every candidate and keep the closest instead.
+    local bestZoneID, bestDist = nil, math.huge
     for _, entry in ipairs(list) do
         local g = TA.Guides[entry.id]
         local levelMatch = level >= (g.minLevel or 1) and level <= (g.maxLevel or 999)
-        local zoneMatch  = currentMap and MapIsInZone(currentMap, g.zone)
-        if levelMatch and zoneMatch then
-            self:SetGuide(entry.id)
-            return
+        if levelMatch then
+            local dist = MapZoneDistance(currentMap, g.zone)
+            -- Strict < keeps the existing sort order as the tie-breaker.
+            if dist and dist < bestDist then
+                bestDist   = dist
+                bestZoneID = entry.id
+            end
         end
+    end
+    if bestZoneID then
+        self:SetGuide(bestZoneID)
+        return
     end
 
     -- Pass 2: level match only — zone IDs on PTR guides are often placeholder
@@ -373,6 +626,36 @@ function QT:AutoSelectGuide()
     end
     if bestLevelID then
         self:SetGuide(bestLevelID)
+        return
+    end
+
+    -- Pass 3: Universal starter fallback — if player is level 1-10 and nothing
+    -- matched (e.g. in a race-specific starter zone with no dedicated guide),
+    -- switch to Quest Log Follow mode. The tracker will show the player's
+    -- supertracked quest from Blizzard's system directly.
+    if level <= 10 then
+        -- Try exiles_reach first (it covers the most common case)
+        if TA.Guides["exiles_reach"] then
+            -- Check if any Exile's Reach quests are in the log
+            local erGuide = TA.Guides["exiles_reach"]
+            for _, step in ipairs(erGuide.steps) do
+                if step.questID and C_QuestLog.GetLogIndexForQuestID(step.questID) then
+                    self:SetGuide("exiles_reach")
+                    return
+                end
+            end
+        end
+        -- No Exile's Reach quests — player is in a race-specific zone.
+        -- Set guideID to a special sentinel so the tracker shows quest-log mode.
+        self.guideID = nil
+        self.stepIdx = 1
+        self._questLogFollowMode = true
+        return
+    end
+
+    -- Pass 4: Any guide at all — absolute last resort for edge cases
+    if #list > 0 then
+        self:SetGuide(list[1].id)
         return
     end
 
@@ -606,7 +889,27 @@ function QT:HandleAutoQuest(event)
             end
         end
 
-        -- Multiple choices, no guide preference: let the player decide
+        -- Multiple choices, no guide preference: pick highest ilvl/score upgrade
+        -- This is the Zygor-like "smart reward" — always picks the biggest upgrade.
+        local bestIdx, bestScore = 1, -1
+        local GearMod = TA:GetModule("Gear")
+        for i = 1, numChoices do
+            local link = GetQuestItemLink("choice", i)
+            if link then
+                local ilvl = U.GetItemIlvl and U.GetItemIlvl(link) or 0
+                local score = ilvl  -- default to ilvl comparison
+                -- Use Gear module's scoring if available
+                if GearMod and GearMod.ScoreItem then
+                    local s = GearMod:ScoreItem(link)
+                    if s and s > 0 then score = s end
+                end
+                if score > bestScore then
+                    bestScore = score
+                    bestIdx = i
+                end
+            end
+        end
+        GetQuestReward(bestIdx)
         -- (don't auto-complete — this is the correct behavior)
 
     elseif event == "GOSSIP_SHOW" then
@@ -735,21 +1038,79 @@ function QT:Init()
     if t.cutsceneSkip        == nil then t.cutsceneSkip        = false end
     if t.autoEquip           == nil then t.autoEquip           = false end
     if t.autoQuestGuideOnly  == nil then t.autoQuestGuideOnly  = false end
+    if t.rank                == nil then t.rank                = 2     end  -- 1=speed, 2=normal, 3=completionist
+
+    -- Guide display settings
+    if t.showAvailableQuests  == nil then t.showAvailableQuests  = true  end
+    if t.smallMapPins         == nil then t.smallMapPins         = false end
+    if t.showCategoryGrid     == nil then t.showCategoryGrid     = false end
+    if t.showCategoryHeaders  == nil then t.showCategoryHeaders  = true  end
+    if t.groupCompleted       == nil then t.groupCompleted       = true  end
+    if t.groupIgnored         == nil then t.groupIgnored         = true  end
+    if t.showQuestChainTooltip == nil then t.showQuestChainTooltip = true end
+    if t.spoilerFree          == nil then t.spoilerFree          = false end
+    if t.useTomTomWaypoints   == nil then t.useTomTomWaypoints   = false end
+    if t.accountBound         == nil then t.accountBound         = false end
 
     if t.guideID and TA.Guides and TA.Guides[t.guideID] then
         self.guideID = t.guideID
         self.stepIdx = t.stepIdx or 1
         self:FastForward(true)   -- re-sync on login in case progress happened offline
+    elseif t.guideID then
+        -- Guide was saved but isn't loaded yet (e.g. BtWQuests LoadOnDemand).
+        -- Try a deferred restore after 2 seconds when imports may have finished.
+        self.guideID = nil
+        self.stepIdx = 1
+        C_Timer.After(2, function()
+            if not QT.guideID and t.guideID and TA.Guides and TA.Guides[t.guideID] then
+                QT.guideID = t.guideID
+                QT.stepIdx = t.stepIdx or 1
+                QT:FastForward(true)
+                QT:UpdateWindow()
+            elseif not QT.guideID then
+                -- Still no guide after deferred wait — scan quest log
+                QT:AutoSelectGuide()
+                if QT.guideID then QT:UpdateWindow() end
+            end
+        end)
     else
         self:AutoSelectGuide()
     end
 
     self:InitWindow()
 
-    if t.visible then
+    -- ALWAYS show the tracker on login if a guide is active (or will be).
+    -- The 10/10 experience means the player never has to manually open anything.
+    if self.guideID then
+        self.window:Show()
+        if TA.charDB then TA.charDB.tracker.visible = true end
+        self:UpdateBlizzardTrackerVisibility()
+    elseif t.visible then
         self.window:Show()
         self:UpdateBlizzardTrackerVisibility()
+    else
+        -- No guide found yet — show anyway so player sees "scanning..." state
+        -- rather than an invisible addon. Deferred: if AutoSelectGuide fires
+        -- from the quest log scan, the window will update automatically.
+        self.window:Show()
+        if TA.charDB then TA.charDB.tracker.visible = true end
     end
+
+    -- Proactive quest log full detection — notify player after a brief delay
+    -- so the window is visible and the toast has somewhere to show.
+    C_Timer.After(3, function()
+        if not QT.window then return end
+        local MAX_QUESTS = C_QuestLog.GetMaxNumQuestsCanAccept and C_QuestLog.GetMaxNumQuestsCanAccept() or 35
+        local numEntries = C_QuestLog.GetNumQuestLogEntries() or 0
+        local count = 0
+        for i = 1, numEntries do
+            local info = C_QuestLog.GetInfo(i)
+            if info and not info.isHeader then count = count + 1 end
+        end
+        if count >= MAX_QUESTS - 1 then
+            QT:ShowToast("Quest log full (" .. count .. "/" .. MAX_QUESTS .. ") — right-click to clean up", 5)
+        end
+    end)
 end
 
 -- ── Window layout constants ───────────────────────────────────────────────────
@@ -780,7 +1141,11 @@ end
 local function MakeBtn(parent, w, h, label, onClick)
     local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
     btn:SetSize(w, h)
-    ApplyBD(btn, 0.18, 0.13, 0.01, 0.90, 0.55, 0.40, 0.08)
+    if TA.Modern and TA.Modern.ApplyBackdrop then
+        TA.Modern:ApplyBackdrop(btn, "card")
+    else
+        ApplyBD(btn, 0.18, 0.13, 0.01, 0.90, 0.55, 0.40, 0.08)
+    end
     btn:EnableMouse(true)
     local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     lbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
@@ -854,7 +1219,19 @@ function QT:InitWindow()
             TA.charDB.tracker.y = f:GetTop()
         end
     end)
-    ApplyBD(win, 0.05, 0.04, 0.02, 0.97, 0.55, 0.40, 0.08)
+
+    -- ── Right-Click Context Menu on the Tracker ──────────────────────────────
+    -- This is the ENTIRE command surface for 10/10 UX. No slash commands needed.
+    win:SetScript("OnMouseUp", function(f, button)
+        if button == "RightButton" then
+            QT:ShowTrackerMenu(f)
+        end
+    end)
+    if TA.Modern and TA.Modern.ApplyGlassBackdrop then
+        TA.Modern:ApplyGlassBackdrop(win)
+    else
+        ApplyBD(win, 0.05, 0.04, 0.02, 0.97, 0.55, 0.40, 0.08)
+    end
 
     local saved = TA.charDB and TA.charDB.tracker
     if saved and saved.x and saved.y then
@@ -870,11 +1247,15 @@ function QT:InitWindow()
     titleBar:SetPoint("TOPLEFT",  win, "TOPLEFT",  0, 0)
     titleBar:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, 0)
     titleBar:SetHeight(28)
-    ApplyBD(titleBar, 0.18, 0.13, 0.01, 1.00, 0.55, 0.40, 0.08)
+    if TA.Modern and TA.Modern.ApplyBackdrop then
+        TA.Modern:ApplyBackdrop(titleBar, "header")
+    else
+        ApplyBD(titleBar, 0.18, 0.13, 0.01, 1.00, 0.55, 0.40, 0.08)
+    end
 
     local titleLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     titleLabel:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-    titleLabel:SetText("|cFFFFD100ToonAge|r")
+    titleLabel:SetText("|cFFEBE8DEToonAge|r")
     titleLabel:SetPoint("LEFT", titleBar, "LEFT", PAD, 0)
 
     local xBtn = MakeBtn(titleBar, 22, 22, "x", function() self:ToggleWindow() end)
@@ -882,91 +1263,29 @@ function QT:InitWindow()
     xBtn._lbl:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
     xBtn._lbl:SetTextColor(0.85, 0.30, 0.15, 1)
 
-    -- "=" options button (Unicode gear glyphs don't render in STANDARD_TEXT_FONT)
+    -- "=" settings button → opens centralized settings drawer
     local optBtn = MakeBtn(titleBar, 22, 22, "=", function()
-        if self.optionsFrame:IsShown() then self.optionsFrame:Hide()
-        else self.optionsFrame:Show() end
+        TA:ToggleOptionsPanel()
     end)
     optBtn:SetPoint("RIGHT", xBtn, "LEFT", -3, 0)
 
-    -- ── Options panel ────────────────────────────────────────────────────────
-    local optPanel = CreateFrame("Frame", nil, win, "BackdropTemplate")
-    optPanel:SetSize(W, 150)
-    optPanel:SetFrameStrata("HIGH")
-    optPanel:SetPoint("TOP", win, "BOTTOM", 0, -2)
-    ApplyBD(optPanel, 0.04, 0.03, 0.01, 0.98, 0.55, 0.40, 0.08)
-    optPanel:Hide()
-    self.optionsFrame = optPanel
-
-    -- Note: WoW setter methods return nil, so method chains like
-    -- CreateFontString():SetFont():SetText() silently discard the string.
-    -- Each call must be on a separate line.
-    local optTitle = optPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    optTitle:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-    optTitle:SetText("TRACKER SETTINGS")
-    optTitle:SetTextColor(0.55, 0.40, 0.08, 1)
-    optTitle:SetPoint("TOPLEFT", optPanel, "TOPLEFT", PAD, -8)
-
-    MakeCheckbox(optPanel, PAD, -24,
-        "Hide default Blizzard Quest Tracker",
-        "replaceBlizzTracker",
-        function() self:UpdateBlizzardTrackerVisibility() end)
-
-    MakeCheckbox(optPanel, PAD, -40,
-        "Auto-accept & auto-turn-in quests  (hold Shift to pause)",
-        "autoQuest", nil)
-
-    MakeCheckbox(optPanel, PAD, -56,
-        "  └ Only accept quests in active guide",
-        "autoQuestGuideOnly", nil)
-
-    MakeCheckbox(optPanel, PAD, -72,
-        "Skip cutscenes automatically",
-        "cutsceneSkip", nil)
-
-    MakeCheckbox(optPanel, PAD, -88,
-        "Auto-equip looted upgrades  (hold Shift to pause)",
-        "autoEquip", nil)
-
-    -- ── Feature toggles (direct, no reload needed) ───────────────────────────
-    local featTitle = optPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    featTitle:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-    featTitle:SetText("FEATURES")
-    featTitle:SetTextColor(0.55, 0.40, 0.08, 1)
-    featTitle:SetPoint("TOPLEFT", optPanel, "TOPLEFT", PAD, -108)
-
-    -- NavHud toggle button (instant show/hide, no reload)
-    local hudBtn = MakeBtn(optPanel, 90, 18, "NavHud: ON", function()
-        local NH = TA:GetModule("NavHud")
-        if NH then
-            NH:Toggle()
-            local isOn = NH:IsVisible()
-            hudBtn._lbl:SetText("NavHud: " .. (isOn and "|cFF4AFF7AON|r" or "|cFFFF4444OFF|r"))
+    -- "Guides" button → opens main UI to Guide tab
+    local browseBtn = MakeBtn(titleBar, 50, 22, "Guides", function()
+        if TA.UI then
+            if not TA.UI:IsVisible() then TA.UI:Show() end
+            TA.UI:SetTab("guide")
         end
     end)
-    hudBtn:SetPoint("TOPLEFT", optPanel, "TOPLEFT", PAD, -124)
-    -- Set initial label
-    local NH = TA:GetModule("NavHud")
-    if NH and NH.IsVisible and NH:IsVisible() then
-        hudBtn._lbl:SetText("NavHud: |cFF4AFF7AON|r")
-    else
-        hudBtn._lbl:SetText("NavHud: |cFFFF4444OFF|r")
-    end
+    browseBtn:SetPoint("RIGHT", optBtn, "LEFT", -3, 0)
+    browseBtn._lbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    browseBtn._lbl:SetTextColor(0.29, 0.65, 1.00, 1)
 
-    -- Arrow toggle button
-    local arrowBtn = MakeBtn(optPanel, 90, 18, "Arrow: ON", function()
-        local Arrow = TA:GetModule("Arrow")
-        if Arrow then Arrow:Toggle() end
-        local isOn = Arrow and Arrow.frame and Arrow.frame:IsVisible()
-        arrowBtn._lbl:SetText("Arrow: " .. (isOn and "|cFF4AFF7AON|r" or "|cFFFF4444OFF|r"))
-    end)
-    arrowBtn:SetPoint("LEFT", hudBtn, "RIGHT", 6, 0)
-    local Arrow = TA:GetModule("Arrow")
-    if Arrow and Arrow.frame and Arrow.frame:IsVisible() then
-        arrowBtn._lbl:SetText("Arrow: |cFF4AFF7AON|r")
-    else
-        arrowBtn._lbl:SetText("Arrow: |cFFFF4444OFF|r")
-    end
+    -- Legacy optionsFrame reference (some code references self.optionsFrame)
+    -- Create a minimal hidden frame so :IsShown() calls don't error
+    local optPanel = CreateFrame("Frame", nil, win)
+    optPanel:SetSize(1, 1)
+    optPanel:Hide()
+    self.optionsFrame = optPanel
 
     -- ── Guide navigation row ─────────────────────────────────────────────────
     local prevBtn = MakeBtn(win, 24, 20, "<", function() self:CycleGuide(-1) end)
@@ -977,8 +1296,10 @@ function QT:InitWindow()
 
     -- Browse button (opens guide shelf/picker)
     local browseBtn = MakeBtn(win, 20, 20, "☰", function()
-        local GB = TA:GetModule("GuideBrowser")
-        if GB then GB:ShowBrowser() end
+        if TA.UI then
+            if not TA.UI:IsVisible() then TA.UI:Show() end
+            TA.UI:SetTab("guide")
+        end
     end)
     browseBtn:SetPoint("RIGHT", nextBtn, "LEFT", -2, 0)
     browseBtn:SetScript("OnEnter", function(f)
@@ -1106,13 +1427,19 @@ function QT:InitWindow()
     -- The button is parented to UIParent (not the tracker window) so it can be
     -- independently positioned and remains visible even if the tracker is closed.
     -- Saved position: charDB.questItem.x / .y (TOPLEFT relative to BOTTOMLEFT).
-    local qib = CreateFrame("Button", "TAQuestItemButton", UIParent, "BackdropTemplate")
+    -- SecureActionButtonTemplate is required so the actual "use item" action
+    -- survives combat lockdown. type/item attributes may only be written
+    -- outside combat (guarded in UpdateQuestItemButton below) — but once
+    -- set, the click-to-use itself works in or out of combat since Blizzard's
+    -- own secure click handling performs it, not our Lua OnClick.
+    local qib = CreateFrame("Button", "TAQuestItemButton", UIParent, "SecureActionButtonTemplate, BackdropTemplate")
     qib:SetSize(46, 46)
     qib:SetFrameStrata("HIGH")
     qib:SetMovable(true)
     qib:EnableMouse(true)
     qib:RegisterForDrag("LeftButton")
     qib:SetClampedToScreen(true)
+    qib:SetAttribute("type", "item")
     qib:SetScript("OnDragStart", qib.StartMoving)
     qib:SetScript("OnDragStop", function(f)
         f:StopMovingOrSizing()
@@ -1159,31 +1486,11 @@ function QT:InitWindow()
     end)
     qib:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    qib:SetScript("OnClick", function(f, btn)
-        if btn ~= "LeftButton" then return end
-        if not f._itemID then return end
-        -- Find the item in bags and use it
-        for bag = 0, 4 do
-            local slots = C_Container and C_Container.GetContainerNumSlots(bag)
-                       or GetContainerNumSlots(bag)
-            for slot = 1, (slots or 0) do
-                local itemID
-                if C_Container and C_Container.GetContainerItemID then
-                    itemID = C_Container.GetContainerItemID(bag, slot)
-                else
-                    itemID = GetContainerItemID(bag, slot)
-                end
-                if itemID == f._itemID then
-                    if C_Container and C_Container.UseContainerItem then
-                        C_Container.UseContainerItem(bag, slot)
-                    else
-                        UseContainerItem(bag, slot)
-                    end
-                    return
-                end
-            end
-        end
-    end)
+    -- No OnClick script: this is a secure "type=item" button now, so
+    -- Blizzard's own protected click handling performs the actual item use
+    -- based on the "item" attribute set in UpdateQuestItemButton. Adding a
+    -- manual OnClick that calls UseContainerItem here would reintroduce the
+    -- combat-taint problem this change exists to avoid.
 
     qib:Hide()
     win.questItemBtn = qib
@@ -1244,11 +1551,20 @@ function QT:UpdateQuestItemButton()
     qib._itemID = itemID
 
     -- Set icon from item cache (may require a server round-trip on first call)
-    local _, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(itemID)
+    local itemName, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(itemID)
     if itemTexture then
         qib.iconTex:SetTexture(itemTexture)
     else
         qib.iconTex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    end
+
+    -- Secure "item" attribute drives the actual click-to-use action and can
+    -- only be written outside combat. If the step changes mid-combat before
+    -- the name is known, the button stays on whatever item it last pointed
+    -- at until combat ends and this runs again — a known secure-button
+    -- limitation, not a bug.
+    if itemName and not InCombatLockdown() and qib:GetAttribute("item") ~= itemName then
+        qib:SetAttribute("item", itemName)
     end
 
     qib.countF:SetText(count > 1 and tostring(count) or "")
@@ -1273,32 +1589,125 @@ function QT:UpdateWindow()
     local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
 
     if not guide then
-        win.guideTitleF:SetText("|cFFFF8800No Active Guide|r")
+        -- Instead of showing a dead "No Active Guide" state, actively try to
+        -- find a guide from the quest log. The player should NEVER see this
+        -- state for more than a brief moment.
+        if not self._autoSelectAttempted then
+            self._autoSelectAttempted = true
+            C_Timer.After(0.5, function()
+                if not QT.guideID then
+                    QT:AutoSelectGuide()
+                    if QT.guideID then
+                        QT:UpdateWindow()
+                        QT:ShowToast("Following: " .. (TA.Guides[QT.guideID].title or QT.guideID))
+                    else
+                        QT:UpdateWindow()
+                    end
+                end
+            end)
+        end
+
+        win.guideTitleF:SetText("|cFF888780Scanning quests...|r")
         win.stepNumF:SetText("")
         win.stepBadgeF:SetText("")
 
-        -- Show diagnostic context inline so the player knows what the tracker
-        -- sees without having to open the console. This is the most common
-        -- point of confusion when guides have placeholder zone IDs.
-        local level   = UnitLevel("player") or 1
-        local mapID   = C_Map.GetBestMapForUnit("player")
-        local mapInfo = mapID and C_Map.GetMapInfo(mapID)
-        local zone    = mapInfo and mapInfo.name or ("map " .. tostring(mapID))
-        local loaded  = 0
+        local loaded = 0
         for _ in pairs(TA.Guides or {}) do loaded = loaded + 1 end
+
+        -- Detect quest log capacity
+        local numQuests = C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetNumQuestLogEntries() or 0
+        local MAX_QUESTS = C_QuestLog.GetMaxNumQuestsCanAccept and C_QuestLog.GetMaxNumQuestsCanAccept() or 35
+        -- Count actual quests (not headers)
+        local actualQuestCount = 0
+        for i = 1, numQuests do
+            local info = C_QuestLog.GetInfo(i)
+            if info and not info.isHeader then
+                actualQuestCount = actualQuestCount + 1
+            end
+        end
+        local isLogFull = (actualQuestCount >= MAX_QUESTS - 1)  -- -1 buffer
 
         local body
         if loaded == 0 then
             body = "|cFFFF4444No guides loaded.|r\n"
                .. "Check for GuideParser errors at login."
-        else
+        elseif isLogFull then
+            -- FULL QUEST LOG — offer both paths: finish quests OR drop old ones
+            win.guideTitleF:SetText("|cFFFF9A1AQuest Log Full|r")
             body = string.format(
-                "|cFF888780Level %d  ·  %s|r\n"
-              .. "%d guide(s) loaded — none matched your zone or level.\n\n"
-              .. "Use |cFFFFD100< >|r to pick a guide manually, "
-              .. "|cFFFFD100>> Sync|r after selecting, "
-              .. "or |cFFFFD100/ta diag|r to see why matching failed.",
-                level, zone, loaded)
+                "|cFFFF9A1AYour quest log is full (%d/%d).|r\n\n"
+             .. "|cFFFFD100Right-click this tracker|r for options:\n\n"
+             .. "|cFF4AFF7A• Quest Log Advisor|r\n"
+             .. "  See which quests are closest to done.\n"
+             .. "  Finish them to free slots naturally.\n\n"
+             .. "|cFFFF9A1A• Clean Up Quest Log|r\n"
+             .. "  Drop old/grey quests you've outleveled.",
+                actualQuestCount, MAX_QUESTS)
+        else
+            -- ── QUEST LOG FOLLOW MODE ─────────────────────────────────────
+            -- No guide matches this zone. Instead of a dead state, show the
+            -- player's currently tracked/supertracked quest from WoW's system.
+            -- This gives useful guidance in any zone without guide data.
+            local trackedQuestID = nil
+            local trackedTitle = nil
+            local trackedObjectives = nil
+
+            -- Try supertracked quest first
+            if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
+                trackedQuestID = C_SuperTrack.GetSuperTrackedQuestID()
+                if trackedQuestID and trackedQuestID > 0 then
+                    trackedTitle = C_QuestLog.GetTitleForQuestID(trackedQuestID)
+                    trackedObjectives = C_QuestLog.GetQuestObjectives(trackedQuestID)
+                end
+            end
+
+            -- Fallback: find the first in-progress quest in the log
+            if not trackedTitle then
+                local numEntries = C_QuestLog.GetNumQuestLogEntries() or 0
+                for i = 1, numEntries do
+                    local info = C_QuestLog.GetInfo(i)
+                    if info and not info.isHeader and info.questID then
+                        local idx = C_QuestLog.GetLogIndexForQuestID(info.questID)
+                        if idx and not C_QuestLog.IsQuestFlaggedCompleted(info.questID) then
+                            trackedQuestID = info.questID
+                            trackedTitle = info.title
+                            trackedObjectives = C_QuestLog.GetQuestObjectives(info.questID)
+                            break
+                        end
+                    end
+                end
+            end
+
+            if trackedTitle then
+                win.guideTitleF:SetText("|cFF1EBCFFFollowing Quest Log|r")
+
+                local lines = {}
+                lines[#lines + 1] = "|cFFFFD100" .. trackedTitle .. "|r"
+
+                if trackedObjectives and #trackedObjectives > 0 then
+                    for _, obj in ipairs(trackedObjectives) do
+                        if obj.text and obj.text ~= "" then
+                            local clr = obj.finished and "|cFF4AFF7A✓ " or "|cFFFFFFFF  "
+                            lines[#lines + 1] = clr .. obj.text .. "|r"
+                        end
+                    end
+                end
+
+                lines[#lines + 1] = ""
+                lines[#lines + 1] = "|cFF888780No ToonAge guide for this zone yet.|r"
+                lines[#lines + 1] = "|cFF888780Following your quest tracker instead.|r"
+
+                body = table.concat(lines, "\n")
+
+                -- Point the arrow at this quest's waypoint
+                if trackedQuestID and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+                    pcall(C_SuperTrack.SetSuperTrackedQuestID, trackedQuestID)
+                end
+            else
+                body = "|cFF888780No active quests found.|r\n\n"
+                   .. "Pick up a quest from a nearby NPC\n"
+                   .. "and ToonAge will start tracking it."
+            end
         end
 
         win.stepTextF:SetText(body)
@@ -1310,6 +1719,66 @@ function QT:UpdateWindow()
     end
 
     local total = #guide.steps
+
+    -- Stub guide (0 steps) — show Quest Log Follow mode with the guide's title
+    if total == 0 then
+        win.guideTitleF:SetText(guide.title or "Guide")
+        win.stepNumF:SetText("|cFF1EBCFFQuest Log Follow|r")
+        win.stepBadgeF:SetText("")
+
+        -- Show tracked quest from Blizzard's system
+        local trackedQuestID, trackedTitle, trackedObjectives
+        if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
+            trackedQuestID = C_SuperTrack.GetSuperTrackedQuestID()
+            if trackedQuestID and trackedQuestID > 0 then
+                trackedTitle = C_QuestLog.GetTitleForQuestID(trackedQuestID)
+                trackedObjectives = C_QuestLog.GetQuestObjectives(trackedQuestID)
+            end
+        end
+        if not trackedTitle then
+            local numEntries = C_QuestLog.GetNumQuestLogEntries() or 0
+            for i = 1, numEntries do
+                local info = C_QuestLog.GetInfo(i)
+                if info and not info.isHeader and info.questID
+                   and not C_QuestLog.IsQuestFlaggedCompleted(info.questID) then
+                    trackedQuestID = info.questID
+                    trackedTitle = info.title
+                    trackedObjectives = C_QuestLog.GetQuestObjectives(info.questID)
+                    break
+                end
+            end
+        end
+
+        if trackedTitle then
+            local lines = {}
+            lines[#lines+1] = "|cFFFFD100" .. trackedTitle .. "|r"
+            if trackedObjectives then
+                for _, obj in ipairs(trackedObjectives) do
+                    if obj.text and obj.text ~= "" then
+                        local clr = obj.finished and "|cFF4AFF7A\226\156\147 " or "|cFFFFFFFF  "
+                        lines[#lines+1] = clr .. obj.text .. "|r"
+                    end
+                end
+            end
+            win.stepTextF:SetText(table.concat(lines, "\n"))
+        else
+            win.stepTextF:SetText("|cFF888780Follow quests in this zone.\nThe arrow tracks your active quest.|r")
+        end
+
+        win.questStatusF:SetText("")
+        win.nextStepF:SetText("|cFF888780Guide data coming soon — using quest tracker|r")
+
+        -- Ensure arrow points to tracked quest
+        if trackedQuestID and C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID then
+            pcall(C_SuperTrack.SetSuperTrackedQuestID, trackedQuestID)
+        end
+
+        -- Contextual hint
+        local hint = "|cFF1EBCFF\226\134\146 Following your quest log|r"
+        win.tipF:SetText(hint)
+        return
+    end
+
     self.stepIdx = math.max(1, math.min(total, self.stepIdx))
     local step = guide.steps[self.stepIdx]
 
@@ -1341,6 +1810,20 @@ function QT:UpdateWindow()
             end
         end
 
+        -- Line 1.5: Smart action status — tell the player WHAT to do
+        if step.questID then
+            local questStatus = self:GetQuestStatus(step.questID)
+            if questStatus == "available" then
+                -- Quest not in log, not complete — player needs to PICK IT UP
+                headLines[#headLines + 1] = "|cFF4AFF7A→ Go pick up this quest|r"
+            elseif questStatus == "turnin" then
+                headLines[#headLines + 1] = "|cFFFFD100→ Turn in this quest|r"
+            elseif questStatus == "complete" then
+                headLines[#headLines + 1] = "|cFF888780✓ Already done|r"
+            end
+            -- "inprogress" shows objectives below, no extra line needed
+        end
+
         -- Line 2: guide step prose
         headLines[#headLines + 1] = step.text or ""
 
@@ -1361,7 +1844,18 @@ function QT:UpdateWindow()
         local tailLines = {}
         local coord = step.coord
         if coord and coord.map == 0 and coord.x == 0 and coord.y == 0 then
-            tailLines[#tailLines + 1] = "|cFF888780[No waypoint — use /coord at the NPC]|r"
+            -- Check if the Arrow can resolve coordinates via its fallback chain
+            local Arrow = TA:GetModule("Arrow")
+            local resolved = false
+            if Arrow and Arrow.GetEffectiveCoord then
+                local rm, rx, ry = Arrow.GetEffectiveCoord(step)
+                if rm and rm ~= 0 and (rx ~= 0 or ry ~= 0) then
+                    resolved = true  -- Arrow found it, no need for a hint
+                end
+            end
+            if not resolved then
+                tailLines[#tailLines + 1] = "|cFF888780[Follow the arrow or check your map (M)]|r"
+            end
         end
 
         local function Assemble(shownObjCount)
@@ -1406,6 +1900,12 @@ function QT:UpdateWindow()
         win.nextStepF:SetText("|cFF8B7040Next:|r " .. nextText)
     else
         win.nextStepF:SetText(self.stepIdx >= total and "|cFF8B7040Final step|r" or "")
+    end
+
+    -- Contextual hint: explain WHY this step is currently selected
+    local hint = self:GetStepContextHint(guide, self.stepIdx)
+    if hint then
+        win.tipF:SetText(hint)
     end
 
     -- Done button state
@@ -1573,8 +2073,1260 @@ function QT:ToggleWindow()
     end
 end
 
+-- ── Drop Unrelated Quests ─────────────────────────────────────────────────────
+-- Shows a popup listing all quests in the player's log that are NOT part of the
+-- active guide. Player reviews the list and confirms before any quests are abandoned.
+
+-- ── Smart Quest Log Analyzer ──────────────────────────────────────────────────
+-- Categorizes ALL quests in the log by expansion/relevance and suggests safe drops.
+-- Works even without an active guide selected.
+
+function QT:AnalyzeQuestLog()
+    local playerLevel = UnitLevel("player") or 1
+    local results = {
+        currentExpansion = {},  -- quests matching player's level bracket
+        oldExpansion     = {},  -- quests from previous expansions (safe to drop)
+        lowLevel         = {},  -- grey/trivial quests
+        guideRelated     = {},  -- quests in the active guide
+        unknown          = {},  -- can't classify
+    }
+
+    -- Build set of guide quest IDs
+    local guideQuestIDs = {}
+    if self.guideID and TA.Guides[self.guideID] then
+        for _, step in ipairs(TA.Guides[self.guideID].steps or {}) do
+            if step.questID then guideQuestIDs[step.questID] = true end
+        end
+    end
+
+    -- Also check all midnight guides for quest IDs (protect current expansion quests)
+    local midnightQuestIDs = {}
+    for id, guide in pairs(TA.Guides or {}) do
+        if guide.expansion == "midnight" or (guide.minLevel and guide.minLevel >= 80) then
+            for _, step in ipairs(guide.steps or {}) do
+                if step.questID then midnightQuestIDs[step.questID] = true end
+            end
+        end
+    end
+
+    local numEntries = C_QuestLog.GetNumQuestLogEntries()
+    for i = 1, numEntries do
+        local info = C_QuestLog.GetInfo(i)
+        if info and not info.isHeader and info.questID then
+            local entry = {
+                questID = info.questID,
+                title   = info.title or ("Quest #" .. info.questID),
+                level   = info.difficultyLevel or 0,
+                isComplete = info.isComplete,
+            }
+
+            if guideQuestIDs[info.questID] then
+                table.insert(results.guideRelated, entry)
+            elseif midnightQuestIDs[info.questID] then
+                table.insert(results.currentExpansion, entry)
+            elseif entry.level > 0 and entry.level < (playerLevel - 15) then
+                table.insert(results.lowLevel, entry)
+            elseif entry.level > 0 and entry.level < (playerLevel - 5) then
+                table.insert(results.oldExpansion, entry)
+            else
+                table.insert(results.currentExpansion, entry)
+            end
+        end
+    end
+
+    results.totalQuests = #results.currentExpansion + #results.oldExpansion
+                        + #results.lowLevel + #results.guideRelated + #results.unknown
+    results.safeToDropCount = #results.lowLevel + #results.oldExpansion
+
+    return results
+end
+
+function QT:ShowQuestLogCleanup()
+    local analysis = self:AnalyzeQuestLog()
+
+    if analysis.safeToDropCount == 0 then
+        self:ShowToast("No old quests found to clean up!")
+        return
+    end
+
+    -- Build categorized list
+    local lines = {}
+    if #analysis.lowLevel > 0 then
+        table.insert(lines, "\n|cFFFF4444Trivial / Grey Quests (safe to drop):|r")
+        for i, q in ipairs(analysis.lowLevel) do
+            if i <= 10 then
+                table.insert(lines, "  • " .. q.title)
+            end
+        end
+        if #analysis.lowLevel > 10 then
+            table.insert(lines, "  ... +" .. (#analysis.lowLevel - 10) .. " more")
+        end
+    end
+
+    if #analysis.oldExpansion > 0 then
+        table.insert(lines, "\n|cFFFF9A1AOld Expansion Quests (likely safe):|r")
+        for i, q in ipairs(analysis.oldExpansion) do
+            if i <= 10 then
+                table.insert(lines, "  • " .. q.title)
+            end
+        end
+        if #analysis.oldExpansion > 10 then
+            table.insert(lines, "  ... +" .. (#analysis.oldExpansion - 10) .. " more")
+        end
+    end
+
+    local listText = table.concat(lines, "\n")
+
+    -- Combine safe-to-drop quests
+    local dropList = {}
+    for _, q in ipairs(analysis.lowLevel) do table.insert(dropList, q) end
+    for _, q in ipairs(analysis.oldExpansion) do table.insert(dropList, q) end
+
+    StaticPopupDialogs["TOONAGE_QUEST_CLEANUP"] = {
+        text = string.format(
+            "|cFFFFD100ToonAge — Quest Log Cleanup|r\n\n"
+         .. "Your log has |cFFFF9A1A%d quest(s)|r from old content\n"
+         .. "that are blocking new quest pickups.\n"
+         .. "%s\n\n"
+         .. "|cFF888780Protected: %d quest(s) in your active guide\n"
+         .. "and %d Midnight quest(s) are untouched.|r\n\n"
+         .. "|cFFFF4444Drop %d old quest(s)?|r",
+            analysis.safeToDropCount,
+            listText,
+            #analysis.guideRelated,
+            #analysis.currentExpansion,
+            analysis.safeToDropCount
+        ),
+        button1 = "Drop Old Quests",
+        button2 = "Cancel",
+        OnAccept = function()
+            local dropped = 0
+            for _, q in ipairs(dropList) do
+                C_QuestLog.SetSelectedQuest(q.questID)
+                C_QuestLog.SetAbandonQuest()
+                C_QuestLog.AbandonQuest()
+                dropped = dropped + 1
+            end
+            QT:ShowToast(dropped .. " old quests dropped — log cleared!")
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        showAlert = true,
+        preferredIndex = 3,
+    }
+    StaticPopup_Show("TOONAGE_QUEST_CLEANUP")
+end
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- QUEST LOG ADVISOR — For the Lorewalker who won't drop quests
+-- ══════════════════════════════════════════════════════════════════════════════
+-- Instead of suggesting abandonment, this mode analyzes the quest log and
+-- tells the player which quests are CLOSEST to completion so they can finish
+-- them naturally and free up slots for new content.
+
+function QT:AnalyzeQuestProgress()
+    local quests = {
+        readyToTurnIn = {},   -- complete, just need to visit the NPC
+        almostDone    = {},   -- 1 objective remaining
+        inProgress    = {},   -- partially complete
+        notStarted    = {},   -- accepted but 0 progress
+    }
+
+    local numEntries = C_QuestLog.GetNumQuestLogEntries()
+    for i = 1, numEntries do
+        local info = C_QuestLog.GetInfo(i)
+        if info and not info.isHeader and info.questID then
+            local questID = info.questID
+            local title   = info.title or ("Quest #" .. questID)
+
+            -- Check if ready for turn-in
+            local readyForTurnIn = false
+            if C_QuestLog.ReadyForTurnIn then
+                readyForTurnIn = C_QuestLog.ReadyForTurnIn(questID)
+            elseif info.isComplete then
+                readyForTurnIn = true
+            end
+
+            if readyForTurnIn then
+                table.insert(quests.readyToTurnIn, { questID = questID, title = title })
+            else
+                -- Check objective progress
+                local objectives = C_QuestLog.GetQuestObjectives(questID)
+                if objectives and #objectives > 0 then
+                    local totalObj  = #objectives
+                    local doneObj   = 0
+                    local totalProg = 0
+                    local maxProg   = 0
+
+                    for _, obj in ipairs(objectives) do
+                        if obj.finished then
+                            doneObj = doneObj + 1
+                        end
+                        if obj.numRequired and obj.numRequired > 0 then
+                            totalProg = totalProg + (obj.numFulfilled or 0)
+                            maxProg   = maxProg + obj.numRequired
+                        else
+                            maxProg   = maxProg + 1
+                            totalProg = totalProg + (obj.finished and 1 or 0)
+                        end
+                    end
+
+                    local pct = maxProg > 0 and math.floor((totalProg / maxProg) * 100) or 0
+                    local entry = { questID = questID, title = title, pct = pct,
+                                    doneObj = doneObj, totalObj = totalObj }
+
+                    if doneObj >= totalObj - 1 and totalObj > 1 then
+                        table.insert(quests.almostDone, entry)
+                    elseif pct > 0 then
+                        table.insert(quests.inProgress, entry)
+                    else
+                        table.insert(quests.notStarted, entry)
+                    end
+                else
+                    -- No objectives data — treat as in-progress
+                    table.insert(quests.inProgress, { questID = questID, title = title, pct = 0, doneObj = 0, totalObj = 0 })
+                end
+            end
+        end
+    end
+
+    -- Sort in-progress by completion % (highest first = closest to done)
+    table.sort(quests.inProgress, function(a, b) return a.pct > b.pct end)
+    table.sort(quests.almostDone, function(a, b) return a.pct > b.pct end)
+
+    return quests
+end
+
+--- Show the Quest Log Advisor — a completionist-friendly alternative to dropping quests.
+--- Tells the player which quests to FINISH first to free up slots.
+function QT:ShowQuestLogAdvisor()
+    local progress = self:AnalyzeQuestProgress()
+    local MAX_QUESTS = C_QuestLog.GetMaxNumQuestsCanAccept and C_QuestLog.GetMaxNumQuestsCanAccept() or 35
+
+    -- Count total
+    local total = #progress.readyToTurnIn + #progress.almostDone
+                + #progress.inProgress + #progress.notStarted
+
+    -- Build the advisor text for chat output (formatted nicely)
+    local function PrintSection(header, color, items, showPct)
+        if #items == 0 then return end
+        print(color .. "── " .. header .. " (" .. #items .. ") ──|r")
+        for i, q in ipairs(items) do
+            if i > 8 then
+                print("  |cFF888780... +" .. (#items - 8) .. " more|r")
+                break
+            end
+            local suffix = ""
+            if showPct and q.pct then
+                suffix = " |cFF888780(" .. q.pct .. "%)|r"
+            end
+            print("  " .. q.title .. suffix)
+        end
+    end
+
+    print("")
+    print("|cFFFFD100═══ ToonAge Quest Log Advisor ═══|r")
+    print(string.format("|cFF888780%d/%d quests in log|r", total, MAX_QUESTS))
+    print("")
+
+    if #progress.readyToTurnIn > 0 then
+        print("|cFF4AFF7A★ TURN THESE IN NOW — they're already done!|r")
+        print("|cFF4AFF7A  Each one you turn in frees a quest slot.|r")
+        PrintSection("Ready to Turn In", "|cFF4AFF7A", progress.readyToTurnIn, false)
+        print("")
+    end
+
+    if #progress.almostDone > 0 then
+        print("|cFFFFD100★ ALMOST DONE — just one objective left:|r")
+        PrintSection("Almost Done", "|cFFFFD100", progress.almostDone, true)
+        print("")
+    end
+
+    if #progress.inProgress > 0 then
+        PrintSection("In Progress (sorted by completion)", "|cFF888780", progress.inProgress, true)
+        print("")
+    end
+
+    if #progress.notStarted > 0 then
+        print("|cFFFF9A1A★ NOT STARTED — you could turn these in later.\n  Consider finishing nearby ones or saving for a future session.|r")
+        PrintSection("Not Started", "|cFFFF9A1A", progress.notStarted, false)
+        print("")
+    end
+
+    -- Smart suggestion
+    local freeableNow = #progress.readyToTurnIn
+    local freeableSoon = #progress.almostDone
+    if freeableNow > 0 then
+        print(string.format("|cFF4AFF7A→ You can free %d slot(s) immediately by turning in completed quests.|r", freeableNow))
+    elseif freeableSoon > 0 then
+        print(string.format("|cFFFFD100→ Finish %d almost-done quest(s) to free up slots without dropping anything.|r", freeableSoon))
+    else
+        print("|cFFFF9A1A→ No quests are close to completion. Consider finishing the highest-% ones first,|r")
+        print("|cFFFF9A1A  or use 'Clean Up Quest Log' to safely remove trivial/grey quests.|r")
+    end
+    print("|cFFFFD100═══════════════════════════════════|r")
+end
+
+function QT:GetUnrelatedQuests()
+    local unrelated = {}
+    local guideQuestIDs = {}
+
+    -- Build set of quest IDs in the active guide
+    if self.guideID and TA.Guides[self.guideID] then
+        local guide = TA.Guides[self.guideID]
+        for _, step in ipairs(guide.steps or {}) do
+            if step.questID then
+                guideQuestIDs[step.questID] = true
+            end
+        end
+    end
+
+    -- Scan quest log for quests NOT in the guide
+    local numEntries = C_QuestLog.GetNumQuestLogEntries()
+    for i = 1, numEntries do
+        local info = C_QuestLog.GetInfo(i)
+        if info and not info.isHeader and info.questID then
+            if not guideQuestIDs[info.questID] then
+                table.insert(unrelated, {
+                    questID = info.questID,
+                    title   = info.title or ("Quest #" .. info.questID),
+                    level   = info.difficultyLevel or 0,
+                })
+            end
+        end
+    end
+
+    return unrelated
+end
+
+function QT:ShowDropUnrelatedPopup()
+    local unrelated = self:GetUnrelatedQuests()
+
+    if #unrelated == 0 then
+        print("|cFF4AFF7A[ToonAge]|r All quests in your log are part of the active guide. Nothing to drop.")
+        return
+    end
+
+    if not self.guideID then
+        print("|cFFFF4444[ToonAge]|r No active guide selected. Select a guide first via /ta browser.")
+        return
+    end
+
+    -- Build the confirmation popup
+    local questList = ""
+    for i, q in ipairs(unrelated) do
+        questList = questList .. "\n  • " .. q.title .. " (ID: " .. q.questID .. ")"
+        if i >= 15 then
+            questList = questList .. "\n  ... and " .. (#unrelated - 15) .. " more"
+            break
+        end
+    end
+
+    StaticPopupDialogs["TOONAGE_DROP_UNRELATED"] = {
+        text = string.format(
+            "|cFFFFD100ToonAge|r\n\nDrop |cFFFF9A1A%d quest(s)|r not in your active guide?\n%s\n\n|cFFFF4444This cannot be undone!|r",
+            #unrelated, questList
+        ),
+        button1 = "Drop All Listed",
+        button2 = "Cancel",
+        OnAccept = function()
+            local dropped = 0
+            for _, q in ipairs(unrelated) do
+                C_QuestLog.SetSelectedQuest(q.questID)
+                C_QuestLog.SetAbandonQuest()
+                C_QuestLog.AbandonQuest()
+                dropped = dropped + 1
+            end
+            print(string.format("|cFFFFD100[ToonAge]|r Dropped %d unrelated quest(s).", dropped))
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        showAlert = true,
+        preferredIndex = 3,
+    }
+    StaticPopup_Show("TOONAGE_DROP_UNRELATED")
+end
+
+-- ── Tab Render (for main panel "Guide" tab) ───────────────────────────────────
+-- 3-Panel Guide Architecture:
+--   Panel 1 (sidebar) = Expansion filter list with Chromie Time suggestion
+--   Panel 2 (content) = Zone guides for selected expansion + retrospective
+--   Panel 3 (drawer)  = Active tracker or zone summary via TA.Modern:RebuildDrawerChild()
+
+-- Frame recycler for the middle panel (prevents ghost elements on re-render)
+QT.middlePanelFrames = {}
+QT._contentFrame = nil  -- reference to the content scroll child for isolated re-renders
+
+-- Expansion data for the sidebar filter
+QT._expansions = {
+    { key = "midnight",   label = "Midnight",         maxLevel = 90 },
+    { key = "warwithin",  label = "The War Within",   maxLevel = 80 },
+    { key = "df",         label = "Dragonflight",     maxLevel = 70 },
+    { key = "sl",         label = "Shadowlands",      maxLevel = 60 },
+    { key = "bfa",        label = "Battle for Azeroth", maxLevel = 50 },
+    { key = "legion",     label = "Legion",           maxLevel = 50 },
+    { key = "wod",        label = "Warlords of Draenor", maxLevel = 50 },
+    { key = "mop",        label = "Mists of Pandaria", maxLevel = 50 },
+    { key = "cata",       label = "Cataclysm",        maxLevel = 50 },
+    { key = "wotlk",      label = "Wrath of the Lich King", maxLevel = 50 },
+    { key = "tbc",        label = "The Burning Crusade", maxLevel = 50 },
+    { key = "classic",    label = "Classic",           maxLevel = 50 },
+    { key = "starter",    label = "Starter Zones",    maxLevel = 20 },
+}
+
+QT._selectedExpansion = nil  -- nil = auto-detect on first render
+
+--- Determine the best expansion filter based on active guide, player level, or zone.
+function QT:DetectBestExpansion()
+    -- Priority 1: If a guide is active, use its expansion
+    if self.guideID and TA.Guides and TA.Guides[self.guideID] then
+        local guide = TA.Guides[self.guideID]
+        if guide.expansion then return guide.expansion end
+        -- Infer from level range
+        local lvl = guide.minLevel or 1
+        if lvl >= 80 then return "midnight" end
+        if lvl >= 70 then return "warwithin" end
+        if lvl >= 60 then return "df" end
+        if lvl >= 50 then return "sl" end
+        if lvl <= 20 then return "starter" end
+    end
+
+    -- Priority 2: Based on player level
+    local playerLevel = UnitLevel("player") or 1
+    if playerLevel >= 80 then return "midnight" end
+    if playerLevel >= 70 then return "warwithin" end
+    if playerLevel >= 60 then return "df" end
+    if playerLevel >= 50 then return "sl" end
+    if playerLevel >= 45 then return "bfa" end
+    if playerLevel >= 10 then
+        -- Check Chromie Time
+        if C_ChromieTime and C_ChromieTime.GetChromieTimeExpansionOption then
+            local ok, result = pcall(C_ChromieTime.GetChromieTimeExpansionOption)
+            if ok and result then return result end
+        end
+        return "bfa"  -- default timewalking expansion
+    end
+    return "starter"
+end
+
+function QT:Render(content, sidebar)
+    local padL = 14
+    local y = -10
+    local w = content:GetWidth() - 28
+
+    -- Auto-detect expansion filter if not manually selected yet
+    if not self._selectedExpansion then
+        self._selectedExpansion = self:DetectBestExpansion()
+    end
+
+    -- ══════════════════════════════════════════════════════════════════════════
+    -- PANEL 1: LEFT SIDEBAR — Expansion Filter
+    -- ══════════════════════════════════════════════════════════════════════════
+    local sideY = -8
+    local sideW = sidebar:GetWidth() - 12
+
+    local sideTitle = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    sideTitle:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    sideTitle:SetText("EXPANSIONS")
+    sideTitle:SetTextColor(0.55, 0.40, 0.08, 1)
+    sideTitle:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, sideY)
+    sideY = sideY - 16
+
+    -- Detect Chromie Time for suggested badge
+    local chromieExpansion = nil
+    if C_ChromieTime and C_ChromieTime.GetChromieTimeExpansionOption then
+        local ok, result = pcall(C_ChromieTime.GetChromieTimeExpansionOption)
+        if ok and result then chromieExpansion = result end
+    end
+
+    -- Store sidebar buttons for highlight updates without full re-render
+    local sideButtons = {}
+
+    for _, expDef in ipairs(self._expansions) do
+        local isSelected = (self._selectedExpansion == expDef.key)
+        local isSuggested = (chromieExpansion and expDef.key == chromieExpansion)
+
+        local btn = CreateFrame("Button", nil, sidebar, "BackdropTemplate")
+        btn:SetHeight(22)
+        btn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 4, sideY)
+        btn:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -4, sideY)
+        btn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+
+        local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        lbl:SetFont(STANDARD_TEXT_FONT, 10, isSelected and "OUTLINE" or "")
+        local text = expDef.label
+        if isSuggested then
+            text = text .. " |cFF66BBFF(Suggested)|r"
+        elseif expDef.key == self:DetectBestExpansion() then
+            text = text .. " |cFF4AE0FF★|r"
+        end
+        lbl:SetText(text)
+        lbl:SetPoint("LEFT", btn, "LEFT", 6, 0)
+        lbl:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+        lbl:SetJustifyH("LEFT")
+        lbl:SetWordWrap(false)
+
+        btn._expKey = expDef.key
+        btn._lbl = lbl
+        table.insert(sideButtons, btn)
+
+        -- Apply initial visual state
+        if isSelected then
+            btn:SetBackdropColor(0.12, 0.10, 0.04, 1)
+            btn:SetBackdropBorderColor(0.40, 0.75, 1.00, 0.80)
+            lbl:SetTextColor(0.92, 0.90, 0.87, 1)
+        else
+            btn:SetBackdropColor(0.04, 0.04, 0.04, 0.80)
+            btn:SetBackdropBorderColor(0.20, 0.20, 0.20, 0.30)
+            lbl:SetTextColor(0.65, 0.60, 0.50, 1)
+        end
+
+        local expKey = expDef.key
+        btn:SetScript("OnClick", function()
+            self._selectedExpansion = expKey
+
+            -- Update ALL sidebar button visuals immediately (no re-render needed)
+            for _, sb in ipairs(sideButtons) do
+                local sel = (sb._expKey == expKey)
+                if sel then
+                    sb:SetBackdropColor(0.12, 0.10, 0.04, 1)
+                    sb:SetBackdropBorderColor(0.40, 0.75, 1.00, 0.80)
+                    sb._lbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+                    sb._lbl:SetTextColor(0.92, 0.90, 0.87, 1)
+                else
+                    sb:SetBackdropColor(0.04, 0.04, 0.04, 0.80)
+                    sb:SetBackdropBorderColor(0.20, 0.20, 0.20, 0.30)
+                    sb._lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
+                    sb._lbl:SetTextColor(0.65, 0.60, 0.50, 1)
+                end
+            end
+
+            -- Re-render ONLY the middle panel (aggressive wipe built in)
+            if self._contentFrame then
+                self:RenderMiddlePanel(self._contentFrame)
+            end
+        end)
+        btn:SetScript("OnEnter", function(f)
+            if f._expKey ~= self._selectedExpansion then
+                f:SetBackdropColor(0.10, 0.08, 0.04, 1)
+            end
+        end)
+        btn:SetScript("OnLeave", function(f)
+            if f._expKey ~= self._selectedExpansion then
+                f:SetBackdropColor(0.04, 0.04, 0.04, 0.80)
+            end
+        end)
+
+        sideY = sideY - 24
+    end
+
+    sidebar:SetHeight(math.abs(sideY) + 10)
+
+    -- Store content frame reference for isolated re-renders from sidebar clicks
+    self._contentFrame = content
+
+    -- ══════════════════════════════════════════════════════════════════════════
+    -- PANEL 2: MIDDLE CONTENT (delegated to isolated function with wipe loop)
+    -- ══════════════════════════════════════════════════════════════════════════
+    self:RenderMiddlePanel(content)
+
+    -- ══════════════════════════════════════════════════════════════════════════
+    -- PANEL 3: RIGHT DRAWER — Active Tracker or Quest Log Follow
+    -- ══════════════════════════════════════════════════════════════════════════
+    if TA.Modern and TA.Modern.RebuildDrawerChild and TA.db and TA.db.useUnifiedUI then
+        -- UpdateDrawer handles both states: active guide OR Quest Log Follow mode
+        self:UpdateDrawer()
+    end
+end
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- RenderMiddlePanel: Isolated middle content renderer with frame wipe loop.
+-- Called on expansion click WITHOUT rebuilding the sidebar.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+--- Classify a guide into an expansion key based on its metadata.
+--- @param guide table
+--- @return string expansionKey
+function QT:ClassifyGuideExpansion(guide)
+    -- Explicit expansion field (best)
+    if guide.expansion then return guide.expansion end
+
+    -- Heuristic by level range
+    local minLvl = guide.minLevel or 1
+    local maxLvl = guide.maxLevel or 99
+
+    if minLvl >= 80 then return "midnight" end
+    if minLvl >= 70 then return "warwithin" end
+    if minLvl >= 60 and maxLvl <= 70 then return "df" end
+    if minLvl >= 50 and maxLvl <= 60 then return "sl" end
+    if minLvl >= 45 and maxLvl <= 50 then return "bfa" end
+    if maxLvl <= 20 then return "starter" end
+
+    -- Heuristic by guide ID prefix
+    local id = guide.id or ""
+    if id:match("^midnight") or id:match("^eversong") or id:match("^silvermoon") or id:match("^naigtal") then
+        return "midnight"
+    end
+    if id:match("^hallowfall") or id:match("^dorn") or id:match("^azj") or id:match("^ringing") then
+        return "warwithin"
+    end
+    if id:match("^exile") then return "starter" end
+
+    -- Default: bucket into the expansion matching the midpoint level
+    local mid = (minLvl + maxLvl) / 2
+    if mid >= 80 then return "midnight" end
+    if mid >= 70 then return "warwithin" end
+    if mid >= 60 then return "df" end
+    if mid >= 50 then return "sl" end
+    if mid >= 40 then return "bfa" end
+    return "starter"
+end
+
+function QT:RenderMiddlePanel(content)
+    if not content then return end
+
+    -- Prevent re-entrant renders (e.g. from events firing during render)
+    if self._renderingMiddle then return end
+    self._renderingMiddle = true
+
+    -- ══════════════════════════════════════════════════════════════════════════
+    -- AGGRESSIVE CANVAS WIPE — nothing survives from previous render
+    -- ══════════════════════════════════════════════════════════════════════════
+
+    -- Step 1: Hide all tracked frames from previous render
+    for _, f in ipairs(self.middlePanelFrames) do
+        if f and f.Hide then f:Hide() end
+        if f and f.SetParent then f:SetParent(nil) end
+    end
+    wipe(self.middlePanelFrames)
+
+    -- Step 2: Destroy all FontStrings and Textures on the content frame
+    for _, region in ipairs({ content:GetRegions() }) do
+        region:Hide()
+        if region.SetText then region:SetText("") end
+        if region.SetTexture then region:SetTexture(nil) end
+    end
+
+    -- Step 3: Destroy all child frames (buttons, cards, etc.)
+    for _, child in ipairs({ content:GetChildren() }) do
+        child:Hide()
+        child:SetParent(nil)
+    end
+
+    -- Step 4: Reset scroll position if parent is a scroll frame
+    local parent = content:GetParent()
+    if parent and parent.SetVerticalScroll then
+        parent:SetVerticalScroll(0)
+    end
+
+    local padL = 14
+    local y = -10
+    local w = content:GetWidth() - 28
+    local selectedExp = self._selectedExpansion or "midnight"
+
+    -- Helper: track created elements
+    local function Track(f) table.insert(self.middlePanelFrames, f); return f end
+
+    -- ── Gather guides for the selected expansion ─────────────────────────────
+    local zoneGuides = {}
+    for id, guide in pairs(TA.Guides or {}) do
+        local guideExp = self:ClassifyGuideExpansion(guide)
+        if guideExp == selectedExp then
+            local total, completed = 0, 0
+            for _, step in ipairs(guide.steps) do
+                if step.questID then
+                    total = total + 1
+                    if C_QuestLog.IsQuestFlaggedCompleted(step.questID) then
+                        completed = completed + 1
+                    end
+                end
+            end
+            local pct = total > 0 and math.floor((completed / total) * 100) or 0
+            table.insert(zoneGuides, {
+                id = id, title = guide.title or id,
+                minLevel = guide.minLevel or 1, maxLevel = guide.maxLevel or 99,
+                total = total, completed = completed, pct = pct,
+            })
+        end
+    end
+    table.sort(zoneGuides, function(a, b) return a.minLevel < b.minLevel end)
+
+    -- ── Header ───────────────────────────────────────────────────────────────
+    local expLabel = selectedExp
+    for _, def in ipairs(self._expansions) do
+        if def.key == selectedExp then expLabel = def.label; break end
+    end
+
+    -- Check if this is the recommended expansion for the player's level
+    local recommended = (self:DetectBestExpansion() == selectedExp)
+
+    local hdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    hdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+    if recommended then
+        hdr:SetText(expLabel .. " Guides  |cFF4AE0FF(Recommended)|r")
+    else
+        hdr:SetText(expLabel .. " Guides")
+    end
+    hdr:SetTextColor(0.92, 0.90, 0.87, 1)
+    hdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    y = y - 22
+
+    -- ── Empty state ──────────────────────────────────────────────────────────
+    if #zoneGuides == 0 then
+        local noData = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        noData:SetFont(STANDARD_TEXT_FONT, 11, "")
+        noData:SetText("No guides available for " .. expLabel .. " yet.\nGuides are added in Data/Guides/.")
+        noData:SetTextColor(0.55, 0.50, 0.40, 1)
+        noData:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        noData:SetWidth(w)
+        noData:SetWordWrap(true)
+        content:SetHeight(100)
+        self._renderingMiddle = false
+        return
+    end
+
+    -- ── Zone cards ───────────────────────────────────────────────────────────
+    for _, zg in ipairs(zoneGuides) do
+        local card = Track(CreateFrame("Frame", nil, content, "BackdropTemplate"))
+        card:SetHeight(58)
+        card:SetPoint("TOPLEFT", content, "TOPLEFT", padL - 4, y)
+        card:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL + 4, y)
+        card:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+        card:SetBackdropColor(0.06, 0.06, 0.08, 0.90)
+        card:SetBackdropBorderColor(0.24, 0.24, 0.28, 0.50)
+
+        -- Level range (anchored first)
+        local lvlF = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        lvlF:SetFont(STANDARD_TEXT_FONT, 9, "")
+        lvlF:SetText(string.format("Lv %d-%d", zg.minLevel, zg.maxLevel))
+        lvlF:SetTextColor(0.55, 0.52, 0.45, 1)
+        lvlF:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -8)
+
+        -- Title (constrained)
+        local titleF = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        titleF:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        titleF:SetText(zg.title)
+        titleF:SetTextColor(0.92, 0.90, 0.87, 1)
+        titleF:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -8)
+        titleF:SetPoint("RIGHT", lvlF, "LEFT", -8, 0)
+        titleF:SetJustifyH("LEFT")
+        titleF:SetWordWrap(false)
+
+        -- Progress bar bg
+        local barBg = card:CreateTexture(nil, "ARTWORK")
+        barBg:SetHeight(4)
+        barBg:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -26)
+        barBg:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -26)
+        barBg:SetColorTexture(0.15, 0.15, 0.18, 1)
+
+        -- Progress bar fill
+        local barFill = card:CreateTexture(nil, "OVERLAY")
+        barFill:SetHeight(4)
+        barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
+        local fillPx = math.max(2, math.floor((w - 4) * zg.pct / 100))
+        barFill:SetWidth(fillPx)
+        if zg.pct >= 100 then
+            barFill:SetColorTexture(0.29, 1.00, 0.48, 0.9)
+        elseif zg.pct >= 50 then
+            barFill:SetColorTexture(0.40, 0.75, 1.00, 0.8)
+        else
+            barFill:SetColorTexture(1.00, 0.82, 0.00, 0.7)
+        end
+
+        -- Completion text
+        local pctF = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        pctF:SetFont(STANDARD_TEXT_FONT, 9, "")
+        if zg.total == 0 then
+            pctF:SetText("|cFF1EBCFFQuest Log Follow|r")
+            pctF:SetTextColor(0.40, 0.75, 1.00, 1)
+        else
+            pctF:SetText(string.format("%d%% (%d/%d)", zg.pct, zg.completed, zg.total))
+            pctF:SetTextColor(0.62, 0.59, 0.55, 1)
+        end
+        pctF:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 8, 6)
+
+        -- Follow button
+        local isActive = (self.guideID == zg.id)
+        local fBg = isActive and {0.08, 0.15, 0.08} or {0.08, 0.06, 0.02}
+        local fBd = isActive and {0.29, 1.00, 0.48} or {0.40, 0.75, 1.00}
+
+        local followBtn = Track(CreateFrame("Button", nil, card, "BackdropTemplate"))
+        followBtn:SetSize(60, 18)
+        followBtn:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -8, 6)
+        followBtn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+        followBtn:SetBackdropColor(fBg[1], fBg[2], fBg[3], 1)
+        followBtn:SetBackdropBorderColor(fBd[1], fBd[2], fBd[3], 0.7)
+
+        local followLbl = followBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        followLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+        followLbl:SetText(isActive and "Active" or "Follow")
+        followLbl:SetTextColor(fBd[1], fBd[2], fBd[3], 1)
+        followLbl:SetAllPoints(followBtn)
+        followLbl:SetJustifyH("CENTER")
+
+        local guideID = zg.id
+        followBtn:SetScript("OnClick", function()
+            self:SetGuide(guideID)
+            self:ShowToast("Following: " .. zg.title)
+            self:RenderMiddlePanel(content)
+        end)
+        followBtn:SetScript("OnEnter", function(f) f:SetBackdropColor(fBg[1]+0.06, fBg[2]+0.06, fBg[3]+0.03, 1) end)
+        followBtn:SetScript("OnLeave", function(f) f:SetBackdropColor(fBg[1], fBg[2], fBg[3], 1) end)
+
+        -- View Missed button
+        if zg.pct < 100 and zg.pct > 0 then
+            local mBtn = Track(CreateFrame("Button", nil, card, "BackdropTemplate"))
+            mBtn:SetSize(72, 18)
+            mBtn:SetPoint("RIGHT", followBtn, "LEFT", -4, 0)
+            mBtn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+            mBtn:SetBackdropColor(0.08, 0.04, 0.02, 1)
+            mBtn:SetBackdropBorderColor(1.00, 0.55, 0.20, 0.5)
+
+            local mLbl = mBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            mLbl:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
+            mLbl:SetText("View Missed")
+            mLbl:SetTextColor(1.00, 0.65, 0.20, 1)
+            mLbl:SetAllPoints(mBtn)
+            mLbl:SetJustifyH("CENTER")
+
+            local mGuideID = zg.id
+            mBtn:SetScript("OnClick", function()
+                self._showMissedForGuide = mGuideID
+                self:RenderMiddlePanel(content)
+            end)
+            mBtn:SetScript("OnEnter", function(f) f:SetBackdropColor(0.12, 0.07, 0.03, 1) end)
+            mBtn:SetScript("OnLeave", function(f) f:SetBackdropColor(0.08, 0.04, 0.02, 1) end)
+        end
+
+        y = y - 62
+    end
+
+    -- ── Retrospective detail view ────────────────────────────────────────────
+    if self._showMissedForGuide then
+        local Retro = TA:GetModule("Retrospective")
+        if Retro and Retro.AnalyzeGuide then
+            local analysis = Retro:AnalyzeGuide(self._showMissedForGuide)
+            if analysis and #analysis.skipped > 0 then
+                y = y - 10
+                local missHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                missHdr:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+                missHdr:SetText("Missed in: " .. (analysis.title or ""))
+                missHdr:SetTextColor(1.00, 0.65, 0.20, 1)
+                missHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                y = y - 16
+
+                local closeBtn = Track(CreateFrame("Button", nil, content))
+                closeBtn:SetSize(50, 14)
+                closeBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y + 14)
+                local closeLbl = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                closeLbl:SetFont(STANDARD_TEXT_FONT, 9, "")
+                closeLbl:SetText("|cFF888780[Close]|r")
+                closeLbl:SetAllPoints(closeBtn)
+                closeLbl:SetJustifyH("RIGHT")
+                closeBtn:SetScript("OnClick", function()
+                    self._showMissedForGuide = nil
+                    self:RenderMiddlePanel(content)
+                end)
+
+                for i, step in ipairs(analysis.skipped) do
+                    if i > 20 then
+                        local moreF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                        moreF:SetFont(STANDARD_TEXT_FONT, 9, "")
+                        moreF:SetText(string.format("|cFF888780... and %d more|r", #analysis.skipped - 20))
+                        moreF:SetPoint("TOPLEFT", content, "TOPLEFT", padL + 8, y)
+                        y = y - 14
+                        break
+                    end
+                    local questName = step.text or ""
+                    if step.questID then
+                        local title = C_QuestLog.GetTitleForQuestID(step.questID)
+                        if title and title ~= "" then questName = title end
+                    end
+                    local qRow = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                    qRow:SetFont(STANDARD_TEXT_FONT, 10, "")
+                    qRow:SetText("  \226\151\139 " .. questName)
+                    qRow:SetTextColor(0.75, 0.70, 0.60, 1)
+                    qRow:SetPoint("TOPLEFT", content, "TOPLEFT", padL + 4, y)
+                    qRow:SetWidth(w - 8)
+                    qRow:SetJustifyH("LEFT")
+                    y = y - 15
+                end
+            end
+        end
+    end
+
+    content:SetHeight(math.abs(y) + 20)
+    self._renderingMiddle = false
+end
+
+-- ── Toast Notification System ─────────────────────────────────────────────────
+-- A subtle, non-intrusive notification that appears briefly when guide state
+-- changes. Replaces chat spam with a visual indicator on the tracker.
+
+function QT:ShowToast(message, duration)
+    duration = duration or 2.5
+    local win = self.window
+    if not win then return end
+
+    -- Create toast frame on first use
+    if not win._toast then
+        local toast = CreateFrame("Frame", nil, win, "BackdropTemplate")
+        toast:SetSize(win:GetWidth() - 16, 24)
+        toast:SetPoint("TOP", win, "BOTTOM", 0, -4)
+        toast:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+        toast:SetBackdropColor(0.04, 0.08, 0.04, 0.95)
+        toast:SetBackdropBorderColor(0.20, 0.80, 0.30, 0.70)
+        toast:SetFrameStrata("HIGH")
+
+        local text = toast:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        text:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        text:SetAllPoints(toast)
+        text:SetJustifyH("CENTER")
+        text:SetTextColor(0.29, 1.00, 0.48, 1)
+        toast._text = text
+
+        toast:Hide()
+        win._toast = toast
+    end
+
+    local toast = win._toast
+    toast._text:SetText(message)
+    toast:SetAlpha(1)
+    toast:Show()
+
+    -- Cancel any existing fade timer
+    if toast._fadeTimer then toast._fadeTimer:Cancel(); toast._fadeTimer = nil end
+
+    -- Fade out after duration
+    toast._fadeTimer = C_Timer.NewTimer(duration, function()
+        toast._fadeTimer = nil
+        UIFrameFadeOut(toast, 0.5, 1, 0)
+        C_Timer.After(0.5, function() toast:Hide() end)
+    end)
+end
+
+-- ── Contextual Step Hint ──────────────────────────────────────────────────────
+-- Generates a short "why this step" explanation for the tracker display.
+-- Called by UpdateWindow to show below the step text.
+
+function QT:GetStepContextHint(guide, stepIdx)
+    if not guide or not guide.steps then return nil end
+    local step = guide.steps[stepIdx]
+    if not step then return nil end
+
+    -- Spatial routing: if we re-ordered to nearest objective
+    if self._spatialRouted then
+        return "|cFF1EBCFF\226\134\146 Closest objective|r"
+    end
+
+    -- Chain prerequisite
+    if step.pre then
+        return "|cFF888780\226\134\146 Chain prerequisite met|r"
+    end
+
+    -- Accept step for a quest not yet in log
+    if (step.type == "accept" or step.type == "pickup") and step.questID then
+        if not C_QuestLog.GetLogIndexForQuestID(step.questID) then
+            return "|cFF4AFF7A\226\134\146 Pick up this quest|r"
+        end
+    end
+
+    -- Turn-in step
+    if step.type == "turnin" and step.questID then
+        if C_QuestLog.ReadyForTurnIn and C_QuestLog.ReadyForTurnIn(step.questID) then
+            return "|cFFFFD100\226\134\146 Ready to turn in|r"
+        end
+    end
+
+    -- In-progress quest with objectives
+    if step.questID and C_QuestLog.GetLogIndexForQuestID(step.questID) then
+        local objectives = C_QuestLog.GetQuestObjectives(step.questID)
+        if objectives then
+            local done, total = 0, #objectives
+            for _, obj in ipairs(objectives) do
+                if obj.finished then done = done + 1 end
+            end
+            if total > 0 and done < total then
+                return string.format("|cFF888780\226\134\146 %d/%d objectives done|r", done, total)
+            end
+        end
+    end
+
+    return nil
+end
+
+-- ── Right-Click Tracker Menu ──────────────────────────────────────────────────
+-- The player right-clicks the tracker window to access everything ToonAge offers
+-- without ever typing a slash command. This IS the UI.
+
+function QT:ShowTrackerMenu(anchor)
+    -- Use the modern Menu API if available (11.0+), otherwise create a simple frame menu
+    if Menu and Menu.CreateContextMenu then
+        self:ShowTrackerMenuModern(anchor)
+    else
+        self:ShowTrackerMenuLegacy(anchor)
+    end
+end
+
+function QT:ShowTrackerMenuModern(anchor)
+    MenuUtil.CreateContextMenu(anchor, function(ownerRegion, rootDescription)
+        rootDescription:SetTag("TOONAGE_TRACKER_MENU")
+
+        -- ── Open ToonAge Panel ────────────────────────────────────────
+        rootDescription:CreateButton("Open ToonAge Panel", function()
+            TA:ToggleUI()
+        end)
+
+        -- ── Guide Section ─────────────────────────────────────────────
+        rootDescription:CreateDivider()
+        rootDescription:CreateTitle("Guide")
+
+        rootDescription:CreateButton("Browse All Guides", function()
+            if TA.UI then
+                if not TA.UI:IsVisible() then TA.UI:Show() end
+                TA.UI:SetTab("guide")
+            end
+        end)
+
+        rootDescription:CreateButton("Re-Sync Position", function()
+            self:FastForward(false)
+        end)
+
+        rootDescription:CreateButton("Auto-Select Best Guide", function()
+            self:AutoSelectGuide()
+            if self.guideID then
+                self:ShowToast("Following: " .. (TA.Guides[self.guideID].title or self.guideID))
+            end
+            self:UpdateWindow()
+        end)
+
+        rootDescription:CreateButton("Clean Up Quest Log", function()
+            self:ShowQuestLogCleanup()
+        end)
+
+        rootDescription:CreateButton("Quest Log Advisor (Don't Drop)", function()
+            self:ShowQuestLogAdvisor()
+        end)
+
+        -- ── What Did I Miss? ──────────────────────────────────────────
+        local Retro = TA:GetModule("Retrospective")
+        if Retro then
+            rootDescription:CreateButton("What Did I Miss?", function()
+                if TA.UI then
+                    if not TA.UI:IsVisible() then TA.UI:Show() end
+                    TA.UI:SetTab("guide")
+                end
+            end)
+        end
+
+        -- ── Navigation ────────────────────────────────────────────────
+        rootDescription:CreateDivider()
+        rootDescription:CreateTitle("Navigation")
+
+        local Arrow = TA:GetModule("Arrow")
+        if Arrow then
+            local arrowOn = Arrow.frame and Arrow.frame:IsVisible()
+            rootDescription:CreateButton(arrowOn and "Hide Arrow" or "Show Arrow", function()
+                Arrow:Toggle()
+            end)
+        end
+
+        local NavHud = TA:GetModule("NavHud")
+        if NavHud then
+            local hudOn = NavHud.frame and NavHud.frame:IsShown()
+            rootDescription:CreateButton(hudOn and "Hide NavHud" or "Show NavHud", function()
+                NavHud:Toggle()
+            end)
+        end
+
+        local CR = TA:GetModule("CoordResolver")
+        if CR then
+            rootDescription:CreateButton("Show Coordinates", function()
+                CR.SlashCommands.coord(CR)
+            end)
+        end
+
+        -- ── Automation ────────────────────────────────────────────────
+        rootDescription:CreateDivider()
+        rootDescription:CreateTitle("Automation")
+
+        local autoQuest = TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoQuest
+        rootDescription:CreateCheckbox(
+            "Auto-Accept/Turn-In Quests",
+            function() return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoQuest end,
+            function()
+                TA.charDB.tracker.autoQuest = not TA.charDB.tracker.autoQuest
+            end
+        )
+
+        local autoEquip = TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoEquip
+        rootDescription:CreateCheckbox(
+            "Auto-Equip Upgrades",
+            function() return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoEquip end,
+            function()
+                TA.charDB.tracker.autoEquip = not TA.charDB.tracker.autoEquip
+            end
+        )
+
+        -- ── View ──────────────────────────────────────────────────────
+        rootDescription:CreateDivider()
+        rootDescription:CreateTitle("View")
+
+        rootDescription:CreateButton("Toggle Settings", function()
+            if self.optionsFrame:IsShown() then
+                self.optionsFrame:Hide()
+            else
+                self.optionsFrame:Show()
+            end
+        end)
+
+        rootDescription:CreateButton("Hide Tracker", function()
+            self:ToggleWindow()
+        end)
+    end)
+end
+
+--- Fallback for pre-11.0 builds without MenuUtil.CreateContextMenu
+function QT:ShowTrackerMenuLegacy(anchor)
+    -- Create a simple dropdown-style frame menu
+    if not self._legacyMenu then
+        local menu = CreateFrame("Frame", "TATrackerContextMenu", UIParent, "BackdropTemplate")
+        menu:SetSize(200, 280)
+        menu:SetFrameStrata("TOOLTIP")
+        menu:SetClampedToScreen(true)
+
+        if TA.Modern and TA.Modern.ApplyGlassBackdrop then
+            TA.Modern:ApplyGlassBackdrop(menu)
+        else
+            menu:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+            menu:SetBackdropColor(0.05, 0.04, 0.02, 0.97)
+            menu:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.85)
+        end
+
+        menu:EnableMouse(true)
+        menu:Hide()
+
+        -- Close when clicking elsewhere
+        menu:SetScript("OnShow", function()
+            C_Timer.After(0.1, function()
+                menu._closeListener = menu._closeListener or CreateFrame("Button", nil, UIParent)
+                local cl = menu._closeListener
+                cl:SetAllPoints(UIParent)
+                cl:SetFrameStrata("TOOLTIP")
+                cl:SetFrameLevel(menu:GetFrameLevel() - 1)
+                cl:EnableMouse(true)
+                cl:SetScript("OnClick", function()
+                    menu:Hide()
+                    cl:Hide()
+                end)
+                cl:Show()
+            end)
+        end)
+        menu:SetScript("OnHide", function()
+            if menu._closeListener then menu._closeListener:Hide() end
+        end)
+
+        self._legacyMenu = menu
+    end
+
+    local menu = self._legacyMenu
+
+    -- Clear old buttons
+    if menu._buttons then
+        for _, btn in ipairs(menu._buttons) do btn:Hide() end
+    end
+    menu._buttons = {}
+
+    local y = -8
+    local function AddButton(text, onClick)
+        local btn = CreateFrame("Button", nil, menu)
+        btn:SetSize(184, 20)
+        btn:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, y)
+
+        local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
+        lbl:SetText(text)
+        lbl:SetTextColor(0.88, 0.83, 0.65, 1)
+        lbl:SetAllPoints(btn)
+        lbl:SetJustifyH("LEFT")
+
+        btn:SetScript("OnClick", function()
+            menu:Hide()
+            onClick()
+        end)
+        btn:SetScript("OnEnter", function() lbl:SetTextColor(1, 0.95, 0.75, 1) end)
+        btn:SetScript("OnLeave", function() lbl:SetTextColor(0.88, 0.83, 0.65, 1) end)
+
+        y = y - 22
+        table.insert(menu._buttons, btn)
+    end
+
+    AddButton("|cFF4AE0FFOpen ToonAge Panel|r", function() TA:ToggleUI() end)
+    AddButton("Browse All Guides", function()
+        if TA.UI then
+            if not TA.UI:IsVisible() then TA.UI:Show() end
+            TA.UI:SetTab("guide")
+        end
+    end)
+    AddButton("Re-Sync Position", function() self:FastForward(false) end)
+    AddButton("Auto-Select Best Guide", function()
+        self:AutoSelectGuide()
+        if self.guideID then
+            self:ShowToast("Following: " .. (TA.Guides[self.guideID].title or self.guideID))
+        end
+        self:UpdateWindow()
+    end)
+    AddButton("Clean Up Quest Log", function()
+        self:ShowQuestLogCleanup()
+    end)
+    AddButton("Quest Log Advisor (Don't Drop)", function()
+        self:ShowQuestLogAdvisor()
+    end)
+    AddButton("What Did I Miss?", function()
+        if TA.UI then
+            if not TA.UI:IsVisible() then TA.UI:Show() end
+            TA.UI:SetTab("guide")
+        end
+    end)
+    AddButton("─────────────────────", function() end)
+    AddButton((TA:GetModule("Arrow") and TA:GetModule("Arrow").frame and TA:GetModule("Arrow").frame:IsVisible())
+        and "Hide Arrow" or "Show Arrow", function()
+        local Arrow = TA:GetModule("Arrow")
+        if Arrow then Arrow:Toggle() end
+    end)
+    AddButton((TA:GetModule("NavHud") and TA:GetModule("NavHud").frame and TA:GetModule("NavHud").frame:IsShown())
+        and "Hide NavHud" or "Show NavHud", function()
+        local NavHud = TA:GetModule("NavHud")
+        if NavHud then NavHud:Toggle() end
+    end)
+    AddButton("Show Coordinates", function()
+        local CR = TA:GetModule("CoordResolver")
+        if CR and CR.SlashCommands and CR.SlashCommands.coord then
+            CR.SlashCommands.coord(CR)
+        end
+    end)
+    AddButton("─────────────────────", function() end)
+    AddButton("Toggle Settings", function()
+        if self.optionsFrame:IsShown() then self.optionsFrame:Hide()
+        else self.optionsFrame:Show() end
+    end)
+    AddButton("Hide Tracker", function() self:ToggleWindow() end)
+
+    -- Size to content
+    menu:SetHeight(math.abs(y) + 12)
+
+    -- Position near the anchor
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", anchor, "TOPRIGHT", 4, 0)
+    menu:Show()
+end
+
 QT.SlashCommands = {
     tracker = function(self) self:ToggleWindow() end,
+
+    drop = function(self) self:ShowDropUnrelatedPopup() end,
 
     autoselect = function(self)
         self:AutoSelectGuide()
@@ -1718,10 +3470,84 @@ function QT:UpdateDrawer()
     local contentW = M.DRAWER_WIDTH - 28
 
     if not guide then
-        local noGuide = M:CreateBody(content, "No active guide.")
-        noGuide:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, -PAD)
-        noGuide:SetTextColor(unpack(M.CLR_TEXT_SECONDARY))
-        content:SetHeight(40)
+        -- ── QUEST LOG FOLLOW MODE (mirrored from UpdateWindow) ────────────────
+        local trackedQuestID = nil
+        local trackedTitle = nil
+        local trackedObjectives = nil
+
+        if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
+            trackedQuestID = C_SuperTrack.GetSuperTrackedQuestID()
+            if trackedQuestID and trackedQuestID > 0 then
+                trackedTitle = C_QuestLog.GetTitleForQuestID(trackedQuestID)
+                trackedObjectives = C_QuestLog.GetQuestObjectives(trackedQuestID)
+            end
+        end
+
+        if not trackedTitle then
+            local numEntries = C_QuestLog.GetNumQuestLogEntries() or 0
+            for i = 1, numEntries do
+                local info = C_QuestLog.GetInfo(i)
+                if info and not info.isHeader and info.questID then
+                    if not C_QuestLog.IsQuestFlaggedCompleted(info.questID) then
+                        trackedQuestID = info.questID
+                        trackedTitle = info.title
+                        trackedObjectives = C_QuestLog.GetQuestObjectives(info.questID)
+                        break
+                    end
+                end
+            end
+        end
+
+        local y = -PAD
+        if trackedTitle then
+            local headerF = M:CreateCaption(content, "Following Quest Log")
+            headerF:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, y)
+            headerF:SetTextColor(unpack(M.CLR_TEXT_ACCENT))
+            y = y - 14
+
+            local titleF = M:CreateBody(content, trackedTitle)
+            titleF:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, y)
+            titleF:SetWidth(contentW - PAD * 2)
+            titleF:SetTextColor(1, 0.82, 0, 1)
+            y = y - 16
+
+            if trackedObjectives and #trackedObjectives > 0 then
+                for _, obj in ipairs(trackedObjectives) do
+                    if obj.text and obj.text ~= "" then
+                        local objF = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        objF:SetFont(M.FONT_BODY, M.SIZE_CAPTION, "")
+                        objF:SetPoint("TOPLEFT", content, "TOPLEFT", PAD + 8, y)
+                        objF:SetWidth(contentW - PAD * 2 - 8)
+                        objF:SetJustifyH("LEFT")
+                        if obj.finished then
+                            objF:SetText("\226\156\147 " .. obj.text)
+                            objF:SetTextColor(unpack(M.CLR_TEXT_SUCCESS))
+                        else
+                            objF:SetText("\226\151\139 " .. obj.text)
+                            objF:SetTextColor(unpack(M.CLR_TEXT_PRIMARY))
+                        end
+                        y = y - 13
+                    end
+                end
+            end
+
+            y = y - 8
+            local noteF = M:CreateCaption(content, "No ToonAge guide for this zone yet.")
+            noteF:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, y)
+            noteF:SetTextColor(unpack(M.CLR_TEXT_SECONDARY))
+            y = y - 12
+            local noteF2 = M:CreateCaption(content, "Following your quest tracker instead.")
+            noteF2:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, y)
+            noteF2:SetTextColor(unpack(M.CLR_TEXT_SECONDARY))
+            y = y - 14
+        else
+            local noGuide = M:CreateBody(content, "No active quests. Pick one up!")
+            noGuide:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, -PAD)
+            noGuide:SetTextColor(unpack(M.CLR_TEXT_SECONDARY))
+            y = -40
+        end
+
+        content:SetHeight(math.abs(y) + PAD)
         return
     end
 

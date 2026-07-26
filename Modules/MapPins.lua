@@ -64,8 +64,13 @@ function MapPins.DataProvider:RefreshAllData(fromOnShow)
     local guide = TA.Guides and TA.Guides[QT.guideID]
     if not guide then return end
 
-    local mapID = self:GetMap():GetMapID()
+    -- Guard: don't place pins if the map canvas is in a bad state
+    local map = self:GetMap()
+    if not map then return end
+    local mapID = map:GetMapID()
     if not mapID then return end
+    -- Additional safety: check the canvas is actually shown and ready
+    if not map:IsVisible() then return end
 
     local Arrow = TA:GetModule("Arrow")
     local GP    = TA:GetModule("GuideParser")
@@ -81,12 +86,16 @@ function MapPins.DataProvider:RefreshAllData(fromOnShow)
             if step.noArrow then break end
             if GP and not GP:IsStepApplicable(step) then break end
 
-            -- Resolve coordinates
+            -- Resolve coordinates — use step.coord ONLY (not CoordResolver/Arrow)
+            -- IMPORTANT: DataProvider runs inside Blizzard's secureexecuterange.
+            -- Calling addon APIs here (CoordResolver, C_QuestLog queries, etc.)
+            -- taints the entire execution chain and breaks the world map.
+            -- Only use pre-stored coordinates from the guide step itself.
             local coordMap, cx, cy = 0, 0, 0
-            if Arrow and Arrow.GetEffectiveCoord then
-                coordMap, cx, cy = Arrow.GetEffectiveCoord(step)
-            elseif step.coord then
-                coordMap, cx, cy = step.coord.map or 0, step.coord.x, step.coord.y
+            if step.coord then
+                coordMap = step.coord.map or 0
+                cx = step.coord.x or 0
+                cy = step.coord.y or 0
             end
 
             -- Skip pins with no valid coordinates
@@ -103,7 +112,10 @@ function MapPins.DataProvider:RefreshAllData(fromOnShow)
             local color  = PIN_COLORS[step.type] or PIN_COLORS.default
             local isCurrent = (i == QT.stepIdx)
 
-            self:GetMap():AcquirePin(PIN_TEMPLATE, cx, cy, step, relNum, color, isCurrent)
+            local pinMap = self:GetMap()
+            if pinMap and pinMap.AcquirePin then
+                pcall(pinMap.AcquirePin, pinMap, PIN_TEMPLATE, cx, cy, step, relNum, color, isCurrent)
+            end
         until true
     end
 end

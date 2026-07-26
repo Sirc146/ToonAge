@@ -409,6 +409,145 @@ function T:GetBySpecID(specID)
     return DB[specID]
 end
 
+-- ── Spec Name → SpecID map (for BetterTalents sync) ──────────────────────
+-- BetterTalents keys builds by display name (e.g. "Affliction"), while ToonAge
+-- keys by specID (e.g. 265). This table bridges the two.
+-- Keys here match BetterTalents/Data/BuildData.lua exactly.
+local SPEC_NAME_TO_ID = {
+    -- Warrior
+    ["Arms"]                    = 71,
+    ["Fury"]                    = 72,
+    ["Protection (Warrior)"]    = 73,
+    -- Paladin
+    ["Holy (Paladin)"]          = 65,
+    ["Protection (Paladin)"]    = 66,
+    ["Retribution"]             = 70,
+    -- Death Knight
+    ["Blood"]                   = 250,
+    ["Frost (DK)"]              = 251,
+    ["Unholy"]                  = 252,
+    -- Demon Hunter
+    ["Havoc"]                   = 577,
+    ["Vengeance"]               = 581,
+    -- Druid
+    ["Balance"]                 = 102,
+    ["Feral"]                   = 103,
+    ["Guardian"]                = 104,
+    ["Restoration (Druid)"]     = 105,
+    -- Hunter
+    ["Beast Mastery"]           = 253,
+    ["Marksmanship"]            = 254,
+    ["Survival"]                = 255,
+    -- Mage
+    ["Arcane"]                  = 62,
+    ["Fire"]                    = 63,
+    ["Frost (Mage)"]            = 64,
+    -- Monk
+    ["Brewmaster"]              = 268,
+    ["Windwalker"]              = 269,
+    ["Mistweaver"]              = 270,
+    -- Priest
+    ["Discipline"]              = 256,
+    ["Holy (Priest)"]           = 257,
+    ["Shadow"]                  = 258,
+    -- Rogue
+    ["Assassination"]           = 259,
+    ["Outlaw"]                  = 260,
+    ["Subtlety"]                = 261,
+    -- Shaman
+    ["Elemental"]               = 262,
+    ["Enhancement"]             = 263,
+    ["Restoration (Shaman)"]    = 264,
+    -- Warlock
+    ["Affliction"]              = 265,
+    ["Demonology"]              = 266,
+    ["Destruction"]             = 267,
+    -- Evoker
+    ["Devastation"]             = 1467,
+    ["Devourer"]                = nil,   -- New spec? Skip until specID confirmed
+    ["Preservation"]            = 1468,
+    ["Augmentation"]            = 1473,
+}
+
+--- Mirror talent import strings from BetterTalents into ToonAge's per-spec build entries.
+--- Called once on login (or on demand via /ta talentsync) after both addons are loaded.
+--- Only fills in empty strings — never overwrites user-pasted data.
+--- @return number — count of strings filled
+function T:SyncFromBetterTalents()
+    local BT = _G["BetterTalents"]
+    if not BT or not BT.BuildData then
+        if TA.debug then
+            print("|cFFFFD100[TA Talents]|r BetterTalents.BuildData not found — skipped sync.")
+        end
+        return 0
+    end
+
+    local filled = 0
+    for specName, btData in pairs(BT.BuildData) do
+        -- Resolve specID from name
+        local specID = SPEC_NAME_TO_ID[specName]
+        if not specID then
+            -- Try direct match by iterating all known specIDs and comparing
+            -- against GetSpecializationInfoByID display names. This handles
+            -- cases where BetterTalents uses simple names like "Frost" for
+            -- unambiguous specs or future new specs.
+            -- (Fallback: skip unknown names silently)
+            if TA.debug then
+                print("|cFFFFD100[TA Talents]|r Unknown spec name: " .. specName .. " — skipped.")
+            end
+        end
+
+        if specID and DB[specID] then
+            local builds = DB[specID].builds
+
+            -- M+ build: prefer mplus_overall, fallback to mplus_12
+            local mplusStr = btData.mplus_overall or btData.mplus_12
+            if mplusStr and mplusStr ~= "" and builds.mplus and (builds.mplus.string == "" or builds.mplus.string == nil) then
+                builds.mplus.string = mplusStr
+                filled = filled + 1
+            end
+
+            -- Raid Mythic → raid build
+            local raidStr = btData.raid_mythic
+            if raidStr and raidStr ~= "" and builds.raid and (builds.raid.string == "" or builds.raid.string == nil) then
+                builds.raid.string = raidStr
+                filled = filled + 1
+            end
+
+            -- Raid Heroic → store as a secondary reference (if the spec has no raid string,
+            -- use heroic as fallback)
+            local heroicStr = btData.raid_heroic
+            if heroicStr and heroicStr ~= "" then
+                -- If raid is still empty after mythic check, use heroic
+                if builds.raid and (builds.raid.string == "" or builds.raid.string == nil) then
+                    builds.raid.string = heroicStr
+                    filled = filled + 1
+                end
+                -- Also store heroic as its own reference for users who want it
+                if not builds.raid_heroic then
+                    builds.raid_heroic = {
+                        name   = (builds.raid and builds.raid.name or "Raid") .. " (Heroic)",
+                        desc   = "Heroic raid build imported from BetterTalents log data.",
+                        string = heroicStr,
+                        nodes  = {},
+                    }
+                elseif builds.raid_heroic.string == "" or builds.raid_heroic.string == nil then
+                    builds.raid_heroic.string = heroicStr
+                    filled = filled + 1
+                end
+            end
+        end
+    end
+
+    if filled > 0 then
+        print(string.format("|cFFFFD100[ToonAge]|r Talent sync: imported |cFF4AFF7A%d|r build strings from BetterTalents.", filled))
+    elseif TA.debug then
+        print("|cFFFFD100[TA Talents]|r Sync complete — no new strings needed (all slots already filled).")
+    end
+
+    return filled
+end
+
 -- ── Content type labels (displayed in the tab selector) ───────────────────
 T.BuildTypes = {
     { key = "mplus",    label = "Mythic+" },

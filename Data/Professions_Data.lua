@@ -1,13 +1,108 @@
 -- ToonAge/Data/Professions.lua
 -- Profession talent trees, gear slots, quality thresholds (Midnight 12.0.5)
+--
+-- EXPANSION HISTORY:
+--   Pre-Dragonflight:  No specialization trees. Linear skill bar only.
+--   Dragonflight (10.x): First introduction of specialization trees, profession
+--                         gear (tool + 2 accessories), crafting stats (Resourcefulness,
+--                         Inspiration, Multicraft, Crafting Speed). KP system.
+--   The War Within (11.x): Refined DF system. Same stat names, updated trees.
+--                           Specializations remained core. Some professions got
+--                           rebalanced paths.
+--   Midnight (12.x): Further specialization evolution. New trees (Engineering 4-tree).
+--                    Expansion-specific path names (e.g. Alchemy: "Potion Prowess"
+--                    instead of "Potion Mastery"). Same gear/stat framework.
+--
+-- The addon detects which expansion tier a profession is using based on the
+-- profession's recipe context (C_TradeSkillUI expansion info) and displays
+-- terminology appropriate to that tier.
 
 local TA = ToonAge
 TA.Data = TA.Data or {}
 TA.Data.Professions = {}
 local P = TA.Data.Professions
 
+-- ── Expansion era definitions ──────────────────────────────────────────
+-- Used to determine which UI/terminology to show.
+-- hasSpecializations: whether this era has talent trees (Dragonflight+)
+-- hasGear: whether profession gear slots exist (Dragonflight+)
+-- hasCraftingStats: whether Resourcefulness/Inspiration/etc exist (Dragonflight+)
+-- specUnlock: profession skill level where specializations become available
+-- charLevelReq: character level needed to learn ANY profession tier (all = 5)
+-- zoneAccessLevel: minimum character level to enter the expansion's zones
+P.EXPANSION_ERAS = {
+    Classic      = { hasSpecializations = false, hasGear = false, hasCraftingStats = false, label = "Classic",              maxSkill = 300, charLevelReq = 5, zoneAccessLevel = 1,  note = "All zones scale; recipes from vendors and world drops" },
+    TBC          = { hasSpecializations = false, hasGear = false, hasCraftingStats = false, label = "Burning Crusade",      maxSkill = 75,  charLevelReq = 5, zoneAccessLevel = 10, note = "Portal to Outland; recipes from vendors, world drops, rep vendors" },
+    Wrath        = { hasSpecializations = false, hasGear = false, hasCraftingStats = false, label = "Wrath of the Lich King", maxSkill = 75, charLevelReq = 5, zoneAccessLevel = 10, note = "Boat/zeppelin to Northrend; rep vendor recipes (Sons of Hodir, etc.)" },
+    Cataclysm    = { hasSpecializations = false, hasGear = false, hasCraftingStats = false, label = "Cataclysm",           maxSkill = 75,  charLevelReq = 5, zoneAccessLevel = 10, note = "Hyjal/Vashj'ir entry; vendors + world drops" },
+    Pandaria     = { hasSpecializations = false, hasGear = false, hasCraftingStats = false, label = "Mists of Pandaria",    maxSkill = 75,  charLevelReq = 5, zoneAccessLevel = 10, note = "Portal to Jade Forest; rep vendor recipes (Shado-Pan, etc.)" },
+    Draenor      = { hasSpecializations = false, hasGear = false, hasCraftingStats = false, label = "Warlords of Draenor",  maxSkill = 100, charLevelReq = 5, zoneAccessLevel = 10, note = "Garrison buildings unlock profession recipes" },
+    Legion       = { hasSpecializations = false, hasGear = false, hasCraftingStats = false, label = "Legion",               maxSkill = 100, charLevelReq = 5, zoneAccessLevel = 10, note = "Profession questlines in Broken Isles; dungeon/raid recipe drops" },
+    BFA          = { hasSpecializations = false, hasGear = false, hasCraftingStats = false, label = "Battle for Azeroth",   maxSkill = 150, charLevelReq = 5, zoneAccessLevel = 10, note = "Kul Tiras/Zandalar; faction-specific recipes" },
+    Shadowlands  = { hasSpecializations = false, hasGear = false, hasCraftingStats = false, label = "Shadowlands",          maxSkill = 100, charLevelReq = 5, zoneAccessLevel = 10, note = "Oribos; covenant-tied crafting" },
+    Dragonflight = { hasSpecializations = true,  hasGear = true,  hasCraftingStats = true,  label = "Dragonflight",         maxSkill = 100, charLevelReq = 5, zoneAccessLevel = 60, specUnlock = 25, note = "Crafting stations required; knowledge from treasures, renown, first-crafts" },
+    TheWarWithin = { hasSpecializations = true,  hasGear = true,  hasCraftingStats = true,  label = "The War Within",       maxSkill = 100, charLevelReq = 5, zoneAccessLevel = 70, specUnlock = 25, note = "Isle of Dorn; new profession gear tiers; new knowledge sources" },
+    Midnight     = { hasSpecializations = true,  hasGear = true,  hasCraftingStats = true,  label = "Midnight",             maxSkill = 100, charLevelReq = 5, zoneAccessLevel = 70, specUnlock = 25, note = "Quel'Thalas; void-touched crafting systems; new spec trees" },
+}
+
+-- ── Skill milestones (Dragonflight+ specialization system) ─────────────
+-- These are universal across all DF/TWW/Midnight professions.
+P.SPEC_MILESTONES = {
+    { skill = 1,   label = "Learn profession + equip gear + gather knowledge items" },
+    { skill = 25,  label = "Specializations unlock — first talent tree opens, begin investing KP" },
+    { skill = 50,  label = "Second specialization branch unlocks — advanced recipes + gear upgrades" },
+    { skill = 75,  label = "Third branch unlocks — high-end recipes, rare crafts, high-tier gear" },
+    { skill = 100, label = "Max tier — all branches open, maximum crafting quality potential" },
+}
+
+-- ── Crafting stat definitions (Dragonflight+) ──────────────────────────
+-- These stats only exist on profession gear from Dragonflight onward.
+P.CRAFTING_STATS = {
+    Resourcefulness = { desc = "Chance to use fewer materials when crafting",        icon = 4549478 },
+    Inspiration     = { desc = "Chance to craft at a higher quality than expected",  icon = 4549477 },
+    Multicraft      = { desc = "Chance to craft additional items",                   icon = 4549476 },
+    CraftingSpeed   = { desc = "Reduces time to craft items",                        icon = 4549475 },
+    -- Gathering-specific stats (same era):
+    Deftness        = { desc = "Faster gathering speed",                             icon = 4549474 },
+    Finesse         = { desc = "Chance to gather more materials",                    icon = 4549473 },
+    Perception      = { desc = "Chance to find rare materials while gathering",      icon = 4549472 },
+}
+
+--- Returns the expansion era for a given profession context.
+--- Uses C_TradeSkillUI if available; falls back to "Midnight" for current content.
+function P:GetExpansionEra(skillLineID)
+    -- If the API can tell us which expansion this profession belongs to, use it.
+    -- Otherwise default to Midnight (current expansion).
+    if C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
+        local ok, info = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, skillLineID)
+        if ok and info and info.expansionName then
+            -- Map API expansion name to our era key
+            local nameMap = {
+                ["Dragonflight"]   = "Dragonflight",
+                ["The War Within"] = "TheWarWithin",
+                ["Midnight"]       = "Midnight",
+            }
+            local era = nameMap[info.expansionName]
+            if era then return era end
+        end
+    end
+    return "Midnight"
+end
+
+--- Returns whether the given expansion era supports specialization trees.
+function P:EraHasSpecializations(era)
+    local e = self.EXPANSION_ERAS[era]
+    return e and e.hasSpecializations or false
+end
+
+--- Returns whether the given expansion era supports profession gear.
+function P:EraHasGear(era)
+    local e = self.EXPANSION_ERAS[era]
+    return e and e.hasGear or false
+end
+
 -- ── Profession gear slot IDs ───────────────────────────────────────────
--- In Midnight, profession gear uses dedicated equip slots
+-- In Dragonflight+, profession gear uses dedicated equip slots
 -- These are read via GetInventoryItemID with the prof-specific slot indices
 P.GEAR_SLOTS = {
     tool       = "PROFESSION_TOOL_SLOT",      -- Slot 0 per profession context
@@ -169,14 +264,55 @@ P[171] = {
     type       = "crafting",
     icon       = 136240,
     maxSkill   = 100,
-    firstPath  = "Potion Mastery",
-    firstPathReason = "Unlocks double-proc on healing potions used in combat — immediate HPS gain. Swap to Flask Mastery at skill 50 for permanent stat flasks.",
+    expansion  = "Midnight",  -- expansion context for terminology
+    firstPath  = "Potion Prowess",
+    firstPathReason = "Leverages Light/Void synergy for potions — double-proc on healing pots used in combat. Immediate HPS gain. Swap to Fluent in Flasks at skill 50 for permanent stat buffs.",
     personalBenefit = "Craft Elixir of the Preservation (+8% HPS) and Flask of Midnight Clarity (+Mastery) for free. Never buy consumables again.",
 
+    -- Where recipes come from in each expansion era
+    recipeSources = {
+        Classic      = { "Vendors", "World drops", "Dungeon/raid drops" },
+        TBC          = { "Vendors", "World drops", "Reputation vendors" },
+        Wrath        = { "Vendors", "World drops", "Reputation vendors" },
+        Cataclysm    = { "Vendors", "World drops", "Reputation vendors" },
+        Pandaria     = { "Vendors", "World drops", "Reputation vendors" },
+        Draenor      = { "Vendors", "Garrison buildings" },
+        Legion       = { "Vendors", "Profession questlines", "Dungeon/raid drops" },
+        BFA          = { "Vendors", "World drops", "Reputation vendors" },
+        Shadowlands  = { "Vendors", "World drops" },
+        Dragonflight = { "Vendors", "Renown", "Profession treasures", "Work orders", "Dungeon/raid drops", "Transmute unlocks" },
+        TheWarWithin = { "Vendors", "Renown", "Profession treasures", "Work orders", "Dungeon/raid drops" },
+        Midnight     = { "Vendors", "Renown", "Profession treasures", "Work orders", "Dungeon/raid drops", "Transmute unlocks" },
+    },
+
+    -- Expansion-specific terminology mapping
+    -- Each expansion renamed the profession specialization paths differently.
+    -- This ensures the addon displays the CORRECT names for the active expansion.
+    expansionTerms = {
+        Midnight = {
+            kpName       = "Knowledge Points",
+            specPaths    = { "Potion Prowess", "Fluent in Flasks", "Alchemical Mastery", "Transmutation Authority" },
+            statNames    = { resourcefulness = "Resourcefulness", inspiration = "Inspiration", multicraft = "Multicraft", craftingSpeed = "Crafting Speed" },
+            slotLabel    = "Profession Tool / Accessories",
+        },
+        TheWarWithin = {
+            kpName       = "Knowledge Points",
+            specPaths    = { "Potion Mastery", "Phial Mastery", "Alchemical Theory", "Transmutation" },
+            statNames    = { resourcefulness = "Resourcefulness", inspiration = "Inspiration", multicraft = "Multicraft", craftingSpeed = "Crafting Speed" },
+            slotLabel    = "Profession Tool / Accessories",
+        },
+        Dragonflight = {
+            kpName       = "Knowledge Points",
+            specPaths    = { "Potion Mastery", "Phial Mastery", "Alchemist's Expertise", "Transmutation" },
+            statNames    = { resourcefulness = "Resourcefulness", inspiration = "Inspiration", multicraft = "Multicraft", craftingSpeed = "Crafting Speed" },
+            slotLabel    = "Profession Tool / Accessories",
+        },
+    },
+
     gearSlots = {
-        tool = { name="Alchemist's Tool", recommended="Midnight Alchemist's Stone", bonuses="+15 Alchemy, +10 Resourcefulness", source="Crafted (Alchemy 50)", skillBonus=15 },
-        accessory1 = { name="Alchemy Accessory 1", recommended="Vial Harness", bonuses="+8 Inspiration", source="Crafted or AH", skillBonus=8 },
-        accessory2 = { name="Alchemy Accessory 2", recommended="Transmutation Focus", bonuses="+8 Resourcefulness", source="Crafted or AH", skillBonus=8 },
+        tool = { name="Alchemist's Tool", recommended="Midnight Alchemist's Stone", bonuses="+15 Alchemy, +10 Resourcefulness", source="Crafted (Alchemy 50)", skillBonus=15, bestForPath="Potion Prowess" },
+        accessory1 = { name="Alchemy Accessory 1", recommended="Vial Harness", bonuses="+8 Inspiration", source="Crafted or AH", skillBonus=8, bestForPath="Fluent in Flasks" },
+        accessory2 = { name="Alchemy Accessory 2", recommended="Transmutation Focus", bonuses="+8 Resourcefulness", source="Crafted or AH", skillBonus=8, bestForPath="Potion Prowess" },
     },
 
     thresholds = {
@@ -188,25 +324,26 @@ P[171] = {
     },
 
     talentTree = {
+        permanenceWarning = "⚠ PERMANENT — Knowledge Points cannot be refunded. Potion Prowess early → Fluent in Flasks at 50 is the standard progression for raiders.",
         rows = {
             {
-                { name="Potion Mastery",   desc="Double-proc healing potions in combat", recommended=true, skillReq=1,  firstPick=true },
-                { name="Transmutation",    desc="Convert materials at favourable rates",  recommended=false, skillReq=1, firstPick=false },
-                { name="Flask Mastery",    desc="Higher quality flask output",            recommended=false, skillReq=10, firstPick=false, swapAt=50 },
+                { name="Potion Prowess",          desc="Light/Void potency — double-proc healing pots",  recommended=true,  skillReq=1,  firstPick=true,  archetype="spec" },
+                { name="Transmutation Authority", desc="Convert materials at enhanced rates",              recommended=false, skillReq=1,  firstPick=false, archetype="market" },
+                { name="Fluent in Flasks",        desc="Higher quality flask output + extended duration",  recommended=false, skillReq=10, firstPick=false, archetype="spec", swapAt=50 },
             },
             {
-                { name="Alchemical Mastery", desc="Proc chance +15% on all crafts",     recommended=true, skillReq=1,  firstPick=true },
-                { name="Efficient Mixing",   desc="10% chance to use fewer reagents",    recommended=false, skillReq=25, firstPick=false },
-                { name="Inspired Flask",     desc="Chance to craft rank 3 flasks",       recommended=true, skillReq=50, firstPick=false },
+                { name="Alchemical Mastery",  desc="Proc chance +15% on all crafts",         recommended=true,  skillReq=1,  firstPick=true,  archetype="mastery" },
+                { name="Efficient Mixing",    desc="10% chance to use fewer reagents",        recommended=false, skillReq=25, firstPick=false, archetype="utility" },
+                { name="Inspired Flask",      desc="Inspiration: chance to craft rank 3 flasks", recommended=true,  skillReq=50, firstPick=false, archetype="spec" },
             },
             {
-                { name="Midnight Formulas", desc="Unlocks Elixir of Preservation recipe", recommended=true, skillReq=75, firstPick=false },
-                { name="Resourcefulness",   desc="50% chance to refund a reagent",       recommended=false, skillReq=50, firstPick=false },
-                { name="Extended Duration", desc="+30 min to all flask durations",        recommended=false, skillReq=75, firstPick=false },
+                { name="Midnight Formulas",  desc="Unlocks Elixir of Preservation recipe",   recommended=true,  skillReq=75, firstPick=false, archetype="spec" },
+                { name="Resourcefulness",    desc="50% chance to refund a reagent",           recommended=false, skillReq=50, firstPick=false, archetype="utility" },
+                { name="Extended Duration",  desc="+30 min to all flask durations",           recommended=false, skillReq=75, firstPick=false, archetype="utility" },
             },
             {
-                { name="Grand Alchemist",   desc="Capstone: all potions/flasks rank 3+", recommended=true, skillReq=100, firstPick=false, isCapstone=true },
-                { name="Raid Cauldron",     desc="Craft group cauldron for 10+ players",  recommended=true, skillReq=100, firstPick=false, isCapstone=true },
+                { name="Grand Alchemist",    desc="Capstone: all potions/flasks rank 3+",    recommended=true,  skillReq=100, firstPick=false, isCapstone=true, archetype="mastery" },
+                { name="Raid Cauldron",      desc="Craft group cauldron for 10+ players",     recommended=true,  skillReq=100, firstPick=false, isCapstone=true, archetype="spec" },
             },
         },
     },

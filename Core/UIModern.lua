@@ -669,7 +669,7 @@ function M:InitDrawer()
         drawer:Hide()
     end)
     mainFrame:HookScript("OnShow", function()
-        if isOpen then
+        if isOpen and not TA._drawerSuppressed then
             drawer:Show()
             drawer:SetWidth(M.DRAWER_WIDTH)
             drawer:SetAlpha(1)
