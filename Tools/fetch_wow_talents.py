@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CharacterAdvisor -- Blizzard Talent Tree Data Fetcher
+ToonAge -- Blizzard Talent Tree Data Fetcher
 =======================================================
 Pulls real talent-tree structure (nodes, tiers, spell IDs/names) from
 Blizzard's official Game Data API for every playable specialization.

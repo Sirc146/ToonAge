@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CharacterAdvisor -- Shared Blizzard Game Data API helper
+ToonAge -- Shared Blizzard Game Data API helper
 =========================================================
 OAuth client-credentials auth + rate-limited GET, shared by every
 fetch_wow_*.py script in this Tools/ folder so the auth/throttling logic

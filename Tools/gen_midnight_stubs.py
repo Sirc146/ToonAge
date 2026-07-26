@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CharacterAdvisor -- Midnight PTR Guide Stub Generator
+ToonAge -- Midnight PTR Guide Stub Generator
 ======================================================
 Reads Data/quests_database.csv (produced by fetch_wow_quests.py) and writes
 one guide stub .lua per Midnight zone into Data/Guides/.
@@ -80,15 +80,15 @@ def esc_lua(s):
 def generate_stub(zdef, quests):
     gid = zdef["guide_id"]
     lines = [
-        f'-- CharacterAdvisor/Data/Guides/CAG_{gid}.lua',
+        f'-- ToonAge/Data/Guides/TAG_{gid}.lua',
         '-- STUB -- auto-generated from WoWDB PTR HTML dump by gen_midnight_stubs.py',
         '-- Quest ORDER approximated by questID.  Confirm in-game with /caquestscan.',
         '-- Fill coords by standing at each NPC and running /coord.',
         '',
-        'local CA = CharacterAdvisor',
-        'CA.GuideData = CA.GuideData or {}',
+        'local TA = ToonAge',
+        'TA.GuideData = TA.GuideData or {}',
         '',
-        f'CA.GuideData["{gid.lower()}"] = {{',
+        f'TA.GuideData["{gid.lower()}"] = {{',
         f'    id       = "{gid.lower()}",',
         f'    title    = "{esc_lua(zdef["title"])}",',
         f'    zone     = {zdef["zone"]},   -- TODO: confirm with /coord',
@@ -143,7 +143,7 @@ def main():
             continue
 
         lua = generate_stub(zdef, quests)
-        out = OUT_DIR / f"CAG_{zdef['guide_id']}.lua"
+        out = OUT_DIR / f"TAG_{zdef['guide_id']}.lua"
         with open(out, "w", encoding="utf-8") as f:
             f.write(lua)
         print(f"  {len(quests):4d} steps  ->  {out.name}")
