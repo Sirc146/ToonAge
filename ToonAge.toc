@@ -13,7 +13,6 @@ Libs\LibStub.lua
 
 Core\Init.lua
 Core\Utils.lua
-Core\GuideManager.lua
 Core\UI.lua
 Core\UIModern.lua
 Core\MinimapButton.lua
@@ -25,12 +24,11 @@ Data\TalentsPvP.lua
 Data\RotationConditions.lua
 Data\Rotations.lua
 Data\Professions_Data.lua
-Data\Zones.lua
+Data\ItemLevels.lua
 Data\Pets.lua
 Data\TA_Enchants.lua
 Data\FarmOptimizer_Data.lua
 Data\Dungeons.lua
-Data\Guides\TAG_LevelingPaths.lua
 Data\Guides\TAG_Midnight_Intro.lua
 Data\Guides\TAG_Exiles_Reach.lua
 Data\Guides\TAG_Hallowfall.lua

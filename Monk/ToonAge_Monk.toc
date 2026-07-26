@@ -1,8 +1,0 @@
-## Interface: 120007
-## Title: ToonAge [Monk Module]
-## Notes: Action-bar layouts and combat rotation rules for Monks.
-## Dependencies: ToonAge
-## LoadOnDemand: 1
-
-MonkBars.lua
-MonkRotation.lua
