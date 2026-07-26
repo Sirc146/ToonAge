@@ -104,22 +104,21 @@ would have gated tank active mitigation (`Ironfur`, `Shield Block`,
 Confidently-wrong conditions are worse than none — they actively hide correct
 abilities.
 
-Also note: `IsLongRamp` checks for `dot`/`setup`/`ramp` tags that **do not exist
-anywhere in the data** — only 5 tags are used (`core`, `active`, `cd`,
-`defensive`, `aoe`). Only its name-based fallback ever fires. Either add the
-tags or drop the tag branch.
+~~Also note: `IsLongRamp` checks for `dot`/`setup`/`ramp` tags that do not exist
+anywhere in the data.~~ ✅ DONE 2026-07-26 — claim re-verified by grep (zero
+matches in `Data/`), tag branch dropped in `610e679`. The name-based fallback
+now carries it outright. **The ~640 `when` conditions above are still open.**
 
 ### 8. `QuestTracker.lua` is 3,673 lines
 10% of the codebase, 2.7× the next-largest module. Holds the tracker window,
 fast-forward sync, auto-quest, and the quest-item button — which is the natural
 three-way split.
 
-### 9. Two small `Core/Init.lua` fixes
-- `DB_DEFAULTS` sub-tables are assigned **by reference**, so on a fresh install
-  `db.modules` *is* `DB_DEFAULTS.modules` and `/ta toggle` mutates the defaults.
-  First-session-only blast radius, two-line fix.
-- `/ta reset` sets `ToonAgeDB = nil` but leaves `TA.db` and `TA.charDB` pointing
-  at the orphaned table until reload.
+### 9. ~~Two small `Core/Init.lua` fixes~~ ✅ DONE 2026-07-26 (`610e679`)
+Both fixed. The by-reference bug was worse than described here: it also hit
+`db.char`, `db.unifiedPosition` and each table inside `db.oldUiPositions`, and
+because `/ta reset` re-derived from the mutated `DB_DEFAULTS`, a reset in the
+same session did not actually reset. `CopyDefault` now guards every write.
 
 ### 10. Modules outside the error net
 `DungeonGuide.lua` and `FarmOptimizer.lua` own private event frames, so their
