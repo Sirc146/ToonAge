@@ -752,9 +752,26 @@ function AQS:Init()
         -- Skip if player is in combat (shouldn't happen 2s after login but guard)
         if InCombatLockdown() then return end
 
-        -- Check if this is a returning alt
+        -- The guided first-run flow opens this panel itself as its last step.
+        -- Without this check both fire: this at 2s and Onboarding's welcome at
+        -- 3s, so the panel arrived a second BEFORE the screen introducing it.
+        if TA._onboardingActive then return end
+
+        -- Returning alt: offer, don't impose.
+        --
+        -- This used to open the full panel unprompted. Combined with the
+        -- welcome popup it made login feel like a wall of information, and the
+        -- only way to stop it was a control styled like a caption. A single
+        -- dismissible line costs nothing to ignore and one click to act on,
+        -- which is the right trade for something triggered by a heuristic
+        -- rather than by the player.
         if IsReturningAlt() then
-            AQS:Show()
+            local QT = TA:GetModule("QuestTracker")
+            if QT and QT.ShowToast then
+                QT:ShowToast("Welcome back — /ta quickstart for your catch-up")
+            else
+                print("|cFFFFD100[ToonAge]|r Welcome back — |cFFFFD100/ta quickstart|r for your catch-up.")
+            end
         end
 
         -- Update last login time

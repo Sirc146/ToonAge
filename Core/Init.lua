@@ -39,6 +39,13 @@ local DB_DEFAULTS = {
         DungeonGuide       = true,
     },
 
+    -- Guided first-run flow. "character" (default) runs it once for each new
+    -- character, since build advice is per-spec and genuinely useful on a fresh
+    -- alt. "account" runs it once ever, for people with many alts who do not
+    -- want to see it again. /ta onboard account|character switches.
+    onboardScope     = "character",
+    onboardedAccount = false,
+
     -- Safe Mode boot flag. Persisted deliberately: the whole point is to
     -- survive a reload when the addon is too broken to reach its own UI.
     -- Cleared only by the user via /ta safemode.

@@ -40,11 +40,28 @@ local WELCOME_LINES = {
 function Onboarding:Init()
     if not TA.charDB then return end
 
-    -- Already onboarded this character
+    local db    = TA.db
+    local scope = (db and db.onboardScope) or "character"
+
+    -- "account" scope: once ever, however many characters you roll.
+    if scope == "account" and db and db.onboardedAccount then return end
+
+    -- "character" scope (default): once per character.
     if TA.charDB.onboarded then return end
 
     -- Mark as onboarded immediately to prevent re-triggering
     TA.charDB.onboarded = true
+
+    -- Claim the login for the guided flow. AltQuickStart schedules its own
+    -- auto-show at 2s and this runs at 3s, so the "what to do next" panel used
+    -- to arrive a full second BEFORE the welcome screen meant to introduce it —
+    -- two popups, in the wrong order, which is what made first login feel like
+    -- a wall. The flow now opens that panel itself as its final step.
+    --
+    -- Set here and read inside AltQuickStart's timer callback rather than at
+    -- its Init, because module init order comes from pairs() and is not
+    -- deterministic. By the time either callback fires, both Inits have run.
+    TA._onboardingActive = true
 
     -- Delay the welcome message slightly so it appears after all module
     -- init messages and the login splash has settled.
@@ -52,6 +69,68 @@ function Onboarding:Init()
         self:RunFirstLogin()
     end)
 end
+
+--- Called when the welcome popup is dismissed by any route. Advances the flow.
+---
+--- Step 2 (gear-aware build choice) will slot in between these two points.
+--- Its governing rule, decided up front: recommend for the gear that exists.
+--- Scan equipped and bags; if no better weapon combination is actually present,
+--- recommend the best build for what is currently wearable and say so. Never
+--- send the player hunting for an item to enable a build. Heirlooms are the
+--- exception — they are replaceable by design, so a maxed one is an expected
+--- swap point rather than a gear gap (Gear.lua's GetItemIlvls already returns
+--- a heirloomCap for this).
+function Onboarding:CompleteFlow()
+    if TA.db then TA.db.onboardedAccount = true end
+    TA._onboardingActive = false
+
+    -- Step 3: the main screen. Short delay so it does not appear in the same
+    -- frame the welcome popup vanishes in, which reads as a flicker.
+    C_Timer.After(0.4, function()
+        local AQS = TA:GetModule("AltQuickStart")
+        local optedOut = TA.charDB and TA.charDB.altQuickStart
+                     and TA.charDB.altQuickStart.disabled
+        if AQS and AQS.Show and not optedOut then
+            AQS:Show()
+        end
+    end)
+end
+
+-- ── Slash commands ────────────────────────────────────────────────────────────
+
+Onboarding.SlashCommands = {
+    onboard = function(self, args)
+        local sub = ((args or ""):match("^(%S*)") or ""):lower()
+
+        if sub == "account" or sub == "character" then
+            if TA.db then TA.db.onboardScope = sub end
+            local desc = sub == "account" and "once per account"
+                                           or "once per character"
+            print("|cFFFFD100[ToonAge]|r First-run setup: |cFFFFD100" .. desc .. "|r.")
+            return
+        end
+
+        if sub == "reset" then
+            if TA.charDB then TA.charDB.onboarded = nil end
+            if TA.db then TA.db.onboardedAccount = false end
+            print("|cFFFFD100[ToonAge]|r First-run setup will run again next login. "
+                  .. "|cFF888780/ta onboard runs it now.|r")
+            return
+        end
+
+        if sub ~= "" then
+            print("|cFFFFD100[ToonAge]|r Unknown: /ta onboard " .. sub
+                  .. "  |cFF888780(try: account, character, reset)|r")
+            return
+        end
+
+        -- No argument: run the flow now, without touching the saved flags.
+        local scope = (TA.db and TA.db.onboardScope) or "character"
+        print("|cFFFFD100[ToonAge]|r Setup — currently |cFFFFD100" .. scope .. "|r scope. "
+              .. "|cFF888780/ta onboard account|character to change.|r")
+        self:ShowPopup()
+    end,
+}
 
 -- ── First login sequence ──────────────────────────────────────────────────────
 
@@ -135,6 +214,7 @@ function Onboarding:ShowPopup()
     btnAuto:SetScript("OnClick", function()
         self:ApplyPreset("auto")
         f:Hide()
+        self:CompleteFlow()
     end)
 
     -- ── Manual button ─────────────────────────────────────────────────
@@ -158,6 +238,7 @@ function Onboarding:ShowPopup()
     btnManual:SetScript("OnClick", function()
         self:ApplyPreset("manual")
         f:Hide()
+        self:CompleteFlow()
     end)
 
     -- ── Close / Decide Later ──────────────────────────────────────────
@@ -169,7 +250,7 @@ function Onboarding:ShowPopup()
     laterLbl:SetText("|cFF888780Decide Later (/ta options)|r")
     laterLbl:SetAllPoints(btnLater)
     laterLbl:SetJustifyH("CENTER")
-    btnLater:SetScript("OnClick", function() f:Hide() end)
+    btnLater:SetScript("OnClick", function() f:Hide(); Onboarding:CompleteFlow() end)
 
     self.popup = f
 end
