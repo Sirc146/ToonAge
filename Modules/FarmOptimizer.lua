@@ -654,7 +654,21 @@ local function OnEvent(self, event, ...)
     end
 end
 
-eventFrame:SetScript("OnEvent", OnEvent)
+-- Wrapped rather than assigned directly. A bare SetScript handler runs outside
+-- any pcall, so an error here surfaced as a raw Lua error instead of an
+-- ErrorLog entry — this module was the only one with a private event frame and
+-- no protection. Same pattern CombatState and DungeonGuide already use.
+--
+-- Passing FarmOpt as arg 1 rather than the frame: SetScript hands the frame to
+-- the handler, so OnEvent's `self` was the frame and was never read — the body
+-- reaches state through the FarmOpt upvalue. Making the signature honest is
+-- behaviour-neutral here, but it means `self` is now safe to use inside OnEvent.
+eventFrame:SetScript("OnEvent", function(_, event, ...)
+    local ok, err = pcall(OnEvent, FarmOpt, event, ...)
+    if not ok and TA.ErrorLog then
+        TA.ErrorLog:Log("FarmOptimizer OnEvent", tostring(err), event or "")
+    end
+end)
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 12. INIT

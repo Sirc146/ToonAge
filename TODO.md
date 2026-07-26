@@ -23,7 +23,26 @@ Zones→ItemLevels rename), on branch `chore/pre-refactor-snapshot`.
 
 ### 2. `/reload` and smoke-test
 Everything except the map-ID data was written but **never executed**. Watch
-`/ta errors` after login and after a fight. Specifically at risk:
+`/ta errors` after login and after a fight.
+
+**Added 2026-07-26 — this session's changes, also never executed:**
+
+- `Core/Init.lua` — `CopyDefault` on every defaults write, and `/ta reset` now
+  calls `InitDB()`. Test on a **fresh install** (rename the SavedVariables file):
+  `/ta toggle` a module, then `/ta reset`, then confirm the toggle came back on.
+- `Modules/CombatState.lua` — `IsLongRamp` lost its tag branch. Confirm DoTs
+  still get suppressed below 3s TTD, and that nothing *else* got suppressed.
+- `Modules/FarmOptimizer.lua` — handler is now pcall-wrapped and receives
+  `FarmOpt` as arg 1. Loot something with a gathering profession active.
+- `Modules/CoordResolver.lua` — only comments and the `sources` diagnostic
+  changed. Run **`/ta coord`** (not `/coord`, which is DevHelpers' recorder).
+  Two things to read off the output: it should say `C_Navigation (arrow only)`
+  rather than plain `C_Navigation`, and whether `C_QuestLog POI` appears at all
+  answers half of item 18 for free — that entry tests
+  `C_QuestLog.GetNextWaypointForMap`, which is the function whose survival
+  decides how `QuerySuperTrack` gets rewired.
+
+**From the previous session, still unverified:**
 
 - `Core/Init.lua` — `QueueUIRefresh`, the 0.15s event coalescer
 - `Core/UI.lua` — `Refresh(events)` and the three-way `TAB_EVENTS` filter
@@ -120,11 +139,31 @@ Both fixed. The by-reference bug was worse than described here: it also hit
 because `/ta reset` re-derived from the mutated `DB_DEFAULTS`, a reset in the
 same session did not actually reset. `CopyDefault` now guards every write.
 
-### 10. Modules outside the error net
-`DungeonGuide.lua` and `FarmOptimizer.lua` own private event frames, so their
-handlers never pass through `UpdateModules`' `pcall`. Errors there surface as
-raw Lua errors rather than `ErrorLog` entries. Worth knowing when debugging;
-worth fixing if either misbehaves.
+### 10. ~~Modules outside the error net~~ ✅ DONE 2026-07-26 — **and this entry was mostly wrong**
+The claim was that `DungeonGuide` and `FarmOptimizer` had unprotected handlers.
+Checked all four private event frames in the addon:
+
+| File | Line | Reality |
+|---|--:|---|
+| `Modules/CombatState.lua` | 661 | **Already pcall'd + ErrorLog.** Frame is private *on purpose* — see below |
+| `Modules/DungeonGuide.lua` | 453 | **Already pcall'd + ErrorLog**, and passes `event` as the stack arg, which `UpdateModules` doesn't |
+| `Modules/FarmOptimizer.lua` | 657 | Genuinely raw. **Fixed** — wrapped in the same pattern |
+| `Modules/MapPins.lua` | 213 | One-shot `ADDON_LOADED` LOD bootstrap that unregisters itself. Left alone deliberately |
+
+**Do not migrate CombatState onto `TA.eventFrame`.** Two independent reasons,
+neither previously recorded outside a comment at `CombatState.lua:644-646`:
+
+1. **Taint isolation.** Taint flows through shared frames. That frame reads
+   health/power/aura, and routing it through the frame MapPins and CoordResolver
+   also use is how those queries start returning secret values.
+2. **Cost.** `UpdateModules` broadcasts every event to every module with one
+   `pcall` each. `UNIT_HEALTH`, `UNIT_POWER_FREQUENT` and `UNIT_AURA` on the
+   shared frame would mean ~51 pcalls per tick, against `.rules.md`'s own
+   performance rules.
+
+A private frame is the correct pattern for high-frequency or taint-sensitive
+events. The rule is "every handler is pcall-wrapped," not "every handler is on
+the shared frame."
 
 ### 11. Only 11 of 51 modules are toggleable
 `Rotation`, `TooltipScorer`, `NameplateObjectives`, `RoleMorph`, `TargetMarker`,
