@@ -702,6 +702,43 @@ end
 --   QuestTracker exposes its window as TA:GetModule("QuestTracker").window
 -- We use these rather than globals so the function works regardless of naming.
 
+--- Place the arrow during a layout swap, deferring to the user's own position.
+---
+--- ApplyLayout used to position the arrow from `db.unifiedPosition` or
+--- `db.oldUiPositions.arrow`, while dragging the arrow saves to
+--- `TA.charDB.arrow.x/y`. Two separate stores that never talked to each other,
+--- so every layout swap discarded a moved arrow and re-applied the layout
+--- default — and `oldUiPositions.arrow` defaults to `point = "CENTER"`, which
+--- is why it landed dead centre.
+---
+--- It also called RegisterForDrag("LeftButton") unconditionally, silently
+--- undoing a lock the user had set by right-clicking the arrow.
+---
+--- Same restore formula and same lock handling as Arrow:Init, so the arrow
+--- ends up in one place regardless of which code path put it there.
+--- @param arrowF Frame|nil
+--- @param defaultPos table — { point, relativePoint, x, y } used only when unplaced
+--- @param dx number|nil — layout-specific nudge, applied to the default only
+--- @param dy number|nil
+local function PositionArrow(arrowF, defaultPos, dx, dy)
+    if not arrowF or not defaultPos then return end
+    local saved = TA.charDB and TA.charDB.arrow
+
+    arrowF:ClearAllPoints()
+    if saved and saved.x and saved.y then
+        arrowF:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", saved.x, saved.y)
+    else
+        arrowF:SetPoint(defaultPos.point, UIParent, defaultPos.relativePoint,
+                        defaultPos.x + (dx or 0), defaultPos.y + (dy or 0))
+    end
+
+    if saved and saved.locked then
+        arrowF:RegisterForDrag()
+    else
+        arrowF:RegisterForDrag("LeftButton")
+    end
+end
+
 function TA:ApplyLayout()
     local db = self.db
     if not db then return end
@@ -723,14 +760,8 @@ function TA:ApplyLayout()
             guideF:Hide()
         end
 
-        -- 2) Position arrow at unified position
-        if arrowF then
-            arrowF:ClearAllPoints()
-            local pos = db.unifiedPosition
-            arrowF:SetPoint(pos.point, UIParent, pos.relativePoint,
-                pos.x - 50, pos.y + 10)
-            arrowF:RegisterForDrag("LeftButton")
-        end
+        -- 2) Position arrow at unified position (unless the user placed it)
+        PositionArrow(arrowF, db.unifiedPosition, -50, 10)
 
         -- 3) Allow the drawer's OnShow hook to function normally
         self._drawerSuppressed = false
@@ -762,12 +793,7 @@ function TA:ApplyLayout()
         end
 
         -- 3) Position arrow at its saved independent position
-        if arrowF then
-            arrowF:ClearAllPoints()
-            local pos = db.oldUiPositions.arrow
-            arrowF:SetPoint(pos.point, UIParent, pos.relativePoint, pos.x, pos.y)
-            arrowF:RegisterForDrag("LeftButton")
-        end
+        PositionArrow(arrowF, db.oldUiPositions.arrow)
 
         -- 4) Show and position standalone tracker window
         if guideF then
