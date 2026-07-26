@@ -57,6 +57,24 @@ local DB_DEFAULTS = {
 }
 
 -- ── SavedVariables ────────────────────────────────────────────────────
+
+--- Copies a value out of DB_DEFAULTS. Tables are copied recursively.
+--- Assigning a default table straight into the DB shares the reference, which
+--- makes DB_DEFAULTS itself user-writable: on a fresh install db.modules *is*
+--- DB_DEFAULTS.modules, so `/ta toggle` edits the defaults. That survives until
+--- reload, and `/ta reset` in the same session then "restores" the mutated
+--- table rather than the shipped one.
+--- @param v any
+--- @return any
+local function CopyDefault(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for k, sub in pairs(v) do
+        out[k] = CopyDefault(sub)
+    end
+    return out
+end
+
 function TA:InitDB()
     -- ToonAgeDB is set by WoW from SavedVariables on login
     ToonAgeDB = ToonAgeDB or {}
@@ -65,7 +83,7 @@ function TA:InitDB()
     -- Apply defaults for any missing top-level keys
     for k, v in pairs(DB_DEFAULTS) do
         if db[k] == nil then
-            db[k] = v
+            db[k] = CopyDefault(v)
         end
     end
 
@@ -75,7 +93,7 @@ function TA:InitDB()
         db.oldUiPositions = db.oldUiPositions or {}
         for k, v in pairs(DB_DEFAULTS.oldUiPositions) do
             if db.oldUiPositions[k] == nil then
-                db.oldUiPositions[k] = v
+                db.oldUiPositions[k] = CopyDefault(v)
             end
         end
     end
@@ -83,7 +101,7 @@ function TA:InitDB()
         db.unifiedPosition = db.unifiedPosition or {}
         for k, v in pairs(DB_DEFAULTS.unifiedPosition) do
             if db.unifiedPosition[k] == nil then
-                db.unifiedPosition[k] = v
+                db.unifiedPosition[k] = CopyDefault(v)
             end
         end
     end
@@ -91,7 +109,7 @@ function TA:InitDB()
         db.modules = db.modules or {}
         for k, v in pairs(DB_DEFAULTS.modules) do
             if db.modules[k] == nil then
-                db.modules[k] = v
+                db.modules[k] = CopyDefault(v)
             end
         end
     end
@@ -331,7 +349,13 @@ function TA:SlashCommand(msg)
             print("|cFFFFD100[TA]|r Debug mode: " .. (TA.debug and "ON" or "OFF"))
         end,
         reset    = function()
+            -- Rebuild immediately. Clearing the global alone left TA.db and
+            -- TA.charDB pointing at the orphaned table, so every write between
+            -- the reset and the reload went into a table nothing would save.
             ToonAgeDB = nil
+            self:InitDB()
+            -- Modules that cached a sub-table of the old db still hold the
+            -- orphan, which is why the reload is still required.
             print("|cFFFFD100[TA]|r Settings reset. Please reload UI (/reload).")
         end,
         layout   = function()

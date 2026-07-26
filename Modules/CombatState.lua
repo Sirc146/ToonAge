@@ -309,13 +309,17 @@ end
 -- than acted on. Since nearly every entry carries `tags`, that meant almost the
 -- whole priority list was skipped once targetTTD dropped below 3 — the prediction
 -- bar would stall or blank right as a mob was dying.
+--
+-- There used to be a tag check ahead of the name match, looking for `dot`,
+-- `setup` or `ramp`. None of those three strings appears anywhere in Data/ —
+-- the data only ever uses core, active, cd, defensive and aoe — so the branch
+-- could not fire and the name match below was doing all the work regardless.
+-- Removed rather than backfilled: tagging ~640 entries by hand to reproduce
+-- what the name match already gets right is not worth it, and a half-tagged
+-- data set would make this function's behaviour depend on which entries had
+-- been reached. If tags are ever added for another purpose, re-add the check
+-- then, against tags that actually exist.
 local function IsLongRamp(entry)
-    if entry.tags then
-        for _, tag in ipairs(entry.tags) do
-            if tag == "dot" or tag == "setup" or tag == "ramp" then return true end
-        end
-    end
-    -- Name-based fallback for entries whose tags don't say so.
     if entry.name then
         local ln = entry.name:lower()
         if ln:find("mark") or (ln:find("shock") and ln:find("flame"))
