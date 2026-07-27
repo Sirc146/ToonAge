@@ -15,6 +15,54 @@ lives, and — where it isn't obvious — why it's worth doing.
 
 ---
 
+## ⏸️ PICK UP HERE — 2026-07-26, end of session
+
+**One command owed, on two clients.** ApiGuard is built and deployed; nothing
+else proceeds until it has been run.
+
+    /ta apiprobe        on RETAIL (12.0.7)  and  on PTR (12.1.0)
+
+The **diff between those two outputs is the measured API divergence** between
+the clients, and it is the seed data for `Core/Compat.lua`. Everything in the
+multi-client plan waits on it.
+
+Stated expectation, so it can be proven wrong: retail should show
+`C_ClassTalents.GetExportString` as **present** (it was removed in 12.1.0), and
+PTR should show it **missing**. Anything else missing on retail is a promotion
+blocker we do not yet know about. If no line appears at login at all, ApiGuard
+did not run — which is its own finding.
+
+**State as of this pause:**
+
+- Repo clean at `64067f2`. Only `Archive/` and `Monk/` untracked, deliberately.
+- ToonAge **deployed to `_retail_`** at commit `d0d4c65` via `Tools/deploy.ps1`
+  (79 lua files both sides; `Tools/`, `Archive/`, `Monk/`, `.git/` excluded).
+  `_ptr_` is the repository and the single source of truth — never edit the
+  retail copy, edit here and re-run the deploy script.
+- TOC already declares `120007, 120100`, so retail needed no manifest change.
+- `check_lua` 79/79 · `test_onboarding` 87/87.
+
+**Client targets confirmed from `.build.info`** — four live products, not the
+three an earlier draft assumed:
+
+| Folder | Product | Version | Interface |
+|---|---|---|---|
+| `_retail_` | `wow` | 12.0.7.68887 | 120007 |
+| `_ptr_` | `wowt` | 12.1.0.68914 | 120100 |
+| `_classic_` | `wow_classic` | 5.5.4 (Mists) | 50504 |
+| `_anniversary_` | `wow_anniversary` | 2.5.6 (TBC) | 20506 |
+| `_classic_era_` | `wow_classic_era` | 1.15.9 | 11509 |
+
+Cataclysm Classic is **not** installed. TradeSkillMaster's own interface line
+(`120007, 50504, 20506, 11509`) matches these exactly — useful confirmation.
+
+**Next after the probe:** `Core/Compat.lua`, seeded from the measured diff.
+Modules declare *capabilities* (`"item.info"`, `"quest.log"`), not raw API names
+— the symbol differs per client, so a raw name cannot be portable. `U.GetItemInfo`
+at `Core/Utils.lua` is the existing hand-written example of this pattern.
+
+---
+
 ## 🔴 P0 — Do these first, in this order
 
 ### 1. ~~Commit the work~~ ✅ DONE 2026-07-26
