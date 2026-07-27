@@ -17,6 +17,67 @@ TA.modules = {}
 -- Event frame
 TA.eventFrame = CreateFrame("Frame", "ToonAgeEventFrame")
 
+-- ── Chat output ───────────────────────────────────────────────────────────
+-- One funnel for everything the addon says. Before this there were 309 direct
+-- print() calls across 53 modules and no way to quiet any of them: a fresh
+-- login printed a wall of text and the user had no recourse.
+--
+-- The colours below are not new. They were already in use and already meant
+-- these things -- this only makes the convention enforceable.
+--
+-- OUTPUT is deliberately outside the severity scale. A reply to a command the
+-- user just typed is not logging, and must not vanish because the log level is
+-- low. /ta errors printing nothing would be a bug, not quiet.
+TA.LOG = {
+    OUTPUT = 0,   -- direct answer to a user command -- always shown
+    ERROR  = 1,
+    WARN   = 2,
+    INFO   = 3,
+    DEBUG  = 4,
+}
+
+local LOG_COLOR = {
+    [0] = "FFFFD100",   -- gold
+    [1] = "FFFF4444",   -- red
+    [2] = "FFFF9A1A",   -- orange
+    [3] = "FFFFD100",   -- gold
+    [4] = "FF00CCFF",   -- cyan
+}
+
+-- Default WARN: a working install says nothing at login. InitDB raises it from
+-- db.logLevel once SavedVariables exist. Until then -- module load, which is
+-- before InitDB runs -- this value applies, so early output is quiet too.
+TA.logLevel = TA.LOG.WARN
+
+-- module is optional:  TA:Print(TA.LOG.INFO, "Arrow", msg)  ->  [TA Arrow] msg
+--                      TA:Print(TA.LOG.INFO, nil, msg)      ->  [TA] msg
+function TA:Print(level, module, msg)
+    level = level or TA.LOG.INFO
+    if level > (TA.logLevel or TA.LOG.WARN) then return end
+    print(string.format("|c%s[%s]|r %s",
+        LOG_COLOR[level] or LOG_COLOR[3],
+        module and ("TA " .. module) or "TA",
+        tostring(msg)))
+end
+
+-- No prefix, still filtered. For the indented continuation lines under a header
+-- ("  Arrow ON", "  3 loaded · 1 off"), where a repeated [TA] on every row would
+-- be noise. Same level rules; only the tag is dropped.
+function TA:Raw(level, msg)
+    level = level or TA.LOG.INFO
+    if level > (TA.logLevel or TA.LOG.WARN) then return end
+    print(tostring(msg))
+end
+
+function TA:Printf(level, module, fmt, ...)
+    level = level or TA.LOG.INFO
+    if level > (TA.logLevel or TA.LOG.WARN) then return end
+    -- Format under pcall: a bad format string in a log line must never be the
+    -- thing that breaks a module. Fall back to the raw format string.
+    local ok, out = pcall(string.format, fmt, ...)
+    TA:Print(level, module, ok and out or fmt)
+end
+
 -- Default saved variables schema
 local DB_DEFAULTS = {
     minimap = { minimized = false, position = 45 },
@@ -54,6 +115,12 @@ local DB_DEFAULTS = {
     -- Which preset "inherit" applies. Set by the wizard whenever a character
     -- completes it, so the choice you made last is the one your alts get.
     defaultPreset   = "auto",
+
+    -- How much ToonAge says in chat. See TA.LOG above. WARN means a healthy
+    -- install is silent at login and only speaks up when something is wrong;
+    -- replies to commands you typed are LOG.OUTPUT and ignore this entirely.
+    -- /ta verbose <error|warn|info|debug> changes it.
+    logLevel = 2,   -- TA.LOG.WARN
 
     -- Safe Mode boot flag. Persisted deliberately: the whole point is to
     -- survive a reload when the addon is too broken to reach its own UI.
@@ -157,6 +224,11 @@ function TA:InitDB()
     end
 
     self.db = db
+
+    -- Raise the log level from the saved value. Until this line runs, output is
+    -- filtered at the WARN default set beside TA.LOG, which is why anything
+    -- printed during module load stays quiet on a default install.
+    TA.logLevel = db.logLevel or TA.LOG.WARN
 
     -- Per-character key
     local name   = UnitName("player") or "Unknown"
@@ -554,6 +626,29 @@ function TA:SlashCommand(msg)
     -- Check exact built-in match
     if BUILTIN[cmd] then
         BUILTIN[cmd]()
+        return
+    end
+
+    -- ── Verbosity subcommand ──────────────────────────────────────────
+    -- Everything printed here is LOG.OUTPUT: the user asked, so the answer must
+    -- appear regardless of the level being set -- including when setting it to
+    -- the quietest one.
+    if cmd == "verbose" then
+        local LEVELS = { error = TA.LOG.ERROR, warn = TA.LOG.WARN,
+                         info  = TA.LOG.INFO,  debug = TA.LOG.DEBUG }
+        local NAMES  = { [1] = "error", [2] = "warn", [3] = "info", [4] = "debug" }
+        local want = LEVELS[args:lower()]
+        if not want then
+            TA:Printf(TA.LOG.OUTPUT, nil, "Chat verbosity is |cFF4AFF7A%s|r.",
+                NAMES[TA.logLevel] or tostring(TA.logLevel))
+            TA:Print(TA.LOG.OUTPUT, nil, "Usage: /ta verbose error|warn|info|debug")
+            TA:Print(TA.LOG.OUTPUT, nil,
+                "warn is the default: replies to your commands always show, background chatter does not.")
+            return
+        end
+        self.db.logLevel = want
+        TA.logLevel      = want
+        TA:Printf(TA.LOG.OUTPUT, nil, "Chat verbosity set to |cFF4AFF7A%s|r.", NAMES[want])
         return
     end
 
