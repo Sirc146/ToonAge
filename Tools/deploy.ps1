@@ -115,3 +115,8 @@ $count = (Get-ChildItem $Target -Recurse -File).Count
 Write-Host ""
 Write-Host "Deployed $count files to $Client" -ForegroundColor Green
 Write-Host "Reload the client (or /reload if already running) to pick it up."
+
+# robocopy uses exit codes 0-7 for degrees of success (1 = files were copied),
+# which PowerShell otherwise surfaces as a failed script. Anything >= 8 already
+# threw above, so reaching here means success.
+exit 0
