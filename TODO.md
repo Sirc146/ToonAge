@@ -93,10 +93,18 @@ Order by payoff — this is extremely lopsided:
 Use `/coord` — it now logs account-wide and survives reloads and character
 swaps. `/coord dump` exports the batch; `/coord clear` resets.
 
-**Before starting Hallowfall:** see item 12 (licensing). If the WoW-Pro
-Community grants an exception, their `TWW_Hallowfall.lua` has 473 coordinates
-with quest IDs in a near-1:1 schema match, and this becomes a scripting job
-instead of a walking job. Worth sending the email before committing days to it.
+**Decision 2026-07-26 — this stays a walking job. Own data, evolved in-house.**
+The WoW-Pro shortcut is off the table by choice, not by refusal: no licensing
+dependency, and nothing in the guide data that cannot be defended as ours.
+
+It would not have worked anyway. The installed WoWPro is the **Classic** build —
+all six modules declare `## Interface: 50504` — and contains no
+`TWW_Hallowfall.lua`. Only small treasure files (`TWW_HF_Treasures.lua`, 4.8 KB)
+and `MN_Midnight_Intro.lua`. The 473-coordinate figure this entry relied on is
+not present in the tree, so item 12's licensing email loses its purpose here.
+
+Which makes 393 coordinates a `/coord` walking job, and the single largest
+remaining Phase 1 cost. Plan it as playtime, not as code.
 
 ---
 
@@ -128,8 +136,9 @@ anywhere in the data.~~ ✅ DONE 2026-07-26 — claim re-verified by grep (zero
 matches in `Data/`), tag branch dropped in `610e679`. The name-based fallback
 now carries it outright. **The ~640 `when` conditions above are still open.**
 
-### 8. `QuestTracker.lua` is 3,673 lines
-10% of the codebase, 2.7× the next-largest module. Holds the tracker window,
+### 8. `QuestTracker.lua` is 3,257 lines
+*(measured 2026-07-26; this said 3,673.)* 10% of the codebase, 2.6× the
+next-largest module. Holds the tracker window,
 fast-forward sync, auto-quest, and the quest-item button — which is the natural
 three-way split.
 
@@ -165,7 +174,8 @@ A private frame is the correct pattern for high-frequency or taint-sensitive
 events. The rule is "every handler is pcall-wrapped," not "every handler is on
 the shared frame."
 
-### 11. Only 11 of 51 modules are toggleable
+### 11. Only 11 of 53 modules are toggleable
+*(measured 2026-07-26: 53 registered modules, 48 with `Init()`; this said 51.)*
 `Rotation`, `TooltipScorer`, `NameplateObjectives`, `RoleMorph`, `TargetMarker`,
 and `AntTrail` are opinionated enough that users will want them off — and each
 one disabled is one fewer dispatch per event.
@@ -260,6 +270,18 @@ Real, dense string on a fully-spent tree. The capture path is live: the "Save as
 Recommended" button at `Modules/Talents.lua:559` and `/tadev`'s loadout export
 both work again for the first time since the removal.
 
+**Live references for 12.1.0 API questions.** Three installed addons declare
+`## Interface: …,120100`, i.e. they are maintained for this exact PTR, and are
+in or near ToonAge's problem domain. Reading them answers "does this API still
+exist / what replaced it" far more reliably than recall:
+
+- `TalentLoadoutManager` v1.6.32 — talent loadouts, current
+- `TalentTreeViewer_Loader` v2.4.47 — tree rendering, current
+- `TalentLoadoutBroker` v1.3.24 — current
+
+Reading for API patterns is fine; their data is theirs. Contrast `Hekili`
+(`110205`) and `TomTom` (`40401`), which are behind and will mislead on 12.1.0.
+
 Namespace guards restored to match the project's own idiom at
 `DungeonTalents.lua:99` — `if C_Traits and C_Traits.GenerateImportString then`.
 A bare symbol swap had left three sites indexing `C_Traits` unguarded while the
@@ -284,8 +306,10 @@ That matters because three call sites read by position, and a mismatch would
 have given wrong values silently. Migration is safe to continue.
 
 ### 19. Talent build strings — source found, one test outstanding
-`Data/Talents.lua` holds 39 specs × 3 builds with `string=""` and `nodes={}`;
-`Data/TalentsPvP.lua` is the same. The copy button is gated on a non-empty
+`Data/Talents.lua` holds 39 specs × 3 builds. **Measured 2026-07-26: 24 of 114
+build slots have a string, 21 of them distinct — not zero, as earlier notes in
+this file implied.** `nodes` is genuinely 0 of 114, and `Data/TalentsPvP.lua`
+has 1 of 40 `importString`s filled. The copy button is gated on a non-empty
 `string` (`Modules/Talents.lua:322`), which is why a recommended build shows a
 name and description but no importable code. Item 18's dead capture path is the
 upstream cause — this is a data gap sitting on top of an API regression.
@@ -363,6 +387,20 @@ re-ran the dump, got a different valid string). So the workflow is switch-spec �
 dump → repeat, three specs per character, no relogging. That is what makes bulk
 capture practical rather than theoretical.
 
+**Full round-trip verified 2026-07-26.** "Save as Recommended" → `/reload` →
+logout wrote a real string to SavedVariables:
+
+    ["customBuilds"] = { [254] = { ["solo"] = "C4PAD57yiELKEty14ekTDtZEqwCM..." } }
+
+So captures can be read off disk and converted to `Data/Talents.lua` in bulk —
+no transcribing strings through chat, where truncation and I/l ambiguity make a
+base64 payload unrecoverable. Two notes for a bulk run:
+
+- The build files under whichever **content tab is open** (`solo`/`mplus`/`raid`),
+  from `self.viewBuildType`. Wrong tab, wrong slot, no warning.
+- The onboarding migration ran correctly on the real save file: old keys gone,
+  `newCharBehavior = "wizard"`, `defaultPreset = "auto"`.
+
 Capture ceiling: **11 of 13 classes are already copied to
 the PTR — 33 of 39 specs reachable with no further copies.** Missing are Priest
 (Traeintha, 80) and Death Knight (Ellaeura, 71). Only Ellacait is level 90, so
@@ -387,9 +425,11 @@ Scope of the claim: this proves one node purchase plus a commit. A full build
 (reset → many purchases → commit) is more surface, and some paths may still want
 a hardware event. Strong signal, not a completed feature.
 
-**This is how BtWLoadouts does it** (`Interface/AddOns/BtWLoadouts`, v1.20.22 —
-Dragonflight-era, a design reference not a working Midnight example). It uses no
-import strings at all: `PurchaseRank` + `SetSelection` to spend, `CommitConfig`
+**This is how BtWLoadouts does it** (`Interface/AddOns/BtWLoadouts`, v1.20.22,
+`## Interface: 120007` — maintained for 12.0.7, one patch behind this PTR. The
+`DFTalents.*` filenames are legacy naming from Dragonflight, not its target; an
+earlier note in this file called it three expansions stale, which was wrong).
+It uses no import strings at all: `PurchaseRank` + `SetSelection` to spend, `CommitConfig`
 to apply, `ResetTreeByCurrency` / `RollbackConfig` around it. It absorbs patch
 skew as bulk data — one ~1.4MB dataset per interface version
 (`DFTalents.100002/100005/100007/100100.lua`), the TOC loading exactly one.
@@ -422,6 +462,80 @@ Two constraints on any fetcher, both raised by the user:
 - **Redistribution.** These are Icy Veins' curated builds. Attribution in the
   data file and in the UI at minimum. See item 12 for the licensing precedent
   this project already follows.
+
+---
+
+## 🔵 From the full evaluation, 2026-07-26
+
+Measured against the tree, not estimated. Headline: **33,009 lines across 77
+files** (Core 3,048 · Data 7,539 · Modules 22,397), defensively written and
+cleanly structured, running on **12–21% content**. 57 of 77 files are under 500
+lines; TOC lists exactly the 77 that exist. The code is not the bottleneck and
+has not been for some time.
+
+Coverage as measured: guide coords 56/449 (12%) · talent strings 24/114 (21%) ·
+talent nodes 0/114 · PvP strings 1/40 · rotation `when` 15 against 120 priority
+blocks (12%). `Data/Rotations.lua` is real content, not scaffolding — 665 named
+abilities — it is the conditional layer that is thin.
+
+### 20. Route every `print()` through one function — **release blocker**
+**309 direct `print(` calls** against 44 `ErrorLog` uses, concentrated in
+`Core/Init.lua` (54), `QuestTracker.lua` (30), `GearSets.lua` (26),
+`NavHud.lua` (22), `Arrow.lua` (18), `GuideImporter.lua` (15).
+
+No central output control, no verbosity level, no way for a user to silence any
+of it — and 53 modules print at login. For an addon shipping with LICENSE,
+PRIVACY and README, this is the likeliest source of a bad first review, and it
+is mechanical: one `TA:Print(level, …)`, then a sweep.
+
+Half a day, low risk, unblocks release. Do it before anything else on this list.
+
+### 21. Test coverage is one module out of 53
+`Tools/test_onboarding.py` is genuinely good — real Lua 5.1 against a stub API,
+forcing both module-init orders to catch a race no live client can show you.
+87 checks. It covers `Onboarding` and nothing else.
+
+The pattern is proven and documented in `.rules.md`. Best next targets are pure
+decision logic with no frames: `CombatState`'s `when` predicates,
+`Rotation:GetPredictionPriorities`' chain/priorities fallback, and
+`QuestTracker`'s `MapZoneDistance` ranking.
+
+### 22. Guard policy — warn once, do not fail silently
+`C_ClassTalents.GetExportString` was dead for weeks behind
+`if C_ClassTalents.GetExportString then`. The guard turned a removed API into a
+silent no-op: no error, no log, and the code that fills `Data/Talents.lua` simply
+never ran. Nobody could have noticed from inside the game.
+
+There are **130 `pcall` sites** in the tree, every one the same shape of trap — a
+swallowed error is indistinguishable from success. Proposal: a helper that logs
+once per session when a guarded API is absent, so a removal is visible without
+spamming. A policy plus a helper, not a rewrite.
+
+### 23. Module init order is non-deterministic — systemically
+Init order comes from `pairs()`. `Arrow:Init` and `QuestTracker:Init` sample
+visibility flags once and never again, which produced the bug fixed in `3b3b112`
+— but that fix was point-specific. The non-determinism remains and will bite
+wherever two modules read the same flag at init.
+
+Either define an explicit init order, or have flag-reading modules re-read on a
+settled event. `test_onboarding.py` already shows how to test both orders.
+
+### 24. Positioning claims outrun the data
+The competitive doc has ToonAge replacing Zygor/WoWPro (guides), MaxDps/Hekili
+(rotation) and the talent-loadout addons. Measured coverage behind those claims:
+guides 12%, rotation conditions 12%, talent nodes 0%.
+
+Also **"Minimap Illusion gathering radar" does not exist** anywhere in the addon
+— code or docs. The module is `FarmOptimizerHUD`. Fix before it reaches a README.
+
+Worth keeping as roadmap targets with the gap attached. Shipped flat against 12%
+data, they invite the reviews that are hardest to undo.
+
+**Sharper metric than "what do we replace":** you currently run
+`TalentLoadoutManager`, `TalentLoadoutBroker`, `BetterTalents`,
+`TalentTreeViewer`, `BtWLoadouts`, `Hekili`, `FarmHud`, `ItemRack`, `Outfitter`,
+`WoWPro`, `TourGuide` and `Guidelime_Shiku`. **Which one can you uninstall
+first?** That is measurable, and it ranks the roadmap by itself.
 
 ---
 
