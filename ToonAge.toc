@@ -17,7 +17,9 @@ Core\State.lua
 Core\UI.lua
 Core\UIModern.lua
 Core\MinimapButton.lua
+Core\ApiGuard.lua
 
+Data\ApiManifest.lua
 Data\StatWeights.lua
 Data\Spells.lua
 Data\Talents.lua
