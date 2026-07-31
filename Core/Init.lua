@@ -257,7 +257,7 @@ end
 function TA:RegisterModule(name, module)
     self.modules[name] = module
     if TA.debug then
-        print("|cFFFFD100[TA]|r Module registered: " .. name)
+        TA:Print(TA.LOG.DEBUG, nil, "Module registered: " .. name)
     end
 end
 
@@ -321,7 +321,7 @@ function TA:InitModules()
     local safe = self.db and self.db.safeMode
 
     if safe then
-        print("|cFFFF9A1A[ToonAge] SAFE MODE|r — only core modules loaded. "
+        TA:Print(TA.LOG.WARN, nil, "SAFE MODE — only core modules loaded. "
               .. "|cFF888780/ta safemode to turn off, then /reload.|r")
     end
 
@@ -345,7 +345,7 @@ function TA:InitModules()
                 local ok, err = pcall(mod.Init, mod)
                 if not ok then
                     mod._initError = tostring(err)
-                    print("|cFFFF4444[TA] Error initialising module " .. name .. ":|r " .. tostring(err))
+                    TA:Printf(TA.LOG.ERROR, nil, "Error initialising module %s: %s", name, tostring(err))
                     if TA.ErrorLog then TA.ErrorLog:Log(name .. " Init", tostring(err), "") end
                 end
             end
@@ -361,10 +361,10 @@ function TA:UpdateModules(event, ...)
                 mod._errorCount = (mod._errorCount or 0) + 1
 
                 if mod._errorCount <= ERROR_PRINT_LIMIT then
-                    print("|cFFFF4444[TA] Module " .. name .. " OnEvent error:|r " .. tostring(err))
+                    TA:Printf(TA.LOG.ERROR, nil, "Module %s OnEvent error: %s", name, tostring(err))
                 elseif mod._errorCount == ERROR_PRINT_LIMIT + 1 then
-                    print("|cFFFF9A1A[TA]|r " .. name .. " keeps failing — muting further errors. "
-                          .. "|cFF888780/ta errors to read them.|r")
+                    TA:Printf(TA.LOG.WARN, nil, "%s keeps failing — muting further errors. "
+                          .. "|cFF888780/ta errors to read them.|r", name)
                 end
 
                 -- Pass the event as the stack field. Which event triggered a
@@ -377,7 +377,7 @@ function TA:UpdateModules(event, ...)
                     mod._autoDisabled = true
                     local msg = name .. " disabled after " .. mod._errorCount
                                 .. " errors this session"
-                    print("|cFFFF9A1A[ToonAge Safe Mode]|r " .. msg
+                    TA:Print(TA.LOG.WARN, "Safe Mode", msg
                           .. ". |cFF888780Reload to re-enable. /ta health for status.|r")
                     if TA.ErrorLog then TA.ErrorLog:Log("SafeMode", msg, event or "") end
                 end
@@ -492,7 +492,7 @@ function TA:QueueUIRefresh(event)
 
         local ok, err = pcall(TA.UI.Refresh, TA.UI, events)
         if not ok then
-            print("|cFFFF4444[TA] UI refresh error:|r " .. tostring(err))
+            TA:Printf(TA.LOG.ERROR, nil, "UI refresh error: %s", tostring(err))
             if TA.ErrorLog then TA.ErrorLog:Log("UI Refresh", tostring(err), "") end
         end
     end)
@@ -530,7 +530,10 @@ function TA:OnLogin()
     -- Install clickable hyperlink system for interactive /ta commands
     self:InstallSlashLinkHook()
 
-    print("|cFFFFD100ToonAge|r v" .. self.version .. " loaded. Type "
+    -- INFO, not OUTPUT: nobody typed a command to get this. At the WARN default
+    -- it stays quiet, which is the "healthy install is silent at login" promise
+    -- made beside DB_DEFAULTS.logLevel. /ta verbose info brings it back.
+    TA:Raw(TA.LOG.INFO, "|cFFFFD100ToonAge|r v" .. self.version .. " loaded. Type "
         .. self:MakeSlashLink("help", "/ta help") .. " for clickable commands.")
 end
 
@@ -560,7 +563,7 @@ function TA:SlashCommand(msg)
         options  = function() self:ToggleOptionsPanel() end,
         debug    = function()
             TA.debug = not TA.debug
-            print("|cFFFFD100[TA]|r Debug mode: " .. (TA.debug and "ON" or "OFF"))
+            TA:Print(TA.LOG.OUTPUT, nil, "Debug mode: " .. (TA.debug and "ON" or "OFF"))
         end,
         reset    = function()
             -- Rebuild immediately. Clearing the global alone left TA.db and
@@ -574,21 +577,21 @@ function TA:SlashCommand(msg)
             if TA.State then TA.State:Wipe() end
             -- Modules that cached a sub-table of the old db still hold the
             -- orphan, which is why the reload is still required.
-            print("|cFFFFD100[TA]|r Settings reset. Please reload UI (/reload).")
+            TA:Print(TA.LOG.OUTPUT, nil, "Settings reset. Please reload UI (/reload).")
         end,
         layout   = function()
             self.db.useUnifiedUI = not self.db.useUnifiedUI
             self:ApplyLayout()
             local mode = self.db.useUnifiedUI and "|cFF4AFF7AUnified HUD|r" or "|cFFFF9A1AFragmented Windows|r"
-            print("|cFFFFD100[ToonAge]|r Layout: " .. mode)
+            TA:Print(TA.LOG.OUTPUT, nil, "Layout: " .. mode)
         end,
         safemode = function()
             self.db.safeMode = not self.db.safeMode
             if self.db.safeMode then
-                print("|cFFFF9A1A[ToonAge]|r Safe Mode |cFFFF9A1AON|r — next load initialises "
+                TA:Print(TA.LOG.OUTPUT, nil, "Safe Mode |cFFFF9A1AON|r — next load initialises "
                       .. "core modules only. |cFF888780/reload to apply.|r")
             else
-                print("|cFFFFD100[ToonAge]|r Safe Mode |cFF4AFF7AOFF|r. "
+                TA:Print(TA.LOG.OUTPUT, nil, "Safe Mode |cFF4AFF7AOFF|r. "
                       .. "|cFF888780/reload to load everything again.|r")
             end
         end,
@@ -596,14 +599,14 @@ function TA:SlashCommand(msg)
             local report = self:GetHealthReport()
             local loaded, off, errored = 0, 0, 0
 
-            print("|cFFFFD100━━━ ToonAge Module Health ━━━|r")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge Module Health ━━━|r")
             for _, entry in ipairs(report) do
                 local mod = self.modules[entry.name]
                 if entry.status == "loaded" then
                     loaded = loaded + 1
                 elseif entry.status == "errored" then
                     errored = errored + 1
-                    print(("  |cFFFF4444✗ %s|r — init failed: %s"):format(entry.name, tostring(entry.error)))
+                    TA:Raw(TA.LOG.OUTPUT, ("  |cFFFF4444✗ %s|r — init failed: %s"):format(entry.name, tostring(entry.error)))
                 else
                     off = off + 1
                     -- Distinguish the three ways a module ends up off. "Disabled"
@@ -616,11 +619,11 @@ function TA:SlashCommand(msg)
                     elseif mod and mod._safeSkipped then
                         why = "skipped by Safe Mode"
                     end
-                    print(("  |cFF888780○ %s — %s|r"):format(entry.name, why))
+                    TA:Raw(TA.LOG.OUTPUT, ("  |cFF888780○ %s — %s|r"):format(entry.name, why))
                 end
             end
 
-            print(("  |cFF4AFF7A%d loaded|r · |cFF888780%d off|r · |cFFFF4444%d errored|r")
+            TA:Raw(TA.LOG.OUTPUT, ("  |cFF4AFF7A%d loaded|r · |cFF888780%d off|r · |cFFFF4444%d errored|r")
                   :format(loaded, off, errored))
 
             -- Outstanding item-data requests. Should sit at 0 most of the time;
@@ -628,12 +631,12 @@ function TA:SlashCommand(msg)
             -- is not resolving them and the 10s timeout is doing all the work.
             local pending = TA.Utils and TA.Utils.PendingItemCount and TA.Utils.PendingItemCount()
             if pending and pending > 0 then
-                print(("  |cFF888780%d item request(s) awaiting GET_ITEM_INFO_RECEIVED|r"):format(pending))
+                TA:Raw(TA.LOG.OUTPUT, ("  |cFF888780%d item request(s) awaiting GET_ITEM_INFO_RECEIVED|r"):format(pending))
             end
             if self.db.safeMode then
-                print("  |cFFFF9A1ASafe Mode is ON.|r |cFF888780/ta safemode to turn it off.|r")
+                TA:Raw(TA.LOG.OUTPUT, "  |cFFFF9A1ASafe Mode is ON.|r |cFF888780/ta safemode to turn it off.|r")
             end
-            print("|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
         end,
         help     = function() self:PrintInteractiveHelp() end,
     }
@@ -671,11 +674,11 @@ function TA:SlashCommand(msg)
     if cmd == "toggle" then
         local modName = args ~= "" and args or nil
         if not modName then
-            print("|cFFFFD100[TA]|r Toggleable modules:")
+            TA:Print(TA.LOG.OUTPUT, nil, "Toggleable modules:")
             for name, enabled in pairs(self.db.modules or {}) do
                 local status = enabled and "|cFF4AFF7AON|r" or "|cFFFF4444OFF|r"
                 local link = self:MakeSlashLink("toggle " .. name:lower(), name .. " " .. status)
-                print("  " .. link)
+                TA:Raw(TA.LOG.OUTPUT, "  " .. link)
             end
             return
         end
@@ -688,12 +691,12 @@ function TA:SlashCommand(msg)
             matchedKey = self:FuzzyMatchModule(modName)
         end
         if not matchedKey then
-            print("|cFFFFD100[TA]|r Unknown module: " .. modName)
+            TA:Print(TA.LOG.OUTPUT, nil, "Unknown module: " .. modName)
             return
         end
         self.db.modules[matchedKey] = not self.db.modules[matchedKey]
         local status = self.db.modules[matchedKey] and "|cFF4AFF7AON|r" or "|cFFFF4444OFF|r"
-        print("|cFFFFD100[TA]|r Module " .. matchedKey .. ": " .. status .. "  (reload to apply)")
+        TA:Print(TA.LOG.OUTPUT, nil, "Module " .. matchedKey .. ": " .. status .. "  (reload to apply)")
         return
     end
 
@@ -739,10 +742,10 @@ function TA:SlashCommand(msg)
     -- Multiple prefix matches or fuzzy matches: suggest them as clickable links
     if #prefixMatches > 0 or #fuzzyMatches > 0 then
         local suggestions = #prefixMatches > 0 and prefixMatches or fuzzyMatches
-        print("|cFFFFD100[ToonAge]|r Unknown command: |cFFFF8800" .. cmd .. "|r")
-        print("  Did you mean:")
+        TA:Print(TA.LOG.OUTPUT, nil, "Unknown command: |cFFFF8800" .. cmd .. "|r")
+        TA:Raw(TA.LOG.OUTPUT, "  Did you mean:")
         for _, name in ipairs(suggestions) do
-            print("    " .. self:MakeSlashLink(name, "/ta " .. name))
+            TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink(name, "/ta " .. name))
         end
         return
     end
@@ -861,46 +864,46 @@ end
 -- ── Interactive help with clickable commands ──────────────────────────────────
 
 function TA:PrintInteractiveHelp()
-    print("|cFFFFD100ToonAge|r — click any command to run it:")
-    print("")
-    print("  " .. self:MakeSlashLink("", "Open/Close ToonAge"))
-    print("")
-    print("  |cFF888780TABS:|r")
-    print("    " .. self:MakeSlashLink("gear", "Gear")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100ToonAge|r — click any command to run it:")
+    TA:Raw(TA.LOG.OUTPUT, "")
+    TA:Raw(TA.LOG.OUTPUT, "  " .. self:MakeSlashLink("", "Open/Close ToonAge"))
+    TA:Raw(TA.LOG.OUTPUT, "")
+    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780TABS:|r")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("gear", "Gear")
         .. "  " .. self:MakeSlashLink("talents", "Talents")
         .. "  " .. self:MakeSlashLink("rotation", "Rotation"))
-    print("    " .. self:MakeSlashLink("prof", "Professions")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("prof", "Professions")
         .. "  " .. self:MakeSlashLink("pets", "Pets")
         .. "  " .. self:MakeSlashLink("weekly", "Weekly"))
-    print("    " .. self:MakeSlashLink("guide", "Guide"))
-    print("")
-    print("  |cFF888780TRACKER:|r")
-    print("    " .. self:MakeSlashLink("tracker", "Toggle Tracker")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("guide", "Guide"))
+    TA:Raw(TA.LOG.OUTPUT, "")
+    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780TRACKER:|r")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("tracker", "Toggle Tracker")
         .. "  " .. self:MakeSlashLink("autoselect", "Auto-Select Guide"))
-    print("    " .. self:MakeSlashLink("diag", "Diagnose Tracker")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("diag", "Diagnose Tracker")
         .. "  " .. self:MakeSlashLink("missed", "Missed Content"))
-    print("")
-    print("  |cFF888780HUD:|r")
-    print("    " .. self:MakeSlashLink("arrow", "Toggle Arrow")
+    TA:Raw(TA.LOG.OUTPUT, "")
+    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780HUD:|r")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("arrow", "Toggle Arrow")
         .. "  " .. self:MakeSlashLink("hud", "Toggle NavHud"))
-    print("    " .. self:MakeSlashLink("trail", "Toggle AntTrail")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("trail", "Toggle AntTrail")
         .. "  " .. self:MakeSlashLink("farmhud", "Farm Optimizer"))
-    print("")
-    print("  |cFF888780TOOLS:|r")
-    print("    " .. self:MakeSlashLink("coord", "Show Coordinates")
+    TA:Raw(TA.LOG.OUTPUT, "")
+    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780TOOLS:|r")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("coord", "Show Coordinates")
         .. "  " .. self:MakeSlashLink("xp", "XP Stats"))
-    print("    " .. self:MakeSlashLink("alts", "Alt Roster")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("alts", "Alt Roster")
         .. "  " .. self:MakeSlashLink("todo", "Weekly Todo"))
-    print("    " .. self:MakeSlashLink("gather", "Gather History")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("gather", "Gather History")
         .. "  " .. self:MakeSlashLink("errors", "Error Log"))
-    print("")
-    print("  |cFF888780SYSTEM:|r")
-    print("    " .. self:MakeSlashLink("options", "Settings")
+    TA:Raw(TA.LOG.OUTPUT, "")
+    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780SYSTEM:|r")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("options", "Settings")
         .. "  " .. self:MakeSlashLink("layout", "Toggle Layout"))
-    print("    " .. self:MakeSlashLink("toggle", "Module Toggles")
+    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("toggle", "Module Toggles")
         .. "  " .. self:MakeSlashLink("reset", "Reset Data"))
-    print("")
-    print("  |cFF555555Tip: You can type partial commands — /ta mis → missed|r")
+    TA:Raw(TA.LOG.OUTPUT, "")
+    TA:Raw(TA.LOG.OUTPUT, "  |cFF555555Tip: You can type partial commands — /ta mis → missed|r")
 end
 
 function TA:ToggleUI()
