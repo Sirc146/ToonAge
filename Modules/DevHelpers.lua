@@ -845,6 +845,79 @@ DH.SlashCommands["secretprobe"] = function()
             out("     being dropped by the id > 0 guard. AlreadyActive can never")
             out("     see them and the prediction cannot change.|r")
         end
+
+        -- ── Coercion matrix ───────────────────────────────────────────────
+        -- Measured 12.0.7: type(v)=="number" and tostring(v)=="466904", yet
+        -- tonumber(tostring(v)) is nil. Those cannot all hold for an ordinary
+        -- Lua number, so one of the three is not what it appears to be. Rather
+        -- than reason about which, try every route to an integer separately and
+        -- let the client answer. Each runs under its own pcall because a secret
+        -- value is expected to ERROR on some of these, and one error must not
+        -- hide the results of the routes after it.
+        out("|cFFFFD100  -- coercion matrix --|r")
+        local function try(label, fn)
+            local pok, res = pcall(fn)
+            if pok then
+                out(("    %-24s |cFF4AFF7A%s|r"):format(label, tostring(res)))
+            else
+                out(("    %-24s |cFFFF4444ERROR|r |cFF888780%s|r"):format(label, tostring(res)))
+            end
+        end
+
+        try("tonumber(v)",           function() return tonumber(raw) end)
+        try("tonumber(tostring(v))", function() return tonumber(tostring(raw)) end)
+        try("v + 0",                 function() return raw + 0 end)
+        try("math.floor(v)",         function() return math.floor(raw) end)
+        try("format('%d', v)",       function() return string.format("%d", raw) end)
+        try("v > 0",                 function() return raw > 0 end)
+        -- The decisive one. If tostring(v) really is the 6-character string
+        -- "466904" then tonumber on it cannot fail, so a length that is not 6
+        -- means the string carries something the chat frame is not rendering.
+        try("#tostring(v)",          function() return #tostring(raw) end)
+        try("tostring(v):match(%d+)",function() return tostring(raw):match("%d+") end)
+        try("tonumber(match)",       function() return tonumber(tostring(raw):match("%d+")) end)
+        try("byte(1..3)",            function()
+            local s = tostring(raw)
+            return string.format("%s %s %s", tostring(s:byte(1)), tostring(s:byte(2)), tostring(s:byte(3)))
+        end)
+        try("as table key",          function()
+            local t = {}
+            t[raw] = true
+            for k in pairs(t) do return type(k) .. " / " .. tostring(k) end
+        end)
+        out("|cFF888780  Paste this block back -- whichever route returns 466904 is")
+        out("  the one U.SafeNum must use.|r")
+
+        -- ── Per-aura sweep ────────────────────────────────────────────────
+        -- Two runs of this command disagreed: 466904 coerced to 0 while
+        -- inCombat was true, and 222202 coerced correctly while it was false.
+        -- Two readings fit that. Either specific auras are secret and the rest
+        -- are not, or ALL aura data goes secret for the duration of combat.
+        -- They demand different fixes, and one slot-1 sample cannot tell them
+        -- apart -- so walk every buff in a single run and count.
+        out(("|cFFFFD100  -- all buffs (inCombat=%s) --|r")
+            :format(tostring(InCombatLockdown() and true or false)))
+        local total, failed = 0, 0
+        for i = 1, 40 do
+            local aok, a = pcall(C_UnitAuras.GetBuffDataByIndex, "player", i)
+            if not aok or not a then break end
+            total = total + 1
+            local id = U.SafeNum(a.spellId)
+            if id == 0 then failed = failed + 1 end
+            out(("    %2d  tostring=|cFFFFD100%-9s|r SafeNum=%s%s|r  %s")
+                :format(i, tostring(a.spellId),
+                        id == 0 and "|cFFFF4444" or "|cFF4AFF7A", tostring(id),
+                        tostring(a.name or "?")))
+        end
+        -- The verdict that actually decides the fix.
+        if total > 0 and failed == total then
+            out(("  |cFFFF4444ALL %d failed -- coercion is gated on state, not on the aura.|r"):format(total))
+        elseif failed > 0 then
+            out(("  |cFFFF9A1A%d of %d failed -- it is per-aura, not a blanket rule.|r"):format(failed, total))
+        else
+            out(("  |cFF4AFF7AAll %d coerced cleanly.|r"):format(total))
+        end
+        out("|cFF888780  Run this once IN combat and once OUT of combat.|r")
     end
 
     local CS = TA:GetModule("CombatState")

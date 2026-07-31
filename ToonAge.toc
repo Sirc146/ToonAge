@@ -93,4 +93,5 @@ Modules\FarmOptimizerHUD.lua
 Modules\Settings.lua
 Modules\Onboarding.lua
 Modules\AltQuickStart.lua
+Modules\ChatCopy.lua
 Modules\TestBar.lua

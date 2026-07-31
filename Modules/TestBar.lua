@@ -54,7 +54,7 @@ local CATEGORY = {
     gear = CAT_PANEL, talents = CAT_PANEL, rotation = CAT_PANEL,
     prof = CAT_PANEL, pets    = CAT_PANEL, weekly   = CAT_PANEL,
     guide = CAT_PANEL, options = CAT_PANEL, open    = CAT_PANEL,
-    help = CAT_PANEL,
+    help = CAT_PANEL, copychat = CAT_PANEL, copy   = CAT_PANEL,
 
     -- Toggles: flip a flag. Reversible by clicking again, so they are safe on a
     -- one-click surface even though they do change state.
