@@ -36,7 +36,7 @@ local function SwitchToGuideForQuest(questID, skipPopup)
 
     local guideID = GI:FindGuideForQuest(questID)
     if not guideID then
-        print("|cFFFFD100[ToonAge]|r No guide found containing quest #" .. questID .. ".")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r No guide found containing quest #" .. questID .. ".")
         return
     end
 
@@ -184,7 +184,7 @@ local function SetupMenuHooks()
         -- contextData contains questID for quest menus
         local questID = contextData and contextData.questID
         if TA.debug then
-            print("|cFFFFD100[TA GCM]|r AddToonAgeButton fired. questID=" .. tostring(questID))
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA GCM]|r AddToonAgeButton fired. questID=" .. tostring(questID))
         end
         if not questID then return end
 
@@ -252,7 +252,7 @@ local function SetupMenuHooks()
     end
 
     if TA.debug then
-        print("|cFFFFD100[TA GuideContextMenu]|r Menu hooks registered."
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA GuideContextMenu]|r Menu hooks registered."
             .. (not ok1 and (" Tracker: " .. tostring(err1)) or "")
             .. (not ok2 and (" QuestLog: " .. tostring(err2)) or ""))
     end
@@ -330,7 +330,7 @@ end
 --- @param guideName string
 function GCM:PrintGuideFoundMessage(questID, guideID, guideName)
     local hyperlink = self:CreateHyperlink(questID, guideID, guideName)
-    print(string.format(
+    TA:Raw(TA.LOG.OUTPUT, string.format(
         "|cFFFFD100[ToonAge]|r Quest #%d belongs to |cFFFFFFFF%s|r — %s",
         questID, guideName, hyperlink
     ))
@@ -353,7 +353,7 @@ local function SetupHyperlinkHook()
 
         -- Validate the guide still exists
         if not guideID or not (TA.Guides and TA.Guides[guideID]) then
-            print("|cFFFFD100[ToonAge]|r Guide no longer available.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Guide no longer available.")
             return
         end
 
@@ -462,6 +462,6 @@ function GCM:Init()
     PatchGuideBrowserMessage()
 
     if TA.debug then
-        print("|cFFFFD100[TA]|r GuideContextMenu module loaded: context menus + hyperlinks active.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r GuideContextMenu module loaded: context menus + hyperlinks active.")
     end
 end

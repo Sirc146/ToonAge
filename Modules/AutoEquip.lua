@@ -243,7 +243,7 @@ local function EvaluateItem(itemLink)
     EquipCursorItem(targetSlot)
 
     local itemName = GetItemInfo(itemLink) or itemLink
-    print(string.format("|cFFFFD100[TA]|r Auto-equipped |cFF1EFF00%s|r (ilvl %d → slot %d).",
+    TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r Auto-equipped |cFF1EFF00%s|r (ilvl %d → slot %d).",
         itemName, ilvl, targetSlot))
 end
 
@@ -339,6 +339,6 @@ function AE:Init()
     end
 
     if TA.debug then
-        print("|cFFFFD100[TA]|r AutoEquip module loaded.")
+        TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA]|r AutoEquip module loaded.")
     end
 end

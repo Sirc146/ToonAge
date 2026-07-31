@@ -197,11 +197,11 @@ State.SlashCommands = {
         table.sort(keys)
 
         if #keys == 0 then
-            print("|cFFFFD100[ToonAge State]|r No keys registered.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge State]|r No keys registered.")
             return
         end
 
-        print("|cFFFFD100━━━ ToonAge State (" .. #keys .. " keys) ━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge State (" .. #keys .. " keys) ━━━|r")
         for _, key in ipairs(keys) do
             local reg = registry[key]
             local e   = entries[key]
@@ -212,12 +212,12 @@ State.SlashCommands = {
             local trigger = #events > 0 and table.concat(events, ", ") or "manual only"
 
             if e then
-                print(("  |cFF4AFF7A●|r %s |cFF888780(%s, %.1fs old)|r"):format(key, reg.owner, GetTime() - e.stamp))
+                TA:Raw(TA.LOG.OUTPUT, ("  |cFF4AFF7A●|r %s |cFF888780(%s, %.1fs old)|r"):format(key, reg.owner, GetTime() - e.stamp))
             else
-                print(("  |cFF888780○ %s (%s, empty)|r"):format(key, reg.owner))
+                TA:Raw(TA.LOG.OUTPUT, ("  |cFF888780○ %s (%s, empty)|r"):format(key, reg.owner))
             end
-            print(("     |cFF888780cleared by: %s|r"):format(trigger))
+            TA:Raw(TA.LOG.OUTPUT, ("     |cFF888780cleared by: %s|r"):format(trigger))
         end
-        print("|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
     end,
 }

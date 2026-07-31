@@ -123,7 +123,7 @@ function PQ:Init()
     C_Timer.After(8, function()
         local tip = PQ:GetGatheringTip()
         if tip then
-            print("|cFFFFD100[ToonAge]|r " .. tip)
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r " .. tip)
         end
     end)
 end

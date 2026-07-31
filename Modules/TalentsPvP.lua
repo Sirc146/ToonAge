@@ -339,7 +339,7 @@ function TalentsPvP:Render(content, sidebar, startY)
                     Talents:OpenSafeCopyFrame("PvP Build", importStr)
                 elseif CopyToClipboard then
                     CopyToClipboard(importStr)
-                    print(COL_GREEN .. "[TA]" .. CLOSE .. " PvP talent string copied to clipboard.")
+                    TA:Raw(TA.LOG.OUTPUT, COL_GREEN .. "[TA]" .. CLOSE .. " PvP talent string copied to clipboard.")
                 end
             end)
             y = y - 32

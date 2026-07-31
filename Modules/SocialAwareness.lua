@@ -97,7 +97,7 @@ function Social:OnEvent(event, ...)
             self:ScanNearbyPlayers()
             local suggestion = self:GetSuggestion()
             if suggestion then
-                print("|cFFFFD100[ToonAge]|r " .. suggestion)
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r " .. suggestion)
             end
         end
     end

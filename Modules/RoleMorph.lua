@@ -40,7 +40,7 @@ function RM:ApplyCameraProfile()
     pcall(C_CVar.SetCVar, "cameraDistanceMaxZoomFactor", zoom)
 
     if TA.debug then
-        print(string.format("|cFFFFD100[TA]|r Camera → %s (spec %d)", zoom, specID))
+        TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[TA]|r Camera → %s (spec %d)", zoom, specID))
     end
 end
 
@@ -95,9 +95,9 @@ function RM:CheckHeirlooms()
     end
 
     if #deadSlots > 0 then
-        print("|cFFFF9A1A[ToonAge]|r ⚠ Heirloom gear has stopped scaling!")
+        TA:Raw(TA.LOG.WARN, "|cFFFF9A1A[ToonAge]|r ⚠ Heirloom gear has stopped scaling!")
         for _, info in ipairs(deadSlots) do
-            print(string.format("  |cFFFF4444✗|r %s (capped at level %d) — replace ASAP", info.name, info.cap))
+            TA:Raw(TA.LOG.WARN, string.format("  |cFFFF4444✗|r %s (capped at level %d) — replace ASAP", info.name, info.cap))
         end
         -- Flag these slots for aggressive AutoEquip replacement
         TA.charDB.heirloomDeadSlots = {}
@@ -223,11 +223,11 @@ function RM:AuditBuffs()
 
     -- Output warnings
     if #warnings > 0 then
-        print("|cFFFFD100[ToonAge Pre-Pull Audit]|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Pre-Pull Audit]|r")
         for _, w in ipairs(warnings) do print("  " .. w) end
     else
         if TA.debug then
-            print("|cFF4AFF7A[ToonAge]|r Buffs OK for pull.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A[ToonAge]|r Buffs OK for pull.")
         end
     end
 end

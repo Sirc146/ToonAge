@@ -346,6 +346,6 @@ CR.SlashCommands = {
         if C_Navigation and C_Navigation.GetNextWaypointForMap then
             table.insert(sources, "C_Navigation (arrow only)")
         end
-        print("|cFFFFD100[ToonAge CoordResolver]|r Available sources: " .. table.concat(sources, ", "))
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge CoordResolver]|r Available sources: " .. table.concat(sources, ", "))
     end,
 }

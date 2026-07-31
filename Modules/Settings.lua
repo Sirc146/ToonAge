@@ -671,7 +671,7 @@ function Settings:RenderSidebar(parent)
             TA.db.useUnifiedUI = not TA.db.useUnifiedUI
             if TA.ApplyLayout then TA:ApplyLayout() end
             local mode = TA.db.useUnifiedUI and "Unified HUD" or "Fragmented Windows"
-            print("|cFFFFD100[ToonAge]|r Layout: " .. mode)
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Layout: " .. mode)
         end
     end)
 

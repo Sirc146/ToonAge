@@ -266,14 +266,14 @@ AntTrail.SlashCommands = {
     trail = function(self)
         local wp = self:BuildTrail()
         if #wp == 0 then
-            print("|cFFFFD100[ToonAge Trail]|r No trail waypoints (no active guide or no coords available).")
-            print("|cFFFFD100[ToonAge Trail]|r Run /ta coord to check available data sources.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Trail]|r No trail waypoints (no active guide or no coords available).")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Trail]|r Run /ta coord to check available data sources.")
             return
         end
-        print("|cFFFFD100[ToonAge Trail]|r " .. #wp .. " waypoints in current trail:")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Trail]|r " .. #wp .. " waypoints in current trail:")
         for i, w in ipairs(wp) do
             local prefix = w.isCurrent and "|cFF4AFF7A→|r " or "  "
-            print(string.format("  %s#%d [%s] %s (%.2f, %.2f) via %s",
+            TA:Raw(TA.LOG.OUTPUT, string.format("  %s#%d [%s] %s (%.2f, %.2f) via %s",
                 prefix, w.stepIdx, w.type, w.text:sub(1, 30), w.x, w.y, w.source or "?"))
         end
     end,

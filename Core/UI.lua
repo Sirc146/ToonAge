@@ -552,7 +552,7 @@ function TA:InitUI()
             end
         end)
         if not ok and TA.debug then
-            print("|cFFFFD100[TA]|r Blizzard Settings registration failed: " .. tostring(err))
+            TA:Raw(TA.LOG.ERROR, "|cFFFFD100[TA]|r Blizzard Settings registration failed: " .. tostring(err))
         end
     end
 
@@ -634,7 +634,7 @@ function TA:OpenOptionsFrame()
         TA.db.useUnifiedUI = self:GetChecked()
         TA:ApplyLayout()
         local mode = TA.db.useUnifiedUI and "Unified HUD" or "Fragmented Windows"
-        print("|cFFFFD100[ToonAge]|r Layout switched to: " .. mode)
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Layout switched to: " .. mode)
     end)
 
     -- ── Divider ───────────────────────────────────────────────────────

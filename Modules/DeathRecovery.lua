@@ -100,23 +100,23 @@ function DR:ShowDeathAdvice()
 
     local advice = self:Analyze()
 
-    print("|cFFFFD100━━━ ToonAge Death Recovery ━━━|r")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge Death Recovery ━━━|r")
 
     if advice.recommendation == "spiritres" then
-        print("|cFF4AFF7A  ► Spirit Resurrect (recommended)|r")
-        print("    " .. advice.reason)
+        TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A  ► Spirit Resurrect (recommended)|r")
+        TA:Raw(TA.LOG.OUTPUT, "    " .. advice.reason)
     elseif advice.recommendation == "consider_spirit" then
-        print("|cFFFFD100  ► Consider Spirit Res:|r " .. advice.reason)
-        print("|cFF888780  ► Or run back to corpse (free, but slower)|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100  ► Consider Spirit Res:|r " .. advice.reason)
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780  ► Or run back to corpse (free, but slower)|r")
     else
-        print("|cFF4AFF7A  ► Run back to corpse (recommended)|r")
-        print("    " .. advice.reason)
+        TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A  ► Run back to corpse (recommended)|r")
+        TA:Raw(TA.LOG.OUTPUT, "    " .. advice.reason)
     end
 
     -- Tip: nearby quest objectives after res
     local QT = TA:GetModule("QuestTracker")
     if QT and QT.guideID then
-        print("|cFF888780  After res: guide continues from current step.|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780  After res: guide continues from current step.|r")
     end
 end
 

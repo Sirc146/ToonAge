@@ -92,6 +92,6 @@ function CS:Init()
     end
 
     if TA.debug then
-        print("|cFFFFD100[TA]|r CutsceneSkip module loaded.")
+        TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA]|r CutsceneSkip module loaded.")
     end
 end

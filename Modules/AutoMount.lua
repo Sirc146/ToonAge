@@ -115,7 +115,7 @@ local function TrySummonDragonridingMount()
     local summonOk, summonErr = pcall(C_MountJournal.SummonByID, mountID)
     if not summonOk then
         if TA.debug then
-            print("|cFFFF4444[TA AutoMount]|r Dragonriding summon failed: " .. tostring(summonErr))
+            TA:Raw(TA.LOG.ERROR, "|cFFFF4444[TA AutoMount]|r Dragonriding summon failed: " .. tostring(summonErr))
         end
         return false
     end
@@ -171,7 +171,7 @@ local function DoMount()
     local ok, err = pcall(C_MountJournal.SummonByID, 0)
     if not ok then
         if TA.debug then
-            print("|cFFFF4444[TA AutoMount]|r SummonByID(0) failed: " .. tostring(err))
+            TA:Raw(TA.LOG.ERROR, "|cFFFF4444[TA AutoMount]|r SummonByID(0) failed: " .. tostring(err))
         end
     end
 end
@@ -231,12 +231,12 @@ AutoMount.SlashCommands = {
     ["automount"] = function(self)
         local settings = GetSettings()
         if not settings then
-            print("|cFFFF4444[TA AutoMount]|r Settings unavailable (DB not loaded).")
+            TA:Raw(TA.LOG.ERROR, "|cFFFF4444[TA AutoMount]|r Settings unavailable (DB not loaded).")
             return
         end
         settings.enabled = not settings.enabled
         local status = settings.enabled and "|cFF4AFF7AON|r" or "|cFFFF4444OFF|r"
-        print("|cFFFFD100[TA AutoMount]|r Auto-mount after combat: " .. status)
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA AutoMount]|r Auto-mount after combat: " .. status)
     end,
 }
 
@@ -252,7 +252,7 @@ function AutoMount:Init()
 
     if TA.debug then
         local settings = GetSettings()
-        print("|cFFFFD100[TA]|r AutoMount module loaded. Enabled: "
+        TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA]|r AutoMount module loaded. Enabled: "
             .. tostring(settings and settings.enabled)
             .. ", Delay: " .. tostring(settings and settings.delay) .. "s")
     end

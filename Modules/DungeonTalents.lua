@@ -128,7 +128,7 @@ function DungeonTalents:ShowSwitchPrompt(instanceName, buildLabel, importString)
             -- Copy to clipboard for paste into talent UI
             if CopyToClipboard then
                 CopyToClipboard(importString)
-                print("|cFF4AFF7A[ToonAge]|r Talent string copied! Open Talents (N) → Import → Paste.")
+                TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A[ToonAge]|r Talent string copied! Open Talents (N) → Import → Paste.")
             end
 
             -- Also try direct API application (may fail if protected/not supported)
@@ -137,7 +137,7 @@ function DungeonTalents:ShowSwitchPrompt(instanceName, buildLabel, importString)
                     C_ClassTalents.ImportLoadout(importString)
                 end)
                 if ok then
-                    print("|cFF4AFF7A[ToonAge]|r Loadout imported. Click 'Apply' in your talent frame.")
+                    TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A[ToonAge]|r Loadout imported. Click 'Apply' in your talent frame.")
                 end
             end
         end,
@@ -176,6 +176,6 @@ DungeonTalents.SlashCommands = {
             TA.charDB.dungeonTalents = { dismissed = {} }
         end
         self.lastInstance = nil
-        print("|cFFFFD100[ToonAge]|r Dungeon talent dismiss list cleared.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Dungeon talent dismiss list cleared.")
     end,
 }

@@ -432,7 +432,7 @@ function Weekly:AddTask(text, reset)
         category = "Custom",
         done     = false,
     })
-    print("|cFFFFD100[ToonAge]|r Added task: " .. text .. " (" .. (reset or "weekly") .. " reset)")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Added task: " .. text .. " (" .. (reset or "weekly") .. " reset)")
 end
 
 --- Remove a task by ID.
@@ -442,7 +442,7 @@ function Weekly:RemoveTask(taskID)
     for i, task in ipairs(list) do
         if task.id == taskID then
             table.remove(list, i)
-            print("|cFFFFD100[ToonAge]|r Removed task: " .. task.text)
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Removed task: " .. task.text)
             return
         end
     end
@@ -480,16 +480,16 @@ end
 Weekly.SlashCommands = {
     todo = function(self)
         local total, done = self:GetTaskSummary()
-        print(string.format("|cFFFFD100[ToonAge Weekly]|r %d/%d tasks done this week.", done, total))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge Weekly]|r %d/%d tasks done this week.", done, total))
         local cats = self:GetTasksByCategory()
         for cat, tasks in pairs(cats) do
-            print("  |cFFFFD100" .. cat .. ":|r")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100" .. cat .. ":|r")
             for _, t in ipairs(tasks) do
                 local status = t.done and "|cFF4AFF7A✓|r" or "|cFFFF4444○|r"
-                print("    " .. status .. " " .. t.text)
+                TA:Raw(TA.LOG.OUTPUT, "    " .. status .. " " .. t.text)
             end
         end
-        print("|cFF888780/ta todo add \"text\" weekly|daily — add custom task|r")
-        print("|cFF888780/ta todo done <id> — toggle task completion|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780/ta todo add \"text\" weekly|daily — add custom task|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780/ta todo done <id> — toggle task completion|r")
     end,
 }

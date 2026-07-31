@@ -124,7 +124,7 @@ function Onboarding:RunSilentInherit()
         -- the module init messages instead of buried in them -- the same reason
         -- the wizard path delays its welcome by 3 seconds.
         local label = (preset == "auto") and "Full Auto" or "Manual"
-        print("|cFFFFD100[ToonAge]|r New character detected. Inheriting |cFFFFD100"
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r New character detected. Inheriting |cFFFFD100"
               .. label .. "|r setup.  |cFF888780/ta onboard for the full setup"
               .. " wizard, /ta options to change.|r")
 
@@ -181,7 +181,7 @@ Onboarding.SlashCommands = {
 
         if BEHAVIOR_DESC[sub] then
             if TA.db then TA.db.newCharBehavior = sub end
-            print("|cFFFFD100[ToonAge]|r New characters: |cFFFFD100" .. sub .. "|r — "
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r New characters: |cFFFFD100" .. sub .. "|r — "
                   .. BEHAVIOR_DESC[sub] .. ".")
             return
         end
@@ -190,7 +190,7 @@ Onboarding.SlashCommands = {
         if sub == "account" or sub == "character" then
             local mapped = (sub == "account") and "off" or "wizard"
             if TA.db then TA.db.newCharBehavior = mapped end
-            print("|cFFFFD100[ToonAge]|r |cFF888780Scopes were replaced by modes.|r "
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r |cFF888780Scopes were replaced by modes.|r "
                   .. "New characters: |cFFFFD100" .. mapped .. "|r — "
                   .. BEHAVIOR_DESC[mapped] .. ".")
             return
@@ -199,25 +199,25 @@ Onboarding.SlashCommands = {
         if sub == "preset" then
             if rest ~= "auto" and rest ~= "manual" then
                 local cur = (TA.db and TA.db.defaultPreset) or "auto"
-                print("|cFFFFD100[ToonAge]|r Inherited preset: |cFFFFD100" .. cur
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Inherited preset: |cFFFFD100" .. cur
                       .. "|r.  |cFF888780/ta onboard preset auto|manual to change.|r")
                 return
             end
             if TA.db then TA.db.defaultPreset = rest end
-            print("|cFFFFD100[ToonAge]|r New characters will inherit the |cFFFFD100"
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r New characters will inherit the |cFFFFD100"
                   .. rest .. "|r preset.")
             return
         end
 
         if sub == "reset" then
             if TA.charDB then TA.charDB.onboarded = nil end
-            print("|cFFFFD100[ToonAge]|r This character will be treated as new next login. "
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r This character will be treated as new next login. "
                   .. "|cFF888780/ta onboard runs the wizard now.|r")
             return
         end
 
         if sub ~= "" then
-            print("|cFFFFD100[ToonAge]|r Unknown: /ta onboard " .. sub
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Unknown: /ta onboard " .. sub
                   .. "  |cFF888780(try: wizard, inherit, off, preset, reset)|r")
             return
         end
@@ -225,7 +225,7 @@ Onboarding.SlashCommands = {
         -- No argument: the manual override. Runs the wizard on this character
         -- whatever newCharBehavior says, and touches no saved flags.
         local mode = (TA.db and TA.db.newCharBehavior) or "wizard"
-        print("|cFFFFD100[ToonAge]|r Setup wizard — new characters are set to |cFFFFD100"
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Setup wizard — new characters are set to |cFFFFD100"
               .. mode .. "|r.  |cFF888780/ta onboard wizard|inherit|off to change.|r")
         self:ShowPopup()
     end,
@@ -235,7 +235,7 @@ Onboarding.SlashCommands = {
 
 function Onboarding:RunFirstLogin()
     -- Print concise welcome
-    print("|cFFFFD100ToonAge|r loaded! Opening setup...")
+    TA:Raw(TA.LOG.INFO, "|cFFFFD100ToonAge|r loaded! Opening setup...")
 
     -- Create the onboarding popup
     self:ShowPopup()
@@ -391,10 +391,10 @@ function Onboarding:ApplyPreset(preset)
     if TA.db then TA.db.defaultPreset = (preset == "auto") and "auto" or "manual" end
 
     if preset == "auto" then
-        print("|cFF4AFF7A[ToonAge]|r Full Auto enabled! Quests auto-accept, cutscenes skip, combat bar active.")
-        print("|cFF888780Hold Shift at any NPC to pause automation.|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A[ToonAge]|r Full Auto enabled! Quests auto-accept, cutscenes skip, combat bar active.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780Hold Shift at any NPC to pause automation.|r")
     else
-        print("|cFFFFD100[ToonAge]|r Manual mode. Arrow + tracker + prediction active. No auto-quest.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Manual mode. Arrow + tracker + prediction active. No auto-quest.")
     end
 
     -- Show main panel instead of standalone tracker

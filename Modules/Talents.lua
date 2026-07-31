@@ -360,7 +360,7 @@ function Talents:RenderContent(content, activeSpecID)
 
         cpBtn:SetScript("OnClick", function()
             if InCombatLockdown() then
-                print("|cFFFFD100[TA]|r Cannot copy talent string during combat.")
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Cannot copy talent string during combat.")
                 return
             end
             self:OpenSafeCopyFrame(build.name, build.string)
@@ -590,7 +590,7 @@ function Talents:RenderContent(content, activeSpecID)
                     TA.charDB.customBuilds = TA.charDB.customBuilds or {}
                     TA.charDB.customBuilds[capSpecID] = TA.charDB.customBuilds[capSpecID] or {}
                     TA.charDB.customBuilds[capSpecID][capViewType] = capExportStr
-                    print("|cFFFFD100[TA Talents]|r Saved your current loadout as the |cFF4AFF7A"
+                    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Talents]|r Saved your current loadout as the |cFF4AFF7A"
                         .. capViewType:upper() .. "|r build for " .. GetSpecNameByID(capSpecID) .. ".")
                     -- Refresh to show the saved string
                     self:Render(TA.UI.contentChild, TA.UI.sideChild)
@@ -1091,7 +1091,7 @@ function Talents:OpenImportFrame()
     importBtn:SetScript("OnClick", function()
         local str = eb:GetText():match("^%s*(.-)%s*$")
         if not str or #str < 20 then
-            print("|cFFFF4444[TA]|r String too short — paste a valid talent import string.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA]|r String too short — paste a valid talent import string.")
             return
         end
         local specID = self.selectedSpecID or U.GetPlayerSpec()
@@ -1099,7 +1099,7 @@ function Talents:OpenImportFrame()
         TA.charDB.customBuilds = TA.charDB.customBuilds or {}
         TA.charDB.customBuilds[specID] = TA.charDB.customBuilds[specID] or {}
         TA.charDB.customBuilds[specID][viewType] = str
-        print(string.format("|cFFFFD100[TA Talents]|r Imported and saved as |cFF4AFF7A%s|r build for %s.",
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA Talents]|r Imported and saved as |cFF4AFF7A%s|r build for %s.",
             viewType:upper(), GetSpecNameByID(specID)))
         cf:Hide()
         if TA.UI and TA.UI.activeTab == "talents" then
@@ -1122,17 +1122,17 @@ function Talents:OpenImportFrame()
     actLbl:SetJustifyH("CENTER")
     activeBtn:SetScript("OnClick", function()
         if not C_ClassTalents or not C_ClassTalents.GetActiveConfigID then
-            print("|cFFFF4444[TA]|r C_ClassTalents API not available.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA]|r C_ClassTalents API not available.")
             return
         end
         local cfgID = C_ClassTalents.GetActiveConfigID()
         if not cfgID then
-            print("|cFFFF4444[TA]|r No active talent config found.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA]|r No active talent config found.")
             return
         end
         local str = C_Traits and C_Traits.GenerateImportString and C_Traits.GenerateImportString(cfgID)
         if not str or str == "" then
-            print("|cFFFF4444[TA]|r Could not generate export string from active loadout.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA]|r Could not generate export string from active loadout.")
             return
         end
         local specID = self.selectedSpecID or U.GetPlayerSpec()
@@ -1140,9 +1140,9 @@ function Talents:OpenImportFrame()
         TA.charDB.customBuilds = TA.charDB.customBuilds or {}
         TA.charDB.customBuilds[specID] = TA.charDB.customBuilds[specID] or {}
         TA.charDB.customBuilds[specID][viewType] = str
-        print(string.format("|cFFFFD100[TA Talents]|r Captured active loadout as |cFF4AFF7A%s|r build for %s.",
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA Talents]|r Captured active loadout as |cFF4AFF7A%s|r build for %s.",
             viewType:upper(), GetSpecNameByID(specID)))
-        print("|cFF888780String:|r " .. str:sub(1, 60) .. "...")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780String:|r " .. str:sub(1, 60) .. "...")
         cf:Hide()
         if TA.UI and TA.UI.activeTab == "talents" then
             self:Render(TA.UI.contentChild, TA.UI.sideChild)

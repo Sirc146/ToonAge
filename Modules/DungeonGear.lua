@@ -173,11 +173,11 @@ DG.SlashCommands = {
     dungear = function(self)
         local lines = self:GetFormattedSuggestions()
         if #lines == 0 then
-            print("|cFFFFD100[TA]|r No dungeon gear suggestions available.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r No dungeon gear suggestions available.")
         else
-            print("|cFFFFD100[TA]|r Dungeon gear upgrades for your weakest slots:")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Dungeon gear upgrades for your weakest slots:")
             for _, line in ipairs(lines) do
-                print("  " .. line)
+                TA:Raw(TA.LOG.OUTPUT, "  " .. line)
             end
         end
     end,

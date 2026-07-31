@@ -701,7 +701,7 @@ end
 
 local function PrintSessionSummary()
     if not FarmOpt:IsActive() then
-        print("|cff00ccff[ToonAge FarmOpt]|r No active session data.")
+        TA:Raw(TA.LOG.OUTPUT, "|cff00ccff[ToonAge FarmOpt]|r No active session data.")
         return
     end
 
@@ -721,18 +721,18 @@ local function PrintSessionSummary()
     local gradeHex = string.format("|cff%02x%02x%02x",
         gradeColor[1] * 255, gradeColor[2] * 255, gradeColor[3] * 255)
 
-    print("|cff00ccff[ToonAge FarmOpt]|r Session Summary:")
-    print(string.format("  Duration: %dm %ds | Nodes: %d | Type: %s",
+    TA:Raw(TA.LOG.OUTPUT, "|cff00ccff[ToonAge FarmOpt]|r Session Summary:")
+    TA:Raw(TA.LOG.OUTPUT, string.format("  Duration: %dm %ds | Nodes: %d | Type: %s",
         minutes, seconds, #s.nodes, behavior))
-    print(string.format("  Nodes/min: %.1f | Gold/hr: %.0fg", npm, gph))
-    print(string.format("  Grade: %s%s|r | Score: %d/100 | Heat: %s",
+    TA:Raw(TA.LOG.OUTPUT, string.format("  Nodes/min: %.1f | Gold/hr: %.0fg", npm, gph))
+    TA:Raw(TA.LOG.OUTPUT, string.format("  Grade: %s%s|r | Score: %d/100 | Heat: %s",
         gradeHex, grade, score, heat))
-    print(string.format("  Distance: %.0f yds | Idle: %.0fs | Combat: %.0fs",
+    TA:Raw(TA.LOG.OUTPUT, string.format("  Distance: %.0f yds | Idle: %.0fs | Combat: %.0fs",
         s.totalDistance, s.totalIdleTime, s.totalCombatTime))
 
     local suggestion = FarmOpt:GetSuggestion()
     if suggestion then
-        print(string.format("  Tip: %s", suggestion))
+        TA:Raw(TA.LOG.OUTPUT, string.format("  Tip: %s", suggestion))
     end
 end
 
@@ -740,7 +740,7 @@ local function HandleSlash(msg)
     msg = (msg or ""):lower():trim()
     if msg == "reset" then
         FarmOpt:ResetSession()
-        print("|cff00ccff[ToonAge FarmOpt]|r Session reset.")
+        TA:Raw(TA.LOG.OUTPUT, "|cff00ccff[ToonAge FarmOpt]|r Session reset.")
     else
         PrintSessionSummary()
     end
@@ -753,7 +753,7 @@ SlashCmdList["TOONAGEFARM"] = HandleSlash
 SLASH_TOONAGEFARMRESET1 = "/farmreset"
 SlashCmdList["TOONAGEFARMRESET"] = function()
     FarmOpt:ResetSession()
-    print("|cff00ccff[ToonAge FarmOpt]|r Session reset.")
+    TA:Raw(TA.LOG.OUTPUT, "|cff00ccff[ToonAge FarmOpt]|r Session reset.")
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════

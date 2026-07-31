@@ -226,27 +226,27 @@ end
 XP.SlashCommands = {
     xp = function(self)
         if IsMaxLevel() then
-            print("|cFFFFD100[TA XP]|r Max level reached — no XP tracking needed.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA XP]|r Max level reached — no XP tracking needed.")
             return
         end
 
         local s = self:GetSessionSummary()
         local mins = math.floor(s.sessionTime / 60)
 
-        print("|cFFFFD100━━━ ToonAge XP Dashboard ━━━|r")
-        print(string.format("  Level: |cFFFFFFFF%d|r  (%.1f%%)", s.level, s.pct))
-        print(string.format("  XP/Hour: |cFF4AFF7A%s|r", U.FormatNumber and U.FormatNumber(s.xpPerHour) or string.format("%.0f", s.xpPerHour)))
-        print(string.format("  Session: %s XP in %dm", U.FormatNumber and U.FormatNumber(s.sessionXP) or tostring(s.sessionXP), mins))
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge XP Dashboard ━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, string.format("  Level: |cFFFFFFFF%d|r  (%.1f%%)", s.level, s.pct))
+        TA:Raw(TA.LOG.OUTPUT, string.format("  XP/Hour: |cFF4AFF7A%s|r", U.FormatNumber and U.FormatNumber(s.xpPerHour) or string.format("%.0f", s.xpPerHour)))
+        TA:Raw(TA.LOG.OUTPUT, string.format("  Session: %s XP in %dm", U.FormatNumber and U.FormatNumber(s.sessionXP) or tostring(s.sessionXP), mins))
 
         if s.eta > 0 then
             local etaMins = math.floor(s.eta / 60)
-            print(string.format("  |cFF4AFF7ALevel %d ETA: %dm|r", s.level + 1, etaMins))
+            TA:Raw(TA.LOG.OUTPUT, string.format("  |cFF4AFF7ALevel %d ETA: %dm|r", s.level + 1, etaMins))
         end
 
         -- Rested info
         local rested, isResting, restedPct = self:GetRestedInfo()
         if rested > 0 then
-            print(string.format("  Rested: %s (%.0f%%) %s",
+            TA:Raw(TA.LOG.OUTPUT, string.format("  Rested: %s (%.0f%%) %s",
                 U.FormatNumber and U.FormatNumber(rested) or tostring(rested),
                 restedPct,
                 isResting and "|cFF4AFF7A(resting now)|r" or ""))
@@ -255,11 +255,11 @@ XP.SlashCommands = {
         -- Alt comparison
         local alts = self:GetAltComparison()
         if alts and #alts > 0 then
-            print("  |cFF888780Compared to your alts:|r")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFF888780Compared to your alts:|r")
             for _, alt in ipairs(alts) do
                 local sign = alt.diffPct >= 0 and "+" or ""
                 local color = alt.diffPct >= 0 and "|cFF4AFF7A" or "|cFFFF6666"
-                print(string.format("    %s — %s%s%.0f%%|r faster",
+                TA:Raw(TA.LOG.OUTPUT, string.format("    %s — %s%s%.0f%%|r faster",
                     alt.name, color, sign, alt.diffPct))
             end
         end

@@ -267,7 +267,7 @@ function GP:Init()
         local where = e.stepN
             and ("Guide '" .. e.id .. "' step " .. e.stepN)
             or  ("Guide '" .. e.id .. "'")
-        print("|cFFFFD100[TA]|r " .. where .. ": |cFFFF4444" .. e.msg .. "|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r " .. where .. ": |cFFFF4444" .. e.msg .. "|r")
     end
 
     local loadedCount = 0
@@ -275,19 +275,19 @@ function GP:Init()
         if s.valid then
             loadedCount = loadedCount + 1
             if TA.debug then
-                print(string.format("|cFFFFD100[TA]|r Guide '|cFFFFFFFF%s|r' |cFF1EFF00OK|r (%d steps)", s.title, s.count))
+                TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r Guide '|cFFFFFFFF%s|r' |cFF1EFF00OK|r (%d steps)", s.title, s.count))
             end
         else
-            print(string.format("|cFFFFD100[TA]|r Guide '|cFFFFFFFF%s|r' |cFFFF4444INVALID|r (%d error(s))", s.title, s.errCount))
+            TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r Guide '|cFFFFFFFF%s|r' |cFFFF4444INVALID|r (%d error(s))", s.title, s.errCount))
         end
     end
 
     if #_summary == 0 then
         if TA.debug then
-            print("|cFFFFD100[TA]|r No guide files found — add *.lua to Data/Guides/ and list in the .toc")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r No guide files found — add *.lua to Data/Guides/ and list in the .toc")
         end
     elseif loadedCount > 0 then
-        print(string.format("|cFFFFD100[TA]|r %d guide(s) loaded. Type |cFFFFD100/ta tracker|r to open the tracker.", loadedCount))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r %d guide(s) loaded. Type |cFFFFD100/ta tracker|r to open the tracker.", loadedCount))
     end
 end
 
@@ -369,11 +369,11 @@ function GP:DumpGuides()
     for id, g in pairs(TA.Guides) do
         n = n + 1
         local chain = g.nextGuide and (" → " .. g.nextGuide) or ""
-        print(string.format("|cFFFFD100[TA]|r  [%s] \"%s\"  lvl %d-%d  (%d steps)%s",
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r  [%s] \"%s\"  lvl %d-%d  (%d steps)%s",
             id, g.title, g.minLevel or 1, g.maxLevel or 999, #g.steps, chain))
     end
     if n == 0 then
-        print("|cFFFFD100[TA]|r No validated guides are loaded.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r No validated guides are loaded.")
     end
 end
 

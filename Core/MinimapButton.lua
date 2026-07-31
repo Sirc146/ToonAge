@@ -74,7 +74,7 @@ function TA:InitMinimap()
             TA.db.useUnifiedUI = not TA.db.useUnifiedUI
             TA:ApplyLayout()
             local mode = TA.db.useUnifiedUI and "|cFF4AFF7AUnified HUD|r" or "|cFFFF9A1AFragmented Windows|r"
-            print("|cFFFFD100[ToonAge]|r Layout: " .. mode)
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Layout: " .. mode)
         elseif button == "MiddleButton" then
             -- Middle-click: hide / show button icon (minimized mode).
             -- Keeps the 31×31 hit area alive so the button can be found again.

@@ -324,11 +324,11 @@ AltTracker.SlashCommands = {
         else
             -- Fallback: print summary to chat
             local roster = TA.db.altRoster or {}
-            print(COL_GOLD .. "[ToonAge] Alt Roster:" .. CLOSE)
+            TA:Raw(TA.LOG.OUTPUT, COL_GOLD .. "[ToonAge] Alt Roster:" .. CLOSE)
             for key, data in pairs(roster) do
                 local hex = GetClassHex(data.class)
                 local name = data.name or key
-                print(string.format("  |c%s%s|r  Lv%d  iLvl %d  %s",
+                TA:Raw(TA.LOG.OUTPUT, string.format("  |c%s%s|r  Lv%d  iLvl %d  %s",
                     hex, name, data.level or 0, data.ilvl or 0, FormatTimeSince(data.lastSeen)))
             end
         end

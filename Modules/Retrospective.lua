@@ -104,17 +104,17 @@ function Retro:ShowMissedContent()
     local missed = self:GetMissedContent()
 
     if #missed == 0 then
-        print("|cFFFFD100[ToonAge]|r You haven't skipped any significant content. Nice!")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r You haven't skipped any significant content. Nice!")
         return
     end
 
-    print("|cFFFFD100━━━ What Did I Miss? ━━━|r")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ What Did I Miss? ━━━|r")
     for _, entry in ipairs(missed) do
         local color = entry.pct < 50 and "|cFFFF6666" or "|cFFFFD100"
-        print(string.format("  %s%s|r — %d/%d quests done (%.0f%%), %d skipped",
+        TA:Raw(TA.LOG.OUTPUT, string.format("  %s%s|r — %d/%d quests done (%.0f%%), %d skipped",
             color, entry.title, entry.completed, entry.total, entry.pct, entry.skipped))
     end
-    print("|cFF888780Use /ta guides to see available guides. Return anytime for transmog/achievements.|r")
+    TA:Raw(TA.LOG.OUTPUT, "|cFF888780Use /ta guides to see available guides. Return anytime for transmog/achievements.|r")
 end
 
 -- ── Init ──────────────────────────────────────────────────────────────────────

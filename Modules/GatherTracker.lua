@@ -236,7 +236,7 @@ end
 GatherTracker.SlashCommands = {
     gather = function(self)
         if not TA.charDB or not TA.charDB.gatherHistory then
-            print("|cFFFFD100[ToonAge]|r No gather data recorded yet.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r No gather data recorded yet.")
             return
         end
 
@@ -254,7 +254,7 @@ GatherTracker.SlashCommands = {
             end
         end
 
-        print(string.format("|cFFFFD100[ToonAge Gather]|r %d nodes across %d zones (|cFF4AFF7A%d herbs|r, |cFFFF9A1A%d ore|r)",
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge Gather]|r %d nodes across %d zones (|cFF4AFF7A%d herbs|r, |cFFFF9A1A%d ore|r)",
             totalNodes, zoneCount, herbCount, oreCount))
     end,
 }

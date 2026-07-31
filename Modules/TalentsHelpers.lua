@@ -213,7 +213,7 @@ function TA.TalentsAPI.GetNodeIDsFromString(importString)
     local result, err = TA.TalentsAPI.DecodeImportString(importString)
     if not result then
         if TA.debug then
-            print("|cFFFF4444[TA Talents]|r Decode error: " .. (err or "unknown"))
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Talents]|r Decode error: " .. (err or "unknown"))
         end
         return {}
     end
@@ -555,7 +555,7 @@ function TA.TalentsAPI.ComputeAndCacheLevelPath()
         TA.charDB.computedLevelPaths[specID] = path
         local count = 0
         for _ in pairs(path) do count = count + 1 end
-        print(string.format("|cFF4AFF7A[ToonAge]|r Generated leveling path for spec %d (%d talents).", specID, count))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFF4AFF7A[ToonAge]|r Generated leveling path for spec %d (%d talents).", specID, count))
     end
     return path
 end

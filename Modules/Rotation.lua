@@ -590,7 +590,7 @@ function Rotation:InitPredictBar()
                 self.currentView = "solo"
             end
             local labels = self:GetViewLabels()
-            print("|cFFFFD100[TA Rotation]|r View: " .. (labels[self.currentView] or self.currentView))
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Rotation]|r View: " .. (labels[self.currentView] or self.currentView))
             self:UpdatePrediction()
         end
     end)
@@ -750,11 +750,11 @@ function Rotation:TogglePredictBar()
     if self.predictBar:IsVisible() then
         self:HidePredictBar()
         if TA.charDB then TA.charDB.predictBar = TA.charDB.predictBar or {}; TA.charDB.predictBar.visible = false end
-        print("|cFFFFD100[TA Rotation]|r Prediction bar hidden.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Rotation]|r Prediction bar hidden.")
     else
         self:ShowPredictBar()
         if TA.charDB then TA.charDB.predictBar = TA.charDB.predictBar or {}; TA.charDB.predictBar.visible = true end
-        print("|cFFFFD100[TA Rotation]|r Prediction bar shown.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Rotation]|r Prediction bar shown.")
     end
 end
 

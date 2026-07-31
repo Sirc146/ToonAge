@@ -695,7 +695,7 @@ function CS:Init()
     C_Timer.After(2, function()
         local ok, err = pcall(CS.Snapshot, CS)
         if not ok and TA.debug then
-            print("|cFFFF4444[TA CombatState]|r Deferred snapshot failed: " .. tostring(err))
+            TA:Raw(TA.LOG.ERROR, "|cFFFF4444[TA CombatState]|r Deferred snapshot failed: " .. tostring(err))
         end
     end)
 

@@ -185,7 +185,7 @@ function GB:RefreshBrowser()
                 row:SetScript("OnClick", function()
                     if QT then
                         QT:SetGuide(g.id)
-                        print(string.format("|cFFFFD100[ToonAge]|r Guide switched to: |cFFFFFFFF%s|r", g.title))
+                        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge]|r Guide switched to: |cFFFFFFFF%s|r", g.title))
                         GB:RefreshBrowser()
                     end
                 end)
@@ -276,7 +276,7 @@ function GB:CheckTrackedQuest()
     if guideID and guideID ~= QT.guideID then
         local guide = TA.Guides[guideID]
         local title = guide and guide.title or guideID
-        print(string.format(
+        TA:Raw(TA.LOG.OUTPUT, string.format(
             "|cFFFFD100[ToonAge]|r Quest #%d belongs to |cFFFFFFFF%s|r — type |cFFFFD100/ta switchto %d|r or open Guide Browser.",
             questID, title, questID))
     end
@@ -310,7 +310,7 @@ GB.SlashCommands = {
         -- /ta switchto 12345 — switch to the guide containing quest 12345
         local questID = msg and tonumber(msg:match("%d+"))
         if not questID then
-            print("|cFFFFD100[ToonAge]|r Usage: /ta switchto <questID>")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Usage: /ta switchto <questID>")
             return
         end
         local GI = TA:GetModule("GuideImporter")
@@ -321,10 +321,10 @@ GB.SlashCommands = {
             if QT then
                 QT:SetGuide(guideID)
                 local guide = TA.Guides[guideID]
-                print(string.format("|cFFFFD100[ToonAge]|r Switched to: |cFFFFFFFF%s|r", guide and guide.title or guideID))
+                TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge]|r Switched to: |cFFFFFFFF%s|r", guide and guide.title or guideID))
             end
         else
-            print("|cFFFFD100[ToonAge]|r No guide found containing quest #" .. questID)
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r No guide found containing quest #" .. questID)
         end
     end,
 }

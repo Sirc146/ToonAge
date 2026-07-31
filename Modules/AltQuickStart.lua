@@ -714,8 +714,8 @@ function AQS:CopyStringToClipboard(str)
         return
     end
     -- Fallback: print to chat
-    print("|cFFFFD100[ToonAge]|r Talent string (copy from chat):")
-    print(str)
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Talent string (copy from chat):")
+    TA:Raw(TA.LOG.OUTPUT, str)
 end
 
 -- ── Show / Hide / Toggle ──────────────────────────────────────────────────────
@@ -776,7 +776,7 @@ function AQS:Init()
             if QT and QT.ShowToast then
                 QT:ShowToast("Welcome back — /ta quickstart for your catch-up")
             else
-                print("|cFFFFD100[ToonAge]|r Welcome back — |cFFFFD100/ta quickstart|r for your catch-up.")
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Welcome back — |cFFFFD100/ta quickstart|r for your catch-up.")
             end
         end
 

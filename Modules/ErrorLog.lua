@@ -141,7 +141,7 @@ function EL:ShowCopyFrame()
         selectBtn:SetScript("OnClick", function()
             editBox:SetFocus()
             editBox:HighlightText()
-            print("|cFFFFD100[ToonAge]|r Log selected — press Ctrl+C to copy.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Log selected — press Ctrl+C to copy.")
         end)
 
         -- Clear button
@@ -232,30 +232,30 @@ EL.SlashCommands = {
 
         if sub == "clear" then
             self:Clear()
-            print("|cFFFFD100[ToonAge]|r Error log cleared.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Error log cleared.")
             return
         elseif sub == "copy" then
             self:ShowCopyFrame()
             return
         elseif sub ~= "" then
-            print("|cFFFFD100[ToonAge]|r Unknown subcommand '" .. sub .. "'. Try: copy, clear")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Unknown subcommand '" .. sub .. "'. Try: copy, clear")
             return
         end
 
         local log = self:GetLog()
         if #log == 0 then
-            print("|cFFFFD100[ToonAge]|r ✓ No errors recorded. Everything is working!")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r ✓ No errors recorded. Everything is working!")
             return
         end
 
-        print("|cFFFFD100━━━ ToonAge Error Log (" .. #log .. " total) ━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge Error Log (" .. #log .. " total) ━━━|r")
         for i, e in ipairs(log) do
             local shortMsg = e.msg:sub(1, 150)
-            print(string.format("  |cFF888780%s|r |cFFFF8800%s|r |cFFFF4444%s|r",
+            TA:Raw(TA.LOG.OUTPUT, string.format("  |cFF888780%s|r |cFFFF8800%s|r |cFFFF4444%s|r",
                 e.time, e.source, shortMsg))
         end
-        print("|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
-        print("|cFF888780/ta errors copy = copyable window  |  /ta errors clear = wipe log|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780/ta errors copy = copyable window  |  /ta errors clear = wipe log|r")
 
         -- Auto-open the copy window if there are many errors
         if #log > 10 then

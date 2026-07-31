@@ -430,7 +430,7 @@ function GI:OnEvent(event, ...)
             local guideID, title = self:SuggestForCurrentZone()
             if guideID then
                 QT:SetGuide(guideID)
-                print(string.format("|cFFFFD100[ToonAge]|r Auto-selected guide: |cFFFFFFFF%s|r", title))
+                TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[ToonAge]|r Auto-selected guide: |cFFFFFFFF%s|r", title))
             end
         end
 
@@ -448,13 +448,13 @@ function GI:Init()
     C_Timer.After(4, function()
         local count = GI:ImportAllFromBtWQuests()
         if count > 0 then
-            print(string.format("|cFFFFD100[ToonAge]|r Auto-imported %d zone guide(s) from BtWQuests.", count))
+            TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[ToonAge]|r Auto-imported %d zone guide(s) from BtWQuests.", count))
         end
 
         -- Also try questline API
         local qlCount = GI:ImportFromQuestLineAPI()
         if qlCount > 0 then
-            print(string.format("|cFFFFD100[ToonAge]|r Imported %d questline(s) from Blizzard API.", qlCount))
+            TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[ToonAge]|r Imported %d questline(s) from Blizzard API.", qlCount))
         end
 
         -- Re-run auto-select if no guide active — BUT respect the user's saved choice.
@@ -479,7 +479,7 @@ function GI:Init()
             C_Timer.After(8, function()
                 local retry = GI:ImportAllFromBtWQuests()
                 if retry > 0 then
-                    print(string.format("|cFFFFD100[ToonAge]|r Late import: %d additional guide(s) from BtWQuests.", retry))
+                    TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[ToonAge]|r Late import: %d additional guide(s) from BtWQuests.", retry))
                     -- Refresh browser if open
                     local GB = TA:GetModule("GuideBrowser")
                     if GB and GB.frame and GB.frame:IsShown() then
@@ -490,7 +490,7 @@ function GI:Init()
         end
 
         if TA.debug then
-            print(string.format("|cFFFFD100[ToonAge]|r Total guides available: %d", U.TableLength(TA.Guides or {})))
+            TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[ToonAge]|r Total guides available: %d", U.TableLength(TA.Guides or {})))
         end
     end)
 end
@@ -501,30 +501,30 @@ GI.SlashCommands = {
     import = function(self)
         -- Show diagnostic info about BtWQuests data availability
         if BtWQuests then
-            print("|cFFFFD100[ToonAge]|r BtWQuests global: found")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r BtWQuests global: found")
             if BtWQuests.Database then
-                print("|cFFFFD100[ToonAge]|r BtWQuests.Database: found")
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r BtWQuests.Database: found")
             else
-                print("|cFFFF4444[ToonAge]|r BtWQuests.Database: nil (not loaded yet?)")
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[ToonAge]|r BtWQuests.Database: nil (not loaded yet?)")
             end
             if BtWQuests.Constant and BtWQuests.Constant.Chain then
                 local expCount = 0
                 for _ in pairs(BtWQuests.Constant.Chain) do expCount = expCount + 1 end
-                print("|cFFFFD100[ToonAge]|r BtWQuests.Constant.Chain: " .. expCount .. " expansion(s)")
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r BtWQuests.Constant.Chain: " .. expCount .. " expansion(s)")
             else
-                print("|cFFFF4444[ToonAge]|r BtWQuests.Constant.Chain: nil")
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[ToonAge]|r BtWQuests.Constant.Chain: nil")
             end
         else
-            print("|cFFFF4444[ToonAge]|r BtWQuests not loaded. Install BtWQuests + expansion modules.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[ToonAge]|r BtWQuests not loaded. Install BtWQuests + expansion modules.")
         end
 
         local count = self:ImportAllFromBtWQuests()
         local qlCount = self:ImportFromQuestLineAPI()
         local total = count + qlCount
         if total > 0 then
-            print(string.format("|cFFFFD100[ToonAge]|r Imported %d guide(s). Total: %d. Use /ta guides to list.", total, U.TableLength(TA.Guides or {})))
+            TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge]|r Imported %d guide(s). Total: %d. Use /ta guides to list.", total, U.TableLength(TA.Guides or {})))
         else
-            print("|cFFFFD100[ToonAge]|r No new guides found. Total available: " .. U.TableLength(TA.Guides or {}))
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r No new guides found. Total available: " .. U.TableLength(TA.Guides or {}))
         end
     end,
 
@@ -532,13 +532,13 @@ GI.SlashCommands = {
         local guideID, count = self:SuggestGuideFromLog()
         if guideID then
             local guide = TA.Guides[guideID]
-            print(string.format("|cFFFFD100[ToonAge]|r Best guide match: |cFFFFFFFF%s|r (%d quest overlaps)",
+            TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge]|r Best guide match: |cFFFFFFFF%s|r (%d quest overlaps)",
                 guide and guide.title or guideID, count))
             -- Auto-set it
             local QT = TA:GetModule("QuestTracker")
             if QT then QT:SetGuide(guideID) end
         else
-            print("|cFFFFD100[ToonAge]|r No matching guide found for your current quest log.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r No matching guide found for your current quest log.")
         end
     end,
 }

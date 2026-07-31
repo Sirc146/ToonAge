@@ -555,7 +555,7 @@ function Pets:RenderZoneView(content, P, isBM, w, padL, y)
                 local pF = pet.family
                 sBtn:SetScript("OnClick", function()
                     self:TrackPet(pN, pF)
-                    print("|cFFFFD100[TA]|r Added |cFF00FF00" .. pN .. "|r to stable list.")
+                    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Added |cFF00FF00" .. pN .. "|r to stable list.")
                 end)
 
                 -- Prerequisites with ***
