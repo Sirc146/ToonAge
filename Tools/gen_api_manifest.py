@@ -55,8 +55,18 @@ RE_BARE = re.compile(r'(?<![\w.:])(' + "|".join(BARE_GLOBALS) + r')\s*\(')
 
 def sources(root: Path):
     for p in sorted(root.rglob("*.lua")):
-        if not any(d in p.parts for d in SKIP_DIRS):
-            yield p
+        if any(d in p.parts for d in SKIP_DIRS):
+            continue
+        # Never scan our own output. Every API name appears in the previous
+        # generation as a quoted key, so including it made the manifest
+        # self-perpetuating: an API could enter but never leave, and ApiGuard
+        # would report it missing forever after the last real call site was
+        # removed. That is exactly what happened to C_Traits.GetActiveConfigID
+        # -- fixed in f1273c7, still reported missing three commits later,
+        # cited to "Data/ApiManifest.lua" as its only call site.
+        if p.resolve() == OUT.resolve():
+            continue
+        yield p
 
 
 def main():
