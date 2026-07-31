@@ -42,19 +42,40 @@ local U = TA.Utils
 --- Strip WoW chat markup, leaving plain text.
 --- Shared by ChatCopy (so a paste reads the way the line looked) and by the
 --- probe commands (so what lands in SavedVariables is machine-readable).
+---
+--- MUST be non-throwing. Secrecy is contagious through string.format: a line
+--- built as ("%s"):format(tostring(aura.spellId)) is itself a SECRET STRING,
+--- and every string method on it -- gsub, len, sub, match -- raises
+--- "attempt to index a secret string value". That is not hypothetical; it
+--- crashed the first version of this function on the line below, logged as
+--- Core/Utils.lua:50 by the very probe it was added to serve.
+---
+--- A markup stripper is a formatting nicety. It must never be the reason a
+--- caller dies, so a secret input yields a marker rather than an error, and
+--- the caller keeps running.
 --- @param s any
---- @return string
+--- @return string plain, boolean wasSecret
 function U.StripMarkup(s)
-    if s == nil then return "" end
-    s = tostring(s)
-    s = s:gsub("|c%x%x%x%x%x%x%x%x", "")   -- colour open
-    s = s:gsub("|C%x%x%x%x%x%x%x%x", "")
-    s = s:gsub("|r", "")                    -- colour close
-    s = s:gsub("|H.-|h(.-)|h", "%1")        -- hyperlink -> its display text
-    s = s:gsub("|T.-|t", "")                -- inline texture
-    s = s:gsub("|A.-|a", "")                -- inline atlas
-    s = s:gsub("|n", "\n")
-    return s
+    if s == nil then return "", false end
+
+    local ok, out = pcall(function()
+        local t = tostring(s)
+        t = t:gsub("|c%x%x%x%x%x%x%x%x", "")   -- colour open
+        t = t:gsub("|C%x%x%x%x%x%x%x%x", "")
+        t = t:gsub("|r", "")                    -- colour close
+        t = t:gsub("|H.-|h(.-)|h", "%1")        -- hyperlink -> its display text
+        t = t:gsub("|T.-|t", "")                -- inline texture
+        t = t:gsub("|A.-|a", "")                -- inline atlas
+        t = t:gsub("|n", "\n")
+        return t
+    end)
+
+    if ok then return out, false end
+
+    -- The value exists and renders on screen -- the chat frame resolves it in a
+    -- secure context -- but no addon-side route can read it. Say so in the
+    -- saved copy rather than dropping the row, so a gap is visible as a gap.
+    return "<secret value -- readable on screen only>", true
 end
 
 --- Convert a potentially tainted "secret number" to a safe Lua number.

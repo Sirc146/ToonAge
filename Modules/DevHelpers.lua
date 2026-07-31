@@ -843,6 +843,17 @@ DH.SlashCommands["secretprobe"] = function()
         capture[#capture + 1] = U.StripMarkup(msg)
     end
 
+    -- Two-channel output. Secrecy is contagious through string.format, so a
+    -- chat line with an ID interpolated into it is a secret string as a whole
+    -- and lands on disk as "<secret value>" -- the row survives but says
+    -- nothing. Where a line mixes a secret with facts we CAN read (slot index,
+    -- the SafeNum result, whether it failed), send the rich version to chat for
+    -- a human to read and a rebuilt, secret-free version to disk.
+    local out2 = function(chatMsg, safeMsg)
+        TA:Raw(TA.LOG.OUTPUT, chatMsg)
+        capture[#capture + 1] = safeMsg
+    end
+
     out("|cFFFFD100━━━ Secret Value Probe ━━━|r")
 
     local ok, aura = pcall(C_UnitAuras.GetBuffDataByIndex, "player", 1)
@@ -920,10 +931,17 @@ DH.SlashCommands["secretprobe"] = function()
             total = total + 1
             local id = U.SafeNum(a.spellId)
             if id == 0 then failed = failed + 1 end
-            out(("    %2d  tostring=|cFFFFD100%-9s|r SafeNum=%s%s|r  %s")
-                :format(i, tostring(a.spellId),
-                        id == 0 and "|cFFFF4444" or "|cFF4AFF7A", tostring(id),
-                        tostring(a.name or "?")))
+            -- a.name is read through StripMarkup's guard rather than trusted:
+            -- if the ID is secret the name may be too, and one unreadable field
+            -- must not take the row with it.
+            local safeName = U.StripMarkup(a.name)
+            out2(
+                ("    %2d  tostring=|cFFFFD100%-9s|r SafeNum=%s%s|r  %s")
+                    :format(i, tostring(a.spellId),
+                            id == 0 and "|cFFFF4444" or "|cFF4AFF7A", tostring(id),
+                            tostring(a.name or "?")),
+                ("    %2d  SafeNum=%-9s secret=%-5s name=%s")
+                    :format(i, tostring(id), tostring(id == 0), safeName))
         end
         -- The verdict that actually decides the fix.
         if total > 0 and failed == total then
