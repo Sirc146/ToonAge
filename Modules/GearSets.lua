@@ -97,7 +97,7 @@ end
 --- @param name string
 function GS:SaveSet(name)
     if not name or name == "" then
-        print("|cFFFF4444[TA GearSets]|r Set name required.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA GearSets]|r Set name required.")
         return
     end
 
@@ -109,7 +109,7 @@ function GS:SaveSet(name)
     for _ in pairs(snapshot) do count = count + 1 end
 
     if count == 0 then
-        print("|cFFFF4444[TA GearSets]|r No gear equipped — nothing to save.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA GearSets]|r No gear equipped — nothing to save.")
         return
     end
 
@@ -118,9 +118,9 @@ function GS:SaveSet(name)
     db[name].slots = snapshot
 
     if isNew then
-        print(string.format("|cFFFFD100[TA GearSets]|r Saved new set: |cFF4AFF7A%s|r (%d items)", name, count))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA GearSets]|r Saved new set: |cFF4AFF7A%s|r (%d items)", name, count))
     else
-        print(string.format("|cFFFFD100[TA GearSets]|r Updated set: |cFF4AFF7A%s|r (%d items)", name, count))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA GearSets]|r Updated set: |cFF4AFF7A%s|r (%d items)", name, count))
     end
 end
 
@@ -129,20 +129,20 @@ end
 --- @return boolean — true if equip was attempted
 function GS:EquipSet(name)
     if not name or name == "" then
-        print("|cFFFF4444[TA GearSets]|r Set name required.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA GearSets]|r Set name required.")
         return false
     end
 
     local db = TA.charDB.gearSets
     local set = db[name]
     if not set or not set.slots then
-        print(string.format("|cFFFF4444[TA GearSets]|r Set \"%s\" not found.", name))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFF4444[TA GearSets]|r Set \"%s\" not found.", name))
         return false
     end
 
     local canSwap, reason = CanSwapGear()
     if not canSwap then
-        print("|cFFFF4444[TA GearSets]|r " .. reason)
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA GearSets]|r " .. reason)
         return false
     end
 
@@ -177,7 +177,7 @@ function GS:EquipSet(name)
     local msg = string.format("|cFFFFD100[TA GearSets]|r Equipping |cFF4AFF7A%s|r", name)
     if equipped > 0 then msg = msg .. string.format(" — %d items swapped", equipped) end
     if skipped > 0  then msg = msg .. string.format(" (%d unavailable)", skipped) end
-    print(msg)
+    TA:Raw(TA.LOG.OUTPUT, msg)
 
     return true
 end
@@ -186,18 +186,18 @@ end
 --- @param name string
 function GS:DeleteSet(name)
     if not name or name == "" then
-        print("|cFFFF4444[TA GearSets]|r Set name required.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA GearSets]|r Set name required.")
         return
     end
 
     local db = TA.charDB.gearSets
     if not db[name] then
-        print(string.format("|cFFFF4444[TA GearSets]|r Set \"%s\" not found.", name))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFF4444[TA GearSets]|r Set \"%s\" not found.", name))
         return
     end
 
     db[name] = nil
-    print(string.format("|cFFFFD100[TA GearSets]|r Deleted set: |cFFFF6666%s|r", name))
+    TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA GearSets]|r Deleted set: |cFFFF6666%s|r", name))
 end
 
 --- List all saved gear sets for this character.
@@ -221,13 +221,13 @@ function GS:ListSets()
         end
 
         local tagStr = #tags > 0 and (" [" .. table.concat(tags, ", ") .. "]") or ""
-        print(string.format("  |cFF4AFF7A%s|r — %d items%s", name, slotCount, tagStr))
+        TA:Raw(TA.LOG.OUTPUT, string.format("  |cFF4AFF7A%s|r — %d items%s", name, slotCount, tagStr))
     end
 
     if count == 0 then
-        print("|cFFFFD100[TA GearSets]|r No saved sets. Use |cFFFFD100/ta gear save <name>|r to create one.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA GearSets]|r No saved sets. Use |cFFFFD100/ta gear save <name>|r to create one.")
     else
-        print(string.format("|cFFFFD100[TA GearSets]|r %d set(s) saved.", count))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA GearSets]|r %d set(s) saved.", count))
     end
 end
 
@@ -237,7 +237,7 @@ end
 function GS:AssignTrigger(name, trigger)
     local db = TA.charDB.gearSets
     if not db[name] then
-        print(string.format("|cFFFF4444[TA GearSets]|r Set \"%s\" not found.", name))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFF4444[TA GearSets]|r Set \"%s\" not found.", name))
         return
     end
 
@@ -245,13 +245,13 @@ function GS:AssignTrigger(name, trigger)
         -- Clear any other set's PvP flag
         for _, set in pairs(db) do set.pvp = nil end
         db[name].pvp = true
-        print(string.format("|cFFFFD100[TA GearSets]|r Set \"%s\" will auto-equip when entering PvP.", name))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA GearSets]|r Set \"%s\" will auto-equip when entering PvP.", name))
     elseif trigger == "spec" then
         -- Assign to the player's current active spec
         local specIndex = GetSpecialization()
         local specID = specIndex and GetSpecializationInfo(specIndex)
         if not specID then
-            print("|cFFFF4444[TA GearSets]|r Cannot detect current spec.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA GearSets]|r Cannot detect current spec.")
             return
         end
         -- Clear any other set assigned to this specID
@@ -260,9 +260,9 @@ function GS:AssignTrigger(name, trigger)
         end
         db[name].specID = specID
         local _, specName = GetSpecializationInfoByID(specID)
-        print(string.format("|cFFFFD100[TA GearSets]|r Set \"%s\" will auto-equip for %s spec.", name, specName or "current"))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA GearSets]|r Set \"%s\" will auto-equip for %s spec.", name, specName or "current"))
     else
-        print("|cFFFF4444[TA GearSets]|r Usage: /ta gear assign <name> spec|pvp")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA GearSets]|r Usage: /ta gear assign <name> spec|pvp")
     end
 end
 
@@ -344,19 +344,19 @@ function GS:HandleSlash(args)
         if name and trigger then
             self:AssignTrigger(name, trigger:lower())
         else
-            print("|cFFFFD100[TA GearSets]|r Usage: /ta gear assign <setname> spec|pvp")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA GearSets]|r Usage: /ta gear assign <setname> spec|pvp")
         end
     else
         -- Maybe they typed the set name directly: /ta gear <name> → equip it
         if TA.charDB.gearSets[args] then
             self:EquipSet(args)
         else
-            print("|cFFFFD100[TA GearSets]|r Commands:")
-            print("  |cFFFFD100/ta gear save <name>|r — save current gear as named set")
-            print("  |cFFFFD100/ta gear equip <name>|r — equip a saved set")
-            print("  |cFFFFD100/ta gear list|r — list all saved sets")
-            print("  |cFFFFD100/ta gear delete <name>|r — remove a saved set")
-            print("  |cFFFFD100/ta gear assign <name> spec|pvp|r — auto-swap trigger")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA GearSets]|r Commands:")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta gear save <name>|r — save current gear as named set")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta gear equip <name>|r — equip a saved set")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta gear list|r — list all saved sets")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta gear delete <name>|r — remove a saved set")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta gear assign <name> spec|pvp|r — auto-swap trigger")
         end
     end
 end

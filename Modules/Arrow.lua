@@ -212,10 +212,10 @@ function Arrow:InitFrame()
         TA.charDB.arrow.locked = not TA.charDB.arrow.locked
         if TA.charDB.arrow.locked then
             fr:RegisterForDrag()
-            print("|cFFFFD100[TA Arrow]|r Locked. Right-click to unlock.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Locked. Right-click to unlock.")
         else
             fr:RegisterForDrag("LeftButton")
-            print("|cFFFFD100[TA Arrow]|r Unlocked. Drag to move.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Unlocked. Drag to move.")
         end
     end)
 
@@ -534,7 +534,7 @@ function Arrow:Tick(f)
             self.manualWaypoint = nil
             self._arrived = false
             self._arrivedTime = nil
-            print("|cFFFFD100[TA Arrow]|r Waypoint reached — cleared.")
+            TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA Arrow]|r Waypoint reached — cleared.")
         end
         return
     end
@@ -702,13 +702,13 @@ end
 ---   /ta way clear                  — remove manual waypoint
 function Arrow:ParseWayCommand(args)
     if not args or args == "" then
-        print("|cFFFFD100[TA Arrow]|r Usage:")
-        print("  |cFFFFD100/ta way <x> <y> [description]|r — set waypoint on current map")
-        print("  |cFFFFD100/ta way <mapID> <x> <y> [description]|r — set waypoint on specific map")
-        print("  |cFFFFD100/ta way clear|r — remove manual waypoint")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Usage:")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way <x> <y> [description]|r — set waypoint on current map")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way <mapID> <x> <y> [description]|r — set waypoint on specific map")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way clear|r — remove manual waypoint")
         if self.manualWaypoint then
             local wp = self.manualWaypoint
-            print(string.format("  Current: map %d — %.1f, %.1f (%s)",
+            TA:Raw(TA.LOG.OUTPUT, string.format("  Current: map %d — %.1f, %.1f (%s)",
                 wp.map, wp.x * 100, wp.y * 100, wp.title or ""))
         end
         return
@@ -727,7 +727,7 @@ function Arrow:ParseWayCommand(args)
     local first = tokens[1] and tokens[1]:lower()
     if first == "clear" or first == "remove" or first == "off" then
         self:ClearWaypoint()
-        print("|cFFFFD100[TA Arrow]|r Manual waypoint cleared.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Manual waypoint cleared.")
         return
     end
 
@@ -768,21 +768,21 @@ function Arrow:ParseWayCommand(args)
             yRaw = n2
             descStart = 3
         else
-            print("|cFFFF4444[TA Arrow]|r Invalid format. Examples:")
-            print("  |cFFFFD100/ta way 45.2 67.8|r")
-            print("  |cFFFFD100/ta way 2393 45.2 67.8 My Spot|r")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Invalid format. Examples:")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 45.2 67.8|r")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 2393 45.2 67.8 My Spot|r")
             return
         end
     end
 
     if not xRaw or not yRaw then
-        print("|cFFFF4444[TA Arrow]|r Could not parse coordinates.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Could not parse coordinates.")
         return
     end
 
     -- Validate coordinate ranges (TomTom format: 0–100 percentage display values)
     if xRaw < 0 or xRaw > 100 or yRaw < 0 or yRaw > 100 then
-        print("|cFFFF4444[TA Arrow]|r Coordinates must be 0–100 (e.g. 45.2 67.8).")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Coordinates must be 0–100 (e.g. 45.2 67.8).")
         return
     end
 
@@ -805,23 +805,23 @@ function Arrow:ParseWayCommand(args)
         mapStr = mapInfo and mapInfo.name or ("map " .. mapID)
         mapStr = " in " .. mapStr
     end
-    print(string.format("|cFFFFD100[TA Arrow]|r Waypoint set: |cFF4AFF7A%.1f, %.1f|r%s%s",
+    TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA Arrow]|r Waypoint set: |cFF4AFF7A%.1f, %.1f|r%s%s",
         xRaw, yRaw, mapStr, desc and (" — " .. desc) or ""))
 end
 
 function Arrow:Toggle()
     if not self.frame then
-        print("|cFFFF4444[TA]|r Arrow frame not initialised.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA]|r Arrow frame not initialised.")
         return
     end
     if self.frame:IsVisible() then
         self.frame:Hide()
         if TA.charDB then TA.charDB.arrow = TA.charDB.arrow or {}; TA.charDB.arrow.visible = false end
-        print("|cFFFFD100[TA Arrow]|r Hidden.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Hidden.")
     else
         self.frame:Show()
         if TA.charDB then TA.charDB.arrow = TA.charDB.arrow or {}; TA.charDB.arrow.visible = true end
-        print("|cFFFFD100[TA Arrow]|r Visible.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Visible.")
     end
 end
 

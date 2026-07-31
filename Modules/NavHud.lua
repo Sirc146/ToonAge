@@ -449,7 +449,7 @@ function NavHud:Show()
         TA.charDB.navhud = TA.charDB.navhud or {}
         TA.charDB.navhud.visible = true
     end
-    print("|cFFFFD100[TA NavHud]|r Shown. Type |cFFFFD100/ta hud|r to hide.")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA NavHud]|r Shown. Type |cFFFFD100/ta hud|r to hide.")
 end
 
 function NavHud:Hide()
@@ -511,37 +511,37 @@ end
 -- rather than dead table keys.
 
 local function PrintHudSettings()
-        print("|cFFFFD100[ToonAge NavHud Settings]|r")
-        print("  |cFFFFD100scale|r = " .. GetSetting("scale") .. "  (HUD size)")
-        print("  |cFFFFD100opacity|r = " .. GetSetting("opacity") .. "  (overall transparency)")
-        print("  |cFFFFD100showCardinals|r = " .. tostring(GetSetting("showCardinals")) .. "  (N/S/E/W)")
-        print("  |cFFFFD100showCoords|r = " .. tostring(GetSetting("showCoords")) .. "  (coordinates)")
-        print("  |cFFFFD100showDistance|r = " .. tostring(GetSetting("showDistance")) .. "  (yards to waypoint)")
-        print("  |cFFFFD100showStepText|r = " .. tostring(GetSetting("showStepText")) .. "  (step description)")
-        print("  |cFFFFD100showRing|r = " .. tostring(GetSetting("showRing")) .. "  (proximity circle)")
-        print("  |cFFFFD100showGatherDots|r = " .. tostring(GetSetting("showGatherDots")) .. "  (gather nodes)")
-        print("  |cFFFFD100showTrail|r = " .. tostring(GetSetting("showTrail")) .. "  (ant-trail)")
-        print("  |cFFFFD100showPins|r = " .. tostring(GetSetting("showPins")) .. "  (waypoint pins)")
-        print("")
-        print("  Change: |cFFFFD100/ta hud set <key> <value>|r")
-        print("  Example: |cFFFFD100/ta hud set showCoords false|r")
-        print("  Keybind: Key Bindings → Addons → ToonAge → Toggle NavHud")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge NavHud Settings]|r")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100scale|r = " .. GetSetting("scale") .. "  (HUD size)")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100opacity|r = " .. GetSetting("opacity") .. "  (overall transparency)")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100showCardinals|r = " .. tostring(GetSetting("showCardinals")) .. "  (N/S/E/W)")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100showCoords|r = " .. tostring(GetSetting("showCoords")) .. "  (coordinates)")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100showDistance|r = " .. tostring(GetSetting("showDistance")) .. "  (yards to waypoint)")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100showStepText|r = " .. tostring(GetSetting("showStepText")) .. "  (step description)")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100showRing|r = " .. tostring(GetSetting("showRing")) .. "  (proximity circle)")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100showGatherDots|r = " .. tostring(GetSetting("showGatherDots")) .. "  (gather nodes)")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100showTrail|r = " .. tostring(GetSetting("showTrail")) .. "  (ant-trail)")
+        TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100showPins|r = " .. tostring(GetSetting("showPins")) .. "  (waypoint pins)")
+        TA:Raw(TA.LOG.OUTPUT, "")
+        TA:Raw(TA.LOG.OUTPUT, "  Change: |cFFFFD100/ta hud set <key> <value>|r")
+        TA:Raw(TA.LOG.OUTPUT, "  Example: |cFFFFD100/ta hud set showCoords false|r")
+        TA:Raw(TA.LOG.OUTPUT, "  Keybind: Key Bindings → Addons → ToonAge → Toggle NavHud")
 end
 
 local function ApplyHudSetting(msg)
         if not msg or msg == "" then
-            print("|cFFFFD100[TA]|r Usage: /ta hud set <key> <value>")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Usage: /ta hud set <key> <value>")
             return
         end
         local key, valStr = msg:match("^(%S+)%s+(.+)$")
         if not key then
-            print("|cFFFFD100[TA]|r Usage: /ta hud set showCoords false")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Usage: /ta hud set showCoords false")
             return
         end
 
         -- Validate key exists in defaults
         if NAVHUD_DEFAULTS[key] == nil then
-            print("|cFFFFD100[TA]|r Unknown setting: " .. key)
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Unknown setting: " .. key)
             return
         end
 
@@ -553,7 +553,7 @@ local function ApplyHudSetting(msg)
         elseif type(defaultVal) == "number" then
             value = tonumber(valStr)
             if not value then
-                print("|cFFFFD100[TA]|r Value must be a number for '" .. key .. "'")
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Value must be a number for '" .. key .. "'")
                 return
             end
         else
@@ -564,7 +564,7 @@ local function ApplyHudSetting(msg)
         if key == "scale" or key == "opacity" or key == "showRing" then
             NavHud:ApplySettings()
         end
-        print("|cFFFFD100[TA NavHud]|r " .. key .. " = " .. tostring(value))
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA NavHud]|r " .. key .. " = " .. tostring(value))
 end
 
 NavHud.SlashCommands = {
@@ -579,7 +579,7 @@ NavHud.SlashCommands = {
         elseif sub == "set" then
             ApplyHudSetting(rest)
         else
-            print("|cFFFFD100[TA]|r Unknown subcommand '" .. sub .. "'. Try: settings, set")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Unknown subcommand '" .. sub .. "'. Try: settings, set")
         end
     end,
 }

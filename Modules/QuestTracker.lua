@@ -2052,7 +2052,7 @@ function QT:ToggleWindow()
     -- supplementary view inside the main ToonAge frame, not a replacement
     -- for the always-visible HUD tracker.
     if not self.window then
-        print("|cFFFF4444[TA]|r Tracker window not initialised — check for errors at login.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA]|r Tracker window not initialised — check for errors at login.")
         return
     end
     if self.window:IsVisible() then
@@ -2067,7 +2067,7 @@ function QT:ToggleWindow()
         self:UpdateBlizzardTrackerVisibility()
         if self.guideID and TA.Guides and TA.Guides[self.guideID] then
             local g = TA.Guides[self.guideID]
-            print(string.format("|cFFFFD100[TA Tracker]|r '%s' — step %d/%d",
+            TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[TA Tracker]|r '%s' — step %d/%d",
                 g.title, self.stepIdx, #g.steps))
         end
     end
@@ -2311,61 +2311,61 @@ function QT:ShowQuestLogAdvisor()
     -- Build the advisor text for chat output (formatted nicely)
     local function PrintSection(header, color, items, showPct)
         if #items == 0 then return end
-        print(color .. "── " .. header .. " (" .. #items .. ") ──|r")
+        TA:Raw(TA.LOG.OUTPUT, color .. "── " .. header .. " (" .. #items .. ") ──|r")
         for i, q in ipairs(items) do
             if i > 8 then
-                print("  |cFF888780... +" .. (#items - 8) .. " more|r")
+                TA:Raw(TA.LOG.OUTPUT, "  |cFF888780... +" .. (#items - 8) .. " more|r")
                 break
             end
             local suffix = ""
             if showPct and q.pct then
                 suffix = " |cFF888780(" .. q.pct .. "%)|r"
             end
-            print("  " .. q.title .. suffix)
+            TA:Raw(TA.LOG.OUTPUT, "  " .. q.title .. suffix)
         end
     end
 
-    print("")
-    print("|cFFFFD100═══ ToonAge Quest Log Advisor ═══|r")
-    print(string.format("|cFF888780%d/%d quests in log|r", total, MAX_QUESTS))
-    print("")
+    TA:Raw(TA.LOG.OUTPUT, "")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100═══ ToonAge Quest Log Advisor ═══|r")
+    TA:Raw(TA.LOG.OUTPUT, string.format("|cFF888780%d/%d quests in log|r", total, MAX_QUESTS))
+    TA:Raw(TA.LOG.OUTPUT, "")
 
     if #progress.readyToTurnIn > 0 then
-        print("|cFF4AFF7A★ TURN THESE IN NOW — they're already done!|r")
-        print("|cFF4AFF7A  Each one you turn in frees a quest slot.|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A★ TURN THESE IN NOW — they're already done!|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A  Each one you turn in frees a quest slot.|r")
         PrintSection("Ready to Turn In", "|cFF4AFF7A", progress.readyToTurnIn, false)
-        print("")
+        TA:Raw(TA.LOG.OUTPUT, "")
     end
 
     if #progress.almostDone > 0 then
-        print("|cFFFFD100★ ALMOST DONE — just one objective left:|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100★ ALMOST DONE — just one objective left:|r")
         PrintSection("Almost Done", "|cFFFFD100", progress.almostDone, true)
-        print("")
+        TA:Raw(TA.LOG.OUTPUT, "")
     end
 
     if #progress.inProgress > 0 then
         PrintSection("In Progress (sorted by completion)", "|cFF888780", progress.inProgress, true)
-        print("")
+        TA:Raw(TA.LOG.OUTPUT, "")
     end
 
     if #progress.notStarted > 0 then
-        print("|cFFFF9A1A★ NOT STARTED — you could turn these in later.\n  Consider finishing nearby ones or saving for a future session.|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF9A1A★ NOT STARTED — you could turn these in later.\n  Consider finishing nearby ones or saving for a future session.|r")
         PrintSection("Not Started", "|cFFFF9A1A", progress.notStarted, false)
-        print("")
+        TA:Raw(TA.LOG.OUTPUT, "")
     end
 
     -- Smart suggestion
     local freeableNow = #progress.readyToTurnIn
     local freeableSoon = #progress.almostDone
     if freeableNow > 0 then
-        print(string.format("|cFF4AFF7A→ You can free %d slot(s) immediately by turning in completed quests.|r", freeableNow))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFF4AFF7A→ You can free %d slot(s) immediately by turning in completed quests.|r", freeableNow))
     elseif freeableSoon > 0 then
-        print(string.format("|cFFFFD100→ Finish %d almost-done quest(s) to free up slots without dropping anything.|r", freeableSoon))
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100→ Finish %d almost-done quest(s) to free up slots without dropping anything.|r", freeableSoon))
     else
-        print("|cFFFF9A1A→ No quests are close to completion. Consider finishing the highest-% ones first,|r")
-        print("|cFFFF9A1A  or use 'Clean Up Quest Log' to safely remove trivial/grey quests.|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF9A1A→ No quests are close to completion. Consider finishing the highest-% ones first,|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF9A1A  or use 'Clean Up Quest Log' to safely remove trivial/grey quests.|r")
     end
-    print("|cFFFFD100═══════════════════════════════════|r")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100═══════════════════════════════════|r")
 end
 
 function QT:GetUnrelatedQuests()
@@ -2404,12 +2404,12 @@ function QT:ShowDropUnrelatedPopup()
     local unrelated = self:GetUnrelatedQuests()
 
     if #unrelated == 0 then
-        print("|cFF4AFF7A[ToonAge]|r All quests in your log are part of the active guide. Nothing to drop.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A[ToonAge]|r All quests in your log are part of the active guide. Nothing to drop.")
         return
     end
 
     if not self.guideID then
-        print("|cFFFF4444[ToonAge]|r No active guide selected. Select a guide first via /ta browser.")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[ToonAge]|r No active guide selected. Select a guide first via /ta browser.")
         return
     end
 
@@ -2438,7 +2438,7 @@ function QT:ShowDropUnrelatedPopup()
                 C_QuestLog.AbandonQuest()
                 dropped = dropped + 1
             end
-            print(string.format("|cFFFFD100[ToonAge]|r Dropped %d unrelated quest(s).", dropped))
+            TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge]|r Dropped %d unrelated quest(s).", dropped))
         end,
         timeout = 0,
         whileDead = true,
@@ -3333,11 +3333,11 @@ QT.SlashCommands = {
         self:UpdateWindow()
         if self.guideID and TA.Guides and TA.Guides[self.guideID] then
             local g = TA.Guides[self.guideID]
-            print(string.format("|cFFFFD100[TA Tracker]|r Auto-selected: '%s' — step %d/%d",
+            TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[TA Tracker]|r Auto-selected: '%s' — step %d/%d",
                 g.title, self.stepIdx, #g.steps))
-            print("|cFF888780Use /ta diag to see why this guide was chosen.|r")
+            TA:Raw(TA.LOG.INFO, "|cFF888780Use /ta diag to see why this guide was chosen.|r")
         else
-            print("|cFFFFD100[TA Tracker]|r No guide matched. Run |cFFFFD100/ta diag|r to see what the tracker sees.")
+            TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA Tracker]|r No guide matched. Run |cFFFFD100/ta diag|r to see what the tracker sees.")
         end
     end,
 
@@ -3418,7 +3418,7 @@ function QT:CheckProximityAdvance()
                 self:SaveState()
                 self:UpdateWindow()
                 -- Subtle chat notification
-                print(string.format("|cFF4AFF7A[TA]|r Arrived — advancing to step %d.", i))
+                TA:Raw(TA.LOG.INFO, string.format("|cFF4AFF7A[TA]|r Arrived — advancing to step %d.", i))
                 return
             end
         end
