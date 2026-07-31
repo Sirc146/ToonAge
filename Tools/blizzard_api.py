@@ -54,15 +54,67 @@ _hour_window_start = time.monotonic()
 _hour_request_count = 0
 
 
-def get_access_token(client_id, client_secret):
+# Client-credentials tokens expire (Blizzard issues ~24h ones, but the value is
+# whatever `expires_in` says -- don't hardcode it). A full quest crawl is tens of
+# thousands of requests throttled to 50/sec AND gated at 36,000/hour, so it is a
+# multi-hour, possibly multi-day run by design: it will outlive its own token.
+#
+# Threading the token through every api_get() call by value gave it no way to
+# refresh mid-run, so the first request after expiry 401'd and raise_for_status
+# turned that into a hard crash partway through a crawl. The credentials are
+# cached here instead, so api_get can mint a fresh token on its own.
+TOKEN_SKEW = 300   # refresh this many seconds early, to absorb clock drift
+
+_client_id = None
+_client_secret = None
+_token = None
+_token_expiry = 0.0
+
+
+def _mint_token():
+    """Requests a new token and records its expiry. Assumes credentials are cached."""
+    global _token, _token_expiry
     r = requests.post(
         OAUTH_URL,
         data={"grant_type": "client_credentials"},
-        auth=(client_id, client_secret),
+        auth=(_client_id, _client_secret),
         timeout=15,
     )
     r.raise_for_status()
-    return r.json()["access_token"]
+    payload = r.json()
+    _token = payload["access_token"]
+    _token_expiry = time.monotonic() + float(payload.get("expires_in", 86399))
+    return _token
+
+
+def get_access_token(client_id, client_secret):
+    """
+    Returns a bearer token, caching the credentials so it can be refreshed
+    later without the caller having to re-authenticate.
+
+    Callers may keep passing the returned token to api_get() as before; it is
+    accepted but ignored once credentials are cached, since the managed token
+    is the one that refreshes.
+    """
+    global _client_id, _client_secret
+    _client_id, _client_secret = client_id, client_secret
+    return _mint_token()
+
+
+def _current_token(force=False):
+    """
+    The token api_get should use. Refreshes when expired, or when `force` is set
+    after a 401 -- expiry and revocation are indistinguishable from the client
+    side, so both are handled by minting a new one and retrying exactly once.
+
+    Returns None if no credentials were ever cached, which means the caller
+    obtained a token some other way; that token is then used as-is.
+    """
+    if _client_id is None:
+        return None
+    if force or not _token or time.monotonic() >= _token_expiry - TOKEN_SKEW:
+        return _mint_token()
+    return _token
 
 
 _last_request_time = 0.0
@@ -94,15 +146,27 @@ def api_get(path, token, params=None, namespace=None):
         time.sleep(wait)
 
     backoff = 1.0
+    refreshed = False
     for attempt in range(6):
         _last_request_time = time.monotonic()
         _hour_request_count += 1
+        # Prefer the managed token (it refreshes itself); fall back to whatever
+        # the caller handed us if this module never saw the credentials.
+        bearer = _current_token() or token
         r = requests.get(
             f"{API_BASE}{path}",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {bearer}"},
             params=params,
             timeout=15,
         )
+        if r.status_code == 401 and not refreshed and _client_id is not None:
+            # Token expired or was revoked mid-crawl. Mint a new one and retry
+            # once. Guarded by `refreshed` so bad credentials fail fast instead
+            # of spinning through all six attempts re-authenticating.
+            print("  [401] token rejected, refreshing and retrying once")
+            _current_token(force=True)
+            refreshed = True
+            continue
         if r.status_code == 429:
             retry_after = float(r.headers.get("Retry-After", backoff))
             print(f"  [429] rate limited, backing off {retry_after:.1f}s")
