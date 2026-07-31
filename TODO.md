@@ -156,6 +156,49 @@ remaining Phase 1 cost. Plan it as playtime, not as code.
 
 ---
 
+### 4b. No guide covers Arathi Highlands catch-up — reported in-game 2026-07-31
+
+Found by playing, not by reading code: level 80 in **Arathi Highlands (map 2451)**,
+taking "Gnoll Way" off Jaina, and there is no guide for any of it. The six that
+exist are Exile's Reach, Hallowfall, Eversong, Midnight Intro, Silvermoon and
+Naigtal. Map 2451 appears in none of them.
+
+**Do not let the word "Arathi" mislead you here.** `TAG_Hallowfall.lua` contains
+"Blades of the Arathi" and "Renowned with the Hallowfall Arathi" — that is the
+Hallowfall Arathi *faction*, in a different zone, in a different expansion. A
+grep for "Arathi" hits it and looks like coverage. It is not.
+
+**Open question before anyone writes this guide:** the report said "hammerfall
+catchup". Hammerfall is the Horde town in Arathi Highlands, which fits where the
+character was standing — but it is one letter from Hallowfall, which is the
+guide that was loaded at the time. Confirm which was meant before authoring;
+they are different zones, different expansions, and different work.
+
+### 4c. AutoSelectGuide ignores zone and can land on the last step
+
+Same session, and worth separating from the missing-guide report because it is a
+code bug rather than a data gap. Standing in Arathi Highlands, the tracker
+reported:
+
+    Active guide: 'The War Within: Hallowfall' step 309
+
+Step 309 of 309 — the final step — for a zone the guide does not cover. From
+`/ta diagnose`: it won on 5 active quest matches plus a level fit (guide is
+70-80, character is 80), with `zone = 2215` apparently not weighted at all.
+
+Two things to check in `QuestTracker.lua:AutoSelectGuide`:
+
+1. Whether zone mismatch reduces a guide's score at all, or only quest and level
+   matches count. A guide for a zone the player is nowhere near should struggle
+   to win on level alone.
+2. Why the step pointer sits at the maximum. Every step in `TAG_Hallowfall.lua`
+   is a stub with `coord = { map = 0, x = 0.00, y = 0.00 }`, so a completion or
+   proximity check that treats map 0 as satisfied would mark all 309 done and
+   run the pointer to the end. That would also mean the symptom disappears the
+   moment item 4 fills coordinates — hiding the bug rather than fixing it.
+
+---
+
 ## 🟡 P2 — Code debt with real consequences
 
 ### 5. ~~`Core/GuideManager.lua` is dead code~~ ✅ DONE 2026-07-26
