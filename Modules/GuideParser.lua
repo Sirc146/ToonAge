@@ -287,7 +287,7 @@ function GP:Init()
             TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r No guide files found — add *.lua to Data/Guides/ and list in the .toc")
         end
     elseif loadedCount > 0 then
-        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r %d guide(s) loaded. Type |cFFFFD100/ta tracker|r to open the tracker.", loadedCount))
+        TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[TA]|r %d guide(s) loaded. Type |cFFFFD100/ta tracker|r to open the tracker.", loadedCount))
     end
 end
 

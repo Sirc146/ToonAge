@@ -870,3 +870,53 @@ DH.SlashCommands["secretprobe"] = function()
     end
     out("|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━|r")
 end
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- /ta auradump -- capture live buff/debuff IDs for authoring `when` predicates.
+--
+-- Data/RotationConditions.lua can express "only suggest Aimed Shot while Precise
+-- Shots is up", but that needs the proc's real spellID. Those IDs exist nowhere
+-- in this repo -- only in prose in Data/Rotations.lua ("empowered by Tip of the
+-- Spear"). Guessing one produces a predicate that silently never fires, which is
+-- indistinguishable from no predicate at all and is the same silent-no-op class
+-- of bug ApiGuard was built to catch.
+--
+-- So: read them off the running client instead. Get the proc up, run this, and
+-- paste the ID into the entry's when= clause.
+-- ══════════════════════════════════════════════════════════════════════════════
+DH.SlashCommands["auradump"] = function()
+    local U = TA.Utils
+    local out = function(msg) TA:Raw(TA.LOG.OUTPUT, msg) end
+
+    out("|cFFFFD100━━━ Aura Dump ━━━|r")
+
+    local function dump(label, getter, unit, filter)
+        out(("|cFF888780%s|r"):format(label))
+        local found = 0
+        for i = 1, 40 do
+            local ok, a = pcall(getter, unit, i, filter)
+            if not ok or not a then break end
+            local id = U.SafeNum(a.spellId)
+            if id > 0 then
+                found = found + 1
+                local stacks = U.SafeNum(a.applications)
+                out(("  |cFFFFD100%-7d|r %s%s"):format(
+                    id,
+                    tostring(a.name or "?"),
+                    stacks > 1 and (" |cFF888780x" .. stacks .. "|r") or ""))
+            end
+        end
+        if found == 0 then out("  |cFF888780(none)|r") end
+    end
+
+    dump("PLAYER BUFFS", C_UnitAuras.GetBuffDataByIndex, "player")
+    if UnitExists("target") then
+        dump("YOUR DEBUFFS ON TARGET", C_UnitAuras.GetDebuffDataByIndex, "target", "PLAYER")
+    else
+        out("|cFF888780(no target -- debuffs skipped)|r")
+    end
+
+    out("|cFF888780Paste an ID into Data/Rotations.lua, e.g.|r")
+    out("|cFF888780  when=C.HasBuff(12345)  or  C.BuffStacks(12345, 2)|r")
+    out("|cFFFFD100━━━━━━━━━━━━━━━━━|r")
+end

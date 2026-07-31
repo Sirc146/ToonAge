@@ -462,6 +462,6 @@ function GCM:Init()
     PatchGuideBrowserMessage()
 
     if TA.debug then
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r GuideContextMenu module loaded: context menus + hyperlinks active.")
+        TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA]|r GuideContextMenu module loaded: context menus + hyperlinks active.")
     end
 end

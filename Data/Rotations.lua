@@ -180,14 +180,19 @@ R[255] = {
     solo = {
         tip = "Survival solo: Misdirect to your pet before pulling. Wildfire Bomb into packs, Harpoon gap-closes. Ferocity pet provides Primal Rage (Bloodlust) and passive leech healing.",
         priorities = {
-            { spellID=257284, name="Hunter's Mark",        priority=1,  why="+3% damage to target — apply before every pull, always maintain.",         tags={"core"} },
+            { spellID=257284, name="Hunter's Mark",        priority=1,  why="+3% damage to target — apply before every pull, always maintain.",         tags={"core"},
+              when=C.DebuffRefresh(257284, 3) },
             { spellID=nil,    name="Takedown",             priority=2,  why="Primary cooldown — charges to target, grants +20% damage for 8s. Open every pull.", tags={"core","cd"}, isCd=true },
             { spellID=269752, name="Wildfire Bomb",        priority=3,  why="Highest damage ability — use empowered by Tip of the Spear.", tags={"core"} },
             { spellID=34026,  name="Kill Command",         priority=4,  why="Primary spender — send pet, empowered by Tip of the Spear stacks.", tags={"core"} },
             { spellID=259489, name="Raptor Strike",        priority=5,  why="Primary generator — builds Tip of the Spear. Cast between every spender.", tags={"core"} },
-            { spellID=190925, name="Harpoon",              priority=6,  why="Gap closer — resets on kill in Midnight. Chain pull packs efficiently.", tags={"active"} },
+            { spellID=190925, name="Harpoon",              priority=6,  why="Gap closer — resets on kill in Midnight. Chain pull packs efficiently.", tags={"active"},
+              -- Positioning tool, not damage. Suppress on a target about to die.
+              when=C.TargetLives(4) },
             { spellID=53351,  name="Kill Shot",            priority=7,  why="Execute under 20% HP. Pack Leader procs allow use at any HP in burst.", tags={"active"}, when=C.ExecuteOrProc(20) },
-            { spellID=187650, name="Freezing Trap",        priority=8,  why="CC — freeze a mob 60s. Pull around it or use on dangerous adds.",   tags={"active"} },
+            { spellID=187650, name="Freezing Trap",        priority=8,  why="CC — freeze a mob 60s. Pull around it or use on dangerous adds.",   tags={"active"},
+              -- CC is for live packs, never for something already dying.
+              when=C.And(C.TargetLives(6), C.AoE(2)) },
         },
     },
     aoe = {
@@ -220,13 +225,15 @@ R[255] = {
     st = {
         tip = "Survival Raid: Focus Kill Command as primary ST spender. Raptor Strike between every spender. Takedown on cooldown — align with Bloodlust. Aspect of Eagle during ranged phases.",
         priorities = {
-            { spellID=257284, name="Hunter's Mark",        priority=1,  why="+3% flat damage — apply pre-pull, maintain throughout the fight.", tags={"core"} },
+            { spellID=257284, name="Hunter's Mark",        priority=1,  why="+3% flat damage — apply pre-pull, maintain throughout the fight.", tags={"core"},
+              when=C.DebuffRefresh(257284, 3) },
             { spellID=nil,    name="Takedown",             priority=2,  why="Major cooldown — on cooldown, align with Bloodlust when available.", tags={"core","cd"}, isCd=true, isMajorCd=true },
             { spellID=34026,  name="Kill Command",         priority=3,  why="Primary ST spender — use when empowered by Tip of the Spear.", tags={"core"} },
             { spellID=269752, name="Wildfire Bomb",        priority=4,  why="Strong ST damage — never hold >1 charge. Always Tip-empowered.", tags={"core"} },
             { spellID=259489, name="Raptor Strike",        priority=5,  why="Generator — keeps Tip of the Spear rolling. Fill every GCD.", tags={"core"} },
             { spellID=53351,  name="Kill Shot",            priority=6,  why="Execute under 20% — highest priority during execute phase.",               tags={"active"}, when=C.ExecuteOrProc(20) },
-            { spellID=190925, name="Harpoon",              priority=7,  why="If needed for positioning — does not break Tip stacks.",  tags={"active"} },
+            { spellID=190925, name="Harpoon",              priority=7,  why="If needed for positioning — does not break Tip stacks.",  tags={"active"},
+              when=C.TargetLives(4) },
             { spellID=186265, name="Aspect of the Turtle", priority=nil, isCd=true,
               why="Immunity — use when assigned to soak a mechanic or healer is overwhelmed.", tags={"defensive"} },
             { spellID=264735, name="Survival of the Fittest", priority=nil, isCd=true,
@@ -240,7 +247,10 @@ R[253] = {
     solo = {
         tip = "BM solo: your pet does most of the work. Keep Kill Command on cooldown, spam Barbed Shot to maintain Frenzy stacks on your pet, fill with Cobra Shot. Ferocity pet for Primal Rage (Bloodlust).",
         priorities = {
-            { spellID=257284, name="Hunter's Mark",     priority=1, why="+3% damage — maintain at all times.", tags={"core"} },
+            { spellID=257284, name="Hunter's Mark",     priority=1, why="+3% damage — maintain at all times.", tags={"core"},
+              -- Debuff shares the cast ID. Only suggest when missing or in the
+              -- last 3s, otherwise it wins slot 1 forever and the bar never moves.
+              when=C.DebuffRefresh(257284, 3) },
             { spellID=217200, name="Barbed Shot",       priority=2, why="Maintain Frenzy stacks on pet — never let stacks drop. 2 charges.", tags={"core"} },
             { spellID=34026,  name="Kill Command",      priority=3, why="Primary damage ability — on cooldown always.", tags={"core"} },
             { spellID=193455, name="Cobra Shot",        priority=4, why="Filler — generates Focus, reduces Kill Command CD by 1s.", tags={"active"} },
@@ -278,9 +288,15 @@ R[254] = {
         tip = "MM solo: cast Trueshot on cooldown, spam Aimed Shot with Precise Shots procs. Rapid Fire as your second major ability. Arcane Shot as filler. Fully ranged — great for questing safety.",
         priorities = {
             { spellID=257284, name="Hunter's Mark",     priority=1, why="+3% damage — maintain at all times.", tags={"core"} },
-            { spellID=19434,  name="Aimed Shot",        priority=2, why="Primary nuke — cast with Precise Shots buff for reduced cast time.", tags={"core"} },
+            { spellID=19434,  name="Aimed Shot",        priority=2, why="Primary nuke — cast with Precise Shots buff for reduced cast time.", tags={"core"},
+              -- Aimed Shot costs 35 Focus. Below that it is not castable, so
+              -- suggesting it wastes a slot the filler should hold.
+              when=C.PowerAtLeast(35) },
             { spellID=257044, name="Rapid Fire",        priority=3, why="Channeled — highest DPS per GCD. On cooldown.", tags={"core"} },
-            { spellID=185358, name="Arcane Shot",       priority=4, why="Filler — spends Precise Shots procs, generates Focus.", tags={"active"} },
+            { spellID=185358, name="Arcane Shot",       priority=4, why="Filler — spends Precise Shots procs, generates Focus.", tags={"active"},
+              -- Filler: only worth a slot with Focus to spend. Keeps the bar
+              -- from recommending a shot that will not fire.
+              when=C.PowerAtLeast(40) },
             { spellID=288613, name="Trueshot",          priority=nil, isCd=true, isMajorCd=true, why="Primary CD — on cooldown. Aimed Shot and Rapid Fire both grant Precise Shots inside.", tags={"major-cd"} },
             { spellID=271788, name="Kill Shot",         priority=5, why="Execute under 20%.", tags={"active"}, when=C.ExecuteOrProc(20) },
         },

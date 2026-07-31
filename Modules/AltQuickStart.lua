@@ -776,7 +776,7 @@ function AQS:Init()
             if QT and QT.ShowToast then
                 QT:ShowToast("Welcome back — /ta quickstart for your catch-up")
             else
-                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Welcome back — |cFFFFD100/ta quickstart|r for your catch-up.")
+                TA:Raw(TA.LOG.INFO, "|cFFFFD100[ToonAge]|r Welcome back — |cFFFFD100/ta quickstart|r for your catch-up.")
             end
         end
 
