@@ -668,7 +668,7 @@ end
 -- loaded guides, and how many active quest log entries each guide matches.
 -- Run /ta diagnose or /ta diag when the tracker shows "No Active Guide".
 function QT:Diagnose()
-    local p = function(msg) print("|cFFFFD100[TA Tracker]|r " .. msg) end
+    local p = function(msg) TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Tracker]|r " .. msg) end
 
     local level      = UnitLevel("player") or 1
     local currentMap = C_Map.GetBestMapForUnit("player")

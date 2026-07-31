@@ -224,7 +224,7 @@ function RM:AuditBuffs()
     -- Output warnings
     if #warnings > 0 then
         TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Pre-Pull Audit]|r")
-        for _, w in ipairs(warnings) do print("  " .. w) end
+        for _, w in ipairs(warnings) do TA:Raw(TA.LOG.OUTPUT, "  " .. w) end
     else
         if TA.debug then
             TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A[ToonAge]|r Buffs OK for pull.")

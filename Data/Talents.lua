@@ -477,7 +477,7 @@ function T:SyncFromBetterTalents()
     local BT = _G["BetterTalents"]
     if not BT or not BT.BuildData then
         if TA.debug then
-            print("|cFFFFD100[TA Talents]|r BetterTalents.BuildData not found — skipped sync.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Talents]|r BetterTalents.BuildData not found — skipped sync.")
         end
         return 0
     end
@@ -493,7 +493,7 @@ function T:SyncFromBetterTalents()
             -- unambiguous specs or future new specs.
             -- (Fallback: skip unknown names silently)
             if TA.debug then
-                print("|cFFFFD100[TA Talents]|r Unknown spec name: " .. specName .. " — skipped.")
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Talents]|r Unknown spec name: " .. specName .. " — skipped.")
             end
         end
 
@@ -540,9 +540,11 @@ function T:SyncFromBetterTalents()
     end
 
     if filled > 0 then
-        print(string.format("|cFFFFD100[ToonAge]|r Talent sync: imported |cFF4AFF7A%d|r build strings from BetterTalents.", filled))
+        -- INFO: an auto-import count nobody asked for. Same class as the
+        -- "module loaded" notices 9959873 quieted; goes silent at the WARN default.
+        TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[ToonAge]|r Talent sync: imported |cFF4AFF7A%d|r build strings from BetterTalents.", filled))
     elseif TA.debug then
-        print("|cFFFFD100[TA Talents]|r Sync complete — no new strings needed (all slots already filled).")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Talents]|r Sync complete — no new strings needed (all slots already filled).")
     end
 
     return filled
