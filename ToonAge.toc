@@ -93,3 +93,4 @@ Modules\FarmOptimizerHUD.lua
 Modules\Settings.lua
 Modules\Onboarding.lua
 Modules\AltQuickStart.lua
+Modules\TestBar.lua
