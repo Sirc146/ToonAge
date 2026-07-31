@@ -806,3 +806,67 @@ function DH:Init()
         p(string.format("Quest recorder has %d step(s) from a previous session.  /tarecord dump to export, /tarecord clear to reset.", #TA.charDB.recorder.steps))
     end
 end
+
+-- ══════════════════════════════════════════════════════════════════════════════
+-- /ta secretprobe -- what do 12.0 secret values actually become?
+--
+-- CombatState coerces aura fields with U.SafeNum (tonumber(tostring(v))) before
+-- using them as table keys, because a raw secret cannot be a key. That fix
+-- stopped the crash. It does NOT prove the coercion produced the right number:
+-- if tostring() on a secret yields something unparseable, SafeNum returns 0, the
+-- `id > 0` guard drops the aura, and s.buffs stays empty -- silently. From the
+-- outside that is indistinguishable from the original bug, except the error log
+-- is clean.
+--
+-- This prints the raw type, the tostring() form, and the SafeNum result for a
+-- live aura, plus how many entries actually landed in the state tables. Run it
+-- while in combat with a buff up.
+-- ══════════════════════════════════════════════════════════════════════════════
+DH.SlashCommands = DH.SlashCommands or {}
+DH.SlashCommands["secretprobe"] = function()
+    local U = TA.Utils
+    local out = function(msg) TA:Raw(TA.LOG.OUTPUT, msg) end
+
+    out("|cFFFFD100━━━ Secret Value Probe ━━━|r")
+
+    local ok, aura = pcall(C_UnitAuras.GetBuffDataByIndex, "player", 1)
+    if not ok or not aura then
+        out("  |cFFFF9A1ANo buff in slot 1.|r Get a buff up and re-run.")
+    else
+        local raw = aura.spellId
+        out(("  spellId type      : |cFFFFD100%s|r"):format(type(raw)))
+        out(("  tostring(spellId) : |cFFFFD100%s|r"):format(tostring(raw)))
+        out(("  U.SafeNum(spellId): |cFFFFD100%s|r"):format(tostring(U.SafeNum(raw))))
+        -- The verdict line. This is the whole reason the command exists.
+        if U.SafeNum(raw) > 0 then
+            out("  |cFF4AFF7A✓ Coercion works -- the real spellID survived.|r")
+        else
+            out("  |cFFFF4444✗ Coercion FAILED -- SafeNum returned 0, so auras are")
+            out("     being dropped by the id > 0 guard. AlreadyActive can never")
+            out("     see them and the prediction cannot change.|r")
+        end
+    end
+
+    local CS = TA:GetModule("CombatState")
+    if CS and CS.state then
+        local nb, nd = 0, 0
+        for _ in pairs(CS.state.buffs   or {}) do nb = nb + 1 end
+        for _ in pairs(CS.state.debuffs or {}) do nd = nd + 1 end
+        out(("  state.buffs       : |cFFFFD100%d|r entries"):format(nb))
+        out(("  state.debuffs     : |cFFFFD100%d|r entries"):format(nd))
+        out(("  inCombat          : |cFFFFD100%s|r"):format(tostring(CS.state.inCombat)))
+        if nb == 0 then
+            out("  |cFFFF9A1Astate.buffs is empty -- if you have buffs up, that is the bug.|r")
+        end
+    end
+
+    -- Cooldowns take the same path in GetNextN. If duration coerces to 0 the
+    -- `dur > 1.5` test never fires, every spell looks off cooldown, and the
+    -- same three entries win every evaluation.
+    local cdOk, cd = pcall(C_Spell.GetSpellCooldown, 61304)   -- 61304 = global cooldown
+    if cdOk and cd then
+        out(("  cd.duration       : raw=|cFFFFD100%s|r  SafeNum=|cFFFFD100%s|r")
+            :format(tostring(cd.duration), tostring(U.SafeNum(cd.duration))))
+    end
+    out("|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+end
