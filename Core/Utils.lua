@@ -6,12 +6,56 @@ TA.Utils = {}
 local U = TA.Utils
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- ── TAINT SAFETY UTILITIES (12.0 PTR) ─────────────────────────────────────────
--- WoW 12.0 PTR marks many API return values as "secret numbers" when addon
--- execution is tainted. These can't be used in arithmetic or comparisons.
--- SafeNum strips the taint via tonumber(tostring(x)). SafeCall wraps an
--- entire function in pcall so taint errors are silently caught.
+-- ── TAINT SAFETY UTILITIES (12.0) ─────────────────────────────────────────────
+-- WoW 12.0 marks many API return values as "secret" when addon execution is
+-- tainted. These cannot be used in arithmetic, comparisons, or as table keys.
+--
+-- ⚠ THE CLAIM THAT USED TO BE HERE IS FALSE. This block previously read
+-- "SafeNum strips the taint via tonumber(tostring(x))". Measured on retail
+-- 12.0.7 with /ta secretprobe, it does not and cannot. Every route that pulls
+-- a number OUT of a secret errors outright:
+--
+--     tonumber(v)            attempt to perform numeric conversion on a
+--                            secret number value (execution tainted by 'ToonAge')
+--     v + 0 / math.floor(v)  arithmetic on a secret number value
+--     v > 0                  attempt to compare
+--     t[v] = x               table cannot be indexed with secret keys
+--     #tostring(v)           attempt to get length of a secret string value
+--     tostring(v):match(..)  attempt to index a secret string value
+--
+-- tostring(v) alone survives and renders the true number on screen, which is
+-- why a chat dump shows an ID a human can read while Lua cannot touch it.
+-- tonumber(tostring(v)) therefore returns nil, and SafeNum falls through to
+-- its fallback -- 0. That is not a conversion failure to be fixed; it is the
+-- designed behaviour of the value.
+--
+-- 10 of 11 player buffs measured secret in combat. The one exception was
+-- 404464 Flight Style: Skyriding. Combat-relevant aura data is secret;
+-- cosmetic state is not.
+--
+-- SafeNum is still correct for ordinary values and is used widely, so it
+-- stays. What it must NOT be relied on for is recovering an ID from aura
+-- data -- it will hand back 0 and every `id > 0` guard downstream will
+-- silently drop the aura. Ask about a known ID instead of reading one out.
 -- ══════════════════════════════════════════════════════════════════════════════
+
+--- Strip WoW chat markup, leaving plain text.
+--- Shared by ChatCopy (so a paste reads the way the line looked) and by the
+--- probe commands (so what lands in SavedVariables is machine-readable).
+--- @param s any
+--- @return string
+function U.StripMarkup(s)
+    if s == nil then return "" end
+    s = tostring(s)
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", "")   -- colour open
+    s = s:gsub("|C%x%x%x%x%x%x%x%x", "")
+    s = s:gsub("|r", "")                    -- colour close
+    s = s:gsub("|H.-|h(.-)|h", "%1")        -- hyperlink -> its display text
+    s = s:gsub("|T.-|t", "")                -- inline texture
+    s = s:gsub("|A.-|a", "")                -- inline atlas
+    s = s:gsub("|n", "\n")
+    return s
+end
 
 --- Convert a potentially tainted "secret number" to a safe Lua number.
 --- Returns the number, or the fallback (default 0) if conversion fails.

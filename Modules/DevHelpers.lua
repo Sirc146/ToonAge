@@ -825,7 +825,23 @@ end
 DH.SlashCommands = DH.SlashCommands or {}
 DH.SlashCommands["secretprobe"] = function()
     local U = TA.Utils
-    local out = function(msg) TA:Raw(TA.LOG.OUTPUT, msg) end
+
+    -- Tee every line into SavedVariables as well as chat.
+    --
+    -- This probe prints 40+ lines and the answers are exact integers. Reading
+    -- them back off a screenshot has already cost this investigation real time
+    -- -- an ID came back as 4669O4 for 466904, and a zone name arrived as
+    -- "hammerfall" for "Hallowfall". Both are one character, both send the work
+    -- somewhere different. Written to disk, the value that reaches analysis is
+    -- the value the client produced, byte for byte.
+    --
+    -- Markup is stripped because the saved copy exists to be read by a tool,
+    -- not rendered.
+    local capture = {}
+    local out = function(msg)
+        TA:Raw(TA.LOG.OUTPUT, msg)
+        capture[#capture + 1] = U.StripMarkup(msg)
+    end
 
     out("|cFFFFD100━━━ Secret Value Probe ━━━|r")
 
@@ -1003,6 +1019,26 @@ DH.SlashCommands["secretprobe"] = function()
             :format(tostring(cd.duration), tostring(U.SafeNum(cd.duration))))
     end
     out("|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+
+    -- Persist. Keep the last 3 runs so an in-combat and an out-of-combat pass
+    -- can be compared without one overwriting the other -- the two runs
+    -- disagreeing is what produced every finding in this investigation so far.
+    if TA.db then
+        TA.db.probeLog = TA.db.probeLog or {}
+        table.insert(TA.db.probeLog, 1, {
+            when     = date("%Y-%m-%d %H:%M:%S"),
+            inCombat = InCombatLockdown() and true or false,
+            build    = (GetBuildInfo and select(2, GetBuildInfo())) or "?",
+            lines    = capture,
+        })
+        while #TA.db.probeLog > 3 do table.remove(TA.db.probeLog) end
+        TA:Raw(TA.LOG.OUTPUT,
+            ("|cFF4AFF7ASaved to SavedVariables (%d run(s) kept).|r |cFF888780"
+             .. " They only flush to disk on /reload or logout -- do one.|r")
+            :format(#TA.db.probeLog))
+    else
+        TA:Raw(TA.LOG.ERROR, "TA.db unavailable -- probe was not saved.")
+    end
 end
 
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -1020,7 +1056,14 @@ end
 -- ══════════════════════════════════════════════════════════════════════════════
 DH.SlashCommands["auradump"] = function()
     local U = TA.Utils
-    local out = function(msg) TA:Raw(TA.LOG.OUTPUT, msg) end
+    -- Same disk capture as secretprobe: this command exists to produce spellIDs
+    -- that get pasted into when= clauses, and an ID transcribed off a screenshot
+    -- is a predicate that silently never fires.
+    local capture = {}
+    local out = function(msg)
+        TA:Raw(TA.LOG.OUTPUT, msg)
+        capture[#capture + 1] = U.StripMarkup(msg)
+    end
 
     out("|cFFFFD100━━━ Aura Dump ━━━|r")
 
@@ -1053,4 +1096,18 @@ DH.SlashCommands["auradump"] = function()
     out("|cFF888780Paste an ID into Data/Rotations.lua, e.g.|r")
     out("|cFF888780  when=C.HasBuff(12345)  or  C.BuffStacks(12345, 2)|r")
     out("|cFFFFD100━━━━━━━━━━━━━━━━━|r")
+
+    if TA.db then
+        TA.db.auraLog = TA.db.auraLog or {}
+        table.insert(TA.db.auraLog, 1, {
+            when  = date("%Y-%m-%d %H:%M:%S"),
+            lines = capture,
+        })
+        -- Deeper history than secretprobe keeps: a dump is taken once per spec
+        -- and once per proc window, so several are wanted side by side.
+        while #TA.db.auraLog > 8 do table.remove(TA.db.auraLog) end
+        TA:Raw(TA.LOG.OUTPUT,
+            ("|cFF4AFF7ASaved (%d dump(s) kept).|r |cFF888780/reload to flush to disk.|r")
+            :format(#TA.db.auraLog))
+    end
 end

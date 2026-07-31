@@ -23,19 +23,9 @@ TA:RegisterModule("ChatCopy", ChatCopy)
 
 local frame
 
---- Strip WoW chat markup so the result is plain text.
-local function StripMarkup(s)
-    if not s then return "" end
-    s = tostring(s)
-    s = s:gsub("|c%x%x%x%x%x%x%x%x", "")   -- colour open
-    s = s:gsub("|C%x%x%x%x%x%x%x%x", "")
-    s = s:gsub("|r", "")                    -- colour close
-    s = s:gsub("|H.-|h(.-)|h", "%1")        -- hyperlink -> its display text
-    s = s:gsub("|T.-|t", "")                -- inline texture
-    s = s:gsub("|A.-|a", "")                -- inline atlas
-    s = s:gsub("|n", "\n")
-    return s
-end
+-- Markup stripping lives in Core/Utils.lua so the probe commands, which write
+-- the same text into SavedVariables, cannot drift from what a copy produces.
+local StripMarkup = TA.Utils.StripMarkup
 
 --- Collect scrollback from a chat frame, oldest first.
 local function Collect(chatFrame)
