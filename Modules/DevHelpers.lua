@@ -885,8 +885,8 @@ DH.SlashCommands["secretprobe"] = function()
             t[raw] = true
             for k in pairs(t) do return type(k) .. " / " .. tostring(k) end
         end)
-        out("|cFF888780  Paste this block back -- whichever route returns 466904 is")
-        out("  the one U.SafeNum must use.|r")
+        out("|cFF888780  Paste this block back -- whichever route returns the real")
+        out("  ID is the one U.SafeNum must use.|r")
 
         -- ── Per-aura sweep ────────────────────────────────────────────────
         -- Two runs of this command disagreed: 466904 coerced to 0 while
@@ -918,6 +918,67 @@ DH.SlashCommands["secretprobe"] = function()
             out(("  |cFF4AFF7AAll %d coerced cleanly.|r"):format(total))
         end
         out("|cFF888780  Run this once IN combat and once OUT of combat.|r")
+
+        -- ── Mechanism test: the two routes that never touch the secret ────
+        -- Measured 12.0.7: every route that pulls a NUMBER OUT of aura.spellId
+        -- errors -- tonumber, +0, math.floor, format %d, ordering comparison,
+        -- table key, and even #tostring and :match on the resulting string.
+        -- tostring() alone survives, which is why the sweep above can print
+        -- IDs a human can read while Lua cannot use them.
+        --
+        -- That kills reading IDs out. It does not necessarily kill asking
+        -- about an ID we already know, and the whole rotation predicate system
+        -- only ever needs the second thing. Two candidate routes, both of
+        -- which keep the secret on the far side of the call:
+        --
+        --   A. equality against a literal   aura.spellId == 378770
+        --   B. ask by ID                    GetPlayerAuraBySpellID(378770)
+        --
+        -- MaxDps/Helper.lua:239 uses route A (`aura.spellId == 257284`), but
+        -- that install is a v11.2.13 class module on a 12.0.7 client and is
+        -- erroring on its own, so it is a hint and not evidence. Measure both.
+        out("|cFFFFD100  -- mechanism test --|r")
+
+        -- IDs read off this character's own buff sweep, so they are real and
+        -- present. 404464 is the control: it was the one aura that coerced
+        -- cleanly, so any route that fails even for 404464 is broken outright
+        -- rather than blocked by secrecy.
+        local KNOWN = {
+            { 404464, "Skyriding (CONTROL - was not secret)" },
+            { 186401, "Sign of the Skirmisher" },
+            { 378770, "Deathblow (MM proc)" },
+            { 194594, "Lock and Load (MM proc)" },
+        }
+
+        for _, entry in ipairs(KNOWN) do
+            local wantID, label = entry[1], entry[2]
+
+            -- Route A: walk the slots and compare against the literal.
+            local aOK, aRes = pcall(function()
+                for i = 1, 40 do
+                    local sok, a = pcall(C_UnitAuras.GetBuffDataByIndex, "player", i)
+                    if not sok or not a then break end
+                    if a.spellId == wantID then return "MATCHED at slot " .. i end
+                end
+                return "no match (ran clean)"
+            end)
+
+            -- Route B: hand the ID in, never read one out.
+            local bOK, bRes = pcall(function()
+                if not C_UnitAuras.GetPlayerAuraBySpellID then
+                    return "API ABSENT"
+                end
+                local a = C_UnitAuras.GetPlayerAuraBySpellID(wantID)
+                return a and "FOUND" or "nil (not up)"
+            end)
+
+            out(("    |cFFFFD100%s|r"):format(label))
+            out(("      A ==literal  %s%s|r"):format(aOK and "|cFF4AFF7A" or "|cFFFF4444",
+                                                     tostring(aRes)))
+            out(("      B byID       %s%s|r"):format(bOK and "|cFF4AFF7A" or "|cFFFF4444",
+                                                     tostring(bRes)))
+        end
+        out("|cFF888780  A green route here is the one CombatState must be rebuilt on.|r")
     end
 
     local CS = TA:GetModule("CombatState")
