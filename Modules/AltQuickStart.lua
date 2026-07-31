@@ -776,7 +776,10 @@ function AQS:Init()
             if QT and QT.ShowToast then
                 QT:ShowToast("Welcome back — /ta quickstart for your catch-up")
             else
-                TA:Raw(TA.LOG.INFO, "|cFFFFD100[ToonAge]|r Welcome back — |cFFFFD100/ta quickstart|r for your catch-up.")
+                -- OUTPUT, not INFO: the welcome-back greeting is a tested feature, not
+                -- login chatter. Tools/test_onboarding.py asserts it appears ("returning
+                -- char: still welcomed back"). Do not quiet it in a logging sweep.
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Welcome back — |cFFFFD100/ta quickstart|r for your catch-up.")
             end
         end
 

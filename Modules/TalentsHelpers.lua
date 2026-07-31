@@ -264,8 +264,13 @@ end
 
 local function tryCTraitsActiveConfig()
   local ids = {}
-  if C_Traits and C_Traits.GetActiveConfigID and C_Traits.GetConfigInfo then
-    local ok, cfg = pcall(C_Traits.GetActiveConfigID)
+  -- GetActiveConfigID lives on C_ClassTalents, not C_Traits. This block asked
+  -- C_Traits for it, so the guard was never satisfied and the function returned
+  -- an empty table on every call -- silently, which is exactly the failure mode
+  -- Core/ApiGuard.lua was written to surface (/ta apiprobe listed it).
+  -- GetConfigInfo IS on C_Traits and resolves fine; only the first call moved.
+  if C_ClassTalents and C_ClassTalents.GetActiveConfigID and C_Traits and C_Traits.GetConfigInfo then
+    local ok, cfg = pcall(C_ClassTalents.GetActiveConfigID)
     if ok and cfg then
       local ok2, info = pcall(C_Traits.GetConfigInfo, cfg)
       if ok2 and info and info.nodes then
