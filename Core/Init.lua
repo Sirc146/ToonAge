@@ -163,44 +163,59 @@ local function CopyDefault(v)
     return out
 end
 
+--- Recursively backfills missing keys of `defaults` into `dst`.
+---
+--- Replaces the three hand-written blocks that used to deep-default
+--- oldUiPositions/unifiedPosition/modules one at a time. Those covered three of
+--- the four nested tables in DB_DEFAULTS -- `minimap` was missed, and any nested
+--- default added later would have been missed too, silently, on every existing
+--- install. One recursive walk cannot develop that kind of hole.
+---
+--- Contract: fill in what is absent, never overwrite what the user set, and
+--- never hand out a reference into the defaults table (see CopyDefault).
+--- @param dst table       destination -- a live SavedVariables subtree
+--- @param defaults table  shipped defaults to backfill from
+--- @return table dst
+local function ApplyDefaults(dst, defaults)
+    for k, v in pairs(defaults) do
+        if dst[k] == nil then
+            dst[k] = CopyDefault(v)
+        elseif type(v) == "table" and type(dst[k]) == "table" then
+            ApplyDefaults(dst[k], v)
+        end
+        -- Type mismatch (the user has a scalar where defaults grew a table, or
+        -- the reverse) is left alone deliberately. Coercing it would discard
+        -- user data; whichever reader cares should type-check.
+    end
+    return dst
+end
+
+-- NOTE ON PER-CHARACTER DEFAULTS -- deliberately absent.
+--
+-- A CHAR_DEFAULTS table applied to TA.charDB was tried and reverted. It looks
+-- like the obvious counterpart to DB_DEFAULTS, but this scope works differently:
+-- modules lazily create their own subtables at the call site
+-- (`charDB.x = charDB.x or {}`) and then treat *absence as meaning something*.
+-- charDB.tracker being nil is how the code knows no layout preset has been
+-- applied; Tools/test_onboarding.py asserts exactly that in three places.
+--
+-- Pre-creating those keys as empty tables silently converts "never set" into
+-- "set to empty" across ~35 presence checks. The lazy idiom already provides the
+-- backfill a defaults table would -- a key added today reads correctly on an alt
+-- created three versions ago, because the reader supplies the default itself.
+--
+-- If you add a per-character key: follow the `or {}` idiom at the point of use.
+-- Do not reintroduce a defaults table here without first re-running
+-- Tools/test_onboarding.py.
+
 function TA:InitDB()
     -- ToonAgeDB is set by WoW from SavedVariables on login
     ToonAgeDB = ToonAgeDB or {}
     local db = ToonAgeDB
 
-    -- Apply defaults for any missing top-level keys
-    for k, v in pairs(DB_DEFAULTS) do
-        if db[k] == nil then
-            db[k] = CopyDefault(v)
-        end
-    end
-
-    -- Deep-default nested tables so sub-keys added in new versions get
-    -- backfilled into existing SavedVariables without wiping user data.
-    if type(DB_DEFAULTS.oldUiPositions) == "table" then
-        db.oldUiPositions = db.oldUiPositions or {}
-        for k, v in pairs(DB_DEFAULTS.oldUiPositions) do
-            if db.oldUiPositions[k] == nil then
-                db.oldUiPositions[k] = CopyDefault(v)
-            end
-        end
-    end
-    if type(DB_DEFAULTS.unifiedPosition) == "table" then
-        db.unifiedPosition = db.unifiedPosition or {}
-        for k, v in pairs(DB_DEFAULTS.unifiedPosition) do
-            if db.unifiedPosition[k] == nil then
-                db.unifiedPosition[k] = CopyDefault(v)
-            end
-        end
-    end
-    if type(DB_DEFAULTS.modules) == "table" then
-        db.modules = db.modules or {}
-        for k, v in pairs(DB_DEFAULTS.modules) do
-            if db.modules[k] == nil then
-                db.modules[k] = CopyDefault(v)
-            end
-        end
-    end
+    -- Backfill every missing key, at every depth, so sub-keys added in new
+    -- versions land in existing SavedVariables without wiping user data.
+    ApplyDefaults(db, DB_DEFAULTS)
 
     -- Migrate the old two-flag onboarding model onto newCharBehavior.
     -- Runs here, with the other defaults, so it completes before any module
