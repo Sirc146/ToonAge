@@ -159,16 +159,34 @@ local function UpdateTTD()
     s.targetTTD = s.targetPct / ratePctPerSec
 end
 
+-- 12.0 (Midnight) returns aura fields as *secret* values. A secret cannot be
+-- used as a table key -- `s.buffs[auraData.spellId] = ...` raises "attempted to
+-- perform indexed assignment on a table that cannot be indexed with secret
+-- keys". The pcall below used to wrap only the API call, so the call succeeded
+-- and the assignment on the next line threw outside its protection.
+--
+-- That failure was silent and expensive: Init.lua's OnEvent pcall caught it, so
+-- the addon survived, but wipe() had already run and the loop aborted on the
+-- FIRST aura -- leaving s.buffs empty for the whole fight. AlreadyActive() then
+-- read nil for every aura and always returned false, so the rotation never knew
+-- what was already applied and GetNextN kept returning the same top entries.
+-- The "prediction is stuck on the same three abilities" symptom was this bug.
+--
+-- U.SafeNum (tonumber(tostring(v))) is the project's established coercion for
+-- tainted/secret numbers -- see .rules.md. Apply it to every field that is later
+-- used as a key or in arithmetic, not just the ID.
 local function UpdateBuffs()
     local s = CS.state
     wipe(s.buffs)
     for i = 1, 40 do
         local ok, auraData = pcall(C_UnitAuras.GetBuffDataByIndex, "player", i)
+        -- nil auraData means we ran past the last aura: a real end-of-list.
         if not ok or not auraData then break end
-        if auraData.spellId then
-            s.buffs[auraData.spellId] = {
-                stacks  = auraData.applications or 0,
-                expires = auraData.expirationTime or 0,
+        local id = U.SafeNum(auraData.spellId)
+        if id > 0 then
+            s.buffs[id] = {
+                stacks  = U.SafeNum(auraData.applications),
+                expires = U.SafeNum(auraData.expirationTime),
             }
         end
     end
@@ -179,13 +197,16 @@ local function UpdateDebuffsOnTarget()
     wipe(s.debuffs)
     if not s.targetExists then return end
     for i = 1, 40 do
-        -- 12.0 PTR: GetDebuffDataByIndex can error when tainted
+        -- 12.0: GetDebuffDataByIndex can error when tainted, and its returned
+        -- fields are secret -- see the note above UpdateBuffs for why the key
+        -- must be coerced before it touches the table.
         local ok, auraData = pcall(C_UnitAuras.GetDebuffDataByIndex, "target", i, "PLAYER")
         if not ok or not auraData then break end
-        if auraData.spellId then
-            s.debuffs[auraData.spellId] = {
-                stacks  = auraData.applications or 0,
-                expires = auraData.expirationTime or 0,
+        local id = U.SafeNum(auraData.spellId)
+        if id > 0 then
+            s.debuffs[id] = {
+                stacks  = U.SafeNum(auraData.applications),
+                expires = U.SafeNum(auraData.expirationTime),
             }
         end
     end
@@ -198,9 +219,11 @@ local function UpdateCooldowns(spellIDs)
     for _, spellID in ipairs(spellIDs) do
         local cdInfo = C_Spell.GetSpellCooldown(spellID)
         if cdInfo then
+            -- Coerced on the way in, so every reader gets plain numbers.
+            -- IsReady() adds these together; arithmetic on a secret throws.
             s.cooldowns[spellID] = {
-                start    = cdInfo.startTime or 0,
-                duration = cdInfo.duration or 0,
+                start    = U.SafeNum(cdInfo.startTime),
+                duration = U.SafeNum(cdInfo.duration),
                 charges  = 0,
             }
             -- Check charges
@@ -292,7 +315,9 @@ function CS:IsReady(spellID)
         -- Not tracked yet — do a live check
         local cdInfo = C_Spell.GetSpellCooldown(spellID)
         if not cdInfo then return true, 0 end
-        local remaining = (cdInfo.startTime + cdInfo.duration) - GetTime()
+        -- Live path: these come straight off the API and are secret in 12.0,
+        -- so coerce before the arithmetic rather than after.
+        local remaining = (U.SafeNum(cdInfo.startTime) + U.SafeNum(cdInfo.duration)) - GetTime()
         return remaining <= 0, math.max(0, remaining)
     end
     local remaining = (cd.start + cd.duration) - GetTime()
