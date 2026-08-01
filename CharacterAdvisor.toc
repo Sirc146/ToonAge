@@ -1,0 +1,30 @@
+## Interface: 120007
+## Title: |cFFFFD100Character Advisor|r
+## Notes: Full character scanner — gear, talents, rotation, professions, pets, and weekly guidance.
+## Author: Chris
+## Version: 1.0.0
+## DefaultState: enabled
+## SavedVariables: CharacterAdvisorDB
+
+Libs\LibStub.lua
+
+Core\Init.lua
+Core\Utils.lua
+Core\UI.lua
+Core\MinimapButton.lua
+
+Data\StatWeights.lua
+Data\Spells.lua
+Data\Talents.lua
+Data\Rotations.lua
+Data\Professions_Data.lua
+Data\Zones.lua
+
+Modules\Character.lua
+Modules\Gear.lua
+Modules\Talents.lua
+Modules\Rotation.lua
+Modules\Professions.lua
+Modules\Pets.lua
+Modules\Weekly.lua
+Modules\Delves.lua
