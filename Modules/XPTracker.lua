@@ -1,8 +1,6 @@
--- ToonAge/Modules/XPTracker.lua
+-- ToonAge/Modules/XPTracker.lua (Classic — MoP 50504)
 -- XP/Hour Dashboard: tracks XP gain rate, predicts level-up ETA,
 -- compares leveling speed across alts. Shows inline in tracker status.
---
--- No other guide addon provides predictive leveling ETA or cross-alt comparison.
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
@@ -36,6 +34,7 @@ local function GetLevel()
 end
 
 local function IsMaxLevel()
+    -- MoP Classic max level is 90
     local maxLevel = GetMaxPlayerLevel and GetMaxPlayerLevel() or 90
     return GetLevel() >= maxLevel
 end
@@ -215,7 +214,7 @@ function XP:Init()
         end
     end)
 
-    -- Save alt data on logout (via PLAYER_LOGOUT isn't reliable, use periodic)
+    -- Save alt data periodically (every 60s)
     C_Timer.NewTicker(60, function()
         XP:SaveAltData()
     end)
@@ -235,8 +234,10 @@ XP.SlashCommands = {
 
         TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge XP Dashboard ━━━|r")
         TA:Raw(TA.LOG.OUTPUT, string.format("  Level: |cFFFFFFFF%d|r  (%.1f%%)", s.level, s.pct))
-        TA:Raw(TA.LOG.OUTPUT, string.format("  XP/Hour: |cFF4AFF7A%s|r", U.FormatNumber and U.FormatNumber(s.xpPerHour) or string.format("%.0f", s.xpPerHour)))
-        TA:Raw(TA.LOG.OUTPUT, string.format("  Session: %s XP in %dm", U.FormatNumber and U.FormatNumber(s.sessionXP) or tostring(s.sessionXP), mins))
+        TA:Raw(TA.LOG.OUTPUT, string.format("  XP/Hour: |cFF4AFF7A%s|r",
+            U.FormatNumber and U.FormatNumber(s.xpPerHour) or string.format("%.0f", s.xpPerHour)))
+        TA:Raw(TA.LOG.OUTPUT, string.format("  Session: %s XP in %dm",
+            U.FormatNumber and U.FormatNumber(s.sessionXP) or tostring(s.sessionXP), mins))
 
         if s.eta > 0 then
             local etaMins = math.floor(s.eta / 60)

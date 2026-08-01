@@ -1,7 +1,11 @@
--- ToonAge/Modules/GatherTracker.lua
+-- ToonAge/Modules/GatherTracker.lua (Classic — MoP 50504)
 -- Gathering Route on NavHud — records herb/ore node positions on LOOT_OPENED,
 -- renders them as faded dots on the NavHud using the same bearing math.
 -- Inspired by GatherMate2 + FarmHud.
+--
+-- Uses LOOT_OPENED, GetNumLootItems, GetLootSlotLink, GetItemInfoInstant,
+-- C_Map.GetPlayerMapPosition — all available in MoP Classic.
+-- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -19,7 +23,7 @@ local DEDUP_DISTANCE     = 0.004   -- map-unit threshold for duplicate detection
 local DISPLAY_RANGE      = 0.18    -- max map-unit distance to show dots
 
 -- Item classification: classID 7 = Tradeskill
--- subclassID: 5=Cloth, 6=Leather, 7=Metal & Stone (Ore), 8=Cooking, 9=Herb, 10=Elemental
+-- subclassID: 7=Metal & Stone (Ore), 9=Herb
 local GATHER_SUBCLASS_HERB = 9
 local GATHER_SUBCLASS_ORE  = 7
 
@@ -28,7 +32,7 @@ local COLOR_HERB = { 0.30, 0.90, 0.35 }  -- green
 local COLOR_ORE  = { 0.85, 0.55, 0.20 }  -- brown/orange
 
 -- ── State ─────────────────────────────────────────────────────────────────────
-GatherTracker.dotPool    = {}    -- reusable texture frames
+GatherTracker.dotPool    = {}
 GatherTracker.hookActive = false
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
@@ -39,11 +43,11 @@ local function DistSq(x1, y1, x2, y2)
 end
 
 local function DetectGatherType()
-    -- Scan loot window for herb/ore items
     local numItems = GetNumLootItems and GetNumLootItems() or 0
     for i = 1, numItems do
         local link = GetLootSlotLink(i)
         if link then
+            -- GetItemInfoInstant is available in MoP Classic
             local _, _, _, _, _, classID, subclassID = GetItemInfoInstant(link)
             if classID == 7 then
                 if subclassID == GATHER_SUBCLASS_HERB then return "herb" end
@@ -79,7 +83,6 @@ function GatherTracker:RecordNode()
     local dedupSq = DEDUP_DISTANCE * DEDUP_DISTANCE
     for _, node in ipairs(nodes) do
         if DistSq(node.x, node.y, px, py) < dedupSq then
-            -- Update timestamp of existing node
             node.time = time()
             return
         end
@@ -107,7 +110,6 @@ function GatherTracker:OnEvent(event, ...)
 end
 
 -- ── NavHud integration: render dots ───────────────────────────────────────────
--- Called from a hooksecurefunc on NavHud:Tick()
 function GatherTracker:UpdateDotsOnNavHud()
     local NavHud = TA:GetModule("NavHud")
     if not NavHud or not NavHud.frame or not NavHud.frame:IsShown() then
@@ -125,7 +127,6 @@ function GatherTracker:UpdateDotsOnNavHud()
     local bearing = GetPlayerFacing() or 0
     local hudRadius = NavHud.hudRadius or 300
 
-    -- Get gather nodes for current zone
     local nodes = TA.charDB and TA.charDB.gatherHistory and TA.charDB.gatherHistory[mapID]
     if not nodes or #nodes == 0 then
         self:HideAllDots()
@@ -143,7 +144,6 @@ function GatherTracker:UpdateDotsOnNavHud()
 
             local dot = self:GetDot(dotIdx, NavHud.frame)
 
-            -- Position using NavHud's bearing math
             local dx = node.x - playerX
             local dy = node.y - playerY
             local dist = math.sqrt(dSq)
@@ -159,7 +159,6 @@ function GatherTracker:UpdateDotsOnNavHud()
             dot:ClearAllPoints()
             dot:SetPoint("CENTER", NavHud.frame, "CENTER", screenX, screenY)
 
-            -- Color by type
             if node.type == "herb" then
                 dot:SetVertexColor(COLOR_HERB[1], COLOR_HERB[2], COLOR_HERB[3], DOT_ALPHA_HERB)
             else
@@ -202,7 +201,6 @@ function GatherTracker:InstallNavHudHook()
     local NavHud = TA:GetModule("NavHud")
     if not NavHud then return end
 
-    -- Hook NavHud:Tick so our dots update every frame the HUD is visible
     hooksecurefunc(NavHud, "Tick", function()
         GatherTracker:UpdateDotsOnNavHud()
     end)
@@ -212,12 +210,10 @@ end
 
 -- ── Init ──────────────────────────────────────────────────────────────────────
 function GatherTracker:Init()
-    -- Ensure DB tables exist
     if TA.charDB then
         TA.charDB.gatherHistory = TA.charDB.gatherHistory or {}
     end
 
-    -- Register LOOT_OPENED (not in PERSISTENT_EVENTS)
     TA.eventFrame:RegisterEvent("LOOT_OPENED")
 
     -- Install NavHud hook (may need to defer if NavHud not yet init)
@@ -225,7 +221,6 @@ function GatherTracker:Init()
     if NavHud and NavHud.frame then
         self:InstallNavHudHook()
     else
-        -- Retry after 2 seconds (NavHud defers frame creation)
         C_Timer.After(2, function()
             GatherTracker:InstallNavHudHook()
         end)
@@ -254,7 +249,8 @@ GatherTracker.SlashCommands = {
             end
         end
 
-        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge Gather]|r %d nodes across %d zones (|cFF4AFF7A%d herbs|r, |cFFFF9A1A%d ore|r)",
+        TA:Raw(TA.LOG.OUTPUT, string.format(
+            "|cFFFFD100[ToonAge Gather]|r %d nodes across %d zones (|cFF4AFF7A%d herbs|r, |cFFFF9A1A%d ore|r)",
             totalNodes, zoneCount, herbCount, oreCount))
     end,
 }

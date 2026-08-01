@@ -11,7 +11,4 @@
 	<Binding name="TOONAGE_TOGGLE_TRACKER" category="ADDONS">
 		ToonAge_ToggleTracker();
 	</Binding>
-	<Binding name="TOONAGE_TOGGLE_TESTBAR" category="ADDONS">
-		ToonAge_ToggleTestBar();
-	</Binding>
 </Bindings>

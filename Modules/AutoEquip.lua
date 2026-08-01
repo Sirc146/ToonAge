@@ -1,25 +1,15 @@
--- ToonAge/Modules/AutoEquip.lua
+-- ToonAge/Modules/AutoEquip.lua (Classic — MoP 50504)
 -- Automatically equips item-level upgrades when looted, if the player has
 -- opted in via the "Auto-equip upgrades" checkbox in the Tracker options.
 --
--- Design decisions:
---   • Opt-in only: defaults to false. The player must explicitly enable it.
---   • Stat-weight-aware: uses ToonAge's own StatWeights data (via Gear module)
---     if available, so upgrades are evaluated by spec value, not raw ilvl alone.
---   • Spec filter: never equips items that are obviously off-spec (e.g., a
---     cloth drop for a Warrior). Uses primary stat (Strength/Agility/Intellect)
---     and armour type to veto inappropriate items.
---   • Shift-to-pause: holding Shift suppresses auto-equip for that loot event,
---     matching the auto-quest pause convention everywhere else in ToonAge.
---   • Two-hand protection: if a two-hander would overwrite a dual-wield setup,
---     we skip — the player almost certainly chose dual-wield deliberately.
---   • The module does NOT auto-equip in Arena or Battleground instances, where
---     swapping gear mid-combat could be considered exploitative.
---
--- LOOT_ITEM_PUSHED_TO_SLOT fires immediately when an item lands in a bag slot
--- after looting.  We use BAG_UPDATE_DELAYED (fires once, debounced, after all
--- bag slot changes from a single loot event) to evaluate the new item once all
--- stack counts have settled.
+-- Classic adaptations:
+--   • No C_Container namespace — use GetContainerItemLink/GetContainerNumSlots
+--   • No domination sockets, no tertiary stats
+--   • No GetSpecialization/GetSpecializationInfo — use GetActiveSpecGroup + GetSpecializationInfo
+--   • Stat-weight comparison via TA.Data.StatWeights
+--   • No Evoker or Demon Hunter classes
+--   • Uses GetItemInfo for item stats
+-- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -37,8 +27,7 @@ local EQUIP_SLOTS = {
     INVSLOT_MAINHAND, INVSLOT_OFFHAND,
 }
 
--- Equip location strings returned by GetItemInfo() [10th field] that map to WoW
--- slot IDs.  Items that need special handling (two-hand, dual wield) are noted.
+-- Equip location strings returned by GetItemInfo() mapped to slot IDs.
 local EQUIP_LOC_TO_SLOT = {
     INVTYPE_HEAD       = { INVSLOT_HEAD },
     INVTYPE_NECK       = { INVSLOT_NECK },
@@ -54,7 +43,7 @@ local EQUIP_LOC_TO_SLOT = {
     INVTYPE_FINGER     = { INVSLOT_FINGER1, INVSLOT_FINGER2 },
     INVTYPE_TRINKET    = { INVSLOT_TRINKET1, INVSLOT_TRINKET2 },
     INVTYPE_WEAPON     = { INVSLOT_MAINHAND, INVSLOT_OFFHAND },
-    INVTYPE_2HWEAPON   = { INVSLOT_MAINHAND },   -- two-hand guard applied below
+    INVTYPE_2HWEAPON   = { INVSLOT_MAINHAND },
     INVTYPE_SHIELD     = { INVSLOT_OFFHAND },
     INVTYPE_WEAPONMAINHAND = { INVSLOT_MAINHAND },
     INVTYPE_WEAPONOFFHAND  = { INVSLOT_OFFHAND },
@@ -71,8 +60,6 @@ local function ShouldAutoEquip()
         and TA.charDB.tracker.autoEquip
 end
 
--- Quick check: is the player in a PvP zone where mid-combat gear swaps are
--- frowned upon / could cause issues?
 local function InPvPInstance()
     local _, iType = IsInInstance()
     return iType == "pvp" or iType == "arena"
@@ -86,57 +73,44 @@ local function EquippedIlvl(slotID)
     return ilvl or 0
 end
 
--- Find which bag slot (bag, slot) holds `itemLink`. Returns nil if not found.
+-- Find which bag slot (bag, slot) holds an item with the given itemID.
 local function FindItemInBags(itemLink)
     if not itemLink then return nil end
-    local _, _, targetID = string.match(itemLink, "item:(%d+):(%d*):(%d*)")
-    targetID = tonumber(targetID)
+    -- Extract itemID from the link
+    local targetID = tonumber(itemLink:match("item:(%d+)"))
     if not targetID then return nil end
     for bag = 0, 4 do
-        local slots = C_Container and C_Container.GetContainerNumSlots(bag)
-                   or GetContainerNumSlots(bag)
-        for slot = 1, (slots or 0) do
-            local id
-            if C_Container and C_Container.GetContainerItemID then
-                id = C_Container.GetContainerItemID(bag, slot)
-            else
-                id = GetContainerItemID(bag, slot)
-            end
+        local slots = GetContainerNumSlots(bag) or 0
+        for slot = 1, slots do
+            local id = GetContainerItemID(bag, slot)
             if id == targetID then return bag, slot end
         end
     end
     return nil
 end
 
--- ── Primary-stat / armour-type veto ──────────────────────────────────────────
--- Prevents equipping obviously wrong items (cloth on a warrior, str ring on a
--- mage).  We use C_Item.GetItemStatDelta if available (Dragonflight+), which
--- is the cleanest approach, but fall back to armour type + item subtype
--- matching for older API surfaces.
+-- ── Armour-type veto ──────────────────────────────────────────────────────────
+-- Prevents equipping obviously wrong items (cloth on a warrior, etc.)
 
 local CLASS_ARMOUR = {
-    WARRIOR  = { "Plate" },
-    PALADIN  = { "Plate" },
+    WARRIOR     = { "Plate" },
+    PALADIN     = { "Plate" },
     DEATHKNIGHT = { "Plate" },
-    HUNTER   = { "Mail" },
-    SHAMAN   = { "Mail" },
-    EVOKER   = { "Mail" },
-    MAGE     = { "Cloth" },
-    WARLOCK  = { "Cloth" },
-    PRIEST   = { "Cloth" },
-    DRUID    = { "Leather" },
-    ROGUE    = { "Leather" },
-    MONK     = { "Leather" },
-    DEMONHUNTER = { "Leather" },
+    HUNTER      = { "Mail" },
+    SHAMAN      = { "Mail" },
+    MAGE        = { "Cloth" },
+    WARLOCK     = { "Cloth" },
+    PRIEST      = { "Cloth" },
+    DRUID       = { "Leather" },
+    ROGUE       = { "Leather" },
+    MONK        = { "Leather" },
 }
 
--- Returns true if the item is a type this class can wear.
--- jewellery (rings, necks, trinkets, cloaks) passes for everyone.
 local function ItemIsWearableByClass(itemLink, equipLoc)
     -- Jewellery is universal
     local jewellery = {
         INVTYPE_FINGER=1, INVTYPE_TRINKET=1, INVTYPE_NECK=1,
-        INVTYPE_CLOAK=1, INVTYPE_HEAD=1, -- helms are class-agnostic for ilvl check
+        INVTYPE_CLOAK=1,
     }
     if jewellery[equipLoc] then return true end
 
@@ -145,7 +119,7 @@ local function ItemIsWearableByClass(itemLink, equipLoc)
     if not allowed then return true end  -- unknown class: allow
 
     local _, _, _, _, _, _, itemSubType = GetItemInfo(itemLink)
-    if not itemSubType then return true end  -- cache miss: allow (will re-check on BAG_UPDATE_DELAYED)
+    if not itemSubType then return true end  -- cache miss: allow
 
     for _, a in ipairs(allowed) do
         if itemSubType:find(a) then return true end
@@ -155,45 +129,40 @@ end
 
 -- ── Core equip decision ───────────────────────────────────────────────────────
 
--- Given an item link and its equip-location string, decide whether to equip it
--- and if so, which slot to put it in.  Returns the slot ID to equip into, or nil.
 local function BestSlotForItem(itemLink, equipLoc, newIlvl)
     local candidates = EQUIP_LOC_TO_SLOT[equipLoc]
     if not candidates then return nil end
 
     -- Two-hand guard: if new item is a 2H weapon AND the off-hand slot is
-    -- occupied (dual-wield setup), skip — don't silently break their loadout.
+    -- occupied, skip — don't silently break their loadout.
     if equipLoc == "INVTYPE_2HWEAPON" then
         local ohLink = GetInventoryItemLink("player", INVSLOT_OFFHAND)
-        if ohLink then return nil end  -- has off-hand: skip auto-equip
+        if ohLink then return nil end
     end
 
-    -- Score-driven comparison: use Gear.CalculateItemScore if available.
-    -- Falls back to raw ilvl if scoring fails or Gear module isn't loaded.
+    -- Stat-weight scoring via Gear module if available
     local GearMod = TA:GetModule("Gear")
-    local specIndex = GetSpecialization()
-    local specID = specIndex and GetSpecializationInfo(specIndex)
-    local useScoring = (GearMod and GearMod.CalculateItemScore and specID)
+    local useScoring = (GearMod and GearMod.CalculateItemScore)
 
     local newScore = newIlvl  -- fallback to ilvl
     if useScoring then
-        local ok, s = pcall(GearMod.CalculateItemScore, itemLink, specID, "pve")
+        local ok, s = pcall(GearMod.CalculateItemScore, itemLink)
         if ok and type(s) == "number" and s > 0 then newScore = s end
     end
 
     -- For slots with two candidates (rings, trinkets, weapons), pick the
-    -- slot where the new item is the biggest upgrade by score.
+    -- slot where the new item is the biggest upgrade.
     local bestSlot, bestCurrentScore = nil, math.huge
     for _, slotID in ipairs(candidates) do
         local curLink = GetInventoryItemLink("player", slotID)
         local curScore = 0
         if curLink then
             if useScoring then
-                local ok, s = pcall(GearMod.CalculateItemScore, curLink, specID, "pve")
+                local ok, s = pcall(GearMod.CalculateItemScore, curLink)
                 if ok and type(s) == "number" and s > 0 then
                     curScore = s
                 else
-                    curScore = EquippedIlvl(slotID)  -- fallback
+                    curScore = EquippedIlvl(slotID)
                 end
             else
                 curScore = EquippedIlvl(slotID)
@@ -212,8 +181,6 @@ end
 
 -- ── Item evaluation ───────────────────────────────────────────────────────────
 
--- Called once per recently-looted item.  Determines if it is an upgrade and
--- equips it if so.
 local function EvaluateItem(itemLink)
     if not itemLink then return end
     if IsShiftKeyDown() then return end
@@ -234,12 +201,8 @@ local function EvaluateItem(itemLink)
     local bag, slot = FindItemInBags(itemLink)
     if not bag then return end
 
-    -- Equip it
-    if C_Container and C_Container.PickupContainerItem then
-        C_Container.PickupContainerItem(bag, slot)
-    else
-        PickupContainerItem(bag, slot)
-    end
+    -- Equip it via PickupContainerItem + EquipCursorItem
+    PickupContainerItem(bag, slot)
     EquipCursorItem(targetSlot)
 
     local itemName = GetItemInfo(itemLink) or itemLink
@@ -248,29 +211,17 @@ local function EvaluateItem(itemLink)
 end
 
 -- ── Event handling ────────────────────────────────────────────────────────────
--- Detection strategy: snapshot all bag slots when a loot window opens
--- (LOOT_OPENED), then diff against the new state on BAG_UPDATE_DELAYED.
--- Any item link present after the loot event but absent before it is new.
---
--- Why not LOOT_ITEM_PUSHED_TO_SLOT: that event does not exist in WoW's API.
--- Why not BAG_UPDATE alone: it fires once per slot change — up to 16 times
--- per loot event. BAG_UPDATE_DELAYED fires exactly once after all slots settle.
+-- Snapshot bags at LOOT_OPENED, diff on BAG_UPDATE_DELAYED
 
-AE._bagSnapshot  = {}   -- { [bag..":"..slot] = itemID } captured at LOOT_OPENED
+AE._bagSnapshot  = {}
 AE._lootPending  = false
 
 local function SnapshotBags()
     local snap = {}
     for bag = 0, 4 do
-        local slots = C_Container and C_Container.GetContainerNumSlots(bag)
-                   or GetContainerNumSlots(bag)
-        for slot = 1, (slots or 0) do
-            local id
-            if C_Container and C_Container.GetContainerItemID then
-                id = C_Container.GetContainerItemID(bag, slot)
-            else
-                id = GetContainerItemID(bag, slot)
-            end
+        local slots = GetContainerNumSlots(bag) or 0
+        for slot = 1, slots do
+            local id = GetContainerItemID(bag, slot)
             if id then snap[bag .. ":" .. slot] = id end
         end
     end
@@ -281,7 +232,7 @@ function AE:OnEvent(event, ...)
     if not ShouldAutoEquip() then return end
 
     if event == "LOOT_OPENED" then
-        -- Capture bag state before loot lands so we can diff afterward.
+        -- Capture bag state before loot lands
         self._bagSnapshot = SnapshotBags()
         self._lootPending = true
 
@@ -289,27 +240,15 @@ function AE:OnEvent(event, ...)
         if not self._lootPending then return end
         self._lootPending = false
 
-        -- Find every slot that now has an item that wasn't there before.
+        -- Find every slot that now has an item that wasn't there before
         local newLinks = {}
         for bag = 0, 4 do
-            local slots = C_Container and C_Container.GetContainerNumSlots(bag)
-                       or GetContainerNumSlots(bag)
-            for slot = 1, (slots or 0) do
+            local slots = GetContainerNumSlots(bag) or 0
+            for slot = 1, slots do
                 local key = bag .. ":" .. slot
-                local id
-                if C_Container and C_Container.GetContainerItemID then
-                    id = C_Container.GetContainerItemID(bag, slot)
-                else
-                    id = GetContainerItemID(bag, slot)
-                end
+                local id = GetContainerItemID(bag, slot)
                 if id and self._bagSnapshot[key] ~= id then
-                    -- New item in this slot since the loot window opened
-                    local link
-                    if C_Container and C_Container.GetContainerItemLink then
-                        link = C_Container.GetContainerItemLink(bag, slot)
-                    else
-                        link = GetContainerItemLink(bag, slot)
-                    end
+                    local link = GetContainerItemLink(bag, slot)
                     if link then
                         newLinks[#newLinks + 1] = link
                     end
@@ -317,7 +256,7 @@ function AE:OnEvent(event, ...)
             end
         end
 
-        self._bagSnapshot = {}   -- clear snapshot
+        self._bagSnapshot = {}
 
         for _, link in ipairs(newLinks) do
             EvaluateItem(link)

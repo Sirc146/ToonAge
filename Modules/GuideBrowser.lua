@@ -1,15 +1,6 @@
--- ToonAge/Modules/GuideBrowser.lua
--- Guide Browser: organized expansion → zone shelf for selecting guides.
--- Also hooks into quest log tracking to suggest guide switches.
---
--- Features:
---   • /ta browser — opens the guide selection panel
---   • Organized by expansion, then zone name
---   • Shows quest count, completion %, and "active" badge
---   • Click to switch guide instantly
---   • Quest log hook: when you track/click a quest, suggests matching guide
---
--- ═══════════════════════════════════════════════════════════════════════════════
+-- ToonAge/Modules/GuideBrowser.lua (Classic — MoP 50504)
+-- Guide Browser: organized expansion/zone shelf for selecting guides.
+-- Minimal API dependencies: CreateFrame, font strings, scroll frame.
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -19,21 +10,13 @@ TA:RegisterModule("GuideBrowser", GB)
 
 GB.frame = nil
 
--- ── Expansion ordering ────────────────────────────────────────────────────────
+-- ── Expansion ordering ────────────────────────────────────────────────
 local EXPANSION_ORDER = {
-    "Midnight", "TheWarWithin", "Dragonflight", "Shadowlands",
-    "BattleForAzeroth", "Legion", "WarlordsOfDraenor", "MistsOfPandaria",
-    "Cataclysm", "WrathOfTheLichKing", "TheBurningCrusade", "Classic",
+    "MistsOfPandaria", "Cataclysm", "WrathOfTheLichKing",
+    "TheBurningCrusade", "Classic",
 }
 
 local EXPANSION_LABELS = {
-    Midnight = "Midnight (12.0)",
-    TheWarWithin = "The War Within (11.x)",
-    Dragonflight = "Dragonflight (10.x)",
-    Shadowlands = "Shadowlands (9.x)",
-    BattleForAzeroth = "Battle for Azeroth (8.x)",
-    Legion = "Legion (7.x)",
-    WarlordsOfDraenor = "Warlords of Draenor (6.x)",
     MistsOfPandaria = "Mists of Pandaria (5.x)",
     Cataclysm = "Cataclysm (4.x)",
     WrathOfTheLichKing = "Wrath of the Lich King (3.x)",
@@ -41,41 +24,34 @@ local EXPANSION_LABELS = {
     Classic = "Classic (1.x)",
 }
 
--- ── Organize guides by expansion ──────────────────────────────────────────────
+-- ── Organize guides by expansion ──────────────────────────────────────
 
 function GB:OrganizeGuides()
-    local organized = {}  -- { [expansion] = { {id, title, zone, questCount, completedCount}, ... } }
+    local organized = {}
 
     for id, guide in pairs(TA.Guides or {}) do
-        -- Determine expansion from guide ID or title
         local expansion = "Other"
         local title = guide.title or id
 
-        for _, exp in ipairs(EXPANSION_ORDER) do
-            if id:lower():find(exp:lower()) or title:lower():find(exp:lower())
-               or title:find(EXPANSION_LABELS[exp] or "") then
-                expansion = exp
-                break
-            end
-        end
-
-        -- Fallback: guess from level range
-        if expansion == "Other" then
+        -- Guess expansion from guide metadata
+        if guide.expansion then
+            expansion = guide.expansion
+        else
             local minLv = guide.minLevel or 1
-            if minLv >= 80 then expansion = "Midnight"
-            elseif minLv >= 70 then expansion = "TheWarWithin"
-            elseif minLv >= 60 then expansion = "Dragonflight"
-            elseif minLv >= 50 then expansion = "Shadowlands"
-            elseif minLv >= 1 and (guide.maxLevel or 999) <= 10 then expansion = "Classic"
+            if minLv >= 85 then expansion = "MistsOfPandaria"
+            elseif minLv >= 80 then expansion = "Cataclysm"
+            elseif minLv >= 68 then expansion = "WrathOfTheLichKing"
+            elseif minLv >= 58 then expansion = "TheBurningCrusade"
+            else expansion = "Classic"
             end
         end
 
-        -- Count quest completion
+        -- Count quest completion using classic APIs
         local questCount, completedCount = 0, 0
         for _, step in ipairs(guide.steps or {}) do
             if step.questID then
                 questCount = questCount + 1
-                if C_QuestLog.IsQuestFlaggedCompleted(step.questID) then
+                if IsQuestFlaggedCompleted and IsQuestFlaggedCompleted(step.questID) then
                     completedCount = completedCount + 1
                 end
             end
@@ -84,7 +60,7 @@ function GB:OrganizeGuides()
         organized[expansion] = organized[expansion] or {}
         table.insert(organized[expansion], {
             id        = id,
-            title     = title:gsub(" %(auto%)$", ""),  -- strip (auto) suffix for display
+            title     = title:gsub(" %(auto%)$", ""),
             zone      = guide.zone,
             quests    = questCount,
             completed = completedCount,
@@ -101,15 +77,78 @@ function GB:OrganizeGuides()
     return organized
 end
 
--- ── Browser frame ─────────────────────────────────────────────────────────────
+-- ── Browser frame ─────────────────────────────────────────────────────
 
 function GB:ShowBrowser()
-    -- Deprecated standalone floating browser.
-    -- Route to the unified 3-panel Guide tab in the main ToonAge window.
     if TA.UI then
         if not TA.UI:IsVisible() then TA.UI:Show() end
         TA.UI:SetTab("guide")
+        return
     end
+
+    -- Fallback standalone browser if main UI not available
+    if self.frame then
+        if self.frame:IsShown() then self.frame:Hide() else self.frame:Show() end
+        if self.frame:IsShown() then self:RefreshBrowser() end
+        return
+    end
+
+    self:CreateBrowserFrame()
+    self.frame:Show()
+    self:RefreshBrowser()
+end
+
+function GB:CreateBrowserFrame()
+    local f = CreateFrame("Frame", "TAGuideBrowserFrame", UIParent, "BackdropTemplate")
+    f:SetSize(340, 420)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("HIGH")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetClampedToScreen(true)
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+    f:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 2,
+    })
+    f:SetBackdropColor(0.05, 0.04, 0.02, 0.97)
+    f:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.85)
+
+    -- Title
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+    title:SetText("|cFFFFD100ToonAge Guide Browser|r")
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -10)
+
+    -- Close button
+    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+
+    -- Count label
+    local countLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    countLabel:SetFont(STANDARD_TEXT_FONT, 9, "")
+    countLabel:SetTextColor(0.6, 0.6, 0.6)
+    countLabel:SetPoint("TOPRIGHT", closeBtn, "TOPLEFT", -4, -8)
+    f.countLabel = countLabel
+
+    -- Scroll frame
+    local scrollFrame = CreateFrame("ScrollFrame", "TAGuideBrowserScroll", f, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -32)
+    scrollFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -28, 8)
+
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetSize(scrollFrame:GetWidth(), 1)
+    scrollFrame:SetScrollChild(content)
+
+    f.scrollFrame = scrollFrame
+    f.content = content
+    f.rows = {}
+
+    self.frame = f
 end
 
 function GB:RefreshBrowser()
@@ -118,7 +157,7 @@ function GB:RefreshBrowser()
     local w = content:GetWidth()
 
     -- Clear existing rows
-    for _, row in ipairs(self.frame.rows) do
+    for _, row in ipairs(self.frame.rows or {}) do
         row:Hide()
         row:SetParent(nil)
     end
@@ -146,7 +185,6 @@ function GB:RefreshBrowser()
             table.insert(self.frame.rows, hdr)
             y = y - 22
 
-            -- Guide entries
             for _, g in ipairs(guides) do
                 totalGuides = totalGuides + 1
                 local isActive = (g.id == activeGuideID)
@@ -164,28 +202,26 @@ function GB:RefreshBrowser()
                     row:SetBackdropBorderColor(0.25, 0.20, 0.08, 0.4)
                 end
 
-                -- Title
                 local titleText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 titleText:SetFont(STANDARD_TEXT_FONT, 10, "")
                 local displayTitle = g.title
                 if #displayTitle > 35 then displayTitle = displayTitle:sub(1, 32) .. "..." end
-                titleText:SetText((isActive and "|cFF4AFF7A► " or "  ") .. displayTitle .. "|r")
+                titleText:SetText((isActive and "|cFF4AFF7A> " or "  ") .. displayTitle .. "|r")
                 titleText:SetPoint("LEFT", row, "LEFT", 6, 0)
                 titleText:SetWidth(w - 120)
                 titleText:SetJustifyH("LEFT")
 
-                -- Quest count / completion %
                 local infoText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 infoText:SetFont(STANDARD_TEXT_FONT, 9, "")
                 local pctColor = g.pct >= 100 and "|cFF4AFF7A" or g.pct > 0 and "|cFFFFD100" or "|cFF888780"
-                infoText:SetText(string.format("%s%d%%|r |cFF888780(%d quests)|r", pctColor, g.pct, g.quests))
+                infoText:SetText(string.format("%s%d%%|r |cFF888780(%d)|r", pctColor, g.pct, g.quests))
                 infoText:SetPoint("RIGHT", row, "RIGHT", -6, 0)
 
-                -- Click to select
+                local guideID = g.id
                 row:SetScript("OnClick", function()
                     if QT then
-                        QT:SetGuide(g.id)
-                        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge]|r Guide switched to: |cFFFFFFFF%s|r", g.title))
+                        QT:SetGuide(guideID)
+                        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge]|r Guide: |cFFFFFFFF%s|r", g.title))
                         GB:RefreshBrowser()
                     end
                 end)
@@ -201,8 +237,7 @@ function GB:RefreshBrowser()
                 table.insert(self.frame.rows, row)
                 y = y - 26
             end
-
-            y = y - 6  -- gap between expansions
+            y = y - 6
         end
     end
 
@@ -233,9 +268,10 @@ function GB:RefreshBrowser()
             titleText:SetText("  " .. g.title)
             titleText:SetPoint("LEFT", row, "LEFT", 6, 0)
 
+            local guideID = g.id
             row:SetScript("OnClick", function()
                 local QT2 = TA:GetModule("QuestTracker")
-                if QT2 then QT2:SetGuide(g.id) end
+                if QT2 then QT2:SetGuide(guideID) end
                 GB:RefreshBrowser()
             end)
 
@@ -245,86 +281,19 @@ function GB:RefreshBrowser()
     end
 
     content:SetHeight(math.abs(y) + 20)
-    self.frame.countLabel:SetText(totalGuides .. " guides available")
-end
-
--- ── Quest Log Hook — suggest guide when quest is tracked ──────────────────────
-
-function GB:CheckTrackedQuest()
-    -- Get the supertracked quest (the one the player clicked/focused)
-    local questID = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID
-                 and C_SuperTrack.GetSuperTrackedQuestID()
-    if not questID or questID == 0 then return end
-
-    -- Check if this quest belongs to a different guide than the active one
-    local QT = TA:GetModule("QuestTracker")
-    local GI = TA:GetModule("GuideImporter")
-    if not QT or not GI then return end
-
-    -- Already in the right guide?
-    if QT.guideID then
-        local guide = TA.Guides[QT.guideID]
-        if guide then
-            for _, step in ipairs(guide.steps) do
-                if step.questID == questID then return end  -- quest is in active guide
-            end
-        end
-    end
-
-    -- Find which guide has this quest
-    local guideID = GI:FindGuideForQuest(questID)
-    if guideID and guideID ~= QT.guideID then
-        local guide = TA.Guides[guideID]
-        local title = guide and guide.title or guideID
-        TA:Raw(TA.LOG.OUTPUT, string.format(
-            "|cFFFFD100[ToonAge]|r Quest #%d belongs to |cFFFFFFFF%s|r — type |cFFFFD100/ta switchto %d|r or open Guide Browser.",
-            questID, title, questID))
+    if self.frame.countLabel then
+        self.frame.countLabel:SetText(totalGuides .. " guides")
     end
 end
 
--- ── Event handling ────────────────────────────────────────────────────────────
-
-function GB:OnEvent(event, ...)
-    if event == "SUPER_TRACKING_CHANGED" then
-        self:CheckTrackedQuest()
-    end
-end
-
--- ── Init ──────────────────────────────────────────────────────────────────────
-
+-- ── Init ──────────────────────────────────────────────────────────────
 function GB:Init()
-    -- Register for super-tracking changes (when player clicks a quest in log)
-    if C_SuperTrack then
-        TA.eventFrame:RegisterEvent("SUPER_TRACKING_CHANGED")
-    end
+    -- No event hooks needed for Classic browser (no C_SuperTrack)
 end
 
--- ── Slash commands ────────────────────────────────────────────────────────────
-
+-- ── Slash commands ────────────────────────────────────────────────────
 GB.SlashCommands = {
     browser = function(self)
         self:ShowBrowser()
-    end,
-
-    switchto = function(self, msg)
-        -- /ta switchto 12345 — switch to the guide containing quest 12345
-        local questID = msg and tonumber(msg:match("%d+"))
-        if not questID then
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Usage: /ta switchto <questID>")
-            return
-        end
-        local GI = TA:GetModule("GuideImporter")
-        if not GI then return end
-        local guideID = GI:FindGuideForQuest(questID)
-        if guideID then
-            local QT = TA:GetModule("QuestTracker")
-            if QT then
-                QT:SetGuide(guideID)
-                local guide = TA.Guides[guideID]
-                TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge]|r Switched to: |cFFFFFFFF%s|r", guide and guide.title or guideID))
-            end
-        else
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r No guide found containing quest #" .. questID)
-        end
     end,
 }

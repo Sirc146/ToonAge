@@ -1,13 +1,13 @@
--- ToonAge/Modules/AntTrail.lua
+-- ToonAge/Modules/AntTrail.lua (Classic — MoP 50504)
 -- Ant Trail system — renders a breadcrumb path of upcoming quest steps
--- on the NavHud and world map, showing where to go next in sequence.
+-- on the NavHud, showing where to go next in sequence.
 --
--- Uses CoordResolver for coordinates (priority cascade across all sources).
--- Hooks into NavHud's tick for HUD rendering, and provides data to Arrow.
---
--- Visual: faded dots connected by thin lines, getting more transparent
--- the further ahead in the sequence they are. Current step is bright,
--- next steps fade out progressively.
+-- Classic adaptation:
+--   - No dynamic flight trails (no dragonriding)
+--   - Uses CoordResolver for coordinates (simplified priority chain)
+--   - API-light: mainly CreateFrame + textures + bearing math
+--   - Hooks into NavHud's tick for HUD rendering
+--   - C_Timer.After used instead of C_Timer.NewTicker for delayed init
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -53,21 +53,17 @@ function AntTrail:BuildTrail()
         if not step then break end
 
         -- Skip non-navigable steps
-        if step.type == "text" or step.noArrow then
-            -- skip but don't count against MAX
-        else
+        if step.type ~= "text" and not step.noArrow then
             local resolved = CR:Resolve(step.questID, step, step.objectiveIndex)
-            if resolved and resolved.map and (resolved.x > 0 or resolved.y > 0 or resolved.worldX) then
+            if resolved and resolved.map and (resolved.x > 0 or resolved.y > 0) then
                 table.insert(trail, {
-                    map      = resolved.map,
-                    x        = resolved.x,
-                    y        = resolved.y,
-                    worldX   = resolved.worldX,
-                    worldY   = resolved.worldY,
-                    source   = resolved.source,
-                    stepIdx  = i,
-                    text     = step.text or "",
-                    type     = step.type or "waypoint",
+                    map       = resolved.map,
+                    x         = resolved.x,
+                    y         = resolved.y,
+                    source    = resolved.source,
+                    stepIdx   = i,
+                    text      = step.text or "",
+                    type      = step.type or "waypoint",
                     isCurrent = (i == startIdx),
                 })
             end
@@ -111,11 +107,7 @@ function AntTrail:UpdateOnNavHud()
 
     for i, wp in ipairs(self.waypoints) do
         -- Only show waypoints in the same zone
-        if wp.map ~= mapID then
-            -- skip (different zone)
-        elseif wp.x == 0 and wp.y == 0 and not wp.worldX then
-            -- skip (no usable coords)
-        else
+        if wp.map == mapID and (wp.x ~= 0 or wp.y ~= 0) then
             dotIdx = dotIdx + 1
 
             -- Calculate screen position (same math as NavHud pins)
@@ -185,7 +177,6 @@ function AntTrail:GetLine(index, parent)
 end
 
 function AntTrail:PositionLine(line, x1, y1, x2, y2, parent)
-    -- Draw a line between two screen-space points using a rotated texture
     local dx = x2 - x1
     local dy = y2 - y1
     local length = math.sqrt(dx * dx + dy * dy)
@@ -199,9 +190,7 @@ function AntTrail:PositionLine(line, x1, y1, x2, y2, parent)
     line:ClearAllPoints()
     line:SetPoint("CENTER", parent, "CENTER", cx, cy)
 
-    -- Rotate the line texture
-    -- WoW doesn't support texture rotation directly on textures attached to frames,
-    -- so we use SetRotation on the texture (available since 8.0)
+    -- SetRotation is available on textures in MoP Classic
     if line.SetRotation then
         line:SetRotation(-angle)
     end
@@ -213,7 +202,6 @@ function AntTrail:HideAll()
 end
 
 -- ── Arrow integration ─────────────────────────────────────────────────────────
--- Provides resolved coordinates to ToonAge's Arrow module for the current step.
 
 function AntTrail:GetCurrentWaypoint()
     if self.waypoints and #self.waypoints > 0 then
@@ -222,7 +210,6 @@ function AntTrail:GetCurrentWaypoint()
     return nil
 end
 
---- Get all trail waypoints (for Arrow module's multi-waypoint display)
 function AntTrail:GetTrailWaypoints()
     return self.waypoints or {}
 end
@@ -247,6 +234,7 @@ function AntTrail:Init()
     if NavHud and NavHud.frame then
         self:InstallHook()
     else
+        -- C_Timer.After is available in MoP Classic
         C_Timer.After(2, function()
             AntTrail:InstallHook()
         end)
@@ -254,9 +242,8 @@ function AntTrail:Init()
 end
 
 function AntTrail:OnEvent(event, ...)
-    -- Rebuild trail on quest/zone changes
     if event == "QUEST_ACCEPTED" or event == "ZONE_CHANGED_NEW_AREA" then
-        self.lastUpdate = 0  -- force immediate recalc on next tick
+        self.lastUpdate = 0
         local CR = TA:GetModule("CoordResolver")
         if CR then CR:ClearCache() end
     end
@@ -267,7 +254,6 @@ AntTrail.SlashCommands = {
         local wp = self:BuildTrail()
         if #wp == 0 then
             TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Trail]|r No trail waypoints (no active guide or no coords available).")
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Trail]|r Run /ta coord to check available data sources.")
             return
         end
         TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Trail]|r " .. #wp .. " waypoints in current trail:")

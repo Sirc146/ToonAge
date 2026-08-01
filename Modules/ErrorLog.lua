@@ -1,6 +1,8 @@
--- ToonAge/Modules/ErrorLog.lua
+-- ToonAge/Modules/ErrorLog.lua (Classic — MoP 5.4.x / Interface 50504)
 -- Captures all ToonAge Lua errors into a persistent log stored in SavedVariables.
 -- View in-game with /ta errors, or copy from WTF/Account/.../SavedVariables/ToonAge.lua
+--
+-- This module is API-agnostic and works identically to the Retail version.
 --
 -- Features:
 --   • Hooks into pcall wrappers in Init.lua (InitModules, UpdateModules)
@@ -19,7 +21,6 @@ TA:RegisterModule("ErrorLog", EL)
 
 -- ── Constants ─────────────────────────────────────────────────────────────────
 local MAX_LOG_SIZE = 200
-local ADDON_PREFIX = "ToonAge"
 
 -- ── State ─────────────────────────────────────────────────────────────────────
 EL.copyFrame = nil
@@ -126,14 +127,7 @@ function EL:ShowCopyFrame()
         editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
         scroll:SetScrollChild(editBox)
 
-        -- Select All button.
-        --
-        -- WoW gives addons no way to write the system clipboard, so this cannot
-        -- literally copy. What it can do is put the caret in the box and select
-        -- everything, which turns "click into the box, Ctrl+A, Ctrl+C" into one
-        -- click plus Ctrl+C. The frame already selects all when it opens, but
-        -- the selection is lost the moment you click anywhere, and until now
-        -- there was no way to get it back without closing and reopening.
+        -- Select All button
         local selectBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
         selectBtn:SetSize(90, 22)
         selectBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
@@ -175,7 +169,6 @@ function EL:ShowCopyFrame()
 end
 
 -- ── Global error handler ──────────────────────────────────────────────────────
--- Hooks into WoW's error handler to capture ToonAge-related errors specifically.
 
 local function IsOurError(msg)
     if not msg then return false end
@@ -185,18 +178,15 @@ end
 local originalHandler = geterrorhandler()
 
 local function ToonAgeErrorHandler(msg)
-    -- Capture ALL ToonAge errors
     if IsOurError(msg) then
         local stack = debugstack(2, 6, 0) or ""
         EL:Log("Global", msg, stack)
     else
-        -- Also check the stack trace for ToonAge references
         local stack = debugstack(2, 6, 0) or ""
         if stack:find("ToonAge") or stack:find("/ToonAge/") then
             EL:Log("Global (stack)", msg, stack)
         end
     end
-    -- Always call the original handler too
     if originalHandler then
         return originalHandler(msg)
     end
@@ -205,27 +195,14 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function EL:Init()
-    -- Ensure the log table exists
     if TA.db then
         TA.db.errorLog = TA.db.errorLog or {}
     end
-
-    -- Install our error handler
     seterrorhandler(ToonAgeErrorHandler)
 end
 
 -- ── Slash commands ────────────────────────────────────────────────────────────
 
--- Init.lua:335 splits input as msg:match("^(%S+)%s*(.*)$"), so "/ta errors copy"
--- arrives as cmd="errors", args="copy", and Init.lua:409 looks up
--- SlashCommands[cmd] -- it never builds a two-word lookup key. Subcommands
--- therefore have to be dispatched from `args` here.
---
--- This table previously held ["errors clear"] and ["errors copy"] entries.
--- Nothing could ever reach them: every "/ta errors <anything>" matched the
--- plain `errors` handler, which did not declare `args` at all and so discarded
--- the subcommand and reprinted the list. Both documented in the listing footer,
--- neither functional.
 EL.SlashCommands = {
     errors = function(self, args)
         local sub = ((args or ""):match("^(%S*)") or ""):lower()
@@ -244,7 +221,7 @@ EL.SlashCommands = {
 
         local log = self:GetLog()
         if #log == 0 then
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r ✓ No errors recorded. Everything is working!")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r No errors recorded.")
             return
         end
 
@@ -257,16 +234,11 @@ EL.SlashCommands = {
         TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
         TA:Raw(TA.LOG.OUTPUT, "|cFF888780/ta errors copy = copyable window  |  /ta errors clear = wipe log|r")
 
-        -- Auto-open the copy window if there are many errors
         if #log > 10 then
             self:ShowCopyFrame()
         end
     end,
-
 }
 
 -- ── Public API for other modules ──────────────────────────────────────────────
--- Init.lua can call TA.ErrorLog:Log() directly from pcall wrappers.
-
--- Make accessible globally on the TA table for cross-module access
 TA.ErrorLog = EL

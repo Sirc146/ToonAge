@@ -1,4 +1,4 @@
--- ToonAge/Modules/RestOptimizer.lua
+-- ToonAge/Modules/RestOptimizer.lua (Classic — MoP 50504)
 -- Micro-Rest Optimization: tracks rested XP, suggests "one more quest to ding"
 -- or "log off in inn, rested charges in 6h". Inn proximity detection.
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -11,7 +11,6 @@ TA:RegisterModule("RestOptimizer", RO)
 
 --- Is n a real, finite number safe to hand to string.format("%d")?
 --- Guards against the NaN/inf that division by a zero XP maximum produces.
---- n ~= n is the standard NaN test; NaN is the only value not equal to itself.
 local function IsFinite(n)
     return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
 end
@@ -25,16 +24,14 @@ local QUEST_AVG_XP_PCT    = 0.04   -- average quest = ~4% of a level
 --- Get a contextual rest suggestion based on current state.
 --- @return string|nil suggestion — formatted text, or nil if nothing useful
 function RO:GetSuggestion()
+    -- MoP Classic max level is 90
     local maxLevel = GetMaxPlayerLevel and GetMaxPlayerLevel() or 90
     if (UnitLevel("player") or 1) >= maxLevel then return nil end
 
     local currentXP = U.SafeNum(UnitXP("player"))
     local maxXP     = U.SafeNum(UnitXPMax("player"))
 
-    -- UnitXPMax can legitimately return 0 — during login before XP data arrives,
-    -- and on XP-locked characters. `or 1` does not catch that, because 0 is not
-    -- nil, so every ratio below became 0/0 (NaN) or n/0 (inf) and string.format
-    -- raised "integer overflow attempting to store -nan(ind)".
+    -- UnitXPMax can legitimately return 0 during login before XP data arrives.
     -- With no XP scale there is no meaningful suggestion to make.
     if maxXP <= 0 then return nil end
 

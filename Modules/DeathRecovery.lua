@@ -1,6 +1,10 @@
--- ToonAge/Modules/DeathRecovery.lua
+-- ToonAge/Modules/DeathRecovery.lua (Classic — MoP 50504)
 -- Death Recovery Intelligence: after dying, shows smart resurrection options
 -- with cost/benefit analysis instead of just a corpse arrow.
+--
+-- Classic adaptation: GetAverageItemLevel does not exist in MoP Classic.
+-- We estimate average ilvl by scanning equipped items with GetInventoryItemLink
+-- and GetItemInfo instead.
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
@@ -19,11 +23,33 @@ DR.deathX        = 0
 DR.deathY        = 0
 DR.shownAdvice   = false
 
+-- ── Helpers ───────────────────────────────────────────────────────────────────
+
+--- Estimate average item level by scanning all equipped slots.
+--- Replaces GetAverageItemLevel() which doesn't exist in MoP Classic.
+local function EstimateAverageItemLevel()
+    local totalIlvl = 0
+    local count = 0
+    for slot = 1, 18 do
+        if slot ~= 4 then  -- skip shirt
+            local link = GetInventoryItemLink("player", slot)
+            if link then
+                local _, _, _, ilvl = GetItemInfo(link)
+                if ilvl and ilvl > 0 then
+                    totalIlvl = totalIlvl + ilvl
+                    count = count + 1
+                end
+            end
+        end
+    end
+    if count == 0 then return 0 end
+    return totalIlvl / count
+end
+
 -- ── Analysis ──────────────────────────────────────────────────────────────────
 
 --- Calculate the estimated repair cost at current gear level.
 function DR:EstimateRepairCost()
-    -- Rough estimate: ilvl × slot count × gold-per-durability-point
     local totalDurability = 0
     local totalMax = 0
     for slot = 1, 18 do
@@ -38,9 +64,9 @@ function DR:EstimateRepairCost()
 
     if totalMax == 0 then return 0 end
 
-    -- Approximate repair cost based on item level
-    -- At ilvl 600+, full repair is roughly 200-500g
-    local avgIlvl = GetAverageItemLevel and select(1, GetAverageItemLevel()) or 500
+    -- Approximate repair cost based on item level (estimated from equipped gear)
+    local avgIlvl = EstimateAverageItemLevel()
+    if avgIlvl <= 0 then avgIlvl = 400 end  -- fallback for fresh characters
     local fullRepairGold = avgIlvl * 0.5  -- rough approximation
 
     -- Spirit res only costs 25% durability
@@ -55,9 +81,6 @@ function DR:Analyze()
     local timeSinceDeath = now - self.deathTime
 
     -- Estimate corpse run time (distance from spirit healer to corpse)
-    -- We can't easily calculate this without knowing graveyard location,
-    -- but we can use elapsed time as a proxy after the player has been
-    -- running for a bit.
     local corpseRunEstimate = 30  -- default: assume 30 seconds to body
 
     -- Get player level for sickness check (no sickness below level 10)

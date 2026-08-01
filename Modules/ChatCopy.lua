@@ -1,39 +1,23 @@
--- ToonAge/Modules/ChatCopy.lua
+-- ToonAge/Modules/ChatCopy.lua (Classic — MoP 5.4.x / Interface 50504)
 -- Dump a chat frame's scrollback into a selectable edit box.
+-- API-agnostic — works identically to the Retail version.
 --
--- Exists because the probe workflow is worthless if the output cannot leave the
--- game. /ta secretprobe and /ta apiprobe print 20+ lines that have to be read by
--- a human outside WoW, and retyping them by hand loses exactly the characters
--- that matter -- an ID transcribed as 466904 when it was 4669O4 is a bug hunt
--- that never terminates.
---
--- Markup is stripped rather than preserved: |cFFFFD100 sequences are noise in a
--- paste, and the hyperlink form |Htacommand:x|h[text]|h collapses to its display
--- text so a pasted line reads the way it looked on screen.
---
--- Taint: reads message text off the frame and writes it into our own EditBox.
--- Nothing protected, no combat restriction -- which matters, because the probes
--- this exists to capture are run mid-fight.
+-- Strips markup (colour codes, hyperlinks, textures) and shows the plain text
+-- in a selectable, copyable edit box. Ctrl+C to copy to system clipboard.
 
 local TA = ToonAge
-local M  = TA.Modern
+local U  = TA.Utils
 
 local ChatCopy = {}
 TA:RegisterModule("ChatCopy", ChatCopy)
 
 local frame
 
--- Markup stripping lives in Core/Utils.lua so the probe commands, which write
--- the same text into SavedVariables, cannot drift from what a copy produces.
-local StripMarkup = TA.Utils.StripMarkup
+local StripMarkup = U.StripMarkup
 
 --- Collect scrollback from a chat frame, oldest first.
 local function Collect(chatFrame)
     local lines = {}
-    -- Guarded rather than assumed: these are ScrollingMessageFrame methods and
-    -- a UI replacement can hand back a frame that does not implement them. If
-    -- that happens, say so loudly instead of returning an empty box, which is
-    -- the silent-no-op failure this project keeps getting bitten by.
     if not chatFrame or not chatFrame.GetNumMessages or not chatFrame.GetMessageInfo then
         return nil, "Chat frame does not expose GetNumMessages/GetMessageInfo."
     end
@@ -65,19 +49,23 @@ local function CreateFrameOnce()
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-    M:ApplyBackdrop(frame, "panel")
+    frame:SetBackdrop({
+        bgFile   = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 2,
+    })
+    frame:SetBackdropColor(0.05, 0.05, 0.06, 0.97)
+    frame:SetBackdropBorderColor(0.35, 0.32, 0.28, 1)
 
-    local title = frame:CreateFontString(nil, "OVERLAY")
-    title:SetFont(M.FONT_HEADER, M.SIZE_H2, "OUTLINE")
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
     title:SetPoint("TOPLEFT", 12, -10)
-    title:SetText("ToonAge Chat Copy")
-    title:SetTextColor(unpack(M.CLR_TEXT_ACCENT))
+    title:SetText("|cFFFFD100ToonAge Chat Copy|r")
 
-    local hint = frame:CreateFontString(nil, "OVERLAY")
-    hint:SetFont(M.FONT_CAPTION, M.SIZE_CAPTION)
+    local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hint:SetFont(STANDARD_TEXT_FONT, 9, "")
     hint:SetPoint("TOPLEFT", 12, -28)
-    hint:SetText("Already selected - press Ctrl+C. Esc closes.")
-    hint:SetTextColor(unpack(M.CLR_TEXT_SECONDARY))
+    hint:SetText("Already selected — press Ctrl+C. Esc closes.")
 
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -2, -2)
@@ -94,9 +82,7 @@ local function CreateFrameOnce()
     edit:SetWidth(590)
     edit:SetAutoFocus(false)
     edit:SetScript("OnEscapePressed", function() frame:Hide() end)
-    -- Read-only in effect: any edit is discarded on the next open anyway, but
-    -- blocking cursor-driven changes keeps a stray keypress from corrupting the
-    -- text between Ctrl+A and Ctrl+C.
+    -- Prevent user edits from corrupting copy data
     edit:SetScript("OnTextChanged", function(self, userInput)
         if userInput then self:SetText(self.taText or "") end
     end)
@@ -107,13 +93,11 @@ local function CreateFrameOnce()
     return frame
 end
 
---- Populate and show. Defaults to ChatFrame1 (the "General" tab).
+--- Populate and show. Defaults to the active chat frame tab.
 --- @param chatFrame table|nil
 function ChatCopy:Open(chatFrame)
     CreateFrameOnce()
 
-    -- SELECTED_CHAT_FRAME tracks whichever tab the user last clicked, so the
-    -- copy matches what they are looking at rather than always the first tab.
     local target = chatFrame or SELECTED_CHAT_FRAME or _G.ChatFrame1
     local lines, err = Collect(target)
 
@@ -131,7 +115,7 @@ function ChatCopy:Open(chatFrame)
     frame.edit:SetText(text)
     frame:Show()
     frame.edit:SetFocus()
-    frame.edit:HighlightText()          -- pre-selected, so it really is one Ctrl+C
+    frame.edit:HighlightText()
 end
 
 function ChatCopy:Toggle()
@@ -143,7 +127,6 @@ function ChatCopy:Toggle()
 end
 
 -- ── Slash commands ────────────────────────────────────────────────────────────
--- Dispatched as fn(mod, args); args is unused.
 ChatCopy.SlashCommands = {
     copychat = function() ChatCopy:Toggle() end,
     copy     = function() ChatCopy:Toggle() end,

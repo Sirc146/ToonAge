@@ -1,104 +1,48 @@
--- ToonAge/Core/Utils.lua
--- Shared utility functions available to all modules via ToonAge.Utils
+-- ToonAge/Core/Utils.lua (Classic)
+-- Shared utility functions — adapted for Cataclysm Classic APIs
+-- Key differences from Retail:
+--   - No C_Spell namespace → use GetSpellInfo/GetSpellCooldown globals
+--   - No C_Container → use GetContainerItemLink/GetContainerNumSlots globals
+--   - No C_Item.RequestLoadItemDataByID → retry via timer
+--   - No C_AddOns → use IsAddOnLoaded/GetAddOnInfo globals
+--   - No C_Traits/C_ClassTalents → talent functions return nil
 
 local TA = ToonAge
 TA.Utils = {}
 local U = TA.Utils
 
 -- ══════════════════════════════════════════════════════════════════════════════
--- ── TAINT SAFETY UTILITIES (12.0) ─────────────────────────────────────────────
--- WoW 12.0 marks many API return values as "secret" when addon execution is
--- tainted. These cannot be used in arithmetic, comparisons, or as table keys.
---
--- ⚠ THE CLAIM THAT USED TO BE HERE IS FALSE. This block previously read
--- "SafeNum strips the taint via tonumber(tostring(x))". Measured on retail
--- 12.0.7 with /ta secretprobe, it does not and cannot. Every route that pulls
--- a number OUT of a secret errors outright:
---
---     tonumber(v)            attempt to perform numeric conversion on a
---                            secret number value (execution tainted by 'ToonAge')
---     v + 0 / math.floor(v)  arithmetic on a secret number value
---     v > 0                  attempt to compare
---     t[v] = x               table cannot be indexed with secret keys
---     #tostring(v)           attempt to get length of a secret string value
---     tostring(v):match(..)  attempt to index a secret string value
---
--- tostring(v) alone survives and renders the true number on screen, which is
--- why a chat dump shows an ID a human can read while Lua cannot touch it.
--- tonumber(tostring(v)) therefore returns nil, and SafeNum falls through to
--- its fallback -- 0. That is not a conversion failure to be fixed; it is the
--- designed behaviour of the value.
---
--- 10 of 11 player buffs measured secret in combat. The one exception was
--- 404464 Flight Style: Skyriding. Combat-relevant aura data is secret;
--- cosmetic state is not.
---
--- SafeNum is still correct for ordinary values and is used widely, so it
--- stays. What it must NOT be relied on for is recovering an ID from aura
--- data -- it will hand back 0 and every `id > 0` guard downstream will
--- silently drop the aura. Ask about a known ID instead of reading one out.
+-- ── TAINT SAFETY UTILITIES ────────────────────────────────────────────────────
+-- Classic doesn't have the same taint severity as 12.x Retail, but SafeNum
+-- is still useful for nil-safety and type coercion.
 -- ══════════════════════════════════════════════════════════════════════════════
 
---- Strip WoW chat markup, leaving plain text.
---- Shared by ChatCopy (so a paste reads the way the line looked) and by the
---- probe commands (so what lands in SavedVariables is machine-readable).
----
---- MUST be non-throwing. Secrecy is contagious through string.format: a line
---- built as ("%s"):format(tostring(aura.spellId)) is itself a SECRET STRING,
---- and every string method on it -- gsub, len, sub, match -- raises
---- "attempt to index a secret string value". That is not hypothetical; it
---- crashed the first version of this function on the line below, logged as
---- Core/Utils.lua:50 by the very probe it was added to serve.
----
---- A markup stripper is a formatting nicety. It must never be the reason a
---- caller dies, so a secret input yields a marker rather than an error, and
---- the caller keeps running.
---- @param s any
---- @return string plain, boolean wasSecret
 function U.StripMarkup(s)
     if s == nil then return "", false end
-
     local ok, out = pcall(function()
         local t = tostring(s)
-        t = t:gsub("|c%x%x%x%x%x%x%x%x", "")   -- colour open
+        t = t:gsub("|c%x%x%x%x%x%x%x%x", "")
         t = t:gsub("|C%x%x%x%x%x%x%x%x", "")
-        t = t:gsub("|r", "")                    -- colour close
-        t = t:gsub("|H.-|h(.-)|h", "%1")        -- hyperlink -> its display text
-        t = t:gsub("|T.-|t", "")                -- inline texture
-        t = t:gsub("|A.-|a", "")                -- inline atlas
+        t = t:gsub("|r", "")
+        t = t:gsub("|H.-|h(.-)|h", "%1")
+        t = t:gsub("|T.-|t", "")
+        t = t:gsub("|A.-|a", "")
         t = t:gsub("|n", "\n")
         return t
     end)
-
     if ok then return out, false end
-
-    -- The value exists and renders on screen -- the chat frame resolves it in a
-    -- secure context -- but no addon-side route can read it. Say so in the
-    -- saved copy rather than dropping the row, so a gap is visible as a gap.
-    return "<secret value -- readable on screen only>", true
+    return "<unreadable value>", true
 end
 
---- Convert a potentially tainted "secret number" to a safe Lua number.
---- Returns the number, or the fallback (default 0) if conversion fails.
---- @param val any — the potentially tainted value
---- @param fallback number|nil — value to return on failure (default 0)
---- @return number
 function U.SafeNum(val, fallback)
     if val == nil then return fallback or 0 end
     local n = tonumber(tostring(val))
     return n or (fallback or 0)
 end
 
---- Safely call a WoW API function that might return tainted values.
---- Returns: ok (bool), followed by sanitized return values (numbers are cleaned).
---- On failure, returns false and the fallback values.
---- @param func function — the function to call
---- @param ... any — arguments to pass
---- @return boolean, any...
 function U.SafeCall(func, ...)
     local results = { pcall(func, ...) }
     if results[1] then
-        -- Success — sanitize numeric returns
         for i = 2, #results do
             if type(results[i]) == "number" or type(results[i]) == "userdata" then
                 results[i] = tonumber(tostring(results[i])) or 0
@@ -110,11 +54,6 @@ function U.SafeCall(func, ...)
     end
 end
 
---- Safely get a numeric value from a WoW API, returning fallback on taint/error.
---- Usage: local hp = U.SafeGetNum(UnitHealth, "player", 0)
---- @param func function
---- @param ... any — args to func (last numeric arg is NOT the fallback)
---- @return number
 function U.SafeGetNum(func, ...)
     local ok, val = pcall(func, ...)
     if ok and val ~= nil then
@@ -143,7 +82,7 @@ function U.Green(text)  return U.Colour(text, U.GREEN)  end
 function U.Orange(text) return U.Colour(text, U.ORANGE) end
 function U.Red(text)    return U.Colour(text, U.RED)    end
 
--- ── Item quality colours (matches WoW quality colour system) ─────────
+-- ── Item quality colours ─────────────────────────────────────────────
 local QUALITY_COLOURS = {
     [0] = "|cFF9D9D9D",  -- Poor (grey)
     [1] = "|cFFFFFFFF",  -- Common (white)
@@ -193,7 +132,9 @@ function U.GetPlayerClass()
     return class or "UNKNOWN"
 end
 
+-- Cata Classic has GetSpecialization() and GetSpecializationInfo()
 function U.GetPlayerSpec()
+    if not GetSpecialization then return nil, nil, nil end
     local specIndex = GetSpecialization()
     if not specIndex then return nil, nil, nil end
     local id, name, _, icon = GetSpecializationInfo(specIndex)
@@ -201,6 +142,7 @@ function U.GetPlayerSpec()
 end
 
 function U.GetPlayerRole()
+    if not GetSpecialization then return "NONE" end
     local specIndex = GetSpecialization()
     if not specIndex then return "NONE" end
     local _, _, _, _, role = GetSpecializationInfo(specIndex)
@@ -216,8 +158,7 @@ function U.IsTank()
 end
 
 function U.IsDPS()
-    local role = U.GetPlayerRole()
-    return role == "DAMAGER"
+    return U.GetPlayerRole() == "DAMAGER"
 end
 
 -- ── Group detection ───────────────────────────────────────────────────
@@ -239,8 +180,11 @@ function U.GetCurrentZone()
 end
 
 function U.GetCurrentMapID()
-    local mapID = C_Map.GetBestMapForUnit("player")
-    return mapID
+    -- C_Map.GetBestMapForUnit exists in Cata Classic
+    if C_Map and C_Map.GetBestMapForUnit then
+        return C_Map.GetBestMapForUnit("player")
+    end
+    return nil
 end
 
 function U.IsInInstance()
@@ -248,73 +192,52 @@ function U.IsInInstance()
     return inInstance, instanceType
 end
 
--- ── Spell utilities ───────────────────────────────────────────────────
+-- ── Spell utilities (Classic: use globals, no C_Spell) ────────────────
 function U.GetSpellName(spellID)
-    local name = C_Spell.GetSpellName(spellID)
+    if not spellID then return nil end
+    local name = GetSpellInfo(spellID)
     return name
 end
 
 function U.GetSpellTexture(spellID)
-    local info = C_Spell.GetSpellInfo(spellID)
-    return info and info.iconID
+    if not spellID then return nil end
+    local _, _, icon = GetSpellInfo(spellID)
+    return icon
 end
 
 function U.IsSpellKnown(spellID)
-    if C_SpellBook and C_SpellBook.IsSpellKnown then
-        if C_SpellBook.IsSpellKnown(spellID) then return true end
-    elseif IsSpellKnown and IsSpellKnown(spellID) then
-        return true
-    end
-    return IsPlayerSpell(spellID) or false
+    if IsSpellKnown and IsSpellKnown(spellID) then return true end
+    if IsPlayerSpell and IsPlayerSpell(spellID) then return true end
+    return false
 end
 
---- Cooldown for a spell, normalised to the pre-11.0 (start, duration) shape.
---- Every caller in the addon should go through this rather than touching
---- C_Spell.GetSpellCooldown or the bare global directly — see .rules.md.
---- @return number start, number duration — both 0 when off cooldown/unknown
+--- Cooldown for a spell. Classic uses the global GetSpellCooldown directly.
+--- @return number start, number duration
 function U.GetSpellCooldown(spellID)
-    if C_Spell and C_Spell.GetSpellCooldown then
-        local info = C_Spell.GetSpellCooldown(spellID)
-        if not info then return 0, 0 end
-        return info.startTime or 0, info.duration or 0
-    end
+    if not spellID then return 0, 0 end
     local start, duration = GetSpellCooldown(spellID)
     if not start then return 0, 0 end
     return start, duration
 end
 
---- Spell name/icon/castTime lookup. C_Spell.GetSpellInfo returns a table in
---- 11.0+; the bare global is a compat shim that Blizzard has been retiring
---- API-by-API, so route through here instead of calling either directly.
+--- Spell info lookup. Classic GetSpellInfo returns: name, rank, icon, castTime, ...
 --- @return string|nil name, number|nil iconID, number|nil castTime
 function U.GetSpellInfo(spellID)
     if not spellID then return nil end
-    if C_Spell and C_Spell.GetSpellInfo then
-        local info = C_Spell.GetSpellInfo(spellID)
-        if not info then return nil end
-        return info.name, info.iconID, info.castTime
-    end
     local name, _, icon, castTime = GetSpellInfo(spellID)
     return name, icon, castTime
 end
 
--- ── Addon-presence utilities ──────────────────────────────────────────
---- Is another addon loaded? Used for optional interop checks only — ToonAge
---- never hard-depends on another addon (see .rules.md).
+-- ── Addon-presence utilities (Classic: use globals, no C_AddOns) ──────
 function U.IsAddOnLoaded(name)
-    if C_AddOns and C_AddOns.IsAddOnLoaded then
-        return C_AddOns.IsAddOnLoaded(name)
-    elseif IsAddOnLoaded then
+    if IsAddOnLoaded then
         return IsAddOnLoaded(name)
     end
     return false
 end
 
---- Returns the addon's display title, or nil if it isn't installed.
 function U.GetAddOnTitle(name)
-    if C_AddOns and C_AddOns.GetAddOnInfo then
-        return select(2, C_AddOns.GetAddOnInfo(name))
-    elseif GetAddOnInfo then
+    if GetAddOnInfo then
         return select(2, GetAddOnInfo(name))
     end
     return nil
@@ -325,61 +248,40 @@ function U.GetEquippedItemID(slot)
     return GetInventoryItemID("player", slot)
 end
 
---- Single call site for GetItemInfo. The bare global is still current at
---- Interface 120007, but C_Item is where Blizzard is moving it — keeping one
---- wrapper means a future removal is a one-line fix, not a 19-site hunt.
+--- GetItemInfo wrapper. Classic uses the global directly.
 function U.GetItemInfo(item)
     if not item then return nil end
-    if C_Item and C_Item.GetItemInfo then
-        return C_Item.GetItemInfo(item)
-    end
     return GetItemInfo(item)
 end
 
+-- ── Container utilities (Classic: globals, no C_Container) ────────────
+-- These wrap the Classic bag API so modules can call a unified interface.
+function U.GetContainerNumSlots(bag)
+    return GetContainerNumSlots(bag) or 0
+end
+
+function U.GetContainerItemLink(bag, slot)
+    return GetContainerItemLink(bag, slot)
+end
+
+function U.GetContainerItemInfo(bag, slot)
+    -- Classic GetContainerItemInfo returns: texture, count, locked, quality, readable, lootable, link, filtered, noValue, itemID
+    return GetContainerItemInfo(bag, slot)
+end
+
 -- ── Async item data ───────────────────────────────────────────────────
---
--- GetItemInfo returns nil for an item the client has not cached yet — common
--- right after login and whenever an item is seen for the first time. The usual
--- workaround is a retry loop on a timer. This is not that, because the game
--- already tells us exactly when the data lands.
---
--- GET_ITEM_INFO_RECEIVED is registered in Core/Init.lua's PERSISTENT_EVENTS and
--- fires with (itemID, success). Measured on 12.1.0, 2026-07-26:
---
---     GIIR#1  122284  true
---
--- Two things that measurement settled, neither of which was safe to assume:
---
---   * arg2 is a success boolean, so a genuinely bad item ID is distinguishable
---     from one that simply has not arrived. A fixed retry count cannot tell
---     those apart — it burns the same attempts on both and then gives up on
---     the good one, which is the failure it was supposed to prevent.
---   * the event fires repeatedly for the same itemID. Resolution therefore has
---     to be idempotent: callbacks are cleared before they run, so a duplicate
---     event finds nothing left to do.
+-- No C_Item.RequestLoadItemDataByID in Classic. We just call GetItemInfo()
+-- which triggers a server request, then handle GET_ITEM_INFO_RECEIVED.
 
-local pendingItems = {}   -- itemID -> { callbacks = {fn,...}, requested = time }
-
--- Nothing should wait forever. If the event never arrives for an ID -- the
--- request silently dropped, or an ID the server never answers for at all --
--- callbacks would leak and their callers would hang waiting. This is the only
--- place a timer is involved, and it is a backstop, not the mechanism.
+local pendingItems = {}
 local ITEM_REQUEST_TIMEOUT = 10
 
---- Extract a numeric itemID from an ID or an item link.
---- Parsed rather than resolved through an API, so it cannot break when
---- Blizzard moves item functions between namespaces.
 local function ToItemID(item)
     if type(item) == "number" then return item end
     if type(item) ~= "string" then return nil end
     return tonumber(item:match("item:(%d+)")) or tonumber(item)
 end
 
---- Resolve `item`'s data now if the client has it, otherwise ask the server and
---- invoke `callback` when it arrives.
---- @param item number|string — itemID or item link
---- @param callback function|nil — called as callback(itemID, success)
---- @return boolean cached — true if data was already available (callback ran immediately)
 function U.RequestItemInfo(item, callback)
     local itemID = ToItemID(item)
     if not itemID then
@@ -387,7 +289,7 @@ function U.RequestItemInfo(item, callback)
         return false
     end
 
-    -- Already cached? A non-nil name is the signal the whole tuple is populated.
+    -- Already cached?
     if U.GetItemInfo(itemID) then
         if callback then callback(itemID, true) end
         return true
@@ -398,12 +300,8 @@ function U.RequestItemInfo(item, callback)
         entry = { callbacks = {}, requested = GetTime() }
         pendingItems[itemID] = entry
 
-        -- Test the member, not the namespace. C_Navigation.GetDestination was
-        -- removed in 12.1.0 while C_Navigation itself stayed, and the resulting
-        -- nil failed silently for weeks.
-        if C_Item and C_Item.RequestLoadItemDataByID then
-            C_Item.RequestLoadItemDataByID(itemID)
-        end
+        -- In Classic, calling GetItemInfo on an uncached item triggers a server query
+        GetItemInfo(itemID)
 
         C_Timer.After(ITEM_REQUEST_TIMEOUT, function()
             local stale = pendingItems[itemID]
@@ -417,16 +315,9 @@ function U.RequestItemInfo(item, callback)
     return false
 end
 
---- Called from Core/Init.lua's dispatcher on GET_ITEM_INFO_RECEIVED.
---- @param itemID number
---- @param success boolean — false means the server could not resolve this ID
 function U.OnItemInfoReceived(itemID, success)
     local entry = pendingItems[itemID]
     if not entry then return end
-
-    -- Clear BEFORE running callbacks. The event repeats for the same itemID,
-    -- and a callback that requests another item must not see a half-torn-down
-    -- entry for this one.
     pendingItems[itemID] = nil
 
     for _, callback in ipairs(entry.callbacks) do
@@ -437,7 +328,6 @@ function U.OnItemInfoReceived(itemID, success)
     end
 end
 
---- How many item requests are outstanding. Diagnostics only.
 function U.PendingItemCount()
     local n = 0
     for _ in pairs(pendingItems) do n = n + 1 end
@@ -457,44 +347,44 @@ function U.GetItemQuality(itemLink)
 end
 
 -- ── Average ilvl ──────────────────────────────────────────────────────
--- GetAverageItemLevel() returns: overall, equipped
--- "equipped" matches the character sheet exactly — best-of-two-rings,
--- two-hand vs dual-wield weighting, empty slot penalties all included.
+-- GetAverageItemLevel exists in Cata Classic
 function U.GetAverageIlvl()
-    local _, equipped = GetAverageItemLevel()
-    return math.floor(equipped or 0)
-end
-
--- ── Talent utilities ──────────────────────────────────────────────────
-function U.GetTalentString()
-    local configID = C_ClassTalents.GetActiveConfigID()
-    if not configID then return nil end
-    return C_Traits.GenerateImportString(configID)
-end
-
--- True plus the spent rank when nodeID has points in the active config.
---
--- This passed treeID to C_Traits.GetNodeInfo until 2026-07-26. The signature is
--- (configID, nodeID) -- confirmed live in-game, and against TalentsHelpers.lua:448
--- and TalentsPvP.lua:89, which always had it right. The wrong form returned nil
--- for every node, so a fully-matching build scored as matching nothing, with no
--- error to explain it. Nothing called this yet, which is why it never surfaced.
---
--- The loop over config.treeIDs went with it: a node resolves from the config,
--- not from a tree, so iterating trees only repeated the same lookup.
-function U.IsNodeSelected(nodeID)
-    local configID = C_ClassTalents.GetActiveConfigID()
-    if not configID then return false end
-    local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
-    if nodeInfo and nodeInfo.activeRank and nodeInfo.activeRank > 0 then
-        return true, nodeInfo.activeRank
+    if GetAverageItemLevel then
+        local _, equipped = GetAverageItemLevel()
+        return math.floor(equipped or 0)
     end
+    -- Fallback: compute from equipped items
+    local total, count = 0, 0
+    for slot = 1, 18 do
+        if slot ~= 4 then -- skip shirt
+            local link = GetInventoryItemLink("player", slot)
+            if link then
+                local ilvl = U.GetItemIlvl(link)
+                if ilvl > 0 then
+                    total = total + ilvl
+                    count = count + 1
+                end
+            end
+        end
+    end
+    return count > 0 and math.floor(total / count) or 0
+end
+
+-- ── Talent utilities (Classic: no C_Traits) ───────────────────────────
+-- These return nil/false since Classic doesn't have the Retail talent system
+function U.GetTalentString()
+    return nil
+end
+
+function U.IsNodeSelected(nodeID)
     return false
 end
 
 -- ── Profession utilities ──────────────────────────────────────────────
+-- GetProfessions() and GetProfessionInfo() work in Cata Classic
 function U.GetProfessions()
     local profs = {}
+    if not GetProfessions then return profs end
     local p1, p2, p3, p4, p5, p6 = GetProfessions()
     for _, profIndex in ipairs({p1, p2, p3, p4, p5, p6}) do
         if profIndex then
@@ -553,10 +443,6 @@ function U.Truncate(s, len)
 end
 
 -- ── Distance / travel ─────────────────────────────────────────────────
--- Flat-map approximation: WoW map coords are normalized [0,1]; this scale
--- factor converts normalized distance to approximate yards. Shared by
--- Arrow.lua (HUD waypoint) and QuestTracker.lua (in-window distance/ETA)
--- so both display identical numbers for the same step.
 local YARD_SCALE = 2000
 
 function U.ComputeDistance(px, py, tx, ty)
@@ -567,8 +453,6 @@ end
 
 function U.FormatDistance(yards)
     if yards >= 1000 then
-        -- Convert yards to meters (1 yd = 0.9144 m) before dividing into km —
-        -- yards/1000 was being mislabeled "km", ~9% short of the real value.
         return string.format("%.1f km", (yards * 0.9144) / 1000)
     end
     return string.format("%d yds", math.floor(yards))

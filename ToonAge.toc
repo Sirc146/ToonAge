@@ -1,13 +1,10 @@
-## Interface: 120007, 120100
+## Interface: 50504
 ## Title: |cFFFFD100ToonAge|r
-## Notes: Full character scanner — gear, talents, rotation, professions, pets, and weekly guidance.
+## Notes: Character scanner & leveling companion — Classic edition.
 ## Author: Chris
-## Version: 1.0.0
+## Version: 1.0.0-classic
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB
-## AddonCompartmentFunc: ToonAge_OnAddonCompartmentClick
-## AddonCompartmentFuncOnEnter: ToonAge_OnAddonCompartmentEnter
-## AddonCompartmentFuncOnLeave: ToonAge_OnAddonCompartmentLeave
 
 Libs\LibStub.lua
 
@@ -22,49 +19,20 @@ Core\ApiGuard.lua
 Data\ApiManifest.lua
 Data\StatWeights.lua
 Data\Spells.lua
-Data\Talents.lua
-Data\TalentsPvP.lua
-Data\RotationConditions.lua
-Data\Rotations.lua
-Data\Professions_Data.lua
 Data\ItemLevels.lua
-Data\Pets.lua
-Data\TA_Enchants.lua
-Data\FarmOptimizer_Data.lua
-Data\Dungeons.lua
-Data\Guides\TAG_Midnight_Intro.lua
 Data\Guides\TAG_Exiles_Reach.lua
-Data\Guides\TAG_Hallowfall.lua
-Data\Guides\TAG_Eversong_Midnight.lua
-Data\Guides\TAG_Silvermoon_Midnight.lua
-Data\Guides\TAG_Naigtal.lua
 
-Modules\TalentsHelpers.lua
 Modules\DevHelpers.lua
 Modules\ErrorLog.lua
 
 Modules\Character.lua
 Modules\Gear.lua
-Modules\DungeonGear.lua
-Modules\Talents.lua
-Modules\TalentsPvP.lua
-Modules\CombatState.lua
-Modules\TargetMarker.lua
-Modules\PullPlanner.lua
-Modules\Rotation.lua
-Modules\Professions.lua
-Modules\ProfQuesting.lua
-Modules\Pets.lua
-Modules\Weekly.lua
-Modules\Delves.lua
-Modules\TravelModes.lua
-Modules\TravelRouter.lua
-Modules\GuideParser.lua
-Modules\GuideImporter.lua
-Modules\GuideBrowser.lua
-Modules\GuideContextMenu.lua
 Modules\QuestTracker.lua
 Modules\Arrow.lua
+Modules\GuideParser.lua
+Modules\GuideBrowser.lua
+Modules\GuideImporter.lua
+Modules\GuideContextMenu.lua
 Modules\CoordResolver.lua
 Modules\AntTrail.lua
 Modules\NavHud.lua
@@ -72,26 +40,12 @@ Modules\MapPins.xml
 Modules\MapPins.lua
 Modules\XPTracker.lua
 Modules\RestOptimizer.lua
-Modules\SpecAdaptive.lua
-Modules\SocialAwareness.lua
 Modules\DeathRecovery.lua
-Modules\Retrospective.lua
 Modules\CutsceneSkip.lua
 Modules\AutoEquip.lua
 Modules\AutoMount.lua
-Modules\GearSets.lua
-Modules\NameplateObjectives.lua
-Modules\RoleMorph.lua
-Modules\TooltipScorer.lua
-Modules\QuestRewardAdvisor.lua
-Modules\AltTracker.lua
-Modules\DungeonTalents.lua
-Modules\DungeonGuide.lua
 Modules\GatherTracker.lua
-Modules\FarmOptimizer.lua
-Modules\FarmOptimizerHUD.lua
 Modules\Settings.lua
-Modules\Onboarding.lua
-Modules\AltQuickStart.lua
 Modules\ChatCopy.lua
-Modules\TestBar.lua
+
+Bindings.xml

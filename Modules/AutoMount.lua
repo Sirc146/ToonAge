@@ -1,18 +1,14 @@
--- ToonAge/Modules/AutoMount.lua
+-- ToonAge/Modules/AutoMount.lua (Classic — MoP 50504)
 -- Automatically mounts the player after combat ends (PLAYER_REGEN_ENABLED).
 --
--- Design decisions:
---   • Opt-in: enabled by default but togglable via /ta automount.
---   • Configurable delay (default 1.5s) to avoid conflicts with post-combat
---     NPC interactions, quest popups, and loot windows.
---   • Cancels pending mount attempt if player re-enters combat before the
---     timer fires (PLAYER_REGEN_DISABLED).
---   • Prefers dragonriding-capable mounts in zones that support dynamic flight;
---     falls back to random favorite mount via C_MountJournal.SummonByID(0).
---   • Extensive pre-mount checks: dead/ghost, vehicle, indoors, swimming,
---     already mounted, casting/channeling, battleground/arena.
---   • Uses pcall around mount journal API calls for resilience against
---     tainted execution contexts or API changes between patches.
+-- Classic adaptations:
+--   • No dragonriding / dynamic flight
+--   • No C_MountJournal.SummonByID(0) (random favorite shorthand)
+--   • Uses C_MountJournal.GetMountIDs() + GetMountInfoByID() to find a usable
+--     mount, then C_MountJournal.SummonByID(mountID).
+--   • Falls back to GetCompanionInfo/CallCompanion("MOUNT", ...) if
+--     C_MountJournal doesn't exist (very early Classic clients).
+-- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -26,11 +22,10 @@ local DEFAULT_DELAY = 1.5  -- seconds after combat ends before mounting
 
 -- ── Internal state ────────────────────────────────────────────────────────────
 
-local pendingTimer = nil   -- reference to the C_Timer callback handle (cancelable)
+local pendingTimer = nil
 
 -- ── Database helpers ──────────────────────────────────────────────────────────
 
---- Ensures the autoMount settings table exists in TA.db and returns it.
 local function GetSettings()
     if not TA.db then return nil end
     if not TA.db.autoMount then
@@ -51,14 +46,11 @@ end
 
 -- ── Pre-mount condition checks ────────────────────────────────────────────────
 
---- Returns true if the player is in a PvP instance (battleground or arena)
---- where auto-mounting would be inappropriate.
 local function InPvPInstance()
     local _, iType = IsInInstance()
     return iType == "pvp" or iType == "arena"
 end
 
---- Returns true if the player is currently casting or channeling a spell.
 local function IsCastingOrChanneling()
     local casting = UnitCastingInfo("player")
     local channeling = UnitChannelInfo("player")
@@ -67,145 +59,136 @@ end
 
 --- Master check: returns true only if all conditions are satisfied for mounting.
 local function CanMount()
-    -- Player must be alive
     if UnitIsDeadOrGhost("player") then return false end
-
-    -- Not in a vehicle (quest vehicles, multi-passenger mounts, etc.)
-    if UnitInVehicle("player") then return false end
-
-    -- Not indoors (mounting indoors is blocked by the client anyway)
+    if UnitInVehicle and UnitInVehicle("player") then return false end
     if IsIndoors() then return false end
-
-    -- Not swimming/submerged
-    if IsSubmerged() then return false end
-
-    -- Not already mounted
+    if IsSubmerged and IsSubmerged() then return false end
     if IsMounted() then return false end
-
-    -- Double-check: not in combat (timer might fire right at the edge)
     if InCombatLockdown() then return false end
-
-    -- Not casting or channeling (don't interrupt player actions)
     if IsCastingOrChanneling() then return false end
-
-    -- Not in a battleground/arena
     if InPvPInstance() then return false end
-
     return true
 end
 
 -- ── Mount selection logic ─────────────────────────────────────────────────────
 
---- Attempts to find and summon a dragonriding-capable mount.
---- Returns true if a dragonriding mount was summoned, false otherwise.
-local function TrySummonDragonridingMount()
-    -- C_MountJournal.GetCollectedDragonridingMounts returns an array of
-    -- mount IDs that support dynamic flight. Available since Dragonflight.
-    if not C_MountJournal or not C_MountJournal.GetCollectedDragonridingMounts then
-        return false
+--- Try to find and summon a usable mount via C_MountJournal.
+--- Returns true if a mount was successfully summoned.
+local function TrySummonViaMountJournal()
+    if not C_MountJournal then return false end
+    if not C_MountJournal.GetMountIDs then return false end
+
+    local mountIDs = C_MountJournal.GetMountIDs()
+    if not mountIDs or #mountIDs == 0 then return false end
+
+    -- Collect usable mounts
+    local usable = {}
+    for _, mountID in ipairs(mountIDs) do
+        local name, spellID, icon, isActive, isUsable, sourceType, isFavorite,
+              isFactionSpecific, faction, shouldHideOnChar, isCollected
+            = C_MountJournal.GetMountInfoByID(mountID)
+
+        if isCollected and isUsable then
+            -- Prefer favorites if any exist
+            if isFavorite then
+                table.insert(usable, 1, mountID)  -- push favorites to front
+            else
+                table.insert(usable, mountID)
+            end
+        end
     end
 
-    local ok, mounts = pcall(C_MountJournal.GetCollectedDragonridingMounts)
-    if not ok or not mounts or #mounts == 0 then
-        return false
+    if #usable == 0 then return false end
+
+    -- Pick a random mount (preferring favorites at the front of the list)
+    -- If we have favorites, pick from them; otherwise from all usable
+    local favoriteCount = 0
+    for _, mountID in ipairs(usable) do
+        local _, _, _, _, _, _, isFavorite = C_MountJournal.GetMountInfoByID(mountID)
+        if isFavorite then favoriteCount = favoriteCount + 1
+        else break end  -- favorites are at front, stop counting
     end
 
-    -- Pick a random dragonriding mount from the collected list
-    local mountID = mounts[math.random(#mounts)]
-    local summonOk, summonErr = pcall(C_MountJournal.SummonByID, mountID)
-    if not summonOk then
+    local pickFrom = favoriteCount > 0 and favoriteCount or #usable
+    local chosen = usable[math.random(1, pickFrom)]
+
+    local ok, err = pcall(C_MountJournal.SummonByID, chosen)
+    if not ok then
         if TA.debug then
-            TA:Raw(TA.LOG.ERROR, "|cFFFF4444[TA AutoMount]|r Dragonriding summon failed: " .. tostring(summonErr))
+            TA:Raw(TA.LOG.ERROR, "|cFFFF4444[TA AutoMount]|r SummonByID failed: " .. tostring(err))
         end
         return false
     end
-
     return true
 end
 
---- Checks whether the current zone supports dynamic flight (dragonriding).
-local function IsDragonridingZone()
-    -- C_MountJournal.IsDragonridingUnlocked or checking if dynamic flight
-    -- is available in the current area. The most reliable approach is checking
-    -- whether the player CAN use dynamic flight mounts here.
-    if C_MountJournal and C_MountJournal.GetCollectedDragonridingMounts then
-        local ok, mounts = pcall(C_MountJournal.GetCollectedDragonridingMounts)
-        if ok and mounts and #mounts > 0 then
-            -- Check if dynamic flight is actually usable in this zone.
-            -- If the mount is usable, the zone supports it.
-            local mountID = mounts[1]
-            if C_MountJournal.GetMountUsabilityByID then
-                local usableOk, isUsable = pcall(C_MountJournal.GetMountUsabilityByID, mountID, false)
-                if usableOk and isUsable then
-                    return true
-                end
-            end
-            -- Fallback: check if the first dragonriding mount is flagged usable
-            -- via the standard mount info API
-            if C_MountJournal.GetMountInfoByID then
-                local infoOk, name, spellID, icon, isActive, isUsable = pcall(
-                    C_MountJournal.GetMountInfoByID, mountID
-                )
-                if infoOk and isUsable then
-                    return true
-                end
-            end
+--- Fallback: Use the legacy Companion API (pre-MoP / very early Classic).
+--- This API uses GetCompanionInfo("MOUNT", index) and CallCompanion("MOUNT", index).
+local function TrySummonViaCompanionAPI()
+    if not GetNumCompanions then return false end
+
+    local numMounts = GetNumCompanions("MOUNT") or 0
+    if numMounts == 0 then return false end
+
+    -- Collect usable mounts
+    local usable = {}
+    for i = 1, numMounts do
+        local _, name, spellID, icon, active = GetCompanionInfo("MOUNT", i)
+        if spellID and IsUsableSpell(spellID) then
+            table.insert(usable, i)
         end
     end
-    return false
+
+    if #usable == 0 then
+        -- Just pick a random one if we can't determine usability
+        usable = {}
+        for i = 1, numMounts do
+            table.insert(usable, i)
+        end
+    end
+
+    if #usable == 0 then return false end
+
+    local chosen = usable[math.random(1, #usable)]
+    CallCompanion("MOUNT", chosen)
+    return true
 end
 
 --- Main mount action: selects the appropriate mount and summons it.
 local function DoMount()
-    -- Final safety check right before summoning
     if not CanMount() then return end
 
-    -- Prefer dragonriding mounts in eligible zones
-    if IsDragonridingZone() then
-        if TrySummonDragonridingMount() then
-            return
-        end
-    end
+    -- Try C_MountJournal first (available in MoP+)
+    if TrySummonViaMountJournal() then return end
 
-    -- Fallback: summon a random favorite mount (ID 0 = random favorite)
-    local ok, err = pcall(C_MountJournal.SummonByID, 0)
-    if not ok then
-        if TA.debug then
-            TA:Raw(TA.LOG.ERROR, "|cFFFF4444[TA AutoMount]|r SummonByID(0) failed: " .. tostring(err))
-        end
+    -- Fallback to legacy Companion API
+    if TrySummonViaCompanionAPI() then return end
+
+    if TA.debug then
+        TA:Raw(TA.LOG.WARN, "|cFFFFD100[TA AutoMount]|r No usable mount found.")
     end
 end
 
 -- ── Timer management ──────────────────────────────────────────────────────────
 
---- Cancels any pending mount timer.
 local function CancelPendingMount()
     if pendingTimer then
-        -- C_Timer callbacks can be cancelled by setting a flag;
-        -- the callback checks this flag before executing.
         pendingTimer.cancelled = true
         pendingTimer = nil
     end
 end
 
---- Schedules a mount attempt after the configured delay.
 local function ScheduleMount()
     CancelPendingMount()
 
     local delay = GetDelay()
-
-    -- Create a trackable timer handle
     local handle = { cancelled = false }
     pendingTimer = handle
 
     C_Timer.After(delay, function()
-        -- If this timer was cancelled (e.g., player re-entered combat), bail
         if handle.cancelled then return end
         pendingTimer = nil
-
-        -- Verify the feature is still enabled (could have been toggled mid-timer)
         if not IsEnabled() then return end
-
         DoMount()
     end)
 end
@@ -216,16 +199,13 @@ function AutoMount:OnEvent(event, ...)
     if not IsEnabled() then return end
 
     if event == "PLAYER_REGEN_ENABLED" then
-        -- Combat ended: schedule mount after delay
         ScheduleMount()
-
     elseif event == "PLAYER_REGEN_DISABLED" then
-        -- Combat started: cancel any pending mount attempt
         CancelPendingMount()
     end
 end
 
--- ── Slash command integration ─────────────────────────────────────────────────
+-- ── Slash command ─────────────────────────────────────────────────────────────
 
 AutoMount.SlashCommands = {
     ["automount"] = function(self)
@@ -243,11 +223,9 @@ AutoMount.SlashCommands = {
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function AutoMount:Init()
-    -- Register events needed by this module
     TA.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
     TA.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 
-    -- Ensure settings exist in the database
     GetSettings()
 
     if TA.debug then

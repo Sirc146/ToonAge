@@ -1,12 +1,18 @@
--- ToonAge/Modules/MapPins.lua
+-- ToonAge/Modules/MapPins.lua (Classic — MoP 50504)
 -- World map pin overlay showing upcoming guide step waypoints.
--- Uses Blizzard's MapCanvasDataProviderMixin pattern (same as HandyNotes).
 --
--- Shows numbered pins on the world map for the next N guide steps that have
--- coordinates in the current zone. Pins are color-coded by step type.
--- Refreshes automatically when the QuestTracker advances a step.
+-- Classic adaptation:
+--   - MoP Classic's WorldMapFrame exists but may NOT have the full
+--     MapCanvasDataProviderMixin / AddDataProvider pattern.
+--   - Uses simple CreateFrame pins parented to WorldMapFrame instead.
+--   - Pins are positioned using WorldMapFrame:GetCanvas() or direct
+--     SetPoint with normalized coordinates on the map's scroll child.
+--   - Refreshes when the map opens or step advances.
+--   - No taint concerns (Classic is more permissive with map manipulation).
 --
--- ═══════════════════════════════════════════════════════════════════════════════
+-- Pin positioning strategy:
+--   MoP Classic WorldMapFrame uses WorldMapDetailFrame as the canvas area.
+--   Pins are placed at normalized (x, y) coordinates within that frame.
 
 local TA = ToonAge
 
@@ -16,10 +22,9 @@ TA:RegisterModule("MapPins", MapPins)
 -- ── Constants ─────────────────────────────────────────────────────────────────
 
 local MAX_PINS       = 8       -- max pins shown on world map
-local PIN_SIZE_BASE  = 24      -- pixel size of each pin
-local PIN_TEMPLATE   = "TAMapPinTemplate"
+local PIN_SIZE_BASE  = 20      -- pixel size of each pin
 
--- Pin colors by step type (same palette as NavHud for consistency)
+-- Pin colors by step type
 local PIN_COLORS = {
     pickup    = { 0.29, 1.00, 0.48, 1.0 },
     turnin    = { 1.00, 0.82, 0.00, 1.0 },
@@ -36,61 +41,164 @@ local PIN_COLORS = {
     default   = { 0.88, 0.83, 0.65, 1.0 },
 }
 
--- ── DataProvider (Blizzard MapCanvas pattern) ─────────────────────────────────
+-- ── State ─────────────────────────────────────────────────────────────────────
 
-MapPins.DataProvider = CreateFromMixins(MapCanvasDataProviderMixin)
+MapPins._pins = {}        -- pool of reusable pin frames
+MapPins._activePinCount = 0
+MapPins._mapCanvas = nil  -- the frame we parent pins to
 
--- Frame pool for pin recycling (avoids GC pressure from creating/destroying pins)
-MapPins._pinPool = {}
-MapPins._activePins = {}
+-- ── Pin creation ──────────────────────────────────────────────────────────────
 
-function MapPins.DataProvider:RemoveAllData()
-    -- Release all active pins back to the pool
-    for _, pin in ipairs(MapPins._activePins) do
-        pin:Hide()
-        pin:ClearAllPoints()
-        table.insert(MapPins._pinPool, pin)
-    end
-    wipe(MapPins._activePins)
-    self:GetMap():RemoveAllPinsByTemplate(PIN_TEMPLATE)
+local function CreatePin(index, parent)
+    local pin = CreateFrame("Frame", "TAMapPin" .. index, parent)
+    pin:SetSize(PIN_SIZE_BASE, PIN_SIZE_BASE)
+    pin:SetFrameStrata("TOOLTIP")  -- above map elements
+    pin:SetFrameLevel(100 + index)
+
+    -- Background dot
+    local bg = pin:CreateTexture(nil, "BACKGROUND")
+    bg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    bg:SetAllPoints()
+    pin.bg = bg
+
+    -- Border (slightly larger, dark)
+    local border = pin:CreateTexture(nil, "BORDER")
+    border:SetTexture("Interface\\Buttons\\WHITE8X8")
+    border:SetPoint("TOPLEFT", -1, 1)
+    border:SetPoint("BOTTOMRIGHT", 1, -1)
+    border:SetVertexColor(0, 0, 0, 0.7)
+    pin.border = border
+
+    -- Number label
+    local numLabel = pin:CreateFontString(nil, "OVERLAY")
+    numLabel:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    numLabel:SetPoint("CENTER")
+    numLabel:SetTextColor(1, 1, 1, 1)
+    pin.numLabel = numLabel
+
+    -- Tooltip support
+    pin:EnableMouse(true)
+    pin:SetScript("OnEnter", function(self)
+        if not self.stepData then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        local title = self.stepData.text or "Guide Step"
+        if #title > 50 then title = title:sub(1, 47) .. "..." end
+        local typeLabel = (self.stepData.type or "quest")
+        typeLabel = typeLabel:sub(1,1):upper() .. typeLabel:sub(2)
+        GameTooltip:SetText(string.format("|cFFFFD100[%d]|r %s", self.relNum or 1, title), 1, 1, 1)
+        GameTooltip:AddLine(typeLabel, 0.7, 0.7, 0.7)
+        if self.stepData.questID and C_QuestLog and C_QuestLog.GetTitleForQuestID then
+            local qTitle = C_QuestLog.GetTitleForQuestID(self.stepData.questID)
+            if qTitle then
+                GameTooltip:AddLine("Quest: " .. qTitle, 0.4, 0.78, 1.0)
+            end
+        end
+        if self.isCurrent then
+            GameTooltip:AddLine("|cFF4AFF7A← Current Step|r")
+        end
+        GameTooltip:Show()
+    end)
+    pin:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+
+    pin:Hide()
+    return pin
 end
 
-function MapPins.DataProvider:RefreshAllData(fromOnShow)
-    self:RemoveAllData()
+local function GetPin(index, parent)
+    if not MapPins._pins[index] then
+        MapPins._pins[index] = CreatePin(index, parent)
+    end
+    return MapPins._pins[index]
+end
+
+-- ── Get the map canvas frame ──────────────────────────────────────────────────
+-- In MoP Classic, the world map structure varies. Try multiple approaches:
+--   1. WorldMapFrame.ScrollContainer.Child (modern Classic)
+--   2. WorldMapFrame:GetCanvas() (if MapCanvasMixin present)
+--   3. WorldMapDetailFrame (legacy)
+--   4. WorldMapFrame directly as fallback
+
+local function GetMapCanvasFrame()
+    if MapPins._mapCanvas then return MapPins._mapCanvas end
+
+    if WorldMapFrame then
+        -- Modern Classic (Cata+) often has ScrollContainer
+        if WorldMapFrame.ScrollContainer and WorldMapFrame.ScrollContainer.Child then
+            MapPins._mapCanvas = WorldMapFrame.ScrollContainer.Child
+            return MapPins._mapCanvas
+        end
+        -- MapCanvasMixin style
+        if WorldMapFrame.GetCanvas then
+            local ok, canvas = pcall(WorldMapFrame.GetCanvas, WorldMapFrame)
+            if ok and canvas then
+                MapPins._mapCanvas = canvas
+                return MapPins._mapCanvas
+            end
+        end
+        -- Legacy WorldMapDetailFrame
+        if WorldMapDetailFrame then
+            MapPins._mapCanvas = WorldMapDetailFrame
+            return MapPins._mapCanvas
+        end
+        -- Last resort: parent to WorldMapFrame itself
+        MapPins._mapCanvas = WorldMapFrame
+        return MapPins._mapCanvas
+    end
+    return nil
+end
+
+-- ── Get current map ID from WorldMapFrame ─────────────────────────────────────
+
+local function GetWorldMapID()
+    if WorldMapFrame and WorldMapFrame.GetMapID then
+        return WorldMapFrame:GetMapID()
+    end
+    -- Fallback: use player's current map
+    return C_Map.GetBestMapForUnit("player")
+end
+
+-- ── Refresh pins ──────────────────────────────────────────────────────────────
+
+function MapPins:Refresh()
+    -- Hide all current pins
+    for i = 1, self._activePinCount do
+        if self._pins[i] then self._pins[i]:Hide() end
+    end
+    self._activePinCount = 0
+
+    -- Check if WorldMapFrame is open
+    if not WorldMapFrame or not WorldMapFrame:IsShown() then return end
+
+    local canvas = GetMapCanvasFrame()
+    if not canvas then return end
+
+    local mapID = GetWorldMapID()
+    if not mapID then return end
 
     local QT = TA:GetModule("QuestTracker")
     if not QT or not QT.guideID then return end
 
     local guide = TA.Guides and TA.Guides[QT.guideID]
-    if not guide then return end
+    if not guide or not guide.steps then return end
 
-    -- Guard: don't place pins if the map canvas is in a bad state
-    local map = self:GetMap()
-    if not map then return end
-    local mapID = map:GetMapID()
-    if not mapID then return end
-    -- Additional safety: check the canvas is actually shown and ready
-    if not map:IsVisible() then return end
+    local canvasW = canvas:GetWidth()
+    local canvasH = canvas:GetHeight()
+    if canvasW == 0 or canvasH == 0 then return end
 
-    local Arrow = TA:GetModule("Arrow")
-    local GP    = TA:GetModule("GuideParser")
     local pinCount = 0
 
     for i = QT.stepIdx, #guide.steps do
         local step = guide.steps[i]
-        if not step then break end  -- stop scanning (real break)
-        if pinCount >= MAX_PINS then break end  -- stop scanning (real break)
+        if not step then break end
+        if pinCount >= MAX_PINS then break end
 
         repeat  -- continue wrapper
             if step.type == "text" then break end
             if step.noArrow then break end
-            if GP and not GP:IsStepApplicable(step) then break end
 
-            -- Resolve coordinates — use step.coord ONLY (not CoordResolver/Arrow)
-            -- IMPORTANT: DataProvider runs inside Blizzard's secureexecuterange.
-            -- Calling addon APIs here (CoordResolver, C_QuestLog queries, etc.)
-            -- taints the entire execution chain and breaks the world map.
-            -- Only use pre-stored coordinates from the guide step itself.
+            -- Only use pre-stored guide coords (safe, no taint)
             local coordMap, cx, cy = 0, 0, 0
             if step.coord then
                 coordMap = step.coord.map or 0
@@ -98,137 +206,133 @@ function MapPins.DataProvider:RefreshAllData(fromOnShow)
                 cy = step.coord.y or 0
             end
 
-            -- Skip pins with no valid coordinates
             if coordMap == 0 and cx == 0 and cy == 0 then break end
-
-            -- Only show pins for the current map zone
-            -- Allow coordMap=0 (placeholder) to show on any map
             if coordMap ~= 0 and coordMap ~= mapID then break end
 
-            -- Valid pin — place it
             pinCount = pinCount + 1
 
+            local pin = GetPin(pinCount, canvas)
             local relNum = i - QT.stepIdx + 1
-            local color  = PIN_COLORS[step.type] or PIN_COLORS.default
+            local color = PIN_COLORS[step.type] or PIN_COLORS.default
             local isCurrent = (i == QT.stepIdx)
+            local size = isCurrent and (PIN_SIZE_BASE * 1.4) or PIN_SIZE_BASE
 
-            local pinMap = self:GetMap()
-            if pinMap and pinMap.AcquirePin then
-                pcall(pinMap.AcquirePin, pinMap, PIN_TEMPLATE, cx, cy, step, relNum, color, isCurrent)
-            end
+            -- Position pin at normalized coordinates on the canvas
+            pin:SetParent(canvas)
+            pin:SetSize(size, size)
+            pin:ClearAllPoints()
+            pin:SetPoint("CENTER", canvas, "TOPLEFT", cx * canvasW, -cy * canvasH)
+
+            -- Apply color
+            pin.bg:SetVertexColor(color[1], color[2], color[3], color[4] * 0.85)
+
+            -- Number label
+            pin.numLabel:SetText(tostring(relNum))
+
+            -- Store data for tooltip
+            pin.stepData = step
+            pin.relNum = relNum
+            pin.isCurrent = isCurrent
+
+            pin:Show()
         until true
     end
+
+    self._activePinCount = pinCount
 end
 
--- ── Pin Mixin ─────────────────────────────────────────────────────────────────
+-- ── Hide all pins ─────────────────────────────────────────────────────────────
 
-TAMapPinMixin = CreateFromMixins(MapCanvasPinMixin)
-
-function TAMapPinMixin:OnLoad()
-    self:UseFrameLevelType("PIN_FRAME_LEVEL_AREA_POI")
-    self:SetScalingLimits(1, 0.5, 1.5)
-end
-
-function TAMapPinMixin:OnAcquired(x, y, step, relNum, color, isCurrent)
-    self:SetPosition(x, y)
-
-    local size = isCurrent and (PIN_SIZE_BASE * 1.4) or PIN_SIZE_BASE
-    self:SetSize(size, size)
-
-    -- Store for tooltip
-    self.step     = step
-    self.relNum   = relNum
-    self.isCurrent = isCurrent
-
-    -- Background dot
-    if not self.bg then
-        self.bg = self:CreateTexture(nil, "BACKGROUND")
-        self.bg:SetTexture("Interface\\Buttons\\WHITE8X8")
-        self.bg:SetAllPoints()
+function MapPins:HideAll()
+    for i = 1, #self._pins do
+        if self._pins[i] then self._pins[i]:Hide() end
     end
-    self.bg:SetVertexColor(color[1], color[2], color[3], color[4] * 0.85)
-
-    -- Border (slightly larger, dark)
-    if not self.border then
-        self.border = self:CreateTexture(nil, "BORDER")
-        self.border:SetTexture("Interface\\Buttons\\WHITE8X8")
-        self.border:SetPoint("TOPLEFT", -1, 1)
-        self.border:SetPoint("BOTTOMRIGHT", 1, -1)
-    end
-    self.border:SetVertexColor(0, 0, 0, 0.7)
-
-    -- Number label
-    if not self.numLabel then
-        self.numLabel = self:CreateFontString(nil, "OVERLAY")
-        self.numLabel:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        self.numLabel:SetPoint("CENTER")
-    end
-    self.numLabel:SetText(tostring(relNum))
-    self.numLabel:SetTextColor(1, 1, 1, 1)
-
-    self:Show()
-end
-
-function TAMapPinMixin:OnMouseEnter()
-    if not self.step then return end
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-
-    local stepType = self.step.type or "quest"
-    local typeLabel = stepType:sub(1,1):upper() .. stepType:sub(2)
-    local title = self.step.text or "Guide Step"
-    if #title > 50 then title = title:sub(1, 47) .. "..." end
-
-    GameTooltip:SetText(string.format("|cFFFFD100[%d]|r %s", self.relNum, title), 1, 1, 1)
-    GameTooltip:AddLine(typeLabel, 0.7, 0.7, 0.7)
-
-    if self.step.questID then
-        local questTitle = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(self.step.questID)
-        if questTitle then
-            GameTooltip:AddLine("Quest: " .. questTitle, 0.4, 0.78, 1.0)
-        end
-    end
-
-    if self.isCurrent then
-        GameTooltip:AddLine("|cFF4AFF7A← Current Step|r")
-    end
-
-    GameTooltip:Show()
-end
-
-function TAMapPinMixin:OnMouseLeave()
-    GameTooltip:Hide()
+    self._activePinCount = 0
 end
 
 -- ── Module lifecycle ──────────────────────────────────────────────────────────
 
 function MapPins:Init()
-    -- Wait for WorldMapFrame to exist (it's load-on-demand)
-    -- Hook into it when it first opens
-    if WorldMapFrame and WorldMapFrame.AddDataProvider then
-        WorldMapFrame:AddDataProvider(self.DataProvider)
+    -- Hook into world map show/hide events
+    local hookFrame = CreateFrame("Frame")
+    hookFrame:RegisterEvent("ADDON_LOADED")
+
+    -- In MoP Classic, WorldMapFrame may already exist
+    if WorldMapFrame then
+        -- Hook the map's Show
+        hooksecurefunc(WorldMapFrame, "Show", function()
+            -- Delay slightly to let the map finish rendering
+            C_Timer.After(0.1, function()
+                MapPins:Refresh()
+            end)
+        end)
+
+        -- Also hook OnShow for cases where Show() isn't called directly
+        if WorldMapFrame:GetScript("OnShow") then
+            WorldMapFrame:HookScript("OnShow", function()
+                C_Timer.After(0.1, function()
+                    MapPins:Refresh()
+                end)
+            end)
+        else
+            WorldMapFrame:SetScript("OnShow", function()
+                C_Timer.After(0.1, function()
+                    MapPins:Refresh()
+                end)
+            end)
+        end
+
+        -- Hook OnHide to clean up
+        WorldMapFrame:HookScript("OnHide", function()
+            MapPins:HideAll()
+        end)
+
+        hookFrame:UnregisterEvent("ADDON_LOADED")
     else
-        -- WorldMapFrame may not exist yet — hook ADDON_LOADED
-        local hookFrame = CreateFrame("Frame")
-        hookFrame:RegisterEvent("ADDON_LOADED")
+        -- Wait for Blizzard_WorldMap to load
         hookFrame:SetScript("OnEvent", function(f, event, addon)
-            if addon == "Blizzard_WorldMap" or (WorldMapFrame and WorldMapFrame.AddDataProvider) then
-                WorldMapFrame:AddDataProvider(MapPins.DataProvider)
+            if addon == "Blizzard_WorldMap" or (WorldMapFrame and WorldMapFrame.Show) then
+                if WorldMapFrame then
+                    hooksecurefunc(WorldMapFrame, "Show", function()
+                        C_Timer.After(0.1, function()
+                            MapPins:Refresh()
+                        end)
+                    end)
+                    WorldMapFrame:HookScript("OnHide", function()
+                        MapPins:HideAll()
+                    end)
+                end
                 f:UnregisterAllEvents()
             end
         end)
-        -- Also try immediately in case it's already loaded
-        if WorldMapFrame and WorldMapFrame.AddDataProvider then
-            WorldMapFrame:AddDataProvider(self.DataProvider)
-            hookFrame:UnregisterAllEvents()
-        end
     end
-end
 
---- Called by QuestTracker when step advances to refresh pins
-function MapPins:Refresh()
-    if WorldMapFrame and WorldMapFrame:IsShown() and self.DataProvider.RefreshAllData then
-        self.DataProvider:RefreshAllData()
-    end
+    -- Also refresh on map zone change
+    hookFrame:RegisterEvent("WORLD_MAP_UPDATE")
+    hookFrame:SetScript("OnEvent", function(f, event, ...)
+        if event == "WORLD_MAP_UPDATE" then
+            if WorldMapFrame and WorldMapFrame:IsShown() then
+                C_Timer.After(0.05, function()
+                    MapPins:Refresh()
+                end)
+            end
+        elseif event == "ADDON_LOADED" then
+            local addon = ...
+            if addon == "Blizzard_WorldMap" or (WorldMapFrame and WorldMapFrame.Show) then
+                if WorldMapFrame then
+                    hooksecurefunc(WorldMapFrame, "Show", function()
+                        C_Timer.After(0.1, function()
+                            MapPins:Refresh()
+                        end)
+                    end)
+                    WorldMapFrame:HookScript("OnHide", function()
+                        MapPins:HideAll()
+                    end)
+                end
+                f:UnregisterEvent("ADDON_LOADED")
+            end
+        end
+    end)
 end
 
 MapPins.SlashCommands = {}

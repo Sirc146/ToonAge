@@ -1,10 +1,11 @@
--- ToonAge/Modules/GuideParser.lua
+-- ToonAge/Modules/GuideParser.lua (Classic — MoP 50504)
 -- Validates TA.GuideData at file-load time (TOC phase) and builds the
 -- TA.Guides registry. Print output is deferred to Init() so messages
 -- appear in chat after PLAYER_ENTERING_WORLD.
 --
+-- Adapted from Retail: minimal API usage (only UnitFactionGroup for faction checks).
 -- ═══════════════════════════════════════════════════════════════════════
--- GUIDE SCHEMA (v2 — 2026-07-19)
+-- GUIDE SCHEMA (v2 — Classic adaptation)
 -- ═══════════════════════════════════════════════════════════════════════
 --
 -- Guide table:
@@ -27,7 +28,7 @@
 --     coord          = {map=N, x=N, y=N}?,  -- normalized [0,1] map coords
 --     objectiveIndex = number?,      -- specific quest objective (1-based)
 --     range          = number?,      -- proximity in yards for auto-advance
---     spec           = string?,      -- spec restriction (e.g. "Protection")
+--     spec           = string?,      -- spec restriction
 --     class          = string?,      -- class restriction (e.g. "WARRIOR")
 --     race           = string?,      -- race restriction (e.g. "BloodElf")
 --     faction        = "Alliance"|"Horde"|nil,  -- step-level faction gate
@@ -36,10 +37,6 @@
 --     reward         = number?,      -- preferred reward itemID for auto-quest
 --     noArrow        = boolean?,     -- suppress arrow for this step
 --     optional       = boolean?,     -- skippable achievement/side step
---     precondition   = {             -- gating conditions
---       questID       = number?,     -- quest must be in log
---       questComplete = number?,     -- quest must be flagged complete
---     }?,
 --   }
 --
 -- ═══════════════════════════════════════════════════════════════════════
@@ -47,22 +44,18 @@
 -- ═══════════════════════════════════════════════════════════════════════
 --
 -- pickup    — Accept a quest. Complete when questID enters the quest log.
--- turnin    — Turn in a quest. Complete when IsQuestFlaggedCompleted(questID).
--- objective — Complete a specific objective. Uses objectiveIndex to check
---             C_QuestLog.GetQuestObjectives()[objectiveIndex].finished.
--- waypoint  — Travel to a location. No quest logic — completes by proximity
---             (range field, default 15 yards). Auto-skipped if player is flying.
--- quest     — Legacy combined type (kept for backward compat). Complete when
---             IsQuestFlaggedCompleted(questID).
--- accept    — Synonym for pickup (v1 compat). Complete when quest enters log.
--- travel    — Travel step with optional coord. Similar to waypoint but won't
---             auto-skip when flying (used for mandatory path steps).
--- npc       — Interact with an NPC. No auto-completion — manual advance.
+-- turnin    — Turn in a quest. Complete when IsQuestComplete(questID).
+-- objective — Complete a specific objective. Uses objectiveIndex.
+-- waypoint  — Travel to a location. No quest logic — completes by proximity.
+-- quest     — Legacy combined type. Complete when quest is complete.
+-- accept    — Synonym for pickup (v1 compat).
+-- travel    — Travel step with optional coord.
+-- npc       — Interact with an NPC. Manual advance.
 -- item      — Use/collect an item. questItem field drives the item button.
 -- action    — Perform a specific action (bind hearth, set spec, etc.).
 -- text      — Informational only. Always considered complete (auto-skip).
--- flyto     — Take a flight path. Complete when player lands in target zone.
--- sethearth — Set hearthstone. Complete when hearthstone location changes.
+-- flyto     — Take a flight path.
+-- sethearth — Set hearthstone.
 -- ═══════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
@@ -73,42 +66,37 @@ TA:RegisterModule("GuideParser", GP)
 
 -- ── Schema constants ──────────────────────────────────────────────────
 local VALID_TYPES = {
-    -- Navigation / quest progression (core types)
-    pickup    = true,   -- accept quest (complete when in log)
-    turnin    = true,   -- turn in quest (complete when flagged complete)
-    objective = true,   -- complete specific objective index
-    waypoint  = true,   -- proximity-based travel point (auto-skip if flying)
-
-    -- Legacy / general types
-    quest     = true,   -- combined accept+complete (v1 compat)
-    accept    = true,   -- synonym for pickup (v1 compat)
-    travel    = true,   -- travel step (mandatory, no auto-skip)
-    npc       = true,   -- NPC interaction
-    item      = true,   -- item use/collect
-    action    = true,   -- general action (hearth, spec, etc.)
-    text      = true,   -- informational (always complete)
-
-    -- Specialized types
-    flyto     = true,   -- take flight path
-    sethearth = true,   -- set hearthstone location
+    pickup    = true,
+    turnin    = true,
+    objective = true,
+    waypoint  = true,
+    quest     = true,
+    accept    = true,
+    travel    = true,
+    npc       = true,
+    item      = true,
+    action    = true,
+    text      = true,
+    flyto     = true,
+    sethearth = true,
 }
 
--- Expose for other modules (NavHud, QuestTracker use this to classify steps)
+-- Expose for other modules
 GP.VALID_TYPES = VALID_TYPES
 
--- Types that represent "go to this location" (used by NavHud for pin display)
+-- Types that represent "go to this location" (used by arrow/pins)
 GP.NAV_TYPES = {
     pickup = true, turnin = true, objective = true, waypoint = true,
     quest = true, accept = true, travel = true, npc = true, item = true,
     action = true, flyto = true, sethearth = true,
 }
 
--- Types that auto-complete by proximity alone (no quest state check)
+-- Types that auto-complete by proximity alone
 GP.PROXIMITY_TYPES = {
     waypoint = true,
 }
 
--- Types where IsQuestFlaggedCompleted() is the completion check
+-- Types where quest completion is the check
 GP.TURNIN_TYPES = {
     turnin = true, quest = true,
 }
@@ -160,10 +148,6 @@ local function ValidateStep(id, n, step)
     if step.coord ~= nil and not ValidateCoord(id, n, step.coord) then
         ok = false
     end
-    if step.precondition ~= nil and type(step.precondition) ~= "table" then
-        LogError(id, n, "'precondition' must be a table")
-        ok = false
-    end
     -- Validate objectiveIndex when type is "objective"
     if step.type == "objective" then
         if type(step.objectiveIndex) ~= "number" or step.objectiveIndex < 1 then
@@ -200,15 +184,12 @@ local function ValidateGuide(id, guide)
         local errs = #_errors - errsBefore
         return false, 0, errs
     end
-    -- Empty steps are valid — they represent stub guides that trigger
-    -- Quest Log Follow mode in the tracker. The Guide Tab still shows them
-    -- with a "coming soon" state and the tracker uses Blizzard's native
-    -- quest tracking system for arrow guidance.
+    -- Empty steps are valid — stub guides trigger Quest Log Follow mode
     if #guide.steps == 0 then
         local errs = #_errors - errsBefore
-        return true, 0, errs  -- valid stub, 0 steps, no errors
+        return true, 0, errs
     end
-    -- Validate nextGuide reference (can't fully validate target exists yet)
+    -- Validate nextGuide reference
     if guide.nextGuide ~= nil and type(guide.nextGuide) ~= "string" then
         LogError(id, nil, "'nextGuide' must be a string guide id")
     end
@@ -226,8 +207,7 @@ end
 -- ── File-scope load ───────────────────────────────────────────────────
 -- Guide data files (Data/Guides/*.lua) are listed before this module in
 -- the TOC and have already populated TA.GuideData. We validate and build
--- TA.Guides here, at file-load time, so any module's Init() can read it
--- regardless of init order.
+-- TA.Guides here so any module's Init() can read it.
 do
     for id, guide in pairs(TA.GuideData or {}) do
         guide.id = guide.id or id
@@ -246,13 +226,9 @@ do
 end
 
 -- ── Post-load cross-validation ────────────────────────────────────────
--- Verify nextGuide references point to valid guide IDs.
--- Run after all guides are registered but before Init() prints output.
 do
     for id, guide in pairs(TA.Guides) do
         if guide.nextGuide and not TA.Guides[guide.nextGuide] then
-            -- Warn but don't invalidate — the target guide may load later
-            -- or may be conditional (level/faction gated)
             table.insert(_errors, {
                 id = id, stepN = nil,
                 msg = "nextGuide '" .. guide.nextGuide .. "' not found (may load later)"
@@ -300,7 +276,6 @@ function GP:GetAllGuides()
     return TA.Guides
 end
 
---- Returns the next guide in a chain, or nil.
 function GP:GetNextGuide(currentGuideID)
     local guide = TA.Guides[currentGuideID]
     if guide and guide.nextGuide then
@@ -311,6 +286,7 @@ end
 
 --- Check if a step should be shown to the current player.
 --- Evaluates faction, class, race, spec, and minLevel filters.
+--- In MoP Classic: UnitFactionGroup, UnitClass, UnitRace, GetSpecialization all exist.
 function GP:IsStepApplicable(step)
     if not step then return false end
 
@@ -332,9 +308,9 @@ function GP:IsStepApplicable(step)
         if step.race ~= playerRace then return false end
     end
 
-    -- Spec filter
+    -- Spec filter (MoP has GetSpecialization + GetSpecializationInfo)
     if step.spec then
-        local specIndex = GetSpecialization()
+        local specIndex = GetSpecialization and GetSpecialization()
         if specIndex then
             local _, specName = GetSpecializationInfo(specIndex)
             if step.spec ~= specName then return false end
@@ -359,7 +335,7 @@ function GP:IsGuideApplicable(guide)
     end
     local playerLevel = UnitLevel("player")
     if guide.maxLevel and playerLevel > guide.maxLevel + 5 then
-        return false  -- generous buffer, don't hide guides 1-2 levels early
+        return false
     end
     return true
 end
@@ -368,7 +344,7 @@ function GP:DumpGuides()
     local n = 0
     for id, g in pairs(TA.Guides) do
         n = n + 1
-        local chain = g.nextGuide and (" → " .. g.nextGuide) or ""
+        local chain = g.nextGuide and (" -> " .. g.nextGuide) or ""
         TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r  [%s] \"%s\"  lvl %d-%d  (%d steps)%s",
             id, g.title, g.minLevel or 1, g.maxLevel or 999, #g.steps, chain))
     end

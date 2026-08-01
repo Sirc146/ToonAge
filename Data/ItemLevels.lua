@@ -1,110 +1,173 @@
--- ToonAge/Data/Zones.lua
--- Midnight Season 1 ilvl data (Patch 12.0.5)
--- Source: Official Blizzard gear track table + community verification
+-- ToonAge/Data/ItemLevels.lua
+-- Item level brackets and expected gear per content tier
+-- Mists of Pandaria Classic (5.4.x, Interface 50504)
+-- Source: WoWhead MoP gear progression, official Blizzard dungeon/raid ilvl gates
 
 local TA = ToonAge
 TA.Data = TA.Data or {}
-TA.Data.Zones = {}
-local Z = TA.Data.Zones
+TA.Data.ItemLevels = {}
+local IL = TA.Data.ItemLevels
 
 -- ── Content type enum ──────────────────────────────────────────────────
-Z.TYPE = {
+IL.TYPE = {
     WORLD   = "world",
     DUNGEON = "dungeon",
-    MYTHIC  = "mythic_plus",
+    HEROIC  = "heroic_dungeon",
+    SCENARIO = "scenario",
+    HSCENARIO = "heroic_scenario",
     RAID    = "raid",
     PVP     = "pvp",
-    DELVE   = "delve",
 }
 
--- ── Upgrade track data (Midnight Season 1, Patch 12.0.5) ──────────────
--- Source document confirmed exact ranges:
--- Adventurer: 220-237  Veteran: 233-250  Champion: 246-263
--- Hero: 259-276        Myth: 272-289     Hard cap: 298 (Voidforge/Sporefused)
-Z.TRACKS = {
-    adventurer = { name="Adventurer", ilvlMin=220, ilvlMax=237,
-        source="Heroic Dungeons, Delves Tier 1-4",
-        currency="Weathered Harbinger Crest",
-        note="Entry level — good starting point for fresh 90s" },
-    veteran    = { name="Veteran",    ilvlMin=233, ilvlMax=250,
-        source="Low Mythic+ Keys, Bountiful Delves Tier 5-6",
-        currency="Carved Harbinger Crest",
-        note="Mid catch-up — accessible without a static group" },
-    champion   = { name="Champion",   ilvlMin=246, ilvlMax=263,
-        source="Mythic 0 Dungeons, Normal Raid (Voidspire/Dreamrift)",
-        currency="Runed Harbinger Crest",
-        note="Serious endgame entry — requires coordinated group" },
-    hero       = { name="Hero",       ilvlMin=259, ilvlMax=276,
-        source="Heroic Raid, Mythic+ Keys (+6 to +10)",
-        currency="Gilded Harbinger Crest",
-        note="High-end content — weekly key reward at +7 and above" },
-    myth       = { name="Myth",       ilvlMin=272, ilvlMax=289,
-        source="Mythic Raid, Weekly Great Vault (+10 keys)",
-        currency="Myth Track Upgrade",
-        note="Pinnacle tier — requires Mythic raid or 10+ keys" },
-    voidforge  = { name="Voidforge",  ilvlMin=290, ilvlMax=298,
-        source="Voidforge upgrades (12.0.5) + Sporefused Mythic lockout drops",
-        currency="Voidforged Shard",
-        note="Hard ceiling — for fully optimized Mythic raiders only" },
+-- ── Leveling ilvl brackets (1-90) ─────────────────────────────────────
+-- Expected average ilvl at each level range while questing
+IL.LEVELING = {
+    { minLevel=1,  maxLevel=15,  expectedIlvl=8,   note="Starting gear" },
+    { minLevel=16, maxLevel=25,  expectedIlvl=20,  note="First dungeon drops" },
+    { minLevel=26, maxLevel=35,  expectedIlvl=32,  note="Mid-classic zones" },
+    { minLevel=36, maxLevel=45,  expectedIlvl=44,  note="Late classic / early TBC" },
+    { minLevel=46, maxLevel=55,  expectedIlvl=57,  note="Late classic dungeons" },
+    { minLevel=56, maxLevel=60,  expectedIlvl=68,  note="Vanilla endgame / Outland entry" },
+    { minLevel=61, maxLevel=68,  expectedIlvl=95,  note="Outland questing" },
+    { minLevel=69, maxLevel=70,  expectedIlvl=115, note="Outland endgame" },
+    { minLevel=71, maxLevel=78,  expectedIlvl=138, note="Northrend questing" },
+    { minLevel=79, maxLevel=80,  expectedIlvl=175, note="Northrend endgame" },
+    { minLevel=81, maxLevel=84,  expectedIlvl=289, note="Cataclysm questing" },
+    { minLevel=85, maxLevel=85,  expectedIlvl=333, note="Cataclysm endgame entry" },
+    { minLevel=86, maxLevel=89,  expectedIlvl=400, note="Pandaria questing" },
+    { minLevel=90, maxLevel=90,  expectedIlvl=450, note="Fresh level 90" },
 }
 
--- ── Get track for a given ilvl ─────────────────────────────────────────
-function Z:GetTrack(ilvl)
-    if ilvl >= 290 then return self.TRACKS.voidforge
-    elseif ilvl >= 272 then return self.TRACKS.myth
-    elseif ilvl >= 259 then return self.TRACKS.hero
-    elseif ilvl >= 246 then return self.TRACKS.champion
-    elseif ilvl >= 233 then return self.TRACKS.veteran
-    elseif ilvl >= 220 then return self.TRACKS.adventurer
+-- ── Max-level gear tiers (Level 90, Patch 5.4) ────────────────────────
+IL.TIERS = {
+    -- Dungeons & Scenarios
+    normal_dungeon   = { name="Normal Dungeon",      ilvlMin=410, ilvlMax=440,
+        source="Level 90 Normal Dungeons",
+        note="Entry point for fresh 90s" },
+    heroic_dungeon   = { name="Heroic Dungeon",      ilvlMin=440, ilvlMax=463,
+        source="Heroic Dungeons (requires ilvl 435)",
+        note="Daily valor + gear upgrades" },
+    scenario         = { name="Scenario",            ilvlMin=430, ilvlMax=450,
+        source="Normal Scenarios",
+        note="Quick 3-player content, no tank/healer required" },
+    heroic_scenario  = { name="Heroic Scenario",     ilvlMin=463, ilvlMax=476,
+        source="Heroic Scenarios (requires ilvl 480)",
+        note="Bonus loot bag once per day" },
+    -- Raids: Tier 14
+    msv_lfr          = { name="MSV LFR",             ilvlMin=476, ilvlMax=483,
+        source="Mogu'shan Vaults LFR",
+        note="Looking For Raid — no premade needed" },
+    hof_lfr          = { name="HoF LFR",             ilvlMin=476, ilvlMax=483,
+        source="Heart of Fear LFR",
+        note="Tier 14 LFR" },
+    toes_lfr         = { name="ToES LFR",            ilvlMin=476, ilvlMax=483,
+        source="Terrace of Endless Spring LFR",
+        note="Tier 14 LFR" },
+    t14_normal       = { name="T14 Normal",          ilvlMin=489, ilvlMax=496,
+        source="MSV / HoF / ToES Normal",
+        note="Tier 14 Normal mode" },
+    t14_heroic       = { name="T14 Heroic",          ilvlMin=502, ilvlMax=509,
+        source="MSV / HoF / ToES Heroic",
+        note="Tier 14 Heroic mode" },
+    -- Raids: Tier 15
+    tot_lfr          = { name="ToT LFR",             ilvlMin=502, ilvlMax=510,
+        source="Throne of Thunder LFR",
+        note="Tier 15 LFR" },
+    tot_normal       = { name="ToT Normal",          ilvlMin=522, ilvlMax=528,
+        source="Throne of Thunder Normal",
+        note="Tier 15 Normal mode" },
+    tot_heroic       = { name="ToT Heroic",          ilvlMin=535, ilvlMax=541,
+        source="Throne of Thunder Heroic",
+        note="Tier 15 Heroic mode — Thunderforged possible" },
+    -- Raids: Tier 16
+    soo_lfr          = { name="SoO LFR",             ilvlMin=528, ilvlMax=536,
+        source="Siege of Orgrimmar LFR",
+        note="Tier 16 LFR" },
+    soo_flex         = { name="SoO Flex",            ilvlMin=540, ilvlMax=548,
+        source="Siege of Orgrimmar Flex (10-25 players)",
+        note="Flexible raid size — good mid-tier option" },
+    soo_normal       = { name="SoO Normal",          ilvlMin=553, ilvlMax=559,
+        source="Siege of Orgrimmar Normal",
+        note="Tier 16 Normal — Warforged possible" },
+    soo_heroic       = { name="SoO Heroic",          ilvlMin=566, ilvlMax=574,
+        source="Siege of Orgrimmar Heroic",
+        note="Tier 16 Heroic — Warforged + socket possible" },
+    -- Catch-up
+    timeless_isle    = { name="Timeless Isle",        ilvlMin=496, ilvlMax=535,
+        source="Timeless Isle tokens + Burden of Eternity",
+        note="Solo catch-up — 496 base, 535 with Burden" },
+    valor_upgrades   = { name="Valor Upgraded",       ilvlMin=0,   ilvlMax=8,
+        source="Valor Point upgrades (+4 per upgrade, 2x max)",
+        note="Adds +8 ilvl to any upgradeable item" },
+    -- PvP
+    pvp_honor        = { name="Honor Gear",           ilvlMin=476, ilvlMax=496,
+        source="Honor Points vendor (Tyrannical/Grievous)",
+        note="Entry PvP gear — decent for starting heroics" },
+    pvp_conquest     = { name="Conquest Gear",        ilvlMin=522, ilvlMax=550,
+        source="Conquest Points (Grievous/Prideful)",
+        note="Rated PvP rewards — ilvl 550 in S15" },
+    -- World Bosses
+    world_boss       = { name="World Boss",           ilvlMin=496, ilvlMax=553,
+        source="Sha of Anger, Galleon, Nalak, Oondasta, Ordos",
+        note="Weekly kill — bonus roll recommended" },
+}
+
+-- ── Readiness thresholds ───────────────────────────────────────────────
+-- What avg ilvl you need to queue/participate in each content type
+IL.READINESS = {
+    normal_dungeon   = { min=358, rec=410, label="Normal Dungeon (90)" },
+    heroic_dungeon   = { min=435, rec=450, label="Heroic Dungeon" },
+    scenario         = { min=425, rec=430, label="Scenario" },
+    heroic_scenario  = { min=480, rec=490, label="Heroic Scenario" },
+    msv_lfr          = { min=460, rec=470, label="MSV LFR" },
+    hof_lfr          = { min=470, rec=476, label="HoF/ToES LFR" },
+    tot_lfr          = { min=480, rec=496, label="ToT LFR" },
+    soo_lfr          = { min=496, rec=510, label="SoO LFR" },
+    soo_flex         = { min=510, rec=520, label="SoO Flex" },
+    soo_normal       = { min=530, rec=540, label="SoO Normal" },
+    soo_heroic       = { min=550, rec=560, label="SoO Heroic" },
+    timeless_isle    = { min=430, rec=460, label="Timeless Isle" },
+}
+
+-- ── Get tier for a given ilvl ──────────────────────────────────────────
+function IL:GetTier(ilvl)
+    if ilvl >= 566 then return self.TIERS.soo_heroic
+    elseif ilvl >= 553 then return self.TIERS.soo_normal
+    elseif ilvl >= 540 then return self.TIERS.soo_flex
+    elseif ilvl >= 528 then return self.TIERS.soo_lfr
+    elseif ilvl >= 522 then return self.TIERS.tot_normal
+    elseif ilvl >= 502 then return self.TIERS.tot_lfr
+    elseif ilvl >= 489 then return self.TIERS.t14_normal
+    elseif ilvl >= 476 then return self.TIERS.msv_lfr
+    elseif ilvl >= 463 then return self.TIERS.heroic_dungeon
+    elseif ilvl >= 440 then return self.TIERS.normal_dungeon
     else return nil end
 end
 
--- ── Readiness thresholds ───────────────────────────────────────────────
--- What avg ilvl you need to participate meaningfully in each content type
-Z.READINESS = {
-    -- Open world / leveling
-    world_questing  = { min=0,   rec=220, label="World quests" },
-    delve_low       = { min=210, rec=220, label="Delves Tier 1-4" },
-    delve_high      = { min=233, rec=246, label="Delves Tier 5-8" },
-    -- Dungeons
-    heroic_dungeon  = { min=210, rec=220, label="Heroic dungeon" },
-    mythic0         = { min=220, rec=233, label="Mythic 0" },
-    mythic_low      = { min=233, rec=246, label="Mythic+ (+2 to +5)" },
-    mythic_mid      = { min=246, rec=259, label="Mythic+ (+6 to +9)" },
-    mythic_high     = { min=259, rec=272, label="Mythic+ (+10 and above)" },
-    -- Raids
-    raid_lfr        = { min=220, rec=233, label="LFR (Voidspire/Dreamrift)" },
-    raid_normal     = { min=233, rec=246, label="Normal raid" },
-    raid_heroic     = { min=246, rec=259, label="Heroic raid" },
-    raid_mythic     = { min=259, rec=272, label="Mythic raid" },
-}
-
--- ── Content type detection from instance type ──────────────────────────
-function Z:GetContentType()
-    local inInstance, instanceType = IsInInstance()
-    if not inInstance then return Z.TYPE.WORLD end
-    if instanceType == "raid"    then return Z.TYPE.RAID    end
-    if instanceType == "party"   then return Z.TYPE.DUNGEON end
-    if instanceType == "pvp"     then return Z.TYPE.PVP     end
-    if instanceType == "scenario"then return Z.TYPE.DELVE   end
-    return Z.TYPE.WORLD
+-- ── Get expected ilvl for player level ─────────────────────────────────
+function IL:GetExpectedForLevel(level)
+    for _, bracket in ipairs(self.LEVELING) do
+        if level >= bracket.minLevel and level <= bracket.maxLevel then
+            return bracket.expectedIlvl, bracket.note
+        end
+    end
+    return 450, "Level 90"
 end
 
--- ── Content readiness assessment ──────────────────────────────────────
-function Z:GetReadiness(avgIlvl)
-    -- Find the highest content tier this character is ready for
+-- ── Readiness assessment ───────────────────────────────────────────────
+function IL:GetReadiness(avgIlvl)
     local tiers = {
-        { key="mythic_high",  label="Mythic+ 10+",    recMin=272 },
-        { key="raid_mythic",  label="Mythic Raid",    recMin=272 },
-        { key="mythic_mid",   label="Mythic+ 6-9",    recMin=259 },
-        { key="raid_heroic",  label="Heroic Raid",    recMin=259 },
-        { key="mythic_low",   label="Mythic+ 2-5",    recMin=246 },
-        { key="raid_normal",  label="Normal Raid",    recMin=246 },
-        { key="mythic0",      label="Mythic 0",       recMin=233 },
-        { key="delve_high",   label="Delves Tier 5+", recMin=233 },
-        { key="heroic_dungeon",label="Heroic Dungeon",recMin=220 },
-        { key="delve_low",    label="Delves Tier 1-4",recMin=210 },
-        { key="world_questing",label="World content", recMin=0   },
+        { key="soo_heroic",    label="SoO Heroic",     recMin=560 },
+        { key="soo_normal",    label="SoO Normal",     recMin=540 },
+        { key="soo_flex",      label="SoO Flex",       recMin=520 },
+        { key="soo_lfr",       label="SoO LFR",        recMin=510 },
+        { key="tot_lfr",       label="ToT LFR",        recMin=496 },
+        { key="hof_lfr",       label="HoF/ToES LFR",   recMin=476 },
+        { key="msv_lfr",       label="MSV LFR",        recMin=470 },
+        { key="heroic_scenario",label="Heroic Scenario",recMin=490 },
+        { key="heroic_dungeon",label="Heroic Dungeon",  recMin=450 },
+        { key="scenario",      label="Scenario",        recMin=430 },
+        { key="normal_dungeon",label="Normal Dungeon",   recMin=410 },
     }
 
     local highestReady = nil
@@ -115,7 +178,7 @@ function Z:GetReadiness(avgIlvl)
         if threshold then
             if avgIlvl >= threshold.rec and not highestReady then
                 highestReady = tier
-            elseif avgIlvl < threshold.rec and not nextTarget and avgIlvl >= threshold.min then
+            elseif avgIlvl < threshold.rec and not nextTarget and avgIlvl >= (threshold.min or 0) then
                 nextTarget = tier
             end
         end
@@ -124,17 +187,17 @@ function Z:GetReadiness(avgIlvl)
     return highestReady, nextTarget
 end
 
--- ── ilvl gap analysis ─────────────────────────────────────────────────
-function Z:GetGapAnalysis(avgIlvl)
-    -- How far from each major milestone
+-- ── Gap analysis ──────────────────────────────────────────────────────
+function IL:GetGapAnalysis(avgIlvl)
     local milestones = {
-        { ilvl=220, label="Heroic Dungeon ready",   color={0.29,1,0.48}   },
-        { ilvl=233, label="Mythic 0 / Veteran gear",color={0.29,1,0.48}   },
-        { ilvl=246, label="Normal Raid / Champion", color={1,0.82,0}       },
-        { ilvl=259, label="Heroic Raid / Hero gear",color={1,0.82,0}       },
-        { ilvl=272, label="Mythic Raid / Myth gear",color={1,0.60,0.10}    },
-        { ilvl=289, label="Myth max ilvl",          color={1,0.27,0.27}    },
-        { ilvl=298, label="Hard cap (Voidforge)",   color={0.80,0.27,1.00} },
+        { ilvl=435, label="Heroic Dungeon queue",    color={0.29,1,0.48}   },
+        { ilvl=460, label="MSV LFR queue",           color={0.29,1,0.48}   },
+        { ilvl=480, label="ToT LFR queue",           color={1,0.82,0}      },
+        { ilvl=496, label="SoO LFR / Timeless gear", color={1,0.82,0}      },
+        { ilvl=520, label="SoO Flex ready",          color={1,0.60,0.10}   },
+        { ilvl=540, label="SoO Normal ready",        color={1,0.60,0.10}   },
+        { ilvl=560, label="SoO Heroic ready",        color={1,0.27,0.27}   },
+        { ilvl=574, label="BiS (Heroic Warforged)",  color={0.80,0.27,1.0} },
     }
 
     local result = {}
@@ -152,169 +215,24 @@ function Z:GetGapAnalysis(avgIlvl)
     return result
 end
 
--- ── Zone-specific map data ─────────────────────────────────────────────
-Z[2432] = { name="Quel'Thalas",      type=Z.TYPE.WORLD,   recMin=220, recIlvl=233 }
-Z[2433] = { name="Silvermoon City",  type=Z.TYPE.WORLD,   recMin=0,   recIlvl=0   }
-Z[2434] = { name="Dead Scar",        type=Z.TYPE.WORLD,   recMin=233, recIlvl=246 }
-Z[2435] = { name="Dawnspire",        type=Z.TYPE.WORLD,   recMin=246, recIlvl=259 }
-Z[2436] = { name="Void Quarter",     type=Z.TYPE.WORLD,   recMin=259, recIlvl=272 }
-Z[2450] = { name="Magister's Terrace",     type=Z.TYPE.DUNGEON, recMin=220, recIlvl=233 }
-Z[2451] = { name="Maisara Caverns",        type=Z.TYPE.DUNGEON, recMin=220, recIlvl=233 }
-Z[2452] = { name="Nexus Point Xenas",      type=Z.TYPE.DUNGEON, recMin=220, recIlvl=233 }
-Z[2453] = { name="Windrunner Spire",       type=Z.TYPE.DUNGEON, recMin=220, recIlvl=233 }
-Z[2454] = { name="Algeth'ar Academy",      type=Z.TYPE.DUNGEON, recMin=220, recIlvl=233 }
-Z[2455] = { name="Pit of Saron",           type=Z.TYPE.DUNGEON, recMin=220, recIlvl=233 }
-Z[2456] = { name="Seat of the Triumvirate",type=Z.TYPE.DUNGEON, recMin=220, recIlvl=233 }
-Z[2457] = { name="Skyreach",              type=Z.TYPE.DUNGEON, recMin=220, recIlvl=233 }
-Z[2480] = { name="Voidspire (LFR)",   type=Z.TYPE.RAID, recMin=220, recIlvl=233 }
-Z[2481] = { name="Voidspire (N)",     type=Z.TYPE.RAID, recMin=233, recIlvl=246 }
-Z[2482] = { name="Voidspire (H)",     type=Z.TYPE.RAID, recMin=246, recIlvl=259 }
-Z[2483] = { name="Voidspire (M)",     type=Z.TYPE.RAID, recMin=259, recIlvl=272 }
-Z[2484] = { name="Dreamrift (LFR)",   type=Z.TYPE.RAID, recMin=220, recIlvl=233 }
-Z[2485] = { name="Dreamrift (N)",     type=Z.TYPE.RAID, recMin=233, recIlvl=246 }
-Z[2486] = { name="Dreamrift (H)",     type=Z.TYPE.RAID, recMin=246, recIlvl=259 }
-Z[2487] = { name="Dreamrift (M)",     type=Z.TYPE.RAID, recMin=259, recIlvl=272 }
-Z[2490] = { name="Delves (Tier 1-4)", type=Z.TYPE.DELVE, recMin=210, recIlvl=220 }
-Z[2491] = { name="Delves (Tier 5-8)", type=Z.TYPE.DELVE, recMin=233, recIlvl=246 }
-
--- ── Zone ilvl lookup ──────────────────────────────────────────────────
-function Z:GetCurrent()
-    local mapID = C_Map.GetBestMapForUnit("player")
-    return mapID and self[mapID] or nil
-end
-
-function Z:GetIlvlRequirement()
-    local zone = self:GetCurrent()
-    if zone then return zone.recMin, zone.recIlvl end
-    -- Default by content type
-    local ct = self:GetContentType()
-    if ct == Z.TYPE.RAID    then return 233, 246 end
-    if ct == Z.TYPE.DUNGEON then return 210, 220 end
-    if ct == Z.TYPE.DELVE   then return 210, 220 end
-    return 0, 220
-end
-
-function Z:GetContentTypeName()
-    local ct = self:GetContentType()
-    local zone = self:GetCurrent()
-    if zone then return zone.name end
-    local names = {
-        [Z.TYPE.WORLD]  = "world content",
-        [Z.TYPE.DUNGEON]= "dungeon",
-        [Z.TYPE.MYTHIC] = "Mythic+",
-        [Z.TYPE.RAID]   = "raid",
-        [Z.TYPE.PVP]    = "PvP",
-        [Z.TYPE.DELVE]  = "delve",
-    }
-    return names[ct] or "current content"
-end
-
-function Z:IsReady(playerIlvl)
-    local min, rec = self:GetIlvlRequirement()
-    if playerIlvl >= rec then return "ready", rec end
-    if playerIlvl >= min then return "marginal", rec end
-    return "not_ready", min
-end
-
--- ── Upgrade sources by content type ──────────────────────────────────
-Z.UPGRADE_SOURCES = {
+-- ── Upgrade sources ───────────────────────────────────────────────────
+IL.UPGRADE_SOURCES = {
     solo = {
-        { name="Delves Tier 1-4",     ilvl="220-237", track="Adventurer", note="Solo or duo — fastest catch-up route" },
-        { name="World quests",        ilvl="220-237", track="Adventurer", note="Check for high ilvl item rewards daily" },
-        { name="Delves Tier 5-8",     ilvl="233-250", track="Veteran",    note="Harder solo content, Veteran track gear" },
-        { name="Bountiful Delve",     ilvl="233-250", track="Veteran",    note="Weekly cache from highest tier delve" },
+        { name="Timeless Isle tokens",  ilvl="496",     note="BoA armor tokens — instant catch-up" },
+        { name="Burden of Eternity",    ilvl="535",     note="Rare drop on Timeless Isle — upgrades one token to 535" },
+        { name="World bosses",          ilvl="496-553", note="Sha, Galleon, Nalak, Oondasta, Ordos (weekly)" },
+        { name="Valor upgrades",        ilvl="+8",      note="Spend Valor to upgrade any item twice (+4 each)" },
     },
-    lfg = {
-        { name="Heroic dungeon",       ilvl="220-237", track="Adventurer", note="Queue via Dungeon Finder" },
-        { name="Mythic 0",             ilvl="233-250", track="Veteran",    note="Requires premade group — no timer" },
-        { name="LFR (Voidspire)",      ilvl="220-237", track="Adventurer", note="Looking for Raid — no group needed" },
-        { name="Normal Raid",          ilvl="246-263", track="Champion",   note="Voidspire or Dreamrift Normal" },
-        { name="Mythic+ 2-5",          ilvl="233-250", track="Veteran",    note="End-of-dungeon chest" },
-        { name="Mythic+ 6-9",          ilvl="259-276", track="Hero",       note="Weekly vault at +6 gives Hero gear" },
-        { name="Heroic Raid",          ilvl="259-276", track="Hero",       note="Voidspire or Dreamrift Heroic" },
-        { name="Mythic+ 10+",          ilvl="272-289", track="Myth",       note="Weekly vault at +10 gives Myth gear" },
+    group = {
+        { name="Heroic Dungeons",       ilvl="463",     note="Daily valor bonus — fast queue" },
+        { name="Scenarios",             ilvl="430-476", note="Fast 3-player, heroic gives better loot" },
+        { name="LFR (all tiers)",       ilvl="476-536", note="Queue solo — bonus roll tokens recommended" },
+        { name="Flex Raid (SoO)",       ilvl="540-548", note="10-25 players, flexible sizing" },
+        { name="Normal Raid (SoO)",     ilvl="553-559", note="Fixed 10 or 25 — guild groups" },
+        { name="Heroic Raid (SoO)",     ilvl="566-574", note="Cutting edge — Warforged drops possible" },
     },
     pvp = {
-        { name="Unranked BG / Skirmish", ilvl="220-237", track="Adventurer", note="Honor currency — starter PvP gear" },
-        { name="Rated Arena / RBG",      ilvl="246-263", track="Champion",    note="Conquest gear — requires rating" },
-        { name="Weekly PvP cache",       ilvl="259-276", track="Hero",        note="Bonus at end of week for rated play" },
+        { name="Honor gear",            ilvl="476-496", note="BGs and random PvP — usable for PvE entry" },
+        { name="Conquest gear",         ilvl="522-550", note="Rated PvP — strong for world content too" },
     },
 }
-
--- ── Scaling system detection ───────────────────────────────────────────
--- The four scaling systems from the document:
--- 1. Timewalking: your ilvl is DOWN-scaled to legacy baseline
--- 2. PvP: your gear UP-scales to PvP ilvl (shown on item tooltip)
--- 3. Chromie Time: world scales TO you while leveling
--- 4. Max-level open world: monsters scale slightly WITH your ilvl
-
-function Z:GetScalingContext()
-    local inInstance, instanceType = IsInInstance()
-    local level = UnitLevel("player")
-    local avgIlvl = 0
-    local _, equipped = GetAverageItemLevel()
-    avgIlvl = math.floor(equipped or 0)
-
-    -- Timewalking detection
-    -- C_PlayerInfo.GetContentDifficultyCreatureForPlayer or check instance difficulty
-    local difficultyID = select(3, GetInstanceInfo())
-    -- Timewalking difficulties: 24=Normal TW, 33=Heroic TW, others
-    local isTW = (difficultyID == 24 or difficultyID == 33 or difficultyID == 151 or difficultyID == 152)
-
-    -- PvP detection
-    local inPvP = false
-    local pvpScaledIlvl = avgIlvl
-    if C_PvP and C_PvP.IsActiveBattlefield then
-        inPvP = C_PvP.IsActiveBattlefield() or false
-    end
-    if not inPvP and instanceType == "pvp" then inPvP = true end
-
-    -- Chromie Time / leveling detection
-    local isChromieTime = false
-    if C_ChromieTime and C_ChromieTime.GetChromieTimeExpansionOption then
-        local opt = C_ChromieTime.GetChromieTimeExpansionOption()
-        isChromieTime = opt ~= nil and opt ~= 0
-    end
-    -- Also detect via level — Midnight max is 90
-    local isLeveling = (level < 90)
-
-    -- Effective ilvl context
-    local effectiveIlvl = avgIlvl
-    local scalingNote = nil
-
-    if isTW then
-        -- Timewalking compresses gear to ~50 of that expansion
-        effectiveIlvl = math.min(avgIlvl, 50)
-        scalingNote = "Timewalking: your gear is DOWN-scaled to legacy ilvl ~" .. effectiveIlvl
-    elseif inPvP then
-        -- PvP Honor gear scales up — show the PvP context
-        -- Actual PvP ilvl shown on item, we approximate
-        scalingNote = "PvP: Honor gear scales UP to 276 in arenas/BGs — raw ilvl less important than PvP ilvl"
-    elseif isChromieTime or isLeveling then
-        scalingNote = "Leveling: world scales to your level — gear ilvl matters less than levels gained"
-    elseif not inInstance then
-        scalingNote = "Open world: enemies scale softly with your ilvl — you outscale most world content above 233"
-    end
-
-    return {
-        effectiveIlvl = effectiveIlvl,
-        isTW          = isTW,
-        inPvP         = inPvP,
-        isLeveling    = isLeveling,
-        isChromieTime = isChromieTime,
-        scalingNote   = scalingNote,
-    }
-end
-
--- ── PvP ilvl helper ───────────────────────────────────────────────────
--- PvP gear has two ilvl values — base and PvP-scaled
--- The scaled value is what matters in arenas/BGs
--- We read this from item tooltip data when available
-function Z:GetPvPScaledIlvl(itemLink)
-    if not itemLink then return nil end
-    -- PvP ilvl is in the item tooltip as a bonus stat line
-    -- Format: "In PvP combat: Item Level X"
-    -- C_Item.GetItemStatDelta or tooltip scanning needed
-    -- For now return nil (not easily readable without tooltip scan)
-    return nil
-end

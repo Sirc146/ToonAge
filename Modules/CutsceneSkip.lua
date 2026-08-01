@@ -1,26 +1,19 @@
--- ToonAge/Modules/CutsceneSkip.lua
+-- ToonAge/Modules/CutsceneSkip.lua (Classic — MoP 50504)
 -- Automatically skips in-engine and movie cutscenes when the player has
 -- opted in via the "Skip cutscenes" checkbox in the Tracker options panel.
 --
--- Three cutscene surfaces exist in modern WoW:
---   1. CinematicFrame    — pre-rendered video (OpeningCinematic, expansion
---                          intros, legacy cinematics via PlayMovie).
---   2. MovieFrame        — Blizzard cinematic sequences also played through
---                          the video player in-engine (PLAY_MOVIE event).
---   3. In-engine scenes  — scripted cutscenes rendered using world geometry
---                          and the player model (CINEMATIC_START / STOP).
+-- MoP Classic has the same cutscene surfaces as retail:
+--   1. CinematicFrame — pre-rendered video playback
+--   2. MovieFrame     — Blizzard cinematic sequences
+--   3. In-engine scenes — scripted cutscenes (CINEMATIC_START / STOP)
 --
 -- API notes:
---   • CinematicFrame_CancelCinematic()  — cancels CinematicFrame video.
+--   • CinematicFrame_CancelCinematic() — cancels CinematicFrame video.
 --   • MovieFrame:Hide() / StopCinematic() — stops in-engine scene.
---   • GameMovieFinished()               — fires after MovieFrame finishes;
---     calling it manually signals the engine the movie is over.
---   All three are confirmed non-protected (no SecureActionButton needed).
+--   • GameMovieFinished() — signals the engine the movie is over.
+--   All three are confirmed non-protected.
 --
--- Safety note: We only act when autoQuest (the broader "automate for me"
--- flag) is enabled. The cutsceneSkip flag is a separate per-character
--- preference that defaults to OFF so players who enjoy the story are
--- never surprised.
+-- Nearly verbatim from the retail version — these APIs are stable.
 
 local TA = ToonAge
 
@@ -36,19 +29,18 @@ local function ShouldSkip()
 end
 
 -- Small delay before skipping so the engine has time to actually start
--- playing and register the scene internally.  Skipping in the same frame
--- as the start event can occasionally leave the NPC dialog stuck open.
+-- playing and register the scene internally.
 local SKIP_DELAY = 0.3   -- seconds
 
 local function SkipInEngineCinematic()
     C_Timer.After(SKIP_DELAY, function()
         if not ShouldSkip() then return end
-        -- MovieFrame covers in-engine scripted cutscenes in Dragonflight+
+        -- MovieFrame covers in-engine scripted cutscenes
         if MovieFrame and MovieFrame:IsShown() then
             if MovieFrame.StopMovie then MovieFrame:StopMovie() end
             MovieFrame:Hide()
         end
-        -- Legacy in-engine scenes (still used in Exile's Reach, Midnight intros)
+        -- Legacy in-engine scenes
         if CinematicFrame and CinematicFrame:IsShown() then
             CinematicFrame_CancelCinematic()
         end
