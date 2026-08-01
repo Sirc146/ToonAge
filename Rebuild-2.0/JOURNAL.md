@@ -713,4 +713,48 @@ Unchanged from Entry 003, and now unblocked on the infrastructure side:
 `Modules/` or `Data/` was touched. The only writes were two git refs, one
 commit, and this entry.
 
+### Addendum to Entry 004 — the smoke-test instruction above is wrong
+
+Written same session, after review. **Step 1 as worded is not runnable.** It said
+*"point `ToonAge.toc` at `Rebuild-2.0/Core/Init.lua`"*. That does not work:
+
+`ToonAge.toc:14` lists `Core\Init.lua`, and the 2.0 file is a **replacement for
+that file, not an addition to it**. It defines the same `TA` namespace, the same
+`RegisterModule`, the same `BUILTIN`, and the same slash handlers. Adding a
+second TOC line would load *both*, and whichever loads last silently wins every
+shared symbol — outcome decided by TOC line order. That is the silent-failure
+shape this rebuild exists to remove, reintroduced by its own test procedure.
+
+**The correct procedure**, in a **copy** of the addon folder:
+
+```
+1. Copy the whole ToonAge folder (e.g. to ToonAge_20test).
+2. In the copy, overwrite Core/Init.lua with Rebuild-2.0/Core/Init.lua.
+3. Leave ToonAge.toc completely alone — same path, same load order,
+   exactly one definition of every symbol.
+4. Enable only the copy, /reload, then run the three commands below.
+```
+
+Use a copy, not the live addon: the draft has never executed against real
+frames, real taint, or real SavedVariables, and `Core/Init.lua` owns `InitDB`.
+
+**The three smoke-test commands were checked to exist on the 2.0 path** (they
+would otherwise error on first use and look like a broken draft):
+
+| Command | Where it comes from in 2.0 | Verified |
+|---|---|---|
+| `/ta health` | `BUILTIN`, `Rebuild-2.0/Core/Init.lua:1073` | ✅ |
+| `/ta dispatch` | `BUILTIN`, `Rebuild-2.0/Core/Init.lua:1074` — new in 2.0 | ✅ |
+| `/ta errors` | **Not** a `BUILTIN`. Comes from `Modules/ErrorLog.lua` via its `SlashCommands` table; the 2.0 draft preserves module `SlashCommands` dispatch at `:1151`. | ✅ |
+
+**Also verified this session, after the entry above was written:**
+
+- **`git checkout main` now succeeds**, and returning to `2.0` restores
+  `Rebuild-2.0/` intact. The `Archive/` collision that blocked the checkout
+  earlier is gone, because `main` has moved past `b3ab930`. The next session
+  will not hit that wall.
+- **`chore/pre-refactor-snapshot` is superseded.** It points at `4d95743`, the
+  same commit as `main`. It is a dangling label kept only as a safety rope; do
+  not commit to it. Delete it once the 2.0 smoke test has passed.
+
 ---
