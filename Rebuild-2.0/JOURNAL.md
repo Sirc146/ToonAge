@@ -608,3 +608,109 @@ distinct constraints, so keep the guard but do not treat that mechanism as
 verified.
 
 ---
+
+## Entry 004 — D-3 answered: repository published, `2.0` branch created
+
+**Date:** 2026-08-01
+**Phase:** Stage 1 — infrastructure. No 2.0 logic was written or changed.
+**Status:** ✅ Complete
+**Trigger:** user reported needing "the proper repo" for `github.com/Sirc146/`.
+
+### The premise was wrong, and the correction mattered
+
+The user's request implied no repository existed. **It did.**
+`Sirc146/ToonAge` was public, with `main` at `b3ab930` and a last push of
+**2026-07-19**. The real condition was not a missing repo but a **stale** one:
+
+- **46 local commits** had never been pushed — everything from the modular
+  refactor through the 12.0 secret-value fix (`4d95743`).
+- **`Rebuild-2.0/` was entirely untracked** — the directive, this journal, the
+  post-mortem, and the tested 2.0 `Core/Init.lua` draft existed on exactly one
+  machine with no backup.
+
+Had a new repo been created on the stated premise, the 46 commits and the
+`4d95743` hashes this journal cites throughout would have been orphaned. This is
+the Entry 001 pattern again: *a plausible-sounding claim is not evidence.*
+
+### Decisions answered by the user
+
+| # | Decision | Answer |
+|---|---|---|
+| **D-3** | Branch vs. new repo | **Branch in the existing repo.** Standing recommendation accepted. |
+| **D-4** | Publish targets (CurseForge / Wago) | **Deferred.** Stage 4 DevOps stays out of scope while 2.0 is unstable. |
+
+`D-1`, `D-2`, `D-5`, `D-6`, `D-7` remain unanswered.
+
+### Pre-push security audit — required, because the repo is PUBLIC
+
+A push to a public remote is not reversible in the way that matters: GitHub
+caches, and third parties index. Three checks ran **before** any push.
+
+| Check | Method | Result |
+|---|---|---|
+| Untracked dirs never inspected | Listed `Archive/`, `Monk/` in full | **Clean** — 4 small Lua/TOC files. No dumps, no character data. |
+| Real secrets in the 46 commits | `git log -G` for secret-shaped assignments, all history | **Clean** — the one hit is the placeholder string `"your-client-secret"` in a docstring. Credentials are env-var based (`BLIZZARD_CLIENT_ID/SECRET`). |
+| SavedVariables / probe output ever committed | `git log --all --diff-filter=A` filtered for `SavedVariables|.dump|WTF` | **Clean** — never tracked, in any commit. |
+
+**Working-tree-clean is not history-clean.** The first scan covered only tracked
+files in the working tree; it would have missed a secret added and later
+deleted. The history scan is the one that actually settles the question.
+
+### What was done
+
+1. **`main` fast-forwarded `b3ab930` → `4d95743`** and pushed. Verified linear
+   first: `origin/main` was a strict ancestor of `HEAD`, `0` commits existed on
+   `main` that were not in `HEAD`. No force, no rewrite, nothing discarded.
+2. **`2.0` branch created** at `4d95743` and pushed with upstream tracking.
+3. **`Rebuild-2.0/` + `Tools/test_dispatch.py` + `Tools/mutate_dispatch.py`
+   committed to `2.0` only** (`b02fdf6`). Deliberately **not** on `main`:
+   per the branch model, `main` stays 1.x and shippable, which also keeps
+   **D-5** (planning docs deploying to `_retail_`) off `main` entirely.
+
+### Verified (evidence in hand)
+
+- Green before pushing, all three tiers 1–2 suites: `test_dispatch.py` **86
+  checks**, `check_lua.py` **81 files**, `test_onboarding.py` **87 checks**.
+- `git ls-remote` confirms both `refs/heads/main` (`4d95743`) and
+  `refs/heads/2.0` (`b02fdf6`) on the remote. **0** unpushed commits remain.
+- A `git checkout main` was **refused by git** — untracked `Archive/*.lua` on
+  disk would have been overwritten by the tracked copies on the old `main`.
+  Sidestepped by moving the ref without checking it out (`git branch -f`), so
+  the on-disk files were never touched. Worth recording: the obvious command
+  was the destructive one.
+
+### Assumed / NOT verified
+
+- **Still zero in-game execution.** Entry 003's central caveat is unchanged and
+  is not softened by anything here: `Rebuild-2.0/Core/Init.lua` has never been
+  loaded by the client. Publishing code is not testing code. **Only tier 3 has
+  authority.**
+- **`Archive/` and `Monk/` are still untracked and therefore still unbacked-up.**
+  Left as-is deliberately — `Archive/` holds deletion leftovers from files
+  removed during the 46 commits, and `Monk/` is a separate mini-addon with its
+  own TOC. Both have been untracked across all 46 commits, so tracking them now
+  is a change of intent, not a fix. **Open question for the user.**
+- The full 46-commit diff was not reviewed line by line. It was audited for
+  secrets and data leakage, which is a different and narrower claim.
+
+### Next Session — start here
+
+Unchanged from Entry 003, and now unblocked on the infrastructure side:
+
+1. **The live smoke test is the top priority and is the only thing that needs
+   the user in-game.** In a *copy* of the addon folder, point `ToonAge.toc` at
+   `Rebuild-2.0/Core/Init.lua` instead of `Core/Init.lua`, then `/reload` and run
+   `/ta health`, `/ta dispatch`, `/ta errors`. Use a copy — the 2.0 draft has
+   never executed against real frames, real taint, or real SavedVariables.
+2. **Then migrate modules incrementally**, starting with the handful that
+   genuinely want `BAG_UPDATE`. Watch `/ta dispatch` shrink the broadcast list.
+3. **Do not migrate blind** — 18 modules also self-register events on their own
+   frames, so a declared list is not a complete picture.
+4. **D-1 still gates the database half of 2.0.** `xpHistory` and `errorLog`
+   remain the unbounded-growth targets.
+
+**Legacy codebase modifications this session: none.** No file under `Core/`,
+`Modules/` or `Data/` was touched. The only writes were two git refs, one
+commit, and this entry.
+
+---
