@@ -758,3 +758,98 @@ would otherwise error on first use and look like a broken draft):
   not commit to it. Delete it once the 2.0 smoke test has passed.
 
 ---
+
+## Entry 005 — Smoke-test harness built (`ToonAge_20test`)
+
+**Date:** 2026-08-01
+**Phase:** Stage 1 — test harness. No 2.0 logic was changed.
+**Status:** ✅ Built and syntax-verified. ⏳ Awaiting the in-game run.
+
+### Why this exists
+
+Entry 004's addendum specified the procedure but left it as four manual steps.
+Three of them fail **silently** if done naively, and each would burn a live
+session and produce a false verdict on the draft. Building the harness offline
+converts the in-game cost to a single `/reload`.
+
+### The three silent traps — all real, all verified in code
+
+| # | Trap | What you'd see | Evidence |
+|---|---|---|---|
+| 1 | **TOC filename must equal folder name.** A folder `ToonAge_20test` containing `ToonAge.toc` is not an addon. | Addon never appears in the list at all. No error. | Blizzard TOC loading rule; `ToonAge.toc` is the only TOC in the source folder. |
+| 2 | **The 2.0 file *replaces* `Core/Init.lua`; it is not an extra TOC line.** Both define `TA`, `RegisterModule`, `BUILTIN`, the slash handlers. | Whichever loads last silently wins every shared symbol. Verdict decided by TOC line order. | `ToonAge.toc:14` lists `Core\Init.lua`. |
+| 3 | **`ADDON_NAME` is hardcoded.** `Rebuild-2.0/Core/Init.lua:15` sets `local ADDON_NAME = "ToonAge"`, and `:753` gates *all* initialisation on `arg1 == ADDON_NAME`. | Under any other folder name the addon loads, defines everything, then **never initializes**. No error, no log line. | Read at `:15` and `:748-762`. |
+
+Trap 3 is the one that matters most: it is the same silent-failure shape as the
+12.1.0 `C_Navigation.GetDestination` removal in `.rules.md` — the code is
+present, the call is guarded, nothing errors, and the result is always nothing.
+
+### What was built
+
+`_ptr_/Interface/AddOns/ToonAge_20test/` — a sibling addon, **not** in git and
+**not** deployed. Differences from the live 1.x addon, in full:
+
+1. `Core/Init.lua` ← `Rebuild-2.0/Core/Init.lua` (the draft under test).
+2. `ADDON_NAME` → `"ToonAge_20test"` — **the only edit to the draft's contents**,
+   one string literal, required by trap 3.
+3. `ToonAge.toc` → `ToonAge_20test.toc` (trap 1).
+4. `## Title` → red "ToonAge 2.0 TEST" so the two are distinguishable in the list.
+5. `## DefaultState: enabled` → `disabled`, so it cannot activate unnoticed.
+6. Excluded: `.git`, `Tools`, `Archive`, `Monk`, `Rebuild-2.0`, `.claude`.
+
+**`## SavedVariables: ToonAgeDB` was deliberately left unchanged.** SavedVariables
+files are named per *folder*, so this addon reads and writes
+`WTF/.../SavedVariables/ToonAge_20test.lua` — a separate file. The live
+`ToonAge.lua` (8,853 bytes) cannot be reached by it. Renaming the variable
+instead would have required editing every module that references `ToonAgeDB`.
+
+**Consequence, and it is a feature:** the test addon boots against an *empty*
+DB, so this run exercises the **cold-start path** — `InitAccountDB`,
+`ApplyDefaults`, onboarding — which is the F-1 three-phase split's actual
+subject. It does **not** test migration against populated real data. That is a
+separate, later test and must not be conflated with this one.
+
+### Verified
+
+- **All 81 Lua files in the test copy parse**, patched `Init.lua` included
+  (`check_lua.py` given explicit paths, since it otherwise reads only the TOC).
+- **The live addon is untouched.** `git status` shows only the pre-existing
+  untracked `Archive/` and `Monk/`; the live `Core/Init.lua` still lacks the
+  2.0 `Cmd_Dispatch` marker, i.e. it is still 1.x.
+- **The `ADDON_NAME` patch initially failed silently and was caught by
+  verification.** A `-replace` with `(?m)^...$` did not match because the file
+  is CRLF — `$` sat behind a `\r`. The script reported success; only reading the
+  line back showed `ADDON_NAME` still `"ToonAge"`. Had this shipped, the harness
+  built to avoid trap 3 would have walked straight into it. *Assert on the
+  read-back value, never on the absence of an error.*
+
+### Not verified
+
+- **Still zero in-game execution.** Everything above is tier 1–2. The draft has
+  never met real frames, real taint, or real `InCombatLockdown`.
+- Whether the client accepts the harness at all — the trap list is derived from
+  the loading rules and from reading the code, not from a load.
+
+### Next Session — start here
+
+**Run the smoke test.** Enable only *ToonAge 2.0 TEST* (disable the live
+ToonAge — both declare `ToonAgeDB` and the same compartment globals), then:
+
+```
+/reload
+/ta health     -- BUILTIN, Rebuild-2.0/Core/Init.lua:1073
+/ta dispatch   -- BUILTIN :1074, new in 2.0; lists who is still broadcast
+/ta errors     -- from Modules/ErrorLog.lua via SlashCommands, preserved at :1151
+```
+
+Expect `/ta dispatch` to report **all 55 modules on the legacy broadcast path** —
+none have declared events yet. That is correct, not a failure: dispatch is
+fail-open by design (Entry 003).
+
+To remove the harness: delete the `ToonAge_20test` folder and its
+`SavedVariables/ToonAge_20test.lua`. Nothing else refers to it.
+
+Then, in order: migrate a few `BAG_UPDATE` modules and watch `/ta dispatch`
+shrink; answer **D-1**, which still gates the database half.
+
+---
