@@ -852,4 +852,28 @@ To remove the harness: delete the `ToonAge_20test` folder and its
 Then, in order: migrate a few `BAG_UPDATE` modules and watch `/ta dispatch`
 shrink; answer **D-1**, which still gates the database half.
 
+### Addendum to Entry 005 — three things checked before handoff
+
+**1. The harness will not show as out-of-date.** Its `## Interface: 120007,
+120100` is unchanged from the live addon, and the live addon demonstrably loads
+on this client — `SavedVariables/ToonAge.lua` was last written **2026-07-31
+23:46**. Since the copy did not touch the Interface line, whatever the client
+accepts for 1.x it accepts here. No "Load out of date AddOns" toggle needed.
+
+**2. Expect an onboarding wizard popup, and it does NOT block the commands.**
+`DB_DEFAULTS.newCharBehavior` is `"wizard"` (`:168`), and the harness boots
+against an empty DB, so `Onboarding:Init` will claim the login and open the
+welcome flow ~3s in. Checked whether this gates the command surface: it does
+not. `TA._onboardingActive` exists only to stop AltQuickStart's panel racing the
+welcome screen, and **the 2.0 `Core/Init.lua` never reads it** (0 matches). The
+slash handler is unconditional. Dismiss the popup and run the three commands —
+or note that seeing the wizard is itself a passing signal for the cold-start
+path.
+
+**3. The harness inherits the live addon's keybindings.** `Bindings.xml` was
+copied and declares the same `BINDING_*` names; WoW stores bindings against the
+*binding name*, not the addon. Any key already bound will fire into the 2.0
+draft. **Use the slash commands only during the smoke test**, so it is
+unambiguous what triggered a given error.
+
 ---
