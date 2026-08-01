@@ -101,10 +101,52 @@ heaviest module `QuestTracker.lua` at 3,699 lines ·
 | D-2 | Is `QuestTracker.lua` (3,699 lines, 12% of logic) in scope? | Open |
 | D-4 | Publish to CurseForge, Wago, or both? | Deferred with Stage 4 |
 | D-5 | Exclude `Rebuild-2.0/` from `deploy.ps1`? | Open — one line at `Tools/deploy.ps1:91` |
-| D-7 | Mainline-only, no Classic? | Open. **Recommend yes** — specs, talent trees and modern professions do not exist in Classic; it is a second addon, not a port. |
+| D-7 | Mainline-only, no Classic? | **Answered 2026-08-01: Classic IS a goal.** The earlier "Classic is a second addon, not a port" recommendation is **withdrawn** — it was wrong, see below. |
 
 **Answered:** D-3 — 2.0 lives on a branch in the existing `Sirc146/ToonAge`, not
-a new repo. D-6 — push when green.
+a new repo. D-6 — push when green. D-7 — Classic is in scope.
+
+---
+
+## Classic — branch `classic`, and why the earlier assessment was wrong
+
+Found at `_classic_/Interface/AddOns/ToonAge`, outside the repo and in no git
+history. Now preserved on branch `classic` (branched from `main`, so
+`git diff main..classic` works). **It is a real adaptation, not an abandoned
+stub.**
+
+**Scope:** 38 TOC entries. Keeps QuestTracker, the Guide stack, Arrow, AntTrail,
+NavHud, MapPins, CoordResolver, XPTracker, RestOptimizer, DeathRecovery,
+GatherTracker, Character, Gear. Drops every spec/talent/rotation/profession/
+endgame module. That is a coherent **leveling-and-navigation** addon — which is
+what Classic players use.
+
+**It is already API-adapted.** `Core/Utils.lua`'s header documents each
+substitution: no `C_Spell` → `GetSpellInfo` globals; no `C_Container` →
+`GetContainerItemLink`; no `C_AddOns` → `IsAddOnLoaded`; no
+`C_Traits`/`C_ClassTalents` → talent functions return nil. `Data/ApiManifest.lua`
+annotates `C_Map` as *"available in Cata Classic"* and `C_QuestLog` as *"mostly
+available"*. `Core/ApiGuard.lua` resolves all 58 manifest entries against the
+running client and reports what is missing.
+
+**Two corrections recorded so they are not repeated:**
+
+1. An earlier scan reported "retail-only APIs used in the classic build —
+   `C_Traits` 2 hits, `GetSpecialization` 15 hits". **Those hits are comments
+   documenting the absence, and guarded calls** (`if not GetSpecialization then
+   return nil end`). Counting raw grep hits as usage produced a false verdict.
+2. The claim "`C_QuestLog` and `C_Map` do not exist in a 5.5.4 client" was
+   asserted, not measured, and the repository's own manifest already said
+   otherwise.
+
+**Open risk, unmeasured:** `Utils.lua` says "adapted for **Cataclysm** Classic",
+but `ToonAge.toc` targets `## Interface: 50504` — **Mists of Pandaria**. The
+adaptation was written against a different expansion than the TOC targets.
+
+**Never run.** No SavedVariables exist in `_classic_/WTF`. The next step is to
+load it and run **`/ta apiprobe`**, which reports exactly which of the 58 APIs
+resolve on a live MoP client. That answers the Cata-vs-MoP gap with a
+measurement instead of a guess.
 
 ---
 
