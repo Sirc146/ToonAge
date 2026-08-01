@@ -122,17 +122,40 @@ a new repo. D-6 — push when green.
 
 ## Cleanup ledger — 2026-08-01
 
-**Deleted:** `Archive/` (19,885 B, 2 files) and `Monk/` (1,058 B, 2 files) —
-orphaned, absent from the TOC, never loaded. Recoverable from `main`'s history.
+**Done:** `JOURNAL.md` (50,412 B) and `STAGE0_POSTMORTEM.md` (8,131 B) deleted;
+2.0 workspace prose 65,811 → 13,025 B.
 
-**Deleted:** `JOURNAL.md` (50,412 B) — replaced by this file.
+**Done:** `AddOns/Archive/CharacterAdvisor` (25 files, 232,468 B) preserved to
+branch `pre-git-characteradvisor` (`ef6437a`) and verified retrievable from the
+remote. It is the **only** copy of ToonAge's predecessor: dated 2026-06-27, a
+week before initial commit `5cdec6c`, with `Modules/Rotation.lua` differing by
+hash — genuinely pre-git content, in no repository until now. WoW never loaded
+it (the client scans `AddOns/<Name>/<Name>.toc` one level deep; this TOC is two
+levels down). *Folder deletion still pending — needs a permission the session
+does not have.*
 
-**Measured, not yet acted on:** 86 function definitions are never named anywhere
-else in the TOC-loaded sources. **This is a candidate list, not a verdict.**
-`ToonAge_ToggleTestBar` appears on it and is *live* — bound in `Bindings.xml:15`,
-which the TOC does not list. The 13 hits in `Data/RotationConditions.lua`
-(`NoBuff`, `HasDebuff`, `PowerBelow`…) are probably string-keyed from rotation
-data. Each candidate needs its own check before deletion.
+**Pending, same reason:** `Archive/` (19,885 B) and `Monk/` (1,058 B) inside the
+addon — orphaned, absent from the TOC, recoverable from `main`'s history.
+
+**Why the dead code exists — measured, and it is not a missed cleanup.** Of 29
+candidates traced through the full history with `git log -S`, **28 never had a
+caller in any commit** — the definition landed and no call was ever written.
+Cause: symmetric API surfaces written up front and partially consumed.
+`RotationConditions.lua` defines 29 predicates in logical pairs and uses 8;
+`ExecuteOrProc` is called 15 times while `NoBuff`, `ComboBelow`, `SingleTarget`
+and 18 others were never called once.
+
+Exactly **one** was genuinely abandoned: `TargetMarker.UnmarkAll`, orphaned when
+commit `25c3ee3` ("purge stale docs, remove dead GuideManager") removed its
+caller. So prior cleanup did leave something behind — one function, not the
+pattern.
+
+**Correction to an earlier claim in this ledger's first draft:** the
+`RotationConditions` entries were called "probably string-keyed from rotation
+data". They are not — zero quoted-string references, zero calls. They are dead
+and safe to cut. **`Bindings.xml` remains the real trap**: it is auto-loaded,
+appears in no TOC, and its five `ToonAge_Toggle*` globals will look dead to any
+TOC-derived scan. `ToonAge_ToggleTestBar` is live there.
 
 **Prose inventory at cleanup time:** 177,845 B across 12 files, against
 1,755,760 B of code. `TODO.md` (34 KB), `IMPROVEMENT_PLAN.md` (26 KB) and
