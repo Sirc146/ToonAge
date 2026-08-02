@@ -1,0 +1,11 @@
+# Dev-only dependencies for the offline verification suites.
+# There is no Lua on PATH; both suites run through Python.
+#
+#   python -m pip install --user -r Tools/requirements.txt
+#
+# Neither was installed on 2026-08-02 and every suite failed closed with a
+# clear message. Declared here so a fresh machine does not have to rediscover
+# them one error at a time.
+
+luaparser        # check_lua.py - parses every .lua file listed in the TOC
+lupa             # test_onboarding.py, test_dispatch.py - embedded Lua 5.1

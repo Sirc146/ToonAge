@@ -9,8 +9,9 @@ rule in [DIRECTIVE.md](DIRECTIVE.md) §4. Cap ~200 lines — cut before adding.
 ## Where things stand
 
 **Branches.** `main` = `4d95743` (shipping, matches the deployed retail commit).
-`2.0` = the rebuild, ahead of `main`. `classic` = the MoP fork. `2.0` and
-`classic` are each **ahead 1 and unpushed** as of 2026-08-02.
+`2.0` = the rebuild, ahead of `main`. `classic` = the MoP fork. Both `2.0` and
+`classic` had **unpushed commits** as of 2026-08-02 — `git status` is the
+authority on the counts, not this file.
 
 **Offline suites — all green, re-run 2026-08-02:** `check_lua.py` 81 files ·
 `test_onboarding.py` 87 checks · `test_dispatch.py` 86 checks ·
@@ -88,6 +89,13 @@ fail-closed default would have silently killed 35 handlers.
   (Commit `48e7e20` made the *other* probes persist; it did not change this one.)
 - **`_classic_` is outside git** — an unversioned working folder. Fixes made
   there exist nowhere else until copied into a `classic` checkout by hand.
+- **`/ta errors` in-game and the SavedVariables on disk disagree by one
+  session**, and the disk copy is the *older* of the two — WoW flushes SV at
+  reload/logout, so the newest errors are still in memory. Reading the disk copy
+  and concluding a fix did not land is the trap this bullet exists to prevent.
+- **`SetBackdrop` spread: 62 sites across 10 files, but only `Core/UI.lua` and
+  `Core/UIModern.lua` are at risk** — they are the sole files with zero
+  `BackdropTemplate` usage. All eight `Modules/` files pair correctly.
 - **No file-scope global leaks.** Function-scope leaks are unmeasured and need a
   real linter.
 - 55 modules registered; 35 define `OnEvent`; 18 also self-register events on

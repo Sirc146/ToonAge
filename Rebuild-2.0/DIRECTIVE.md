@@ -114,6 +114,12 @@ Both were verified against the repository on 2026-07-31.
 - `.rules.md` remains the authoritative style guide for **1.x**. Where 2.0
   intentionally departs from it, the departure is recorded in `STATE.md` rather
   than silently applied.
-- Pre-reload verification (no Lua on PATH — both run through Python):
+- Pre-reload verification (no Lua on PATH — all run through Python).
+  **Install the dependencies first — they are not present by default:**
+  `python -m pip install --user -r Tools/requirements.txt`
   - `python Tools/check_lua.py` — parses every file in the TOC (syntax only).
+    Accepts absolute paths, which is how the Classic build gets checked.
   - `python Tools/test_onboarding.py` — executes Core/Init.lua in embedded Lua 5.1.
+  - `python Tools/test_dispatch.py` — the 2.0 draft's only syntax coverage.
+  - `python Tools/mutate_dispatch.py` — backs each fix out and proves the suite
+    goes red. A suite never seen to fail is not evidence.
