@@ -158,16 +158,40 @@ exist on 5.5.4**; the earlier inference is retired. The `MapPins` fix held too.
 The durable follow-up is now unblocked: pass `"BackdropTemplate"` at
 `CreateFrame` in `Core/UI.lua` and `Core/UIModern.lua`, and retire the shim.
 
-**One thing remains unmeasured, and it matters:**
+### The container substitution is broken — measured 2026-08-02, 83-entry log
 
-1. **The manifest targets the wrong client.** `Data/ApiManifest.lua` documents
-   "Cataclysm Classic (**40402**) expected API availability" while the TOC and 26
-   of 31 files target MoP `50504`. `Utils.lua` substitutes *globals* for
-   namespaces it believes absent — correct for 40402, but Blizzard has since
-   backported several `C_*` namespaces into Classic and removed some matching
-   globals. If a global it depends on is gone in 5.5.4 the substitution fails
-   **silently**. Do not "fix" these against a guessed signature; `/ta apiprobe`
-   settles all 58 entries.
+**`GetContainerItemLink` is nil on 5.5.4.** The predicted wrong-client-manifest
+risk is now a measured fault, and the prediction was wrong in one important way:
+it does **not** fail silently. `Gear.lua:218` installs a `hooksecurefunc` on
+`GameTooltip.SetBagItem`, so **every bag-item hover throws** — 70+ entries in
+seconds, via `ContainerFrameItemButton_OnEnter` (Baganator in the stack).
+
+`Data/ApiManifest.lua:55–57` already lists `GetContainerItemLink`,
+`GetContainerNumSlots` and `GetContainerItemInfo`. **`/ta apiprobe` would have
+reported all three missing before the crash** — the strongest argument yet for
+running it first on any new client.
+
+**Blast radius: 11 call sites**, only one of which has surfaced.
+`Modules/AutoEquip.lua:83/85/222/224/246/249/251` calls the same globals
+**unguarded**, and AutoEquip is one of the six enabled modules — it throws the
+moment an equip triggers a bag scan. `Gear.lua:113/115`, `Utils.lua:260/264/268`.
+
+> **Trap for whoever fixes this — do not blind-swap to `C_Container`.**
+> `Utils.lua:268` documents the Classic `GetContainerItemInfo` contract as ten
+> return values (`texture, count, locked, quality, …`). Modern
+> `C_Container.GetContainerItemInfo` returns a **single table**. Swapping the
+> name alone silently changes the shape and every consumer breaks differently.
+> `GetContainerItemLink`/`NumSlots` are safe one-for-one; `ItemInfo` is not.
+
+**Still unmeasured:** whether `C_Container` exists on 5.5.4 and which members it
+carries. Settle with `/ta apiprobe`, or
+`/dump type(C_Container), type(GetContainerItemLink)`. **Do not write the
+replacement against a guessed signature** — that is the failure class this
+project exists to remove.
+
+This retires the earlier "the API-substitution work in `Core/Utils.lua` is
+broadly sound on 5.5.4" verdict. That was inferred from *persistence* — six
+modules saved settings — which measures boot, not API correctness.
 
 **The port is structurally incomplete (D-8).** Five methods are called but never
 defined — found by a defined-vs-called scan with PTR as a control:
@@ -183,9 +207,12 @@ defined — found by a defined-vs-called scan with PTR as a control:
 Classic defines 22 `QT:` methods against PTR's 47 — 25 definitions dropped, call
 sites left behind. **~729 lines missing before any API adaptation.**
 
-**D-8 is now the only thing broken in Classic** — the 2026-08-02 log is five
-entries, all `:818`. But the log understates it, and the earlier "`InitWindow`
-aborts at `:818` before reaching the rest" was imprecise:
+**`Gear:Render` is confirmed live** — `Gear.lua:198`, reached from a 0.3s
+`C_Timer.After` that `BAG_UPDATE`/`PLAYER_EQUIPMENT_CHANGED` schedules, so it
+repeats rather than failing once. D-8 is not theoretical.
+
+The earlier "`InitWindow` aborts at `:818` before reaching the rest" was
+imprecise, and the quiet log that suggested it understates the damage:
 
 - The `OnUpdate` calling `CheckProximityAdvance` is installed at `:810`, *before*
   the throw. It has stayed quiet only because the window is created hidden
