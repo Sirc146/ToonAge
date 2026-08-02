@@ -148,14 +148,19 @@ and six enabled modules. First-login crash in `InitUI`, dead `MapPins`, and a
 stale TOC entry are **fixed and committed at `8e871b2`** — captured from the
 unversioned `_classic_` folder, where they had been the only copy.
 
-**Two things remain unmeasured, and both matter:**
+**The backdrop fix is confirmed by measurement — 2026-08-02.** An error log of
+five entries spanning 07:39–14:26 contains **only** `QuestTracker.lua:818`.
+`UI.lua:49` is absent across all five sessions, and no `"UI Backdrop"` entry
+appears — which is dispositive because `EnsureBackdrop` returns false *only*
+after logging one, so there is no silent path. `ErrorLog` was demonstrably live
+(it captured the `:818` faults). **`BackdropTemplateMixin` and `Mixin` therefore
+exist on 5.5.4**; the earlier inference is retired. The `MapPins` fix held too.
+The durable follow-up is now unblocked: pass `"BackdropTemplate"` at
+`CreateFrame` in `Core/UI.lua` and `Core/UIModern.lua`, and retire the shim.
 
-1. **`BackdropTemplateMixin` / `Mixin` exist on 5.5.4 — inferred, not proven.**
-   The fix is a runtime shim (`EnsureBackdrop`, `Core/UI.lua:65`) chosen because
-   an unknown template string is itself a hard error. Confirm with
-   `/dump type(BackdropTemplateMixin), type(Mixin)`. If confirmed, the durable
-   fix is to pass `"BackdropTemplate"` at `CreateFrame` and retire the shim.
-2. **The manifest targets the wrong client.** `Data/ApiManifest.lua` documents
+**One thing remains unmeasured, and it matters:**
+
+1. **The manifest targets the wrong client.** `Data/ApiManifest.lua` documents
    "Cataclysm Classic (**40402**) expected API availability" while the TOC and 26
    of 31 files target MoP `50504`. `Utils.lua` substitutes *globals* for
    namespaces it believes absent — correct for 40402, but Blizzard has since
@@ -176,8 +181,20 @@ defined — found by a defined-vs-called scan with PTR as a control:
 | `QT:ToggleWindow` | `:730` | `:2050` | ~25 lines |
 
 Classic defines 22 `QT:` methods against PTR's 47 — 25 definitions dropped, call
-sites left behind. **~729 lines missing before any API adaptation.** Only
-`UpdateWindow` surfaced in the log because `InitWindow` aborts at `:818` first.
+sites left behind. **~729 lines missing before any API adaptation.**
+
+**D-8 is now the only thing broken in Classic** — the 2026-08-02 log is five
+entries, all `:818`. But the log understates it, and the earlier "`InitWindow`
+aborts at `:818` before reaching the rest" was imprecise:
+
+- The `OnUpdate` calling `CheckProximityAdvance` is installed at `:810`, *before*
+  the throw. It has stayed quiet only because the window is created hidden
+  (`:716`) and **`ToggleWindow` is undefined, so nothing can show it**. Show the
+  window and it throws at `STATUS_UPDATE_HZ`, every tick.
+- `Settings.lua:491` and `GuideContextMenu.lua:362` both call `QT:ToggleWindow()`.
+  Those are user-triggered, so they throw on click and no logged session clicked.
+
+So the quiet log measures unreachability, not health.
 
 ---
 
