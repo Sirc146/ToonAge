@@ -328,6 +328,147 @@ function Weekly:Render(content, sidebar)
     footerNote:SetJustifyH("LEFT")
     y = y - 28
 
+    -- ══════════════════════════════════════════════════════════════════════
+    -- WEEKLY TASKS SECTION
+    -- ══════════════════════════════════════════════════════════════════════
+    y = y - 8
+
+    local tasksSep = Track(content:CreateTexture(nil, "ARTWORK"))
+    tasksSep:SetHeight(1)
+    tasksSep:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL, y)
+    tasksSep:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+    tasksSep:SetColorTexture(0.55, 0.40, 0.08, 0.25)
+    y = y - 14
+
+    -- Tasks header with completion summary
+    local total, done = self:GetTaskSummary()
+    local tasksHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    tasksHdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+    tasksHdr:SetText("WEEKLY TASKS")
+    tasksHdr:SetTextColor(1.00, 0.82, 0.00, 1)
+    tasksHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+
+    local summaryF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    summaryF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    local summaryColor = (done >= total and total > 0) and COL_GREEN or COL_GREY
+    summaryF:SetText(summaryColor .. done .. "/" .. total .. " done" .. CLOSE)
+    summaryF:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+    y = y - 22
+
+    -- Render tasks grouped by category
+    if total == 0 then
+        local noTasksF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        noTasksF:SetFont(STANDARD_TEXT_FONT, 10)
+        noTasksF:SetText(COL_GREY .. "No tasks configured. Use /ta todo add \"description\" weekly to add one." .. CLOSE)
+        noTasksF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        noTasksF:SetWidth(w)
+        y = y - 20
+    else
+        local cats = self:GetTasksByCategory()
+        -- Sort category names for consistent display
+        local catNames = {}
+        for cat in pairs(cats) do catNames[#catNames + 1] = cat end
+        table.sort(catNames)
+
+        for _, cat in ipairs(catNames) do
+            local tasks = cats[cat]
+
+            -- Category label
+            local catF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+            catF:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+            catF:SetText(cat:upper())
+            catF:SetTextColor(0.55, 0.40, 0.08, 1)
+            catF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            y = y - 14
+
+            for _, task in ipairs(tasks) do
+                local rowH = 24
+                local row = Track(CreateFrame("Button", nil, content, "BackdropTemplate"))
+                row:SetSize(w, rowH)
+                row:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+
+                if task.done then
+                    MkBackdrop(row, 0.02, 0.06, 0.02, 1, 0.15, 0.40, 0.15, 0.6)
+                else
+                    MkBackdrop(row, 0.05, 0.05, 0.05, 1, 0.20, 0.20, 0.20, 0.4)
+                end
+
+                -- Checkbox indicator
+                local check = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                check:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+                check:SetText(task.done and (COL_GREEN .. "✓" .. CLOSE) or (COL_GREY .. "○" .. CLOSE))
+                check:SetPoint("LEFT", row, "LEFT", 8, 0)
+
+                -- Task text
+                local textF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                textF:SetFont(STANDARD_TEXT_FONT, 10, "")
+                textF:SetText(task.done and (COL_GREY .. task.text .. CLOSE) or task.text)
+                textF:SetTextColor(0.88, 0.83, 0.65, 1)
+                textF:SetPoint("LEFT", row, "LEFT", 26, 0)
+                textF:SetPoint("RIGHT", row, "RIGHT", -60, 0)
+                textF:SetWordWrap(false)
+
+                -- Reset type badge (right side)
+                local resetF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                resetF:SetFont(STANDARD_TEXT_FONT, 8, "")
+                resetF:SetText(COL_GREY .. task.reset .. CLOSE)
+                resetF:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+
+                -- Click to toggle
+                local taskID = task.id
+                row:SetScript("OnClick", function()
+                    Weekly:ToggleTask(taskID)
+                    -- Refresh the row visually
+                    local nowDone = false
+                    for _, t in ipairs(TA.charDB.tasks.list or {}) do
+                        if t.id == taskID then nowDone = t.done; break end
+                    end
+                    check:SetText(nowDone and (COL_GREEN .. "✓" .. CLOSE) or (COL_GREY .. "○" .. CLOSE))
+                    textF:SetText(nowDone and (COL_GREY .. task.text .. CLOSE) or task.text)
+                    if nowDone then
+                        MkBackdrop(row, 0.02, 0.06, 0.02, 1, 0.15, 0.40, 0.15, 0.6)
+                    else
+                        MkBackdrop(row, 0.05, 0.05, 0.05, 1, 0.20, 0.20, 0.20, 0.4)
+                    end
+                    -- Update summary
+                    local t2, d2 = Weekly:GetTaskSummary()
+                    local col = (d2 >= t2 and t2 > 0) and COL_GREEN or COL_GREY
+                    summaryF:SetText(col .. d2 .. "/" .. t2 .. " done" .. CLOSE)
+                end)
+
+                -- Hover feedback
+                row:SetScript("OnEnter", function(f)
+                    f:SetBackdropColor(0.10, 0.08, 0.03, 1)
+                end)
+                row:SetScript("OnLeave", function(f)
+                    local nowDone = false
+                    for _, t in ipairs(TA.charDB.tasks.list or {}) do
+                        if t.id == taskID then nowDone = t.done; break end
+                    end
+                    if nowDone then
+                        f:SetBackdropColor(0.02, 0.06, 0.02, 1)
+                    else
+                        f:SetBackdropColor(0.05, 0.05, 0.05, 1)
+                    end
+                end)
+
+                y = y - rowH - 3
+            end
+
+            y = y - 4
+        end
+    end
+
+    -- Tasks footer
+    y = y - 4
+    local tasksFooter = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    tasksFooter:SetFont(STANDARD_TEXT_FONT, 8)
+    tasksFooter:SetText(COL_GREY .. "/ta todo add \"text\" weekly|daily — add task  ·  Click to toggle  ·  /ta todo — chat view" .. CLOSE)
+    tasksFooter:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    tasksFooter:SetWidth(w)
+    tasksFooter:SetWordWrap(true)
+    y = y - 20
+
     content:SetHeight(math.abs(y) + 20)
 end
 
