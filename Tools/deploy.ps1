@@ -87,7 +87,7 @@ Write-Host "Manifest: $($tocFiles.Count) files, all present"
 # /MIR makes the target an exact mirror, so a file deleted here is deleted
 # there. Without it, a renamed module would leave the old copy behind and the
 # game would load both.
-$exclude = @('.git', 'Tools', 'Archive', 'Monk', '.claude')
+$exclude = @('.git', '.github', 'Tools', 'Docs', '.claude')
 $xd = $exclude | ForEach-Object { Join-Path $RepoRoot $_ }
 
 $roboArgs = @($RepoRoot, $Target, '/MIR', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:2', '/W:1', '/XD') + $xd

@@ -2,7 +2,21 @@
 -- Addon object, event registration, SavedVariables, module system
 
 local ADDON_NAME = "ToonAge"
-local ADDON_VERSION = "1.0.0"
+local ADDON_VERSION = "2.0.0"
+
+-- ── Dev Build Tester Lock ─────────────────────────────────────────────────────
+-- When IS_DEV_BUILD is true, only characters listed in AUTHORIZED_TESTERS can
+-- use the addon. Everyone else gets a one-line message and the addon disables.
+-- Set IS_DEV_BUILD to false (or remove the -dev suffix from the version) for
+-- public releases.
+local IS_DEV_BUILD = ADDON_VERSION:find("-dev") ~= nil
+local AUTHORIZED_TESTERS = {
+    -- Add "Name-Server" keys for authorized testers
+    ["Ellacait-Vargoth"]  = true,
+    ["Asirc-Myzrael"]     = true,
+    -- Add more testers here:
+    -- ["Character-Server"] = true,
+}
 
 -- Create the global addon table
 ToonAge = ToonAge or {}
@@ -501,6 +515,17 @@ end
 -- ── Login sequence ────────────────────────────────────────────────────
 function TA:OnLogin()
     self:InitDB()
+
+    -- ── Dev Build Tester Lock ─────────────────────────────────────────────
+    if IS_DEV_BUILD then
+        local name   = UnitName("player") or "Unknown"
+        local server = GetRealmName() or "Unknown"
+        local charKey = name .. "-" .. server
+        if not AUTHORIZED_TESTERS[charKey] then
+            print("|cFFFF4444[ToonAge]|r Dev build — not authorized. Contact the developer.")
+            return  -- Abort login sequence, addon stays inert
+        end
+    end
 
     -- Snapshot this character's professions (+ class/level) on every login,
     -- so profession data can be gathered across the whole account just by
