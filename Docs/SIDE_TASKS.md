@@ -151,15 +151,15 @@ git push origin 2.0
 
 ## Task Priority Order
 
-| # | Task | Can do without game? | Dependency |
-|---|---|---|---|
-| 6 | Commit & push restructure | Yes | None |
-| 7 | First release test | Yes | Task 6 |
-| 1 | Render weekly tasks in UI | Yes (code only) | None |
-| 5 | Classic Character fix | Needs Classic client | None |
-| 2 | Vault scoring API verify | Needs Retail client | None |
-| 3 | World Quest API explore | Needs Retail client | None |
-| 4 | Fill guide coords | Needs PTR client | None |
+| # | Task | Can do without game? | Dependency | Status |
+|---|---|---|---|---|
+| 6 | Commit & push restructure | Yes | None | **COMPLETED — 2026-08-08, commit dc56774** |
+| 7 | First release test | Yes | Task 6 | READY — run `.\Tools\release.ps1 -Version "2.0.0-dev.1" -Message "First dev build"` then check GitHub Actions |
+| 1 | Render weekly tasks in UI | Yes (code only) | None | NOT STARTED |
+| 5 | Classic Character fix | Needs Classic client | None | NOT STARTED |
+| 2 | Vault scoring API verify | Needs Retail client | None | NOT STARTED |
+| 3 | World Quest API explore | Needs Retail client | None | NOT STARTED |
+| 4 | Fill guide coords | Needs PTR client | None | NOT STARTED |
 
 Start with 6 → 7 → 1 if working outside the game.
 Start with 2 → 3 → 5 if in-game.
