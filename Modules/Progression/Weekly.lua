@@ -95,12 +95,14 @@ local function FetchActivities()
         for i, act in ipairs(activities) do
             -- Field names confirmed via /taweekly dump: threshold, progress, isUnlocked
             -- rewardItemIlvl may or may not be present depending on vault state.
+            -- act.id is the activity ID used by GetExampleRewardItemHyperlinks.
             local threshold  = act.threshold  or 0
             local progress   = act.progress   or 0
             local isUnlocked = act.isUnlocked or (progress >= threshold and threshold > 0)
             local ilvl       = act.rewardItemIlvl or 0
 
             table.insert(tiers, {
+                activityID = act.id,
                 threshold  = threshold,
                 progress   = progress,
                 isUnlocked = isUnlocked,
@@ -139,6 +141,56 @@ local function MkBackdrop(f, br, bg, bb, ba, er, eg, eb, ea)
     f:SetBackdrop(BD)
     f:SetBackdropColor(br or 0.05, bg or 0.04, bb or 0.02, ba or 1)
     f:SetBackdropBorderColor(er or 0.20, eg or 0.20, eb or 0.20, ea or 0.6)
+end
+
+-- ── Vault reward scoring ──────────────────────────────────────────────────────
+-- Attempts to score a vault reward using Gear's stat-weight engine.
+-- Returns: scoreText (formatted string with upgrade info) or nil
+local function ScoreVaultReward(activityID, ilvl)
+    if not activityID then return nil end
+    if not C_WeeklyRewards.GetExampleRewardItemHyperlinks then return nil end
+
+    local ok, link = pcall(C_WeeklyRewards.GetExampleRewardItemHyperlinks, activityID)
+    if not ok or not link or link == "" then return nil end
+
+    local Gear = TA:GetModule("Gear")
+    if not Gear or not Gear.CalculateItemScore then return nil end
+
+    local specID = U.GetPlayerSpec and U.GetPlayerSpec()
+    if not specID then return nil end
+
+    local mode = (TA.charDB and TA.charDB.pvxMode) or "pve"
+    local rewardScore = Gear.CalculateItemScore(link, specID, mode)
+    if not rewardScore or rewardScore <= 0 then return nil end
+
+    -- Compare against the average of currently equipped gear scores
+    -- to determine if this reward is an upgrade
+    local equippedAvg = 0
+    local count = 0
+    for slot = 1, 17 do
+        local eqLink = GetInventoryItemLink("player", slot)
+        if eqLink then
+            local eqScore = Gear.CalculateItemScore(eqLink, specID, mode)
+            if eqScore and eqScore > 0 then
+                equippedAvg = equippedAvg + eqScore
+                count = count + 1
+            end
+        end
+    end
+
+    if count > 0 then equippedAvg = equippedAvg / count end
+    if equippedAvg <= 0 then return string.format("Score: %d", math.floor(rewardScore)) end
+
+    local diff = rewardScore - equippedAvg
+    local pct = math.floor((diff / equippedAvg) * 100)
+
+    if pct > 0 then
+        return COL_GREEN .. "+" .. pct .. "% upgrade" .. CLOSE
+    elseif pct < -5 then
+        return COL_GREY .. "sidegrade" .. CLOSE
+    else
+        return COL_GREY .. "~equal" .. CLOSE
+    end
 end
 
 -- ── Main render ───────────────────────────────────────────────────────────────
@@ -259,11 +311,20 @@ function Weekly:Render(content, sidebar)
                 tierF:SetTextColor(unlocked and 0.29 or 0.78, unlocked and 1.00 or 0.73, unlocked and 0.48 or 0.48, 1)
                 tierF:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -7)
 
-                -- iLvl reward badge (top-right)
+                -- iLvl reward badge with stat-weight scoring (top-right)
                 if tier.ilvl and tier.ilvl > 0 then
+                    local scoreText = nil
+                    if tier.isUnlocked and tier.activityID then
+                        scoreText = ScoreVaultReward(tier.activityID, tier.ilvl)
+                    end
+
                     local ilvlF = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     ilvlF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-                    ilvlF:SetText(COL_GOLD .. tier.ilvl .. " iLvl" .. CLOSE)
+                    if scoreText then
+                        ilvlF:SetText(COL_GOLD .. tier.ilvl .. " iLvl" .. CLOSE .. "  " .. scoreText)
+                    else
+                        ilvlF:SetText(COL_GOLD .. tier.ilvl .. " iLvl" .. CLOSE)
+                    end
                     ilvlF:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -7)
                 end
 
