@@ -2,7 +2,7 @@
 ## Title: |cFFFFD100ToonAge|r
 ## Notes: All-in-one leveling, gear, rotation, and endgame companion.
 ## Author: Chris
-## Version: 2.0.0
+## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB
 ## AddonCompartmentFunc: ToonAge_OnAddonCompartmentClick

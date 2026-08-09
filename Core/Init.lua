@@ -2,7 +2,7 @@
 -- Addon object, event registration, SavedVariables, module system
 
 local ADDON_NAME = "ToonAge"
-local ADDON_VERSION = "2.0.0"
+local ADDON_VERSION = "2.0.0-dev.1"
 
 -- ── Dev Build Tester Lock ─────────────────────────────────────────────────────
 -- When IS_DEV_BUILD is true, only characters listed in AUTHORIZED_TESTERS can
