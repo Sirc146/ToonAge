@@ -193,6 +193,126 @@ local function ScoreVaultReward(activityID, ilvl)
     end
 end
 
+-- ── Priority Advisor: BuildRecommendations ────────────────────────────────────
+-- Returns an ordered array of { text = string, reason = string, priority = number }
+-- Each entry is a recommendation the player can act on right now.
+function Weekly:BuildRecommendations()
+    local recs = {}
+
+    -- 1. Check vault progress gaps
+    if WeeklyAPIAvailable() then
+        local groups = FetchActivities()
+        if groups then
+            for _, group in ipairs(groups) do
+                local meta = group.meta
+                for i, tier in ipairs(group.tiers) do
+                    if not tier.isUnlocked and tier.threshold > 0 then
+                        local remaining = tier.threshold - tier.progress
+                        if remaining > 0 and remaining <= tier.threshold then
+                            local text
+                            if group.typeID == ACTIVITY_TYPE.DUNGEON then
+                                text = "Run " .. remaining .. " more dungeon" .. (remaining > 1 and "s" or "") .. " for Vault Tier " .. i
+                            elseif group.typeID == ACTIVITY_TYPE.RAID then
+                                text = "Kill " .. remaining .. " more raid boss" .. (remaining > 1 and "es" or "") .. " for Vault Tier " .. i
+                            elseif group.typeID == ACTIVITY_TYPE.WORLD then
+                                text = "Complete " .. remaining .. " more Delve" .. (remaining > 1 and "s" or "") .. " for Vault Tier " .. i
+                            end
+                            if text then
+                                -- Higher priority for tiers closer to completion
+                                local pct = tier.progress / tier.threshold
+                                table.insert(recs, {
+                                    text = text,
+                                    reason = meta.label,
+                                    priority = 100 + math.floor(pct * 50) - (i * 10),
+                                })
+                            end
+                        end
+                        break  -- Only show the NEXT unlockable tier per category
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. Check vault claimable
+    if HasVaultReward() then
+        table.insert(recs, {
+            text = "Claim your Great Vault reward!",
+            reason = "Ready now",
+            priority = 200,
+        })
+    end
+
+    -- 3. Check incomplete daily/weekly tasks
+    if TA.charDB and TA.charDB.tasks and TA.charDB.tasks.list then
+        local now = time()
+        local dailyUndone, weeklyUndone = 0, 0
+        for _, task in ipairs(TA.charDB.tasks.list) do
+            if not task.done then
+                if task.reset == "daily" then dailyUndone = dailyUndone + 1
+                elseif task.reset == "weekly" then weeklyUndone = weeklyUndone + 1 end
+            end
+        end
+
+        if dailyUndone > 0 then
+            table.insert(recs, {
+                text = dailyUndone .. " daily task" .. (dailyUndone > 1 and "s" or "") .. " remaining",
+                reason = "Resets tomorrow",
+                priority = 150,
+            })
+        end
+
+        if weeklyUndone > 3 then
+            table.insert(recs, {
+                text = weeklyUndone .. " weekly tasks still open",
+                reason = "Before reset",
+                priority = 80,
+            })
+        end
+    end
+
+    -- 4. Check for high-value world quests expiring soon
+    local WQMod = TA:GetModule("WorldQuests")
+    if WQMod and WQMod.GetFilteredQuests then
+        local gearWQs = WQMod:GetFilteredQuests(nil, "gear")
+        if #gearWQs > 0 then
+            local best = gearWQs[1]
+            if best.timeLeft and best.timeLeft > 0 and best.timeLeft < 360 then
+                table.insert(recs, {
+                    text = "Gear WQ expiring soon: " .. best.title,
+                    reason = best.timeLeft < 60 and (best.timeLeft .. "m left") or (math.floor(best.timeLeft / 60) .. "h left"),
+                    priority = 140,
+                })
+            elseif #gearWQs >= 2 then
+                table.insert(recs, {
+                    text = #gearWQs .. " gear world quests available in this zone",
+                    reason = "Upgrades",
+                    priority = 60,
+                })
+            end
+        end
+    end
+
+    -- 5. Conquest cap (PvP) — check if PvP task is uncompleted
+    if TA.charDB and TA.charDB.tasks and TA.charDB.tasks.list then
+        for _, task in ipairs(TA.charDB.tasks.list) do
+            if task.id == "conquest" and not task.done then
+                table.insert(recs, {
+                    text = "Cap Conquest for PvP vault column",
+                    reason = "PvP",
+                    priority = 50,
+                })
+                break
+            end
+        end
+    end
+
+    -- Sort by priority descending
+    table.sort(recs, function(a, b) return a.priority > b.priority end)
+
+    return recs
+end
+
 -- ── Main render ───────────────────────────────────────────────────────────────
 function Weekly:Render(content, sidebar)
     for _, f in ipairs(self.frames) do f:Hide(); f:SetParent(nil) end
@@ -216,6 +336,64 @@ function Weekly:Render(content, sidebar)
         f:SetTextColor(r or 0.78, g or 0.73, b or 0.48, 1)
         f:SetPoint("TOPLEFT", content, "TOPLEFT", padL + (px or 0), py or y)
         return f
+    end
+
+    -- ══════════════════════════════════════════════════════════════════════
+    -- "WHAT TO DO NEXT" PRIORITY ADVISOR
+    -- Surfaces the highest-value activities based on current progress.
+    -- ══════════════════════════════════════════════════════════════════════
+    local recommendations = self:BuildRecommendations()
+
+    if #recommendations > 0 then
+        local advHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        advHdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+        advHdr:SetText("WHAT TO DO NEXT")
+        advHdr:SetTextColor(0.29, 1.00, 0.48, 1)
+        advHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        y = y - 18
+
+        for i, rec in ipairs(recommendations) do
+            if i > 5 then break end
+
+            local recRow = Track(CreateFrame("Frame", nil, content, "BackdropTemplate"))
+            recRow:SetSize(w, 28)
+            recRow:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            recRow:SetBackdrop(BD)
+            recRow:SetBackdropColor(0.04, 0.08, 0.04, 1)
+            recRow:SetBackdropBorderColor(0.20, 0.55, 0.30, 0.6)
+
+            -- Priority number
+            local numF = recRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            numF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+            numF:SetText(COL_GREEN .. i .. "." .. CLOSE)
+            numF:SetPoint("LEFT", recRow, "LEFT", 8, 0)
+
+            -- Recommendation text
+            local recTextF = recRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            recTextF:SetFont(STANDARD_TEXT_FONT, 10, "")
+            recTextF:SetText(rec.text)
+            recTextF:SetTextColor(0.88, 0.83, 0.65, 1)
+            recTextF:SetPoint("LEFT", recRow, "LEFT", 26, 0)
+            recTextF:SetPoint("RIGHT", recRow, "RIGHT", -70, 0)
+            recTextF:SetWordWrap(false)
+
+            -- Reason badge (right)
+            local reasonF = recRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            reasonF:SetFont(STANDARD_TEXT_FONT, 8, "")
+            reasonF:SetText(COL_GREY .. rec.reason .. CLOSE)
+            reasonF:SetPoint("RIGHT", recRow, "RIGHT", -8, 0)
+
+            y = y - 32
+        end
+
+        -- Separator after advisor
+        y = y - 4
+        local advSep = Track(content:CreateTexture(nil, "ARTWORK"))
+        advSep:SetHeight(1)
+        advSep:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL, y)
+        advSep:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+        advSep:SetColorTexture(0.30, 0.30, 0.30, 0.3)
+        y = y - 12
     end
 
     -- ── Header ────────────────────────────────────────────────────────────

@@ -2773,16 +2773,159 @@ function QT:RenderMiddlePanel(content)
     hdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
     y = y - 22
 
-    -- ── Empty state ──────────────────────────────────────────────────────────
+    -- ── Empty state / Max-level world content pivot ────────────────────────
     if #zoneGuides == 0 then
-        local noData = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
-        noData:SetFont(STANDARD_TEXT_FONT, 11, "")
-        noData:SetText("No guides available for " .. expLabel .. " yet.\nGuides are added in Data/Guides/.")
-        noData:SetTextColor(0.55, 0.50, 0.40, 1)
-        noData:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
-        noData:SetWidth(w)
-        noData:SetWordWrap(true)
-        content:SetHeight(100)
+        local playerLevel = U.GetPlayerLevel and U.GetPlayerLevel() or (UnitLevel("player") or 1)
+        local isMaxLevel = playerLevel >= 90  -- Midnight cap
+
+        if isMaxLevel then
+            -- ── MAX LEVEL: Show world content instead of "no guides" ─────
+            local worldHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+            worldHdr:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+            worldHdr:SetText("|cFF1EBCFFWORLD CONTENT|r")
+            worldHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            y = y - 18
+
+            local subtext = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+            subtext:SetFont(STANDARD_TEXT_FONT, 9, "")
+            subtext:SetText("|cFF888780At max level — showing world activities in your area.|r")
+            subtext:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            y = y - 16
+
+            -- World quests in current zone
+            local WQMod = TA:GetModule("WorldQuests")
+            if WQMod and WQMod.GetFilteredQuests then
+                local quests = WQMod:GetFilteredQuests(nil, "all")
+                if #quests > 0 then
+                    local wqHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                    wqHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+                    wqHdr:SetText("|cFFFFD100WORLD QUESTS (" .. #quests .. ")|r")
+                    wqHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                    y = y - 16
+
+                    local maxShow = math.min(#quests, 6)
+                    for i = 1, maxShow do
+                        local q = quests[i]
+                        local qRow = Track(CreateFrame("Frame", nil, content, "BackdropTemplate"))
+                        qRow:SetHeight(24)
+                        qRow:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                        qRow:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+                        qRow:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+                        qRow:SetBackdropColor(0.05, 0.05, 0.07, 0.9)
+                        qRow:SetBackdropBorderColor(0.20, 0.20, 0.25, 0.5)
+
+                        local titleF = qRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        titleF:SetFont(STANDARD_TEXT_FONT, 10, "")
+                        local displayTitle = #q.title > 32 and q.title:sub(1, 32) .. "..." or q.title
+                        titleF:SetText(displayTitle)
+                        titleF:SetTextColor(0.88, 0.83, 0.65, 1)
+                        titleF:SetPoint("LEFT", qRow, "LEFT", 8, 0)
+
+                        local rewardF = qRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        rewardF:SetFont(STANDARD_TEXT_FONT, 9, "")
+                        local rCol = q.reward.type == "gear" and "|cFF0070DD"
+                                  or q.reward.type == "gold" and "|cFFFFD100"
+                                  or "|cFF888780"
+                        rewardF:SetText(rCol .. q.reward.text .. "|r")
+                        rewardF:SetPoint("RIGHT", qRow, "RIGHT", -8, 0)
+
+                        y = y - 28
+                    end
+                    if #quests > maxShow then
+                        local moreF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                        moreF:SetFont(STANDARD_TEXT_FONT, 8, "")
+                        moreF:SetText("|cFF888780+" .. (#quests - maxShow) .. " more — see Weekly tab|r")
+                        moreF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                        y = y - 14
+                    end
+                else
+                    local noWQ = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                    noWQ:SetFont(STANDARD_TEXT_FONT, 10, "")
+                    noWQ:SetText("|cFF888780No world quests in this zone. Travel to an endgame area.|r")
+                    noWQ:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                    noWQ:SetWidth(w)
+                    y = y - 16
+                end
+            end
+
+            -- Priority recommendations from Weekly advisor
+            y = y - 8
+            local WeeklyMod = TA:GetModule("Weekly")
+            if WeeklyMod and WeeklyMod.BuildRecommendations then
+                local recs = WeeklyMod:BuildRecommendations()
+                if #recs > 0 then
+                    local recHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                    recHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+                    recHdr:SetText("|cFF4AFF7ASUGGESTED ACTIVITIES|r")
+                    recHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                    y = y - 16
+
+                    local maxRecs = math.min(#recs, 3)
+                    for i = 1, maxRecs do
+                        local rec = recs[i]
+                        local recF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                        recF:SetFont(STANDARD_TEXT_FONT, 10, "")
+                        recF:SetText("|cFF4AFF7A" .. i .. ".|r " .. rec.text .. "  |cFF888780(" .. rec.reason .. ")|r")
+                        recF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                        recF:SetWidth(w)
+                        recF:SetWordWrap(true)
+                        y = y - 16
+                    end
+                end
+            end
+
+            -- Tracked quest from quest log
+            y = y - 8
+            local trackedQID = nil
+            if C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID then
+                trackedQID = C_SuperTrack.GetSuperTrackedQuestID()
+            end
+            if trackedQID and trackedQID > 0 then
+                local trackedTitle = C_QuestLog.GetTitleForQuestID(trackedQID)
+                if trackedTitle then
+                    local trackHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                    trackHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+                    trackHdr:SetText("|cFFFFD100TRACKED QUEST|r")
+                    trackHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                    y = y - 16
+
+                    local trackF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                    trackF:SetFont(STANDARD_TEXT_FONT, 10, "")
+                    trackF:SetText(trackedTitle)
+                    trackF:SetTextColor(0.88, 0.83, 0.65, 1)
+                    trackF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                    y = y - 14
+
+                    local objs = C_QuestLog.GetQuestObjectives(trackedQID)
+                    if objs then
+                        for _, obj in ipairs(objs) do
+                            local objF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+                            objF:SetFont(STANDARD_TEXT_FONT, 9, "")
+                            if obj.finished then
+                                objF:SetText("|cFF4AFF7A✓|r " .. (obj.text or ""))
+                            else
+                                objF:SetText("|cFF888780○|r " .. (obj.text or ""))
+                            end
+                            objF:SetPoint("TOPLEFT", content, "TOPLEFT", padL + 8, y)
+                            y = y - 12
+                        end
+                    end
+                end
+            end
+
+            content:SetHeight(math.abs(y) + 20)
+        else
+            -- Not max level — show the standard "no guides" message
+            local noData = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+            noData:SetFont(STANDARD_TEXT_FONT, 11, "")
+            noData:SetText("No guides available for " .. expLabel .. " yet.\nGuides are added in Data/Guides/.")
+            noData:SetTextColor(0.55, 0.50, 0.40, 1)
+            noData:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            noData:SetWidth(w)
+            noData:SetWordWrap(true)
+            content:SetHeight(100)
+        end
+
         self._renderingMiddle = false
         return
     end

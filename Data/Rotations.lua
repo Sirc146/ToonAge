@@ -251,9 +251,9 @@ R[253] = {
               -- Debuff shares the cast ID. Only suggest when missing or in the
               -- last 3s, otherwise it wins slot 1 forever and the bar never moves.
               when=C.DebuffRefresh(257284, 3) },
-            { spellID=217200, name="Barbed Shot",       priority=2, why="Maintain Frenzy stacks on pet — never let stacks drop. 2 charges.", tags={"core"} },
+            { spellID=217200, name="Barbed Shot",       priority=2, why="Maintain Frenzy stacks on pet — never let stacks drop. 2 charges.", tags={"core"}, when=C.BuffRefresh(272790, 3) },
             { spellID=34026,  name="Kill Command",      priority=3, why="Primary damage ability — on cooldown always.", tags={"core"} },
-            { spellID=193455, name="Cobra Shot",        priority=4, why="Filler — generates Focus, reduces Kill Command CD by 1s.", tags={"active"} },
+            { spellID=193455, name="Cobra Shot",        priority=4, why="Filler — generates Focus, reduces Kill Command CD by 1s.", tags={"active"}, when=C.PowerAtLeast(35) },
             { spellID=19574,  name="Bestial Wrath",     priority=5, why="Primary cooldown — +25% pet damage for 15s. On cooldown.", tags={"cd"}, isCd=true },
             { spellID=271788, name="Kill Shot",         priority=6, why="Execute under 20% HP — always priority.", tags={"active"}, when=C.ExecuteOrProc(20) },
         },
@@ -500,12 +500,12 @@ R[70] = { -- Retribution
     solo = {
         tip = "Ret solo: Templar's Verdict at 3+ HP, Blade of Justice on CD, Judgment on CD, Crusader Strike filler. Wings for burst.",
         priorities = {
-            { spellID=85256,  name="Templar's Verdict", priority=1, why="At 3+ Holy Power — primary spender.", tags={"core"} },
+            { spellID=85256,  name="Templar's Verdict", priority=1, why="At 3+ Holy Power — primary spender.", tags={"core"}, when=C.PowerAtLeast(3) },
             { spellID=184575, name="Blade of Justice",  priority=2, why="2 HP gen — always on CD.", tags={"core"} },
             { spellID=20271,  name="Judgment",          priority=3, why="HP gen + damage buff window.", tags={"core"} },
-            { spellID=35395,  name="Crusader Strike",   priority=4, why="Filler HP gen.", tags={"active"} },
+            { spellID=35395,  name="Crusader Strike",   priority=4, why="Filler HP gen.", tags={"active"}, when=C.PowerBelow(4) },
             { spellID=275773, name="Hammer of Wrath",   priority=5, why="Execute or during Wings.", tags={"active"}, when=C.ExecuteOrProc(20) },
-            { spellID=255937, name="Wake of Ashes",     priority=nil, isCd=true, why="3 HP instant + AoE stun. Use on CD.", tags={"cd"} },
+            { spellID=255937, name="Wake of Ashes",     priority=nil, isCd=true, why="3 HP instant + AoE stun. Use on CD.", tags={"cd"}, when=C.PowerBelow(3) },
             { spellID=31884,  name="Avenging Wrath",    priority=nil, isCd=true, isMajorCd=true, why="Burst window — enables HoW spam.", tags={"cd"} },
         },
     },
@@ -569,10 +569,10 @@ R[251] = { -- Frost DK
     solo = {
         tip = "Frost DK solo: Obliterate with Killing Machine procs, Howling Blast for AoE/Rime procs, Frost Strike to dump RP.",
         priorities = {
-            { spellID=49020,  name="Obliterate",        priority=1, why="Core hit — empowered by Killing Machine.", tags={"core"} },
-            { spellID=49184,  name="Howling Blast",     priority=2, why="On Rime proc (free) or to apply Frost Fever.", tags={"core"} },
-            { spellID=49143,  name="Frost Strike",      priority=3, why="RP dump — never overcap.", tags={"core"} },
-            { spellID=196770, name="Remorseless Winter", priority=4, why="AoE on 3+ targets.", tags={"aoe"} },
+            { spellID=49020,  name="Obliterate",        priority=1, why="Core hit — empowered by Killing Machine.", tags={"core"}, when=C.HasBuff(51124) },
+            { spellID=49184,  name="Howling Blast",     priority=2, why="On Rime proc (free) or to apply Frost Fever.", tags={"core"}, when=C.Or(C.HasBuff(59052), C.NoDebuff(55095)) },
+            { spellID=49143,  name="Frost Strike",      priority=3, why="RP dump — never overcap.", tags={"core"}, when=C.PowerPctAtLeast(80) },
+            { spellID=196770, name="Remorseless Winter", priority=4, why="AoE on 3+ targets.", tags={"aoe"}, when=C.AoE(3) },
             { spellID=51271,  name="Pillar of Frost",   priority=nil, isCd=true, isMajorCd=true, why="Major burst — Obliterate spam during.", tags={"cd"} },
         },
     },
@@ -635,10 +635,10 @@ R[577] = { -- Havoc
     solo = {
         tip = "Havoc solo: Demon's Bite to gen Fury, Chaos Strike at 40+ Fury, Eye Beam on 2+ mobs. Blade Dance for AoE.",
         priorities = {
-            { spellID=162243, name="Demon's Bite",      priority=1, why="Fury generator — filler between spenders.", tags={"core"} },
-            { spellID=162794, name="Chaos Strike",      priority=2, why="At 40+ Fury — primary ST spender.", tags={"core"} },
-            { spellID=198013, name="Eye Beam",          priority=3, why="Massive AoE — use on 2+ targets or with Demonic.", tags={"core"} },
-            { spellID=188499, name="Blade Dance",       priority=4, why="AoE + dodge. Use on 2+ mobs.", tags={"core"} },
+            { spellID=162243, name="Demon's Bite",      priority=1, why="Fury generator — filler between spenders.", tags={"core"}, when=C.PowerBelow(40) },
+            { spellID=162794, name="Chaos Strike",      priority=2, why="At 40+ Fury — primary ST spender.", tags={"core"}, when=C.PowerAtLeast(40) },
+            { spellID=198013, name="Eye Beam",          priority=3, why="Massive AoE — use on 2+ targets or with Demonic.", tags={"core"}, when=C.AoE(2) },
+            { spellID=188499, name="Blade Dance",       priority=4, why="AoE + dodge. Use on 2+ mobs.", tags={"core"}, when=C.AoE(2) },
             { spellID=232893, name="Fel Rush",          priority=5, why="Mobility + damage (don't waste charges).", tags={"active"} },
             { spellID=191427, name="Metamorphosis",     priority=nil, isCd=true, isMajorCd=true, why="Major burst — Annihilation replaces Chaos Strike.", tags={"cd"} },
         },
@@ -867,10 +867,10 @@ R[63] = { -- Fire
     solo = {
         tip = "Fire solo: Fireball for Hot Streak procs, Pyroblast on Hot Streak (instant). Fire Blast to force crits.",
         priorities = {
-            { spellID=11366,  name="Pyroblast",         priority=1, why="On Hot Streak proc — instant cast.", tags={"core"} },
-            { spellID=108853, name="Fire Blast",        priority=2, why="Always crits — use to force Hot Streak.", tags={"core"} },
-            { spellID=133,    name="Fireball",          priority=3, why="Filler — fishing for crits.", tags={"core"} },
-            { spellID=257541, name="Phoenix Flames",    priority=4, why="Guaranteed crit — 3 charges.", tags={"active"} },
+            { spellID=11366,  name="Pyroblast",         priority=1, why="On Hot Streak proc — instant cast.", tags={"core"}, when=C.HasBuff(48108) },
+            { spellID=108853, name="Fire Blast",        priority=2, why="Always crits — use to force Hot Streak.", tags={"core"}, when=C.And(C.HasBuff(48107), C.NoBuff(48108)) },
+            { spellID=133,    name="Fireball",          priority=3, why="Filler — fishing for crits.", tags={"core"}, when=C.NoBuff(48108) },
+            { spellID=257541, name="Phoenix Flames",    priority=4, why="Guaranteed crit — 3 charges.", tags={"active"}, when=C.HasBuff(48107) },
             { spellID=190319, name="Combustion",        priority=nil, isCd=true, isMajorCd=true, why="Guaranteed crits — Pyro spam.", tags={"cd"} },
         },
     },
