@@ -88,6 +88,7 @@ Modules\Navigation\TravelRouter.lua
 # ── Modules: Progression ──────────────────────────────────────────────
 Modules\Progression\XPTracker.lua
 Modules\Progression\Weekly.lua
+Modules\Progression\WorldQuests.lua
 Modules\Progression\Delves.lua
 Modules\Progression\DungeonGuide.lua
 Modules\Progression\DungeonTalents.lua

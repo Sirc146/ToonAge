@@ -198,6 +198,12 @@ function Weekly:Render(content, sidebar)
     for _, f in ipairs(self.frames) do f:Hide(); f:SetParent(nil) end
     self.frames = {}
 
+    -- Render world quests in the sidebar
+    local WQMod = TA:GetModule("WorldQuests")
+    if WQMod and WQMod.RenderSidebar and sidebar then
+        WQMod:RenderSidebar(sidebar, "all")
+    end
+
     local y    = -10
     local padL = 10
     local w    = content:GetWidth() - 20
