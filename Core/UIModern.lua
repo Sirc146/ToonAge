@@ -792,3 +792,279 @@ function M:CreateStatus(parent, text, status)
     fs:SetTextColor(unpack(clr))
     return fs
 end
+
+-- =============================================================================
+-- SECTION 8 — UNIFIED COMPONENT FACTORY
+-- =============================================================================
+-- Standardized UI components for all tabs. Every module Render() should prefer
+-- these over hand-rolling backdrops, font strings, and rows. This ensures:
+--   1. Consistent 14px side padding
+--   2. Consistent 8px row spacing
+--   3. Same typography hierarchy everywhere
+--   4. Same hover/click behavior
+--   5. Same color language
+--
+-- Usage pattern inside a Render():
+--   local UI = TA.Modern
+--   local y = UI:SectionHeader(content, y, w, "GREAT VAULT")
+--   local card, y = UI:InfoCard(content, y, w, { ... })
+--   local row, y = UI:DataRow(content, y, w, { ... })
+
+local PAD  = 14
+local RPAD = 8
+
+--- Section header — uppercase gold text with a separator line below.
+--- @param parent Frame
+--- @param y number current vertical offset
+--- @param w number available width
+--- @param title string
+--- @return number newY
+function M:SectionHeader(parent, y, w, title)
+    local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hdr:SetFont(self.FONT_HEADER, self.SIZE_H2, "OUTLINE")
+    hdr:SetText(title)
+    hdr:SetTextColor(1.00, 0.82, 0.00, 1)
+    hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
+    y = y - 16
+
+    local line = parent:CreateTexture(nil, "ARTWORK")
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT",  parent, "TOPLEFT",  PAD, y)
+    line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -PAD, y)
+    line:SetColorTexture(0.55, 0.40, 0.08, 0.25)
+    y = y - RPAD
+
+    return y
+end
+
+--- Sub-header — smaller, muted, no separator.
+--- @return number newY
+function M:SubHeader(parent, y, w, title)
+    local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hdr:SetFont(self.FONT_HEADER, self.SIZE_H3, "OUTLINE")
+    hdr:SetText(title)
+    hdr:SetTextColor(0.55, 0.40, 0.08, 1)
+    hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
+    return y - 16
+end
+
+--- Info card — a styled container frame for a group of related content.
+--- Returns the card frame and the new Y offset below it.
+--- @param parent Frame
+--- @param y number
+--- @param w number
+--- @param opts table { height=N, style="card"|"success"|"warning"|"danger" }
+--- @return Frame card, number newY
+function M:InfoCard(parent, y, w, opts)
+    opts = opts or {}
+    local h = opts.height or 48
+
+    local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    card:SetSize(w - PAD * 2, h)
+    card:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
+    self:ApplyBackdrop(card, opts.style or "card")
+
+    return card, y - h - RPAD
+end
+
+--- Data row — a single-line key/value display with optional status color.
+--- @param parent Frame
+--- @param y number
+--- @param w number
+--- @param opts table { label=str, value=str, status="ok"|"warning"|"danger"|nil }
+--- @return Frame row, number newY
+function M:DataRow(parent, y, w, opts)
+    opts = opts or {}
+    local rowH = 22
+
+    local row = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    row:SetSize(w - PAD * 2, rowH)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
+    row:SetBackdrop(self.BACKDROP_FLAT)
+    row:SetBackdropColor(0.05, 0.05, 0.06, 0.8)
+    row:SetBackdropBorderColor(0.20, 0.20, 0.22, 0.4)
+
+    local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetFont(self.FONT_BODY, self.SIZE_BODY, "")
+    label:SetText(opts.label or "")
+    label:SetTextColor(unpack(self.CLR_TEXT_SECONDARY))
+    label:SetPoint("LEFT", row, "LEFT", 10, 0)
+
+    local value = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    value:SetFont(self.FONT_MONO, self.SIZE_BODY, "OUTLINE")
+    value:SetText(opts.value or "")
+    value:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+
+    if opts.status == "ok" then
+        value:SetTextColor(unpack(self.CLR_TEXT_SUCCESS))
+    elseif opts.status == "warning" then
+        value:SetTextColor(unpack(self.CLR_TEXT_WARNING))
+    elseif opts.status == "danger" then
+        value:SetTextColor(unpack(self.CLR_TEXT_DANGER))
+    else
+        value:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+    end
+
+    return row, y - rowH - 4
+end
+
+--- Progress bar — a horizontal fill bar with label and percentage.
+--- @param parent Frame
+--- @param y number
+--- @param w number
+--- @param opts table { label=str, current=N, max=N, color={r,g,b} }
+--- @return Frame bar, number newY
+function M:ProgressBar(parent, y, w, opts)
+    opts = opts or {}
+    local barH = 26
+    local barW = w - PAD * 2
+
+    local container = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    container:SetSize(barW, barH)
+    container:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
+    container:SetBackdrop(self.BACKDROP_FLAT)
+    container:SetBackdropColor(0.04, 0.04, 0.05, 0.9)
+    container:SetBackdropBorderColor(0.20, 0.20, 0.22, 0.4)
+
+    -- Label
+    local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetFont(self.FONT_BODY, self.SIZE_CAPTION, "")
+    label:SetText(opts.label or "")
+    label:SetTextColor(unpack(self.CLR_TEXT_SECONDARY))
+    label:SetPoint("TOPLEFT", container, "TOPLEFT", 8, -3)
+
+    -- Fill
+    local current = opts.current or 0
+    local max = opts.max or 1
+    local pct = max > 0 and math.min(1, current / max) or 0
+    local fillW = math.max(2, math.floor((barW - 4) * pct))
+    local clr = opts.color or { 0.40, 0.75, 1.00 }
+
+    local fill = container:CreateTexture(nil, "ARTWORK")
+    fill:SetSize(fillW, 6)
+    fill:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 2, 4)
+    fill:SetColorTexture(clr[1], clr[2], clr[3], 0.9)
+
+    -- Percentage text
+    local pctF = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    pctF:SetFont(self.FONT_MONO, self.SIZE_CAPTION, "OUTLINE")
+    pctF:SetText(math.floor(pct * 100) .. "%")
+    pctF:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+    pctF:SetPoint("RIGHT", container, "RIGHT", -8, 0)
+
+    return container, y - barH - 4
+end
+
+--- Clickable action button — styled consistent with the addon's look.
+--- @param parent Frame
+--- @param y number
+--- @param w number
+--- @param opts table { text=str, onClick=fn, style="primary"|"secondary"|"danger" }
+--- @return Button btn, number newY
+function M:ActionButton(parent, y, w, opts)
+    opts = opts or {}
+    local btnH = 28
+    local btnW = opts.width or (w - PAD * 2)
+
+    local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    btn:SetSize(btnW, btnH)
+    btn:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
+
+    local style = opts.style or "primary"
+    if style == "primary" then
+        self:ApplyBackdrop(btn, "success")
+    elseif style == "danger" then
+        self:ApplyBackdrop(btn, "danger")
+    else
+        self:ApplyBackdrop(btn, "card")
+    end
+
+    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetFont(self.FONT_HEADER, self.SIZE_BODY, "OUTLINE")
+    label:SetText(opts.text or "Button")
+    label:SetAllPoints(btn)
+    label:SetJustifyH("CENTER")
+
+    if style == "primary" then
+        label:SetTextColor(unpack(self.CLR_TEXT_SUCCESS))
+    elseif style == "danger" then
+        label:SetTextColor(unpack(self.CLR_TEXT_DANGER))
+    else
+        label:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+    end
+
+    if opts.onClick then
+        btn:SetScript("OnClick", opts.onClick)
+    end
+
+    -- Hover feedback
+    btn:SetScript("OnEnter", function(f)
+        f:SetBackdropColor(0.12, 0.12, 0.14, 1)
+        label:SetTextColor(1, 1, 1, 1)
+    end)
+    btn:SetScript("OnLeave", function(f)
+        if style == "primary" then
+            M:ApplyBackdrop(f, "success")
+            label:SetTextColor(unpack(M.CLR_TEXT_SUCCESS))
+        elseif style == "danger" then
+            M:ApplyBackdrop(f, "danger")
+            label:SetTextColor(unpack(M.CLR_TEXT_DANGER))
+        else
+            M:ApplyBackdrop(f, "card")
+            label:SetTextColor(unpack(M.CLR_TEXT_PRIMARY))
+        end
+    end)
+
+    return btn, y - btnH - RPAD
+end
+
+--- Badge/chip — a small inline tag element.
+--- @param parent Frame or FontString (for inline anchoring)
+--- @param text string
+--- @param color table {r,g,b}
+--- @return FontString badge
+function M:Badge(parent, text, color)
+    color = color or self.CLR_TEXT_ACCENT
+    local badge = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    badge:SetFont(self.FONT_CAPTION, self.SIZE_TINY, "OUTLINE")
+    badge:SetText(text)
+    badge:SetTextColor(color[1], color[2], color[3], 1)
+    return badge
+end
+
+--- Divider — a thin horizontal line for visual separation.
+--- @param parent Frame
+--- @param y number
+--- @param w number
+--- @return number newY
+function M:Divider(parent, y, w)
+    local line = parent:CreateTexture(nil, "ARTWORK")
+    line:SetHeight(1)
+    line:SetPoint("TOPLEFT",  parent, "TOPLEFT",  PAD, y)
+    line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -PAD, y)
+    line:SetColorTexture(0.25, 0.25, 0.28, 0.3)
+    return y - 6
+end
+
+--- Spacer — just returns a new Y with padding.
+--- @param y number
+--- @param amount number|nil (default 8)
+--- @return number newY
+function M:Spacer(y, amount)
+    return y - (amount or RPAD)
+end
+
+--- Empty state message — centered muted text for tabs with no content.
+--- @param parent Frame
+--- @param text string
+function M:EmptyState(parent, text)
+    local msg = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    msg:SetFont(self.FONT_BODY, self.SIZE_H3, "")
+    msg:SetText(text)
+    msg:SetTextColor(unpack(self.CLR_TEXT_SECONDARY))
+    msg:SetPoint("CENTER", parent, "CENTER", 0, 20)
+    msg:SetWidth(parent:GetWidth() - 60)
+    msg:SetWordWrap(true)
+    msg:SetJustifyH("CENTER")
+    return msg
+end
