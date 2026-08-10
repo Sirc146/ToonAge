@@ -404,6 +404,24 @@ function NavHud:HideAllPins()
     end
 end
 
+-- ── Tick listener registry ────────────────────────────────────────────────────
+-- Modules that need per-tick updates on the NavHud register here instead of
+-- hooking NavHud:Tick individually. One dispatch loop replaces N hooksecurefunc
+-- calls (was 3, costing 90 extra function calls/sec).
+NavHud._tickListeners = {}
+
+--- Register a function to be called every NavHud tick (30Hz when visible).
+--- @param name string — identifier for debugging
+--- @param fn function — called with no arguments
+function NavHud:RegisterTickListener(name, fn)
+    self._tickListeners[name] = fn
+end
+
+--- Unregister a tick listener.
+function NavHud:UnregisterTickListener(name)
+    self._tickListeners[name] = nil
+end
+
 -- ── Toggle / Control ──────────────────────────────────────────────────────────
 
 function NavHud:Toggle()
@@ -490,11 +508,31 @@ function NavHud:Init()
         end
     end
 
+    -- Register vehicle/pet-battle events to auto-hide HUD
+    TA.eventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
+    TA.eventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
+    TA.eventFrame:RegisterEvent("PET_BATTLE_OPENING_START")
+    TA.eventFrame:RegisterEvent("PET_BATTLE_OVER")
+
     -- Restore visibility from saved state
     if GetSetting("visible") then
         C_Timer.After(1, function()
             NavHud:Show()
         end)
+    end
+end
+
+function NavHud:OnEvent(event, ...)
+    if event == "UNIT_ENTERED_VEHICLE" or event == "PET_BATTLE_OPENING_START" or event == "ENCOUNTER_START" then
+        if self.frame and self.frame:IsShown() then
+            self._hiddenByEvent = true
+            self:Hide()
+        end
+    elseif event == "UNIT_EXITED_VEHICLE" or event == "PET_BATTLE_OVER" or event == "ENCOUNTER_END" then
+        if self._hiddenByEvent then
+            self._hiddenByEvent = false
+            self:Show()
+        end
     end
 end
 

@@ -177,38 +177,54 @@ end
 -- used as a key or in arithmetic, not just the ID.
 local function UpdateBuffs()
     local s = CS.state
-    wipe(s.buffs)
+    -- Mark existing entries as stale, then overwrite in place (avoids wipe+recreate GC churn)
+    for id in pairs(s.buffs) do s.buffs[id].stacks = 0; s.buffs[id].expires = 0; s.buffs[id]._active = false end
     for i = 1, 40 do
         local ok, auraData = pcall(C_UnitAuras.GetBuffDataByIndex, "player", i)
-        -- nil auraData means we ran past the last aura: a real end-of-list.
         if not ok or not auraData then break end
         local id = U.SafeNum(auraData.spellId)
         if id > 0 then
-            s.buffs[id] = {
-                stacks  = U.SafeNum(auraData.applications),
-                expires = U.SafeNum(auraData.expirationTime),
-            }
+            local entry = s.buffs[id]
+            if not entry then
+                entry = { stacks = 0, expires = 0, _active = true }
+                s.buffs[id] = entry
+            end
+            entry.stacks  = U.SafeNum(auraData.applications)
+            entry.expires = U.SafeNum(auraData.expirationTime)
+            entry._active = true
         end
+    end
+    -- Remove entries that are no longer active
+    for id, entry in pairs(s.buffs) do
+        if not entry._active then s.buffs[id] = nil end
     end
 end
 
 local function UpdateDebuffsOnTarget()
     local s = CS.state
-    wipe(s.debuffs)
-    if not s.targetExists then return end
+    if not s.targetExists then
+        for id in pairs(s.debuffs) do s.debuffs[id] = nil end
+        return
+    end
+    -- Mark existing entries stale, overwrite in place
+    for id in pairs(s.debuffs) do s.debuffs[id].stacks = 0; s.debuffs[id].expires = 0; s.debuffs[id]._active = false end
     for i = 1, 40 do
-        -- 12.0: GetDebuffDataByIndex can error when tainted, and its returned
-        -- fields are secret -- see the note above UpdateBuffs for why the key
-        -- must be coerced before it touches the table.
         local ok, auraData = pcall(C_UnitAuras.GetDebuffDataByIndex, "target", i, "PLAYER")
         if not ok or not auraData then break end
         local id = U.SafeNum(auraData.spellId)
         if id > 0 then
-            s.debuffs[id] = {
-                stacks  = U.SafeNum(auraData.applications),
-                expires = U.SafeNum(auraData.expirationTime),
-            }
+            local entry = s.debuffs[id]
+            if not entry then
+                entry = { stacks = 0, expires = 0, _active = true }
+                s.debuffs[id] = entry
+            end
+            entry.stacks  = U.SafeNum(auraData.applications)
+            entry.expires = U.SafeNum(auraData.expirationTime)
+            entry._active = true
         end
+    end
+    for id, entry in pairs(s.debuffs) do
+        if not entry._active then s.debuffs[id] = nil end
     end
 end
 

@@ -423,6 +423,12 @@ local PERSISTENT_EVENTS = {
     "GET_ITEM_INFO_RECEIVED",
     "QUEST_ACCEPTED",              -- needed by DevHelpers recorder & QuestTracker; registered here
                                    -- to guarantee it fires regardless of module init order.
+    "ENCOUNTER_START",             -- hide HUD elements during boss fights (DBM/BigWigs bridge)
+    "ENCOUNTER_END",               -- restore HUD after boss kill/wipe
+    "UNIT_ENTERED_VEHICLE",        -- hide HUD in vehicles
+    "UNIT_EXITED_VEHICLE",         -- restore HUD after vehicle exit
+    "PET_BATTLE_OPENING_START",    -- hide HUD in pet battles
+    "PET_BATTLE_OVER",             -- restore HUD after pet battle
 }
 
 -- Register one-shot boot events

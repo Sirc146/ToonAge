@@ -831,6 +831,26 @@ function Arrow:Init()
     self:InitFrame()
     local saved = TA.charDB and TA.charDB.arrow
     if saved and saved.visible then self.frame:Show() end
+
+    -- Register vehicle/pet-battle events to auto-hide HUD
+    TA.eventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
+    TA.eventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
+    TA.eventFrame:RegisterEvent("PET_BATTLE_OPENING_START")
+    TA.eventFrame:RegisterEvent("PET_BATTLE_OVER")
+end
+
+function Arrow:OnEvent(event, ...)
+    if event == "UNIT_ENTERED_VEHICLE" or event == "PET_BATTLE_OPENING_START" or event == "ENCOUNTER_START" then
+        if self.frame and self.frame:IsShown() then
+            self._hiddenByEvent = true
+            self.frame:Hide()
+        end
+    elseif event == "UNIT_EXITED_VEHICLE" or event == "PET_BATTLE_OVER" or event == "ENCOUNTER_END" then
+        if self._hiddenByEvent then
+            self._hiddenByEvent = false
+            if self.frame then self.frame:Show() end
+        end
+    end
 end
 
 Arrow.SlashCommands = {

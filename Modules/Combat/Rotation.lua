@@ -687,6 +687,14 @@ function Rotation:UpdatePrediction()
             self.predictBar:Show()
         end
     end
+
+    -- Auto-hide when leaving combat (save CPU — OnUpdate stops ticking on hidden frames)
+    if not inCombat and self._wasInCombat then
+        if self.predictBar and self.predictBar:IsVisible() then
+            self.predictBar:Hide()
+        end
+    end
+
     self._wasInCombat = inCombat or false
 
     local specID    = self.currentSpecID or U.GetPlayerSpec()
