@@ -606,3 +606,178 @@ function U.GetSpellTextureStr(spellID, size)
     if not tex then return "" end
     return U.GetTextureStr(tex, size or 16)
 end
+
+-- ── Smart Step Text Resolution ────────────────────────────────────────────────
+-- Resolves placeholder step text ("Quest 12345") into real quest titles and
+-- objective descriptions at display time using the live WoW API.
+-- This makes generated guide stubs (from import_apr_routes.py) show real
+-- quest names without requiring pre-authored text in the data files.
+
+--- Resolve a guide step's display text. If the step has a real authored text
+--- that isn't a placeholder, returns it as-is. Otherwise queries the API.
+--- @param step table — guide step with .questID, .type, .text
+--- @return string displayText — human-readable step description
+function U.ResolveStepText(step)
+    if not step then return "" end
+
+    -- If text is already authored (not a placeholder), use it
+    local text = step.text or ""
+    if text ~= "" and not text:match("^Quest %d+$") then
+        return text
+    end
+
+    -- No questID — nothing to resolve
+    local qid = step.questID
+    if not qid or qid == 0 then return text end
+
+    -- Resolve quest title from the API
+    local title = C_QuestLog.GetTitleForQuestID(qid)
+    if not title or title == "" then
+        -- Quest data might not be cached yet — return what we have
+        return text
+    end
+
+    -- Build contextual text based on step type
+    local stepType = step.type or "quest"
+    if stepType == "pickup" then
+        return "Pick up: " .. title
+    elseif stepType == "turnin" then
+        return "Turn in: " .. title
+    elseif stepType == "quest" or stepType == "objective" then
+        -- Try to get the current objective text for richer display
+        local objectives = C_QuestLog.GetQuestObjectives(qid)
+        if objectives and #objectives > 0 then
+            -- Find first incomplete objective
+            for _, obj in ipairs(objectives) do
+                if not obj.finished and obj.text and obj.text ~= "" then
+                    return title .. " — " .. obj.text
+                end
+            end
+            -- All complete
+            return title .. " (complete)"
+        end
+        return title
+    else
+        return title
+    end
+end
+
+--- Resolve text for an array of steps (batch, for rendering lists).
+--- Modifies nothing — returns a new display string per step.
+--- @param steps table — array of guide steps
+--- @param startIdx number
+--- @param endIdx number
+--- @return table — array of { idx = N, text = "resolved text" }
+function U.ResolveStepTexts(steps, startIdx, endIdx)
+    local results = {}
+    for i = startIdx, endIdx do
+        local step = steps[i]
+        if step then
+            results[#results + 1] = { idx = i, text = U.ResolveStepText(step) }
+        end
+    end
+    return results
+end
+
+-- ── Auto-Pilot Mode ───────────────────────────────────────────────────────────
+-- When no guide is active or the guide has stub coords, Auto-Pilot reads the
+-- player's quest log directly and navigates to objectives using Blizzard's own
+-- waypoint system. No pre-authored data required.
+
+--- Get the best quest to navigate to right now (Auto-Pilot logic).
+--- Priority: supertracked quest → closest objective → most progressed quest.
+--- @return table|nil — { questID, title, mapID, x, y, objectiveText }
+function U.GetAutoPilotTarget()
+    -- Priority 1: Player's explicitly supertracked quest
+    local superQID = C_SuperTrack and C_SuperTrack.GetSuperTrackedQuestID
+                 and C_SuperTrack.GetSuperTrackedQuestID()
+    if superQID and superQID > 0 then
+        local target = U._BuildQuestTarget(superQID)
+        if target then return target end
+    end
+
+    -- Priority 2: Find the quest with the closest waypoint
+    local playerMap = C_Map.GetBestMapForUnit("player")
+    if not playerMap then return nil end
+
+    local bestTarget = nil
+    local bestDist = 999999
+
+    local numEntries = C_QuestLog.GetNumQuestLogEntries() or 0
+    for i = 1, numEntries do
+        local info = C_QuestLog.GetInfo(i)
+        if info and not info.isHeader and info.questID then
+            if not C_QuestLog.IsQuestFlaggedCompleted(info.questID) then
+                local target = U._BuildQuestTarget(info.questID)
+                if target and target.x and target.y then
+                    -- Estimate distance (simple map-unit distance)
+                    local pos = C_Map.GetPlayerMapPosition(playerMap, "player")
+                    if pos then
+                        local px, py = pos:GetXY()
+                        local dx = (target.x or 0) - px
+                        local dy = (target.y or 0) - py
+                        local dist = dx * dx + dy * dy
+                        if dist < bestDist then
+                            bestDist = dist
+                            bestTarget = target
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return bestTarget
+end
+
+--- Build a navigation target from a quest ID using Blizzard's waypoint API.
+--- @param questID number
+--- @return table|nil — { questID, title, mapID, x, y, objectiveText }
+function U._BuildQuestTarget(questID)
+    if not questID or questID == 0 then return nil end
+
+    local title = C_QuestLog.GetTitleForQuestID(questID) or ""
+
+    -- Try GetNextWaypoint (gives the real objective location)
+    local wpMap, wpX, wpY
+    if C_QuestLog.GetNextWaypoint then
+        local ok, m, x, y = pcall(C_QuestLog.GetNextWaypoint, questID)
+        if ok and m and x and y and (x ~= 0 or y ~= 0) then
+            wpMap, wpX, wpY = m, x, y
+        end
+    end
+
+    -- Fallback: GetNextWaypointForMap with current map
+    if not wpMap and C_QuestLog.GetNextWaypointForMap then
+        local playerMap = C_Map.GetBestMapForUnit("player")
+        if playerMap then
+            local ok, x, y = pcall(C_QuestLog.GetNextWaypointForMap, questID, playerMap)
+            if ok and x and y and (x ~= 0 or y ~= 0) then
+                wpMap, wpX, wpY = playerMap, x, y
+            end
+        end
+    end
+
+    if not wpMap then return nil end
+
+    -- Get objective text
+    local objText = ""
+    local objectives = C_QuestLog.GetQuestObjectives(questID)
+    if objectives then
+        for _, obj in ipairs(objectives) do
+            if not obj.finished and obj.text then
+                objText = obj.text
+                break
+            end
+        end
+    end
+
+    return {
+        questID       = questID,
+        title         = title,
+        mapID         = wpMap,
+        x             = wpX,
+        y             = wpY,
+        objectiveText = objText,
+    }
+end
