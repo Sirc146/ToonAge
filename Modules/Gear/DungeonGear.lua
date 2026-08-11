@@ -163,6 +163,72 @@ function DG:GetFormattedSuggestions()
     return lines
 end
 
+--- Rank dungeons by total upgrade potential for this character.
+--- Returns an ordered array of { dungeon, upgradeCount, totalScoreGain, items={} }
+--- @param maxDungeons number — how many to return (default 3)
+--- @return table
+function DG:RankDungeons(maxDungeons)
+    maxDungeons = maxDungeons or 3
+    local primaryStat = self:GetPlayerPrimaryStat()
+    local Gear = TA:GetModule("Gear")
+
+    -- Build current score per slot
+    local slotScores = {}
+    for slotID = 1, 18 do
+        if slotID ~= 4 then
+            local link = GetInventoryItemLink("player", slotID)
+            if link and Gear and Gear.CalculateItemScore then
+                local specID = U.GetPlayerSpec and U.GetPlayerSpec()
+                local mode = (TA.charDB and TA.charDB.pvxMode) or "pve"
+                slotScores[slotID] = Gear.CalculateItemScore(link, specID, mode) or 0
+            else
+                slotScores[slotID] = link and (GetDetailedItemLevelInfo(link) or 0) * 3 or 0
+            end
+        end
+    end
+
+    -- Score each dungeon by how many slots it can upgrade
+    local dungeonScores = {}
+    for _, loot in ipairs(self.LOOT_TABLE) do
+        if loot.stat == primaryStat then
+            local lootSlot = SLOT_MAP[loot.slot]
+            if lootSlot then
+                local currentScore = slotScores[lootSlot] or 0
+                local lootScore = (loot.ilvl or 0) * 3  -- approximate; real scoring needs the item link
+                local gain = lootScore - currentScore
+                if gain > 0 then
+                    local key = loot.dungeon
+                    if not dungeonScores[key] then
+                        dungeonScores[key] = { dungeon = key, upgradeCount = 0, totalScoreGain = 0, items = {} }
+                    end
+                    dungeonScores[key].upgradeCount = dungeonScores[key].upgradeCount + 1
+                    dungeonScores[key].totalScoreGain = dungeonScores[key].totalScoreGain + gain
+                    table.insert(dungeonScores[key].items, {
+                        boss = loot.boss,
+                        slot = loot.slot,
+                        ilvl = loot.ilvl,
+                        gain = math.floor(gain),
+                    })
+                end
+            end
+        end
+    end
+
+    -- Sort by total score gain descending
+    local ranked = {}
+    for _, d in pairs(dungeonScores) do
+        table.insert(ranked, d)
+    end
+    table.sort(ranked, function(a, b) return a.totalScoreGain > b.totalScoreGain end)
+
+    -- Trim to max
+    local results = {}
+    for i = 1, math.min(maxDungeons, #ranked) do
+        results[i] = ranked[i]
+    end
+    return results
+end
+
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function DG:Init()
@@ -178,6 +244,24 @@ DG.SlashCommands = {
             TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Dungeon gear upgrades for your weakest slots:")
             for _, line in ipairs(lines) do
                 TA:Raw(TA.LOG.OUTPUT, "  " .. line)
+            end
+        end
+    end,
+
+    dungeonrank = function(self)
+        local ranked = self:RankDungeons(5)
+        if #ranked == 0 then
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r No dungeon upgrades found for your spec.")
+        else
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Best dungeons for upgrades (by total gain):")
+            for i, d in ipairs(ranked) do
+                TA:Raw(TA.LOG.OUTPUT, string.format("  |cFF4AFF7A%d.|r |cFFFFFFFF%s|r — %d upgrades, +%d score",
+                    i, d.dungeon, d.upgradeCount, math.floor(d.totalScoreGain)))
+                for _, item in ipairs(d.items) do
+                    local slotName = item.slot:gsub("INVTYPE_", ""):gsub("2H", "2H-"):lower()
+                    TA:Raw(TA.LOG.OUTPUT, string.format("     |cFF888780%s from %s (%d ilvl, +%d)|r",
+                        slotName, item.boss, item.ilvl, item.gain))
+                end
             end
         end
     end,
