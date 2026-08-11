@@ -154,8 +154,15 @@ local function ValidateStep(id, n, step)
         ok = false
     end
     if type(step.text) ~= "string" or step.text == "" then
-        LogError(id, n, "missing or empty 'text'")
-        ok = false
+        -- Allow steps with a questID to skip text validation —
+        -- U.ResolveStepText() resolves titles at runtime from the API.
+        if not step.questID then
+            LogError(id, n, "missing or empty 'text'")
+            ok = false
+        else
+            -- Ensure text field exists for downstream code that reads it
+            step.text = ""
+        end
     end
     if step.coord ~= nil and not ValidateCoord(id, n, step.coord) then
         ok = false
