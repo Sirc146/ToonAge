@@ -47,6 +47,7 @@ Data\Guides\TAG_Naigtal.lua
 # ── Modules: Infrastructure (load first) ──────────────────────────────
 Modules\Infrastructure\DevHelpers.lua
 Modules\Infrastructure\ErrorLog.lua
+Modules\Infrastructure\CoordHarvester.lua
 
 # ── Modules: Combat (helpers before consumers) ────────────────────────
 Modules\Combat\TalentsHelpers.lua
