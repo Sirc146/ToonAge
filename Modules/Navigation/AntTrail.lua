@@ -234,9 +234,17 @@ function AntTrail:InstallHook()
     local NavHud = TA:GetModule("NavHud")
     if not NavHud then return end
 
-    hooksecurefunc(NavHud, "Tick", function()
-        AntTrail:UpdateOnNavHud()
-    end)
+    -- Use the tick listener registry instead of hooksecurefunc (consolidates 3 hooks → 1 dispatch)
+    if NavHud.RegisterTickListener then
+        NavHud:RegisterTickListener("AntTrail", function()
+            AntTrail:UpdateOnNavHud()
+        end)
+    else
+        -- Fallback for safety
+        hooksecurefunc(NavHud, "Tick", function()
+            AntTrail:UpdateOnNavHud()
+        end)
+    end
     self.hookActive = true
 end
 

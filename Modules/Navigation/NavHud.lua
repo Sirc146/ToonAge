@@ -396,6 +396,11 @@ function NavHud:UpdatePins(playerX, playerY, bearing, currentMap)
         self.frame.distText:SetText("")
         self.frame.stepText:SetText("")
     end
+
+    -- Dispatch to registered tick listeners (replaces triple hooksecurefunc)
+    for _, fn in pairs(self._tickListeners) do
+        fn()
+    end
 end
 
 function NavHud:HideAllPins()

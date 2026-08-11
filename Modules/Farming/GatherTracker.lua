@@ -202,10 +202,16 @@ function GatherTracker:InstallNavHudHook()
     local NavHud = TA:GetModule("NavHud")
     if not NavHud then return end
 
-    -- Hook NavHud:Tick so our dots update every frame the HUD is visible
-    hooksecurefunc(NavHud, "Tick", function()
-        GatherTracker:UpdateDotsOnNavHud()
-    end)
+    -- Use tick listener registry (consolidates 3 hooks → 1 dispatch loop)
+    if NavHud.RegisterTickListener then
+        NavHud:RegisterTickListener("GatherTracker", function()
+            GatherTracker:UpdateDotsOnNavHud()
+        end)
+    else
+        hooksecurefunc(NavHud, "Tick", function()
+            GatherTracker:UpdateDotsOnNavHud()
+        end)
+    end
 
     self.hookActive = true
 end

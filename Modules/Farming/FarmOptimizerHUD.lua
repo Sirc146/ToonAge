@@ -475,11 +475,20 @@ local function InstallNavHudHook()
     local NavHud = TA:GetModule("NavHud")
     if not NavHud then return end
 
-    hooksecurefunc(NavHud, "Tick", function()
-        if hasGatherProf then
-            RenderClusters()
-        end
-    end)
+    -- Use tick listener registry (consolidates 3 hooks → 1 dispatch loop)
+    if NavHud.RegisterTickListener then
+        NavHud:RegisterTickListener("FarmOptimizerHUD", function()
+            if hasGatherProf then
+                RenderClusters()
+            end
+        end)
+    else
+        hooksecurefunc(NavHud, "Tick", function()
+            if hasGatherProf then
+                RenderClusters()
+            end
+        end)
+    end
 
     hookInstalled = true
 end
