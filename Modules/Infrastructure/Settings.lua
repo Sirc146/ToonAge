@@ -702,4 +702,220 @@ end
 
 function Settings:Init() end
 
-Settings.SlashCommands = {}
+-- ══════════════════════════════════════════════════════════════════════════════
+-- PROFILE IMPORT/EXPORT
+-- Serializes player settings to a compact string for sharing between characters
+-- or accounts. Uses a simple key=value format that's human-readable.
+-- ══════════════════════════════════════════════════════════════════════════════
+
+--- Keys exported in a profile (subset of charDB that constitutes "preferences")
+local PROFILE_KEYS = {
+    "tracker.autoQuest",
+    "tracker.cutsceneSkip",
+    "tracker.autoEquip",
+    "tracker.replaceBlizzTracker",
+    "tracker.autoQuestGuideOnly",
+    "tracker.showAvailableQuests",
+    "tracker.smallMapPins",
+    "tracker.spoilerFree",
+    "predictBar.visible",
+    "arrow.visible",
+    "pvxMode",
+    "navhud.visible",
+    "navhud.scale",
+    "navhud.opacity",
+    "navhud.showCardinals",
+    "navhud.showCoords",
+    "navhud.showDistance",
+    "navhud.showRing",
+    "navhud.showPins",
+}
+
+--- Read a dotted key from charDB (e.g. "tracker.autoQuest" → charDB.tracker.autoQuest)
+local function ReadKey(key)
+    local parts = { strsplit(".", key) }
+    local tbl = TA.charDB
+    for i = 1, #parts - 1 do
+        tbl = tbl and tbl[parts[i]]
+    end
+    return tbl and tbl[parts[#parts]]
+end
+
+--- Write a dotted key to charDB
+local function WriteKey(key, value)
+    local parts = { strsplit(".", key) }
+    local tbl = TA.charDB
+    for i = 1, #parts - 1 do
+        tbl[parts[i]] = tbl[parts[i]] or {}
+        tbl = tbl[parts[i]]
+    end
+    tbl[parts[#parts]] = value
+end
+
+--- Export current settings as a profile string.
+function Settings:ExportProfile()
+    if not TA.charDB then return "" end
+    local lines = { "TOONAGE_PROFILE_V1" }
+    for _, key in ipairs(PROFILE_KEYS) do
+        local val = ReadKey(key)
+        if val ~= nil then
+            table.insert(lines, key .. "=" .. tostring(val))
+        end
+    end
+    -- Also export account-wide module toggles
+    if TA.db and TA.db.modules then
+        for name, enabled in pairs(TA.db.modules) do
+            table.insert(lines, "mod." .. name .. "=" .. tostring(enabled))
+        end
+    end
+    return table.concat(lines, "\n")
+end
+
+--- Import a profile string, overwriting current settings.
+--- @param str string — the profile data
+--- @return boolean success, string message
+function Settings:ImportProfile(str)
+    if not str or str == "" then return false, "Empty profile string." end
+    if not TA.charDB then return false, "Character data not loaded." end
+
+    local lines = { strsplit("\n", str) }
+    if lines[1] ~= "TOONAGE_PROFILE_V1" then
+        return false, "Invalid profile format (missing header)."
+    end
+
+    local applied = 0
+    for i = 2, #lines do
+        local line = lines[i]
+        if line and line ~= "" then
+            local key, val = line:match("^(.-)=(.+)$")
+            if key and val then
+                -- Parse value
+                local parsed
+                if val == "true" then parsed = true
+                elseif val == "false" then parsed = false
+                elseif tonumber(val) then parsed = tonumber(val)
+                else parsed = val end
+
+                -- Module toggles go to TA.db.modules
+                if key:match("^mod%.") then
+                    local modName = key:sub(5)
+                    if TA.db and TA.db.modules then
+                        TA.db.modules[modName] = parsed
+                        applied = applied + 1
+                    end
+                else
+                    WriteKey(key, parsed)
+                    applied = applied + 1
+                end
+            end
+        end
+    end
+
+    return true, applied .. " settings imported. /reload to apply fully."
+end
+
+--- Show a copy frame with the exported profile.
+function Settings:ShowExportFrame()
+    local text = self:ExportProfile()
+    if text == "" then
+        TA:Print(TA.LOG.OUTPUT, nil, "Nothing to export.")
+        return
+    end
+
+    -- Reuse ErrorLog's copy frame pattern
+    local EL = TA:GetModule("ErrorLog")
+    if EL and EL.ShowCopyFrame then
+        -- Temporarily override the format function
+        local origFn = EL.FormatLog
+        EL.FormatLog = function() return text end
+        EL:ShowCopyFrame()
+        EL.FormatLog = origFn
+    else
+        -- Fallback: print to chat
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Profile Export]|r")
+        TA:Raw(TA.LOG.OUTPUT, text)
+    end
+end
+
+Settings.SlashCommands = {
+    profile = function(self, args)
+        args = args and args:lower():match("^%s*(.-)%s*$") or ""
+        if args == "export" then
+            self:ShowExportFrame()
+        elseif args == "import" then
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Paste your profile string into the edit box that appears.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFF888780Use /ta profile export on the source character to get the string.|r")
+            -- Show import frame (simple editbox)
+            self:ShowImportFrame()
+        else
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Profile]|r")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta profile export|r — copy settings to clipboard")
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta profile import|r — paste settings from another character")
+        end
+    end,
+}
+
+--- Show an import frame (edit box for pasting).
+function Settings:ShowImportFrame()
+    if self._importFrame then self._importFrame:Show(); return end
+
+    local f = CreateFrame("Frame", "TAProfileImportFrame", UIParent, "BackdropTemplate")
+    f:SetSize(500, 300)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=2})
+    f:SetBackdropColor(0.06, 0.06, 0.08, 0.97)
+    f:SetBackdropBorderColor(0.55, 0.40, 0.08, 1)
+
+    local title = f:CreateFontString(nil, "OVERLAY")
+    title:SetFont("Fonts\\FRIZQT__.TTF", 13, "OUTLINE")
+    title:SetText("|cFFFFD100ToonAge|r — Import Profile")
+    title:SetPoint("TOP", f, "TOP", 0, -12)
+
+    local scroll = CreateFrame("ScrollFrame", "TAProfileImportScroll", f, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -40)
+    scroll:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -30, 50)
+
+    local editBox = CreateFrame("EditBox", "TAProfileImportEditBox", scroll)
+    editBox:SetMultiLine(true)
+    editBox:SetAutoFocus(false)
+    editBox:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+    editBox:SetTextColor(0.9, 0.9, 0.9, 1)
+    editBox:SetWidth(scroll:GetWidth())
+    editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    scroll:SetScrollChild(editBox)
+
+    local importBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+    importBtn:SetSize(120, 28)
+    importBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 12)
+    importBtn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+    importBtn:SetBackdropColor(0.05, 0.15, 0.05, 1)
+    importBtn:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.9)
+    local btnLbl = importBtn:CreateFontString(nil, "OVERLAY")
+    btnLbl:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+    btnLbl:SetText("|cFF4AFF7AImport|r")
+    btnLbl:SetAllPoints(importBtn)
+    btnLbl:SetJustifyH("CENTER")
+    importBtn:SetScript("OnClick", function()
+        local text = editBox:GetText()
+        local ok, msg = Settings:ImportProfile(text)
+        if ok then
+            TA:Print(TA.LOG.OUTPUT, nil, "|cFF4AFF7A" .. msg .. "|r")
+        else
+            TA:Print(TA.LOG.ERROR, nil, msg)
+        end
+    end)
+
+    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    closeBtn:SetSize(24, 24)
+    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -3, -3)
+    closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    self._importFrame = f
+end
+
