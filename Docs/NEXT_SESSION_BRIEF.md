@@ -186,3 +186,36 @@ ToonAge isn't just a guide addon. It's a **character intelligence platform**:
 7. **Independent:** Works without any other addon installed. Period.
 
 The player should never need to alt-tab to Wowhead, open a spreadsheet, or think "what addon do I need for this?" ToonAge IS the answer.
+
+
+---
+
+## URGENT: UI Layout Bugs (reported in-game)
+
+### Problems:
+1. **Text overlapping** — elements stack on top of each other, unreadable
+2. **Clicking checkboxes re-aligns layout** — toggling a task row causes surrounding elements to shift position
+3. **Buttons covering text** — interactive elements placed over readable content
+4. **Other addons bleed through** — ToonAge frames don't have high enough strata/level, or backdrops are transparent where they shouldn't be
+5. **Happening across ALL tabs** — systemic issue, not one module
+
+### Root Causes (probable):
+1. **Y-offset not accumulating correctly** — when a row is added/toggled, the `y` variable doesn't account for variable-height content below
+2. **Frame level/strata too low** — ToonAge main frame should be HIGH or DIALOG strata. Child frames may need explicit frame levels
+3. **Missing backdrop opacity** — if backdrop alpha is < 1.0, other addon frames show through
+4. **Content height not set after dynamic changes** — scroll child height needs recalculation after task toggle
+5. **Fixed height assumptions** — rows assume 24px but text wraps, causing overlap
+
+### Fix approach for next session:
+1. **Set main frame strata to DIALOG** when open (prevents all bleed-through)
+2. **Make all backdrops fully opaque** (0.97+ alpha on bg, 1.0 on borders)
+3. **Recalculate content:SetHeight() after ANY dynamic change** (task toggle, section collapse)
+4. **Use math.floor() on ALL y-offsets** (prevent sub-pixel accumulation drift)
+5. **Add explicit frame levels** to child elements (text > backdrop > parent)
+6. **Test: open /ta with ElvUI, Details, BigWigs all visible** — verify no bleed
+
+### Specific files to fix:
+- `Modules/Progression/Weekly.lua` — task toggle OnClick needs to trigger full re-render or recalculate height
+- `Core/UI.lua` — main frame strata, backdrop opacity
+- `Core/UIModern.lua` — component factory backdrop defaults need 0.97+ alpha
+- Every tab's Render() — verify y-offset math is clean
