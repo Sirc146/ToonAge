@@ -9,11 +9,12 @@ local ADDON_VERSION = "2.0.0-dev.1"
 -- use the addon. Everyone else gets a one-line message and the addon disables.
 -- Set IS_DEV_BUILD to false (or remove the -dev suffix from the version) for
 -- public releases.
-local IS_DEV_BUILD = ADDON_VERSION:find("-dev") ~= nil
+local IS_DEV_BUILD = false  -- Disabled for testing; re-enable with -dev suffix for tester builds
 local AUTHORIZED_TESTERS = {
     -- Add "Name-Server" keys for authorized testers
     ["Ellacait-Vargoth"]  = true,
     ["Asirc-Myzrael"]     = true,
+    ["Nethendera-Vargoth"] = true,
     -- Add more testers here:
     -- ["Character-Server"] = true,
 }
