@@ -278,7 +278,7 @@ function NavHud:Tick()
         if pos then
             local px, py = pos:GetXY()
             if showCoords then
-                self.frame.coordText:SetFormattedText("%.1f, %.1f", px * 100, py * 100)
+                self.frame.coordText:SetFormattedText("%.2f, %.2f", px * 100, py * 100)
             end
 
             -- ── Update waypoint pins ──────────────────────────────────

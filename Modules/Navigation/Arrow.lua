@@ -674,7 +674,7 @@ function Arrow:SetWaypoint(mapID, x, y, title)
         map   = mapID,
         x     = x,
         y     = y,
-        title = title or string.format("%.1f, %.1f", x * 100, y * 100),
+        title = title or string.format("%.2f, %.2f", x * 100, y * 100),
     }
     self._arrived = false
     self._arrivedTime = nil
@@ -708,7 +708,7 @@ function Arrow:ParseWayCommand(args)
         TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way clear|r — remove manual waypoint")
         if self.manualWaypoint then
             local wp = self.manualWaypoint
-            TA:Raw(TA.LOG.OUTPUT, string.format("  Current: map %d — %.1f, %.1f (%s)",
+            TA:Raw(TA.LOG.OUTPUT, string.format("  Current: map %d — %.2f, %.2f (%s)",
                 wp.map, wp.x * 100, wp.y * 100, wp.title or ""))
         end
         return
@@ -805,7 +805,7 @@ function Arrow:ParseWayCommand(args)
         mapStr = mapInfo and mapInfo.name or ("map " .. mapID)
         mapStr = " in " .. mapStr
     end
-    TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA Arrow]|r Waypoint set: |cFF4AFF7A%.1f, %.1f|r%s%s",
+    TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA Arrow]|r Waypoint set: |cFF4AFF7A%.2f, %.2f|r%s%s",
         xRaw, yRaw, mapStr, desc and (" — " .. desc) or ""))
 end
 
