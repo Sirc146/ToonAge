@@ -65,6 +65,22 @@
 
 ---
 
+## Scope Decision
+
+**NO guide/navigation system for Anniversary.** Player uses Dugi for questing.
+
+ToonAge Anniversary is a **character optimization advisor only:**
+- Stat caps and what you need
+- Gear scoring (cap-aware)
+- Weapon skill tracking
+- Race bonus display
+- Profession perks
+- Character stat breakdown
+
+**Excluded modules:** Arrow, NavHud, AntTrail, QuestTracker, GuideParser, GuideBrowser, GuideImporter, GuideContextMenu, CoordResolver, MapPins, TravelRouter, TravelModes, DeathRecovery, all Data/Guides/ files.
+
+---
+
 ## Modules Needed for Anniversary
 
 ### MUST HAVE (Core value)
