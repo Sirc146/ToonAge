@@ -87,7 +87,48 @@ When ToonAge opens (`/ta` or minimap click), the FIRST thing the player sees sho
 
 ---
 
-## Session Priority #3: Remaining Rotation Conditions
+## Session Priority #4: Precision Stat Engine (DR-Aware, All Roles, Pet Scaling)
+
+The current `Data/StatWeights.lua` uses static lookup tables. This must evolve into a **live calculation engine** that:
+
+1. **Calculates weights from YOUR current stats** — not a generic table
+2. **Applies WoW's diminishing returns formula** per stat:
+   ```
+   effectivePercent = rating / (ratingPerPercent + rating * scaleFactor)
+   ```
+   As you stack a stat, its marginal value decreases. The engine must show this.
+3. **Role-aware** — detects `UnitGroupRolesAssigned("player")`:
+   - Tank specs: Stamina, Versatility (DR half), Armor all weighted
+   - Healer specs: Intellect throughput, Haste (cast speed + HoT ticks), Mana efficiency
+   - DPS specs: Pure throughput weights
+4. **Pet-scaling specs** get multipliers:
+   - BM Hunter: Mastery ×1.3, Haste ×1.15, Crit ×1.10 (pet inherits)
+   - Demo Warlock: Mastery ×1.25, Haste ×1.20
+   - Unholy DK: Mastery ×1.20, Haste ×1.10
+   - Survival Hunter: Haste ×1.10
+   - Detect with `UnitExists("pet")` + specID
+5. **All 39 specs covered** — each with correct mastery formula, correct DR breakpoints
+6. **Accuracy to .001** — when ToonAge says "+3.847% DPS gain" it's mathematically correct for your current gear state
+7. **Live recalculation** — updates on PLAYER_EQUIPMENT_CHANGED, not cached from login
+
+### Implementation:
+- New file: `Core/StatEngine.lua` (or enhance `Data/StatWeights.lua`)
+- Reads current ratings from `GetCombatRating(CR_*)` 
+- Applies DR formula with correct constants per expansion (Midnight values)
+- Exports: `StatEngine:GetMarginalValue(statKey, specID, role)` → how much 1 more point of this stat is worth RIGHT NOW
+- Gear scoring calls this instead of static table lookup
+- Result: upgrade recommendations are precise, not approximate
+
+### Key WoW DR constants (verify in-game for Midnight):
+- Rating per 1% at level 90 (base, before DR)
+- DR scaling factors per stat (different for Crit vs Haste vs Mastery vs Vers)
+- Verify with: `/dump GetCombatRatingBonus(CR_CRIT_MELEE)` vs manual calculation
+
+### Per-spec mastery effects (examples):
+- Arms Warrior: Mastery increases Colossus Smash window damage
+- BM Hunter: Mastery increases pet damage by X% per point
+- Holy Paladin: Mastery increases healing on close targets
+- Each mastery effect has a DIFFERENT value-per-point formula
 
 34 specs still need `when` conditions in `Data/Rotations.lua`. Pattern established for 5 specs — extend to all. Key buff/debuff IDs per spec need to be verified in-game or from spell databases.
 
