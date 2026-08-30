@@ -157,4 +157,14 @@ Modules\Infrastructure\Settings.lua
 Modules\Infrastructure\Onboarding.lua
 Modules\Infrastructure\ChatCopy.lua
 
-Bindings.xml
+# Bindings.xml is deliberately NOT listed here. WoW loads an addon's
+# Bindings.xml automatically from the addon root; listing it in the TOC makes
+# the client parse it a second time as ordinary UI XML, where <Binding> is not
+# a valid element -- that is the "Unrecognized XML: Binding" seen on login
+# 2026-08-16. Corrected 2026-08-29.
+#
+# The earlier diagnosis (a `category` attribute on <Binding>) was wrong.
+# Census of all 63 addons shipping a Bindings.xml across the five installs:
+# 51 of them use category= and load fine, and ToonAge was the only addon in
+# any client that listed Bindings.xml in its TOC. That listing was the one
+# variable unique to ToonAge.
