@@ -1,0 +1,10 @@
+-- ToonAge/Data/PetFoods.lua (Classic)
+--
+-- Removed 2026-08-22: built for a Feed-O-Matic-style pet feeding tab, but
+-- confirmed in-game that this client no longer has hunter pet happiness or
+-- the Feed Pet spell at all — Cataclysm's 4.0.1 patch removed the mechanic
+-- permanently, and this client is past that point despite an earlier stale
+-- comment elsewhere suggesting otherwise. No feeding data to look up here.
+--
+-- Companion file Modules/Character/PetCare.lua is stubbed the same way.
+-- This file is no longer referenced by ToonAge.toc and can be deleted.
