@@ -1,0 +1,68 @@
+## Interface: 20506
+## Title: |cFFFFD100ToonAge|r |cFF888780Anniversary|r
+## Notes: TBC character advisor — stat caps, weapon skill, cap-aware gear scoring, racials and profession perks.
+## Author: Chris
+## Version: 2.0.0-anniversary
+## DefaultState: enabled
+## SavedVariables: ToonAgeDB
+
+# Interface 20506 confirmed against three addons already running on this client:
+# ElvUI_TBC.toc, ZygorGuidesViewerClassicTBCAnniv.toc and DugisGuideViewerZ.toc.
+#
+# Scope: advisory only. No guide engine, no navigation, no arrow — the player
+# uses Dugi for questing. See Docs/CLASSIC_ANNIVERSARY_BRIEF.md in the _ptr_ repo.
+
+# ── Core Framework ─────────────────────────────────────────────────────
+# Load order matters: Utils defines TA.Utils, which every later file binds at
+# file scope. Init must precede it to create TA and TA:RegisterModule.
+Core\Init.lua
+Core\Utils.lua
+Core\State.lua
+Core\Layout.lua
+Core\UI.lua
+Core\MinimapButton.lua
+Core\ApiGuard.lua
+
+# ── Combat maths ───────────────────────────────────────────────────────
+Core\TBCStats.lua
+Core\SkillScan.lua
+Core\TooltipScan.lua
+
+# ── Static Data ────────────────────────────────────────────────────────
+Data\ApiManifest.lua
+Data\TBCRaces.lua
+Data\TBCWeights.lua
+Data\TBCProfessions.lua
+Data\TBCTalentHit.lua
+Data\TBCArmor.lua
+Data\TBCPvP.lua
+Data\PetFoods.lua
+
+# ── Modules: Infrastructure (load first — everything else logs to it) ──
+Modules\Infrastructure\ErrorLog.lua
+
+# ── Modules: Character ─────────────────────────────────────────────────
+Modules\Character\Character.lua
+Modules\Character\StatCaps.lua
+Modules\Character\WeaponSkill.lua
+Modules\Character\RaceAdvisor.lua
+Modules\Character\ProfessionAdvisor.lua
+Modules\Character\PetCare.lua
+
+# ── Modules: Gear ──────────────────────────────────────────────────────
+Modules\Gear\Gear.lua
+
+# ── Modules: PvP ───────────────────────────────────────────────────────
+Modules\PvP\PvPAdvisor.lua
+
+# Bindings.xml is deliberately NOT listed here. WoW loads an addon's
+# Bindings.xml automatically from the addon root; listing it in the TOC makes
+# the client parse it a second time as ordinary UI XML, where <Binding> is not
+# a valid element -- that is the "Unrecognized XML: Binding" seen on login
+# 2026-08-16. Corrected 2026-08-29.
+#
+# The earlier diagnosis (a `category` attribute on <Binding>) was wrong.
+# Census of all 63 addons shipping a Bindings.xml across the five installs:
+# 51 of them use category= and load fine, and ToonAge was the only addon in
+# any client that listed Bindings.xml in its TOC. That listing was the one
+# variable unique to ToonAge.
