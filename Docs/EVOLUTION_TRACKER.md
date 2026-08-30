@@ -89,6 +89,167 @@
 
 ---
 
+## Anniversary Edition (TBC Classic, Interface 20506)
+
+### AE-1: Build the Anniversary stat/gear advisor
+**Target:** `_anniversary_\Interface\AddOns\ToonAge` (outside this git repo — unversioned, like `_classic_`)
+**Spec:** `Docs/CLASSIC_ANNIVERSARY_BRIEF.md`
+**Status:** BUILT, NOT YET TESTED IN GAME — 2026-08-16 [Claude]
+**Intent:** Copy the `_classic_` core framework, strip all Navigation/guide modules
+(player uses Dugi), and add TBC combat-math modules: StatCaps, WeaponSkill,
+RaceAdvisor, ProfessionAdvisor, plus TBC-adapted Character and Gear.
+
+**Delivered** — 20 Lua files + TOC + Bindings.xml, all parsing under
+`Tools/check_lua.py` (run with absolute paths; `REPO_ROOT` points at `_ptr_`).
+Six tabs: Character, Stat Caps, Gear, Weapons, Racials, Professions.
+
+| File | Role |
+|---|---|
+| `Core/TBCStats.lua` | The engine. Caps COMPUTED from level/weapon skill/target level, never table lookups. Rating→percent derived from the live client (`GetCombatRating / GetCombatRatingBonus`) with a documented level-formula fallback. |
+| `Core/SkillScan.lua` | Weapon skills + professions from skill lines. Expands collapsed headers and restores them by name. `GetProfessions()` is NOT used — it is a 3.0 API. |
+| `Core/Layout.lua` | Component factory. Every builder returns the next `y`; all coords floored; `Finish()` sets scroll height from the same `y`. Replaces `UIModern.lua`, which is not in this build. |
+| `Modules/Character/StatCaps.lua` | The flagship tab. Target-context picker, per-cap bars, provenance section. |
+| `Modules/Gear/Gear.lua` | Cap-aware scoring + bag upgrade finder. |
+
+**Design decisions worth not re-litigating:**
+- Caps are TARGET-RELATIVE. "9% hit" is the +3-boss number; a levelling character
+  fighting same-level mobs needs 5%. Context defaults to `auto` (same-level below
+  70, +3 at 70) and is user-pinnable via `/ta context`.
+- "Hit > everything until capped" is implemented as MARGINAL value, not a blanket
+  rule: rating that closes a real gap scores ×3, rating past the cap scores ×0.05.
+  A literal reading would rank a 4-hit ring over 40 AP + 20 crit.
+- No spec IDs anywhere. `GetSpecialization()` does not exist on 20506 — that is
+  exactly what made the `_classic_` Character tab render blank (SIDE_TASKS Task 5).
+  Role is inferred from class + shield, overridable with `/ta role`.
+- Unmapped `GetItemStats` keys are collected and reported by `/ta statkeys`
+  rather than silently dropped.
+
+### AE-2: PvP mode + trinket scoring bug
+**Status:** BUILT, NOT YET TESTED — 2026-08-16 [Claude]
+
+**PvP is a MODE, not a tab.** `db.pvpMode` flips one flag and five behaviours
+follow, through `TBCStats:ActiveContextKey()` and `Data.GetWeights()`: cap target
+pinned to same-level, melee hit 9%→5%, spell hit 16%→3%, defense uncrittable
+dropped, PvP stat weights, resilience surfaced. Context resolution was duplicated
+in four files and is now one function — that duplication was exactly how PvP mode
+would have been honoured in some tabs and forgotten in others.
+
+**Resilience** reads `CR_CRIT_TAKEN_MELEE` — note the name, there is no
+`CR_RESILIENCE` in TBC, and searching for the obvious name would have silently
+fallen through to the numeric guess.
+
+**BUG FIXED — trinkets scored as zero.** `GetItemStats` returns static stats
+only; it reports nothing for `Use:` or `Chance on hit:` lines. Bloodlust Brooch,
+Icon of the Silver Crescent and Dragonspine Trophy therefore scored ~0, ranked
+below a green with +8 Stamina, and would have been offered for replacement.
+`Core/TooltipScan.lua` now detects unscoreable value (via Blizzard's own
+localized `ITEM_SPELL_TRIGGER_*` globals, not hardcoded English) and such items
+are marked "not ranked", excluded from "weakest slot", and skipped as replacement
+targets. **The fix is detection, not estimation** — pricing an on-use needs
+rotation and fight length, and a made-up number would look authoritative.
+
+**Armor type check (Gear tab):** Hunters and Shamans unlock Mail at 40 and the
+game never says so. Equipped subtypes are compared against what the class can
+wear now; lighter slots are flagged as free armor.
+
+### Rejected source data — do not re-add without verification
+The user supplied cross-class reference dumps. The talent one-liners are used as
+commentary keyed by talent NAME (the client supplies tier and rank, so the
+dump's tier errors are moot). These were **not** encoded:
+- **Weapon proficiency by class** — 6 of 9 classes wrong: Hunters can use swords
+  and fist weapons, Paladins cannot use staves, Druids can use fist weapons and
+  polearms, Mage/Warlock can use 1H swords, Rogues can use bows/guns/crossbows.
+- **Talent compendium as structure** — missing Rogue, Priest and Shaman entirely,
+  truncated mid-Druid-Restoration, and several tiers misplaced.
+The client answers both exactly for the current character (`GetTalentInfo`,
+skill window), which is why the live reader is the right path.
+
+### Bindings.xml is dead on Classic clients — stop trying to fix it
+**Observed on Anniversary, 2026-08-16:**
+`Interface/AddOns/ToonAge/Bindings.xml:5 Unrecognized XML: Binding`
+
+That file had the canonical `<Bindings>`/`<Binding>` structure, **no BOM**
+(checked byte-for-byte: first bytes were `3C 42 69 6E...`), and no `category`
+attribute — the fix this tracker already recorded for `_classic_`, where the
+entry still reads "STILL ERRORING". So `category` was never the whole cause.
+
+Remaining known cause is the missing schema namespace on the root element. That
+has been added to the file, but it is **UNVERIFIED** and the file is **removed
+from ToonAge.toc**, because this is the second failure of a purely cosmetic
+feature and a login error costs more than one keybind is worth. The addon opens
+via `/ta`, the minimap button, and closes with ESC.
+
+`BINDING_HEADER_TOONAGE` / `BINDING_NAME_TOONAGE_TOGGLE` remain defined in
+`Core/Init.lua` and are harmless no-ops while the XML is unloaded. Re-enabling is
+one TOC line; the file's own header comment explains how.
+
+**Do not re-add Bindings.xml to any Classic-flavour TOC without loading it on a
+real client first.** Two attempts, two failures, zero verification runs.
+
+### AE-3: Wrong-advice fixes (talent hit, sockets)
+**Status:** BUILT, NOT YET TESTED — 2026-08-16 [Claude]
+
+**Talent-granted hit was not counted.** `GetCombatRatingBonus` reports hit from
+RATING only. A Fury warrior with 3/3 Precision had 3% more hit than the addon
+could see, so Stat Caps — the flagship tab — was telling them to find another
+~47 rating they already had. Wrong on roughly a third of specs, in the direction
+of "buy more of a stat you have enough of".
+
+`TBCStats:GetBonusHit()` now resolves in trust order: manual `/ta hitbonus`
+override → talent detection (`Data/TBCTalentHit.lua`, walks `GetTalentInfo`) →
+racial. The tab attributes every point, so an unexplained total cannot hide a bug.
+
+School-specific hit is kept separate on purpose: Arcane Focus is arcane only,
+Suppression affliction only, Shadow Focus shadow only. A Shadow priest at 5/5
+Shadow Focus is capped for Mind Blast and NOT for Holy Fire. Flattening those
+would trade an obvious wrong answer for a subtle one.
+
+Talent values are **unverified** — knowledge, not a dump. Three guards: the
+manual override always wins, detection shows provenance in the UI, and a rank
+above the expected maximum is clamped and flagged rather than multiplied out.
+
+**Empty sockets were invisible.** `EMPTY_SOCKET_*` keys were landing in
+`UnknownStatKeys` and vanishing. Now mapped AND extracted before weighting —
+`Data.ExtractSockets` strips them out, because an empty socket is a hole, not a
+stat, and weighting it would rank an unfilled item above a filled one.
+
+---
+
+## DESCOPED — user called stop 2026-08-16
+
+Not built, deliberately. Recorded so they are not rediscovered as bugs:
+
+| Item | Why it matters |
+|---|---|
+| `Modules/Character/Talents.lua` | Live tree reader over `GetTalentInfo`. The user supplied one-line talent descriptions to layer on by NAME (client gives tier and rank, so the source's tier errors are moot). API dependency already in the manifest via the hit detection. |
+| **Weapon DPS in scoring** | `GetItemStats` returns no damage or speed, so weapons are ranked on stats alone — a 2H with 100 DPS scores below a dagger with more Strength. Fix is `TooltipScan` + the `DPS_TEMPLATE` global. Highest remaining wrong-advice risk. |
+| **Set bonuses** | T4/T5/T6 2pc/4pc invisible; the upgrade finder will suggest breaking a 4pc. Fix is `TooltipScan` on the set lines. Warn on breaking rather than trying to price the bonus. |
+| Enchant checklist, Aldor/Scryer, attunements, resistance sets, consumables, hunter ammo, badge/rep gear, alt tracking | Missing but honest — no wrong advice results from their absence. |
+
+**NEXT STEP — needs the game:** `/reload`, then `/ta apiprobe` and `/ta dumpme`.
+The API list in `Data/ApiManifest.lua` has NOT been confirmed by a live dump;
+the probe is the confirmation. Highest-risk assumptions: `CR_*` globals exist
+(numeric fallbacks are used and flagged if not), `GetCombatRatingBonus` semantics
+for expertise/defense (sidestepped via `GetExpertiseRatingPerPoint` /
+`GetDefenseRatingPerPoint`, which derive from points the client states directly),
+and the `ITEM_MOD_*` key strings.
+
+**Interface 20506 confirmed** by reading the `## Interface:` line of three addons
+already installed and working on `_anniversary_`: `ElvUI_TBC.toc`,
+`ZygorGuidesViewerClassicTBCAnniv.toc`, `DugisGuideViewerZ.toc`.
+
+**Two numbers in the brief are wrong — do not "fix" the code back to them:**
+- Brief says expertise cap = "26 (6.5%, **214 rating** at level 70)". 214 is the
+  *level 80* figure (8.197 rating/expertise). At 70 it is 3.94 rating/expertise,
+  so 26 expertise ≈ **102** rating.
+- Brief says defense cap "490 heroics, **540** raids". 540 is the WotLK level-80
+  number — it is exactly `80*5 + 140`. TBC uncrittable is `playerLevel*5 + 140`,
+  i.e. **490** at 70 for any +3 target, heroic or raid.
+
+Both are computed, not hardcoded, in `Core/TBCStats.lua`.
+
+---
+
 ## Beyond 10/10 — Future Features (Post Phase 3)
 
 | Feature | Priority | Difficulty | Impact |
