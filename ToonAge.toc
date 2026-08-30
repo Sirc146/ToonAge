@@ -1,0 +1,129 @@
+## Interface: 120007, 120100
+## Title: |cFFFFD100ToonAge|r
+## Notes: All-in-one leveling, gear, rotation, and endgame companion.
+## Author: Chris
+## Version: 2.0.0
+## DefaultState: enabled
+## SavedVariables: ToonAgeDB
+## AddonCompartmentFunc: ToonAge_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: ToonAge_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: ToonAge_OnAddonCompartmentLeave
+
+# ── Libraries ──────────────────────────────────────────────────────────
+Libs\LibStub.lua
+
+# ── Core Framework ─────────────────────────────────────────────────────
+Core\Init.lua
+Core\Utils.lua
+Core\State.lua
+Core\UI.lua
+Core\UIModern.lua
+Core\MinimapButton.lua
+Core\ApiGuard.lua
+
+# ── Static Data ────────────────────────────────────────────────────────
+Data\ApiManifest.lua
+Data\StatWeights.lua
+Data\Spells.lua
+Data\Talents.lua
+Data\TalentsPvP.lua
+Data\RotationConditions.lua
+Data\Rotations.lua
+Data\Professions.lua
+Data\ItemLevels.lua
+Data\Pets.lua
+Data\Enchants.lua
+Data\FarmRoutes.lua
+Data\Dungeons.lua
+
+# ── Guide Data ─────────────────────────────────────────────────────────
+Data\Guides\TAG_Midnight_Intro.lua
+Data\Guides\TAG_Exiles_Reach.lua
+Data\Guides\TAG_Hallowfall.lua
+Data\Guides\TAG_Eversong_Midnight.lua
+Data\Guides\TAG_Silvermoon_Midnight.lua
+Data\Guides\TAG_Naigtal.lua
+
+# ── Modules: Infrastructure (load first) ──────────────────────────────
+Modules\Infrastructure\DevHelpers.lua
+Modules\Infrastructure\ErrorLog.lua
+
+# ── Modules: Combat (helpers before consumers) ────────────────────────
+Modules\Combat\TalentsHelpers.lua
+Modules\Combat\CombatState.lua
+Modules\Combat\Rotation.lua
+Modules\Combat\PullPlanner.lua
+Modules\Combat\SpecAdaptive.lua
+
+# ── Modules: Character ─────────────────────────────────────────────────
+Modules\Character\Character.lua
+Modules\Character\Talents.lua
+Modules\Character\TalentsPvP.lua
+Modules\Character\Professions.lua
+Modules\Character\Pets.lua
+
+# ── Modules: Gear ──────────────────────────────────────────────────────
+Modules\Gear\Gear.lua
+Modules\Gear\DungeonGear.lua
+Modules\Gear\GearSets.lua
+Modules\Gear\AutoEquip.lua
+Modules\Gear\TooltipScorer.lua
+Modules\Gear\QuestRewardAdvisor.lua
+
+# ── Modules: Navigation ───────────────────────────────────────────────
+Modules\Navigation\GuideParser.lua
+Modules\Navigation\GuideImporter.lua
+Modules\Navigation\GuideBrowser.lua
+Modules\Navigation\GuideContextMenu.lua
+Modules\Navigation\QuestTracker.lua
+Modules\Navigation\Arrow.lua
+Modules\Navigation\CoordResolver.lua
+Modules\Navigation\AntTrail.lua
+Modules\Navigation\NavHud.lua
+Modules\Navigation\MapPins.xml
+Modules\Navigation\MapPins.lua
+Modules\Navigation\TravelModes.lua
+Modules\Navigation\TravelRouter.lua
+
+# ── Modules: Progression ──────────────────────────────────────────────
+Modules\Progression\XPTracker.lua
+Modules\Progression\Weekly.lua
+Modules\Progression\Delves.lua
+Modules\Progression\DungeonGuide.lua
+Modules\Progression\DungeonTalents.lua
+Modules\Progression\AltTracker.lua
+Modules\Progression\AltQuickStart.lua
+
+# ── Modules: Farming ──────────────────────────────────────────────────
+Modules\Farming\FarmOptimizer.lua
+Modules\Farming\FarmOptimizerHUD.lua
+Modules\Farming\GatherTracker.lua
+Modules\Farming\ProfQuesting.lua
+
+# ── Modules: Automation ───────────────────────────────────────────────
+Modules\Automation\CutsceneSkip.lua
+Modules\Automation\AutoMount.lua
+Modules\Automation\DeathRecovery.lua
+Modules\Automation\RestOptimizer.lua
+Modules\Automation\NameplateObjectives.lua
+Modules\Automation\RoleMorph.lua
+Modules\Automation\TargetMarker.lua
+Modules\Automation\Retrospective.lua
+Modules\Automation\SocialAwareness.lua
+
+# ── Modules: Infrastructure (settings/onboarding load last) ───────────
+Modules\Infrastructure\Settings.lua
+Modules\Infrastructure\Onboarding.lua
+Modules\Infrastructure\ChatCopy.lua
+
+# Bindings.xml is deliberately NOT listed here. WoW loads an addon's
+# Bindings.xml automatically from the addon root; listing it in the TOC makes
+# the client parse it a second time as ordinary UI XML, where <Binding> is not
+# a valid element -- that is the "Unrecognized XML: Binding" seen on login
+# 2026-08-16. Corrected 2026-08-29.
+#
+# The earlier diagnosis (a `category` attribute on <Binding>) was wrong.
+# Census of all 63 addons shipping a Bindings.xml across the five installs:
+# 51 of them use category= and load fine, and ToonAge was the only addon in
+# any client that listed Bindings.xml in its TOC. That listing was the one
+# variable unique to ToonAge.
