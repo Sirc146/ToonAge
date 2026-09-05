@@ -78,6 +78,41 @@ function U.StripMarkup(s)
     return "<secret value -- readable on screen only>", true
 end
 
+--- Read the creature ID out of a unit's GUID, distinguishing "no NPC here"
+--- from "the GUID exists but cannot be read".
+---
+--- In 12.0 a GUID can come back as a SECRET STRING, and every route into it --
+--- match, sub, len -- raises "attempt to index a secret string value". Callers
+--- that use the ID for a *safety* decision must be able to tell the two cases
+--- apart: an absent NPC is a fact, an unreadable one is a blind spot, and only
+--- the second is a reason to refuse to act.
+---
+--- Returns nil,true for "there is no NPC on any of these units" and nil,false
+--- for "there is one, but its GUID is secret".
+--- @param ... string unit tokens, tried in order
+--- @return number|nil npcID, boolean readable
+function U.ReadNpcID(...)
+    for i = 1, select("#", ...) do
+        local guid = UnitGUID((select(i, ...)))
+        if guid then
+            -- tonumber lives INSIDE the pcall on purpose. The measured block
+            -- at the top of this file lists tonumber(v) as one of the routes
+            -- that raises on a secret, and it is not established that :match
+            -- against a secret string always raises rather than returning a
+            -- secret substring. Guarding both makes the helper correct under
+            -- either behaviour, which matters because callers use it to decide
+            -- whether it is safe to act.
+            local ok, id = pcall(function()
+                local m = guid:match("Creature%-0%-%d+%-%d+%-%d+%-(%d+)")
+                return m and tonumber(m) or nil
+            end)
+            if not ok then return nil, false end     -- secret: present but unreadable
+            if id then return id, true end
+        end
+    end
+    return nil, true                                 -- no NPC on any unit given
+end
+
 --- Convert a potentially tainted "secret number" to a safe Lua number.
 --- Returns the number, or the fallback (default 0) if conversion fails.
 --- @param val any — the potentially tainted value

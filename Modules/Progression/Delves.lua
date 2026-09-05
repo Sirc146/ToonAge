@@ -13,33 +13,40 @@ Delves.sideFrames = {}  -- persistent sidebar frames cleaned up by UI.lua on tab
 
 -- ── Delve tier table ──────────────────────────────────────────────────
 -- ┌─────────────────────────────────────────────────────────────────────┐
--- │ TODO — SEASON RESET UPDATE REQUIRED                                 │
+-- │ Updated for Midnight Season 2 "Curse of Ula'tek" (verified vs        │
+-- │ icy-veins recommended-gear-by-tier data, 2026-08-31).                │
 -- │                                                                     │
--- │ These iLvl breakpoints are PTR stubs sourced from early Midnight    │
--- │ 12.0.5 build data and WILL be wrong when the season goes live.      │
+-- │ IMPORTANT — this table is a GEAR-LEVEL GUIDELINE, not an access      │
+-- │ gate. In-game, Delve tiers above the base tiers are unlocked by the  │
+-- │ account-wide "Midnight Delves: Endgame" achievement (clearing lower  │
+-- │ tiers), NOT by item level. A player can be well above a tier's       │
+-- │ recommended iLvl and still be capped by Blizzard's own UI until that │
+-- │ achievement criteria is met — that's a real game restriction, not a  │
+-- │ bug in this tracker. EstimateTier()/the sidebar ladder below only    │
+-- │ estimate "what gear are you geared for", they cannot know or change  │
+-- │ which tiers the game has actually unlocked for you.                  │
 -- │                                                                     │
 -- │ To update after each season reset:                                  │
--- │  1. Look up the new Adventurer/Veteran/Champion/Hero/Myth iLvl      │
--- │     floor and ceiling on Wowhead or the official patch notes.       │
+-- │  1. Look up the new recommended iLvl per tier (icy-veins/Wowhead).   │
 -- │  2. Replace every iLvlMin value in the TIERS table below.           │
 -- │  3. Update Z.TRACKS (Data/Zones.lua) to match — Delves.lua reads    │
 -- │     trackInfo.ilvlMin / ilvlMax / ilvlCap from there for the        │
 -- │     progress bar; if Zones.lua is stale the bar will be wrong too.  │
--- │  4. Bump the comment's build label (currently: PTR 12.0.5).         │
+-- │  4. Bump the comment's date/season label above.                      │
 -- └─────────────────────────────────────────────────────────────────────┘
 local TIERS = {
     -- tier  label            iLvlMin  track         bountiful
-    { tier=1,  label="Tier 1",        iLvlMin=0,   track="Adventurer", bountiful=false },
-    { tier=2,  label="Tier 2",        iLvlMin=220, track="Adventurer", bountiful=false },
-    { tier=3,  label="Tier 3",        iLvlMin=224, track="Adventurer", bountiful=false },
-    { tier=4,  label="Tier 4",        iLvlMin=228, track="Adventurer", bountiful=false },
-    { tier=5,  label="Tier 5",        iLvlMin=233, track="Veteran",    bountiful=true  },
-    { tier=6,  label="Tier 6",        iLvlMin=237, track="Veteran",    bountiful=true  },
-    { tier=7,  label="Tier 7",        iLvlMin=242, track="Veteran",    bountiful=true  },
-    { tier=8,  label="Tier 8",        iLvlMin=246, track="Champion",   bountiful=true  },
-    { tier=9,  label="Tier 9",        iLvlMin=253, track="Champion",   bountiful=true  },
-    { tier=10, label="Tier 10",       iLvlMin=259, track="Hero",       bountiful=true  },
-    { tier=11, label="Tier 11 (Max)", iLvlMin=272, track="Myth",       bountiful=true  },
+    { tier=1,  label="Tier 1",        iLvlMin=170, track="Adventurer", bountiful=false },
+    { tier=2,  label="Tier 2",        iLvlMin=187, track="Adventurer", bountiful=false },
+    { tier=3,  label="Tier 3",        iLvlMin=200, track="Adventurer", bountiful=false },
+    { tier=4,  label="Tier 4",        iLvlMin=259, track="Adventurer", bountiful=false },
+    { tier=5,  label="Tier 5",        iLvlMin=268, track="Veteran",    bountiful=true  },
+    { tier=6,  label="Tier 6",        iLvlMin=275, track="Veteran",    bountiful=true  },
+    { tier=7,  label="Tier 7",        iLvlMin=281, track="Veteran",    bountiful=true  },
+    { tier=8,  label="Tier 8",        iLvlMin=290, track="Champion",   bountiful=true  },
+    { tier=9,  label="Tier 9",        iLvlMin=296, track="Champion",   bountiful=true  },
+    { tier=10, label="Tier 10",       iLvlMin=303, track="Hero",       bountiful=true  },
+    { tier=11, label="Tier 11 (Max)", iLvlMin=309, track="Myth",       bountiful=true  },
 }
 
 local function EstimateTier(iLvl)
@@ -300,7 +307,8 @@ function Delves:Render(content, sidebar)
     local nextLbl  = pCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     nextLbl:SetFont(STANDARD_TEXT_FONT, 9)
     if nextTier then
-        nextLbl:SetText("Next:  " .. nextTier.label .. " — reach " .. nextTier.iLvlMin .. " iLvl")
+        nextLbl:SetText("Next:  " .. nextTier.label .. " — reach " .. nextTier.iLvlMin
+            .. " iLvl  |cFF888780(tier access also requires unlocking it in-game)|r")
     else
         nextLbl:SetText("|cFF4AFF7AMax tier reached!|r  Push Tier 11 for Myth track upgrades.")
     end

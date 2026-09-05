@@ -22,7 +22,11 @@ NP._dirty           = true
 
 local function ExtractNpcID(guid)
     if not guid then return nil end
-    local npcID = guid:match("Creature%-0%-%d+%-%d+%-%d+%-(%d+)")
+    -- UnitGUID can return a "secret" opaque value under WoW's execution-taint
+    -- sandboxing. :match() on such a value throws — pcall catches it safely
+    -- instead of erroring out the whole nameplate update.
+    local ok, npcID = pcall(string.match, guid, "Creature%-0%-%d+%-%d+%-%d+%-(%d+)")
+    if not ok then return nil end
     return npcID and tonumber(npcID)
 end
 
@@ -140,12 +144,18 @@ local function UpdatePlate(nameplate, unitToken)
     -- METHOD 2: Fall back to name matching
     if not objData then
         local name = UnitName(unitToken)
-        if name then
-            objData = NP.activeObjectives[name:lower()]
+        -- Same secret-value hazard as ExtractNpcID above: pcall the :lower()/
+        -- :find() calls rather than operating on a possibly-secret name directly.
+        local ok, lname = pcall(string.lower, name)
+        if ok and lname then
+            objData = NP.activeObjectives[lname]
             -- Partial match (some objectives truncate or prefix names)
             if not objData then
                 for objName, data in pairs(NP.activeObjectives) do
-                    if name:lower():find(objName, 1, true) or objName:find(name:lower(), 1, true) then
+                    local okFind, matched = pcall(function()
+                        return lname:find(objName, 1, true) or objName:find(lname, 1, true)
+                    end)
+                    if okFind and matched then
                         objData = data
                         break
                     end

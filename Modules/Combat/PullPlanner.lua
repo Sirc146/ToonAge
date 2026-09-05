@@ -1,4 +1,4 @@
--- ToonAge/Modules/PullPlanner.lua
+-- ToonAge/Modules/Combat/PullPlanner.lua
 -- Smart AoE Pull Planning: clusters nearby kill-objective mobs and suggests
 -- efficient pull groups. Shows on NavHud/nameplates which mobs to pull together.
 --
@@ -11,15 +11,15 @@ local PP = {}
 TA:RegisterModule("PullPlanner", PP)
 
 -- ── Constants ─────────────────────────────────────────────────────────────────
-local CLUSTER_RANGE   = 15    -- yards: mobs within this distance form a cluster
-local MAX_PULL_SIZE   = 5     -- don't suggest pulling more than this
-local UPDATE_INTERVAL = 1.0   -- seconds between re-scans
-local PULL_COLOR      = { 0.12, 0.74, 1.00, 0.8 }  -- blue cluster indicator
+local CLUSTER_RANGE = 15 -- yards: mobs within this distance form a cluster
+local MAX_PULL_SIZE = 5 -- don't suggest pulling more than this
+local UPDATE_INTERVAL = 1.0 -- seconds between re-scans
+local PULL_COLOR = { 0.12, 0.74, 1.00, 0.8 } -- blue cluster indicator
 
 -- ── State ─────────────────────────────────────────────────────────────────────
-PP.objectiveCreatures = {}  -- { [npcName:lower()] = true }
-PP.clusters           = {}  -- { { units={unit1,unit2,...}, center={x,y} }, ... }
-PP.ticker             = nil
+PP.objectiveCreatures = {} -- { [npcName:lower()] = true }
+PP.clusters = {} -- { { units={unit1,unit2,...}, center={x,y} }, ... }
+PP.ticker = nil
 
 -- ── Objective detection ───────────────────────────────────────────────────────
 
@@ -27,15 +27,23 @@ function PP:RefreshObjectiveTargets()
     wipe(self.objectiveCreatures)
 
     local QT = TA:GetModule("QuestTracker")
-    if not QT or not QT.guideID then return end
+    if not QT or not QT.guideID then
+        return
+    end
     local guide = TA.Guides and TA.Guides[QT.guideID]
-    if not guide then return end
+    if not guide then
+        return
+    end
 
     local step = guide.steps[QT.stepIdx]
-    if not step or not step.questID then return end
+    if not step or not step.questID then
+        return
+    end
 
     local objectives = C_QuestLog.GetQuestObjectives(step.questID)
-    if not objectives then return end
+    if not objectives then
+        return
+    end
 
     for _, obj in ipairs(objectives) do
         if not obj.finished and obj.type == "monster" then
@@ -53,18 +61,27 @@ end
 
 function PP:ScanAndCluster()
     wipe(self.clusters)
-    if not next(self.objectiveCreatures) then return end
+    if not next(self.objectiveCreatures) then
+        return
+    end
 
     -- Collect all objective mobs currently visible on nameplates
-    local mobs = {}  -- { { unit, name, x, y } }
+    local mobs = {} -- { { unit, name, x, y } }
     local playerMap = C_Map.GetBestMapForUnit("player")
-    if not playerMap then return end
+    if not playerMap then
+        return
+    end
 
     for i = 1, 40 do
         local unit = "nameplate" .. i
         if UnitExists(unit) and not UnitIsDead(unit) and UnitCanAttack("player", unit) then
             local name = UnitName(unit)
-            if name and self.objectiveCreatures[name:lower()] then
+            -- UnitName can return a "secret" opaque value under WoW's execution-taint
+            -- sandboxing (nameplate scans run in a tainted context). Indexing/lower()'ing
+            -- such a value throws "attempt to index ... a secret string value" — pcall
+            -- catches that instead of erroring out ScanAndCluster every tick.
+            local ok, lname = pcall(string.lower, name)
+            if ok and lname and self.objectiveCreatures[lname] then
                 -- Get position relative to player (use nameplate position as proxy)
                 local plate = C_NamePlate.GetNamePlateForUnit(unit)
                 if plate then
@@ -74,7 +91,9 @@ function PP:ScanAndCluster()
         end
     end
 
-    if #mobs < 2 then return end  -- need at least 2 mobs to form a cluster
+    if #mobs < 2 then
+        return
+    end -- need at least 2 mobs to form a cluster
 
     -- Simple greedy clustering: for each unassigned mob, find all mobs
     -- within CLUSTER_RANGE and group them together.
@@ -99,8 +118,8 @@ function PP:ScanAndCluster()
                     local plateB = mobs[j].plate
                     local bx, by = plateB:GetCenter()
                     -- Screen distance in pixels — roughly correlates with world distance
-                    local screenDist = math.sqrt((ax - bx)^2 + (ay - by)^2)
-                    if screenDist < 200 then  -- ~200px = roughly CLUSTER_RANGE at normal zoom
+                    local screenDist = math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2)
+                    if screenDist < 200 then -- ~200px = roughly CLUSTER_RANGE at normal zoom
                         table.insert(cluster, mobs[j])
                         assigned[j] = true
                     end
@@ -119,7 +138,7 @@ end
 
 -- ── Visual indicators ─────────────────────────────────────────────────────────
 
-PP._indicators = {}  -- reusable indicator frames
+PP._indicators = {} -- reusable indicator frames
 
 function PP:ShowClusterIndicators()
     -- Hide all existing indicators

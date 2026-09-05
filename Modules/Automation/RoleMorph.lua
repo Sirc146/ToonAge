@@ -261,12 +261,22 @@ function RM:UpdateTriage()
     for i = 1, count do
         local unit = prefix .. i
         if UnitExists(unit) and not UnitIsDeadOrGhost(unit) and UnitIsConnected(unit) then
-            local hp = UnitHealth(unit)
-            local hpMax = UnitHealthMax(unit)
-            if type(hp) == "number" and type(hpMax) == "number" and hpMax > 0 then
-                local pct = hp / hpMax * 100
-                local deficit = 100 - pct
+            -- UnitHealth/UnitHealthMax can return a "secret" opaque value under WoW's
+            -- execution-taint sandboxing (group roster context can be tainted). The old
+            -- type(hpMax) == "number" check does NOT protect the *comparison* right
+            -- after it (hpMax > 0) — a secret value can still report type "number" and
+            -- then throw on the actual `>` comparison. pcall the whole computation.
+            local ok, pct, deficit = pcall(function()
+                local hp = UnitHealth(unit)
+                local hpMax = UnitHealthMax(unit)
+                if type(hp) ~= "number" or type(hpMax) ~= "number" or not (hpMax > 0) then
+                    return nil
+                end
+                local p = hp / hpMax * 100
+                return p, 100 - p
+            end)
 
+            if ok and pct then
                 -- Urgency scoring: higher = more urgent
                 local urgency = deficit  -- base: how much HP they're missing
 

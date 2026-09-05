@@ -91,9 +91,13 @@ local function IsObjectiveTarget(unitToken)
     if not UnitCanAttack("player", unitToken) then return false end
 
     local name = UnitName(unitToken)
-    if not name then return false end
+    -- UnitName can return a "secret" opaque value under WoW's execution-taint
+    -- sandboxing. A plain truthy/nil check on it is safe, but :lower() is not —
+    -- indexing/operating on a secret value throws. pcall catches that safely.
+    local ok, lname = pcall(string.lower, name)
+    if not ok or not lname then return false end
 
-    return TM.activeObjectives[name:lower()] ~= nil
+    return TM.activeObjectives[lname] ~= nil
 end
 
 -- ── Icon frame pool ───────────────────────────────────────────────────────────

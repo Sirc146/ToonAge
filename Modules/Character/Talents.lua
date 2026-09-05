@@ -226,6 +226,16 @@ function Talents:RenderContent(content, activeSpecID)
             return
         end
         -- Fall through to generic build display if PvP module unavailable
+    else
+        -- Leaving PvP view: TalentsPvP owns a separate tracked-frame list from
+        -- this module's self.frames/self.sideFrames, so HideAllTalentPanels()
+        -- at the top of Talents:Render never touches its frames. Without this,
+        -- its header/hero-recommendation/tab-bar/panel content from the last
+        -- PvP render stays visible, overlapping whatever we draw below.
+        local PvPAdvisor = TA:GetModule("TalentsPvP")
+        if PvPAdvisor and PvPAdvisor.Hide then
+            PvPAdvisor:Hide()
+        end
     end
 
     -- ── Fetch build data ────────────────────────────────────────────────
@@ -462,12 +472,14 @@ function Talents:RenderContent(content, activeSpecID)
 
     if isMaxLevel then
         -- ── Endgame readiness rows ──────────────────────────────────────
-        -- Update these thresholds each major patch / season reset.
+        -- Updated for Midnight Season 2 "Curse of Ula'tek" (patch 12.1),
+        -- cross-checked against icy-veins/koroboost/method.gg gearing guides,
+        -- 2026-08-31. Update these thresholds each major patch / season reset.
         local thresholds = {
-            { label = "Delves    (Tier 8)",   req = 580 },
-            { label = "LFR       (Raid)",     req = 567 },
-            { label = "Normal    (Raid)",     req = 590 },
-            { label = "Mythic+   (Base key)", req = 580 },
+            { label = "Delves    (Tier 8)",   req = 290 },
+            { label = "LFR       (Raid)",     req = 292 },
+            { label = "Normal    (Raid)",     req = 305 },
+            { label = "Mythic+   (Base key)", req = 292 },
         }
         for i, row in ipairs(thresholds) do
             local ry = -26 - (i - 1) * 18

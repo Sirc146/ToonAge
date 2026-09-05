@@ -1,10 +1,12 @@
 -- Modules/TalentsHelpers.lua
 local TA = ToonAge
-local U  = TA.Utils
+local U = TA.Utils
 TA.TalentsAPI = TA.TalentsAPI or {}
 
 local function safeInsert(t, v)
-  if v and type(v) == "number" then table.insert(t, v) end
+    if v and type(v) == "number" then
+        table.insert(t, v)
+    end
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -35,7 +37,7 @@ end
 
 local BIT_WIDTH_VERSION = 8
 local BIT_WIDTH_SPEC_ID = 16
-local BIT_WIDTH_RANKS   = 6
+local BIT_WIDTH_RANKS = 6
 local SERIALIZATION_VERSION = 2
 
 --- Node cache per treeID for performance
@@ -58,18 +60,24 @@ end
 --- Validate a tree hash from an import string against the current game data.
 --- All-zero hash always passes (used by TalentTreeViewer for cross-patch compat).
 local function IsTreeHashValid(importedHash, treeID)
-    if not importedHash or #importedHash ~= 16 then return false end
+    if not importedHash or #importedHash ~= 16 then
+        return false
+    end
     local expected = GetCachedTreeHash(treeID)
-    if not expected then return false end
+    if not expected then
+        return false
+    end
 
     local allZero = true
     for i, val in ipairs(importedHash) do
-        if val ~= 0 then allZero = false end
+        if val ~= 0 then
+            allZero = false
+        end
         if not allZero and val ~= expected[i] then
             return false
         end
     end
-    return true  -- all-zero passes, or matched
+    return true -- all-zero passes, or matched
 end
 
 --- Decode a Blizzard talent export string into structured node data.
@@ -122,7 +130,10 @@ function TA.TalentsAPI.DecodeImportString(importString)
     local classID = nil
     for i = 1, GetNumClasses() do
         local _, cFile, cID = GetClassInfo(i)
-        if cFile == classFileName then classID = cID; break end
+        if cFile == classFileName then
+            classID = cID
+            break
+        end
     end
     if not classID then
         return nil, "Could not resolve classID for " .. classFileName
@@ -176,19 +187,19 @@ function TA.TalentsAPI.DecodeImportString(importString)
                 end
                 isChoice = importStream:ExtractValue(1) == 1
                 if isChoice then
-                    choiceIndex = importStream:ExtractValue(2)  -- 0-based
+                    choiceIndex = importStream:ExtractValue(2) -- 0-based
                 end
             end
         end
 
         nodes[i] = {
-            nodeID            = nodeID,
-            isSelected        = isSelected,
-            isPurchased       = isPurchased,
+            nodeID = nodeID,
+            isSelected = isSelected,
+            isPurchased = isPurchased,
             isPartiallyRanked = isPartiallyRanked,
-            ranksPurchased    = ranksPurchased,
-            isChoice          = isChoice,
-            choiceIndex       = choiceIndex + 1,  -- convert to 1-based
+            ranksPurchased = ranksPurchased,
+            isChoice = isChoice,
+            choiceIndex = choiceIndex + 1, -- convert to 1-based
         }
 
         if isSelected and isPurchased then
@@ -197,13 +208,14 @@ function TA.TalentsAPI.DecodeImportString(importString)
     end
 
     return {
-        specID         = specID,
-        classID        = classID,
-        treeID         = treeID,
-        treeHashValid  = hashValid,
-        nodes          = nodes,
+        specID = specID,
+        classID = classID,
+        treeID = treeID,
+        treeHashValid = hashValid,
+        nodes = nodes,
         selectedNodeIDs = selectedNodeIDs,
-    }, nil
+    },
+        nil
 end
 
 --- Convenience: extract just the node IDs from an import string.
@@ -226,7 +238,9 @@ end
 --- @return string|nil reason — nil if valid, otherwise explanation
 function TA.TalentsAPI.ValidateBuildString(importString)
     local result, err = TA.TalentsAPI.DecodeImportString(importString)
-    if not result then return false, err end
+    if not result then
+        return false, err
+    end
     if not result.treeHashValid then
         return false, "Tree structure has changed since this build was created"
     end
@@ -237,177 +251,210 @@ function TA.TalentsAPI.ValidateBuildString(importString)
 end
 
 local function tryClassTalentsNodes()
-  local ids = {}
-  if C_ClassTalents and C_ClassTalents.GetActiveConfigID then
-    local cfgID = C_ClassTalents.GetActiveConfigID()
-    if cfgID then
-      -- Preferred: C_Traits.GetConfigInfo returns nodes table on modern clients
-      if C_Traits and C_Traits.GetConfigInfo then
-        local ok, info = pcall(C_Traits.GetConfigInfo, cfgID)
-        if ok and info and info.nodes then
-          for _, node in ipairs(info.nodes) do
-            if node and node.id then safeInsert(ids, node.id) end
-          end
-          if #ids > 0 then return ids end
+    local ids = {}
+    if C_ClassTalents and C_ClassTalents.GetActiveConfigID then
+        local cfgID = C_ClassTalents.GetActiveConfigID()
+        if cfgID then
+            -- Preferred: C_Traits.GetConfigInfo returns nodes table on modern clients
+            if C_Traits and C_Traits.GetConfigInfo then
+                local ok, info = pcall(C_Traits.GetConfigInfo, cfgID)
+                if ok and info and info.nodes then
+                    for _, node in ipairs(info.nodes) do
+                        if node and node.id then
+                            safeInsert(ids, node.id)
+                        end
+                    end
+                    if #ids > 0 then
+                        return ids
+                    end
+                end
+            end
+            -- C_Traits.GetConfigInfo unavailable or returned no nodes.
+            -- Export-string parsing is NOT attempted here — it extracts every digit
+            -- sequence in the blob, yielding version bytes, level values, and
+            -- coordinate data alongside any real node IDs. See the comment above
+            -- tryClassTalentsNodes for details. Return empty; callers will fall
+            -- through to tryCTraitsActiveConfig or the talent-frame scan.
         end
-      end
-      -- C_Traits.GetConfigInfo unavailable or returned no nodes.
-      -- Export-string parsing is NOT attempted here — it extracts every digit
-      -- sequence in the blob, yielding version bytes, level values, and
-      -- coordinate data alongside any real node IDs. See the comment above
-      -- tryClassTalentsNodes for details. Return empty; callers will fall
-      -- through to tryCTraitsActiveConfig or the talent-frame scan.
     end
-  end
-  return ids
+    return ids
 end
 
 local function tryCTraitsActiveConfig()
-  local ids = {}
-  -- GetActiveConfigID lives on C_ClassTalents, not C_Traits. This block asked
-  -- C_Traits for it, so the guard was never satisfied and the function returned
-  -- an empty table on every call -- silently, which is exactly the failure mode
-  -- Core/ApiGuard.lua was written to surface (/ta apiprobe listed it).
-  -- GetConfigInfo IS on C_Traits and resolves fine; only the first call moved.
-  if C_ClassTalents and C_ClassTalents.GetActiveConfigID and C_Traits and C_Traits.GetConfigInfo then
-    local ok, cfg = pcall(C_ClassTalents.GetActiveConfigID)
-    if ok and cfg then
-      local ok2, info = pcall(C_Traits.GetConfigInfo, cfg)
-      if ok2 and info and info.nodes then
-        for _, node in ipairs(info.nodes) do
-          if node and node.id then safeInsert(ids, node.id) end
+    local ids = {}
+    -- GetActiveConfigID lives on C_ClassTalents, not C_Traits. This block asked
+    -- C_Traits for it, so the guard was never satisfied and the function returned
+    -- an empty table on every call -- silently, which is exactly the failure mode
+    -- Core/ApiGuard.lua was written to surface (/ta apiprobe listed it).
+    -- GetConfigInfo IS on C_Traits and resolves fine; only the first call moved.
+    if C_ClassTalents and C_ClassTalents.GetActiveConfigID and C_Traits and C_Traits.GetConfigInfo then
+        local ok, cfg = pcall(C_ClassTalents.GetActiveConfigID)
+        if ok and cfg then
+            local ok2, info = pcall(C_Traits.GetConfigInfo, cfg)
+            if ok2 and info and info.nodes then
+                for _, node in ipairs(info.nodes) do
+                    if node and node.id then
+                        safeInsert(ids, node.id)
+                    end
+                end
+                if #ids > 0 then
+                    return ids
+                end
+            end
         end
-        if #ids > 0 then return ids end
-      end
     end
-  end
-  return ids
+    return ids
 end
 
 local function scanTalentFrameForSelectedNodes()
-  local ids = {}
-  -- Best-effort scan of common talent frame containers
-  local frames = {
-    _G["PlayerTalentFrame"],
-    _G["ClassTalentFrame"],
-    _G["TalentFrame"],
-    _G["PlayerTalentFrameTalents"],
-    _G["ClassTalentFrameTalents"]
-  }
-  for _, f in ipairs(frames) do
-    if f and f:IsShown() then
-      for _, child in ipairs({ f:GetChildren() }) do
-        -- Common properties used by various Blizzard frames
-        local nid = child.nodeID or child.talentID or (child.GetTalentID and child.GetTalentID and child:GetTalentID())
-        if nid and type(nid) == "number" then
-          -- Determine selection state: many legacy buttons expose GetChecked or a selected texture
-          local selected = false
-          if child.GetChecked and child.GetChecked() then selected = true end
-          if child.IsSelected and child:IsSelected() then selected = true end
-          -- Some frames use a .selected or .active boolean
-          if child.selected or child.active then selected = true end
-          if selected then safeInsert(ids, nid) end
+    local ids = {}
+    -- Best-effort scan of common talent frame containers
+    local frames = {
+        _G["PlayerTalentFrame"],
+        _G["ClassTalentFrame"],
+        _G["TalentFrame"],
+        _G["PlayerTalentFrameTalents"],
+        _G["ClassTalentFrameTalents"],
+    }
+    for _, f in ipairs(frames) do
+        if f and f:IsShown() then
+            for _, child in ipairs({ f:GetChildren() }) do
+                -- Common properties used by various Blizzard frames
+                local nid = child.nodeID
+                    or child.talentID
+                    or (child.GetTalentID and child.GetTalentID and child:GetTalentID())
+                if nid and type(nid) == "number" then
+                    -- Determine selection state: many legacy buttons expose GetChecked or a selected texture
+                    local selected = false
+                    if child.GetChecked and child.GetChecked() then
+                        selected = true
+                    end
+                    if child.IsSelected and child:IsSelected() then
+                        selected = true
+                    end
+                    -- Some frames use a .selected or .active boolean
+                    if child.selected or child.active then
+                        selected = true
+                    end
+                    if selected then
+                        safeInsert(ids, nid)
+                    end
+                end
+            end
+            if #ids > 0 then
+                return ids
+            end
         end
-      end
-      if #ids > 0 then return ids end
     end
-  end
-  return ids
+    return ids
 end
 
 function TA.TalentsAPI.GetActiveTalentIDs()
-  -- 1. Try modern C_ClassTalents + C_Traits path (preferred)
-  local ids = tryClassTalentsNodes()
-  if ids and #ids > 0 then return ids end
+    -- 1. Try modern C_ClassTalents + C_Traits path (preferred)
+    local ids = tryClassTalentsNodes()
+    if ids and #ids > 0 then
+        return ids
+    end
 
-  -- 2. Try direct C_Traits active config (some clients expose only this)
-  ids = tryCTraitsActiveConfig()
-  if ids and #ids > 0 then return ids end
+    -- 2. Try direct C_Traits active config (some clients expose only this)
+    ids = tryCTraitsActiveConfig()
+    if ids and #ids > 0 then
+        return ids
+    end
 
-  -- 3. Legacy fallback: scan talent frame if open
-  ids = scanTalentFrameForSelectedNodes()
-  if ids and #ids > 0 then return ids end
+    -- 3. Legacy fallback: scan talent frame if open
+    ids = scanTalentFrameForSelectedNodes()
+    if ids and #ids > 0 then
+        return ids
+    end
 
-  -- 4. Final fallback: return empty table (safe; callers check #ids > 0)
-  return {}
+    -- 4. Final fallback: return empty table (safe; callers check #ids > 0)
+    return {}
 end
 
 -- ── Spec role & style ──────────────────────────────────────────────────
 -- role: TANK / HEALER / DAMAGER  (mirrors GetSpecializationInfo 5th return)
 -- style: melee / ranged  (only meaningful for DAMAGER; informs display label)
 local SpecInfoDB = {
-  -- Death Knight
-  [250] = { role="TANK",    style="melee"  }, -- Blood
-  [251] = { role="DAMAGER", style="melee"  }, -- Frost
-  [252] = { role="DAMAGER", style="melee"  }, -- Unholy
-  -- Demon Hunter
-  [577] = { role="DAMAGER", style="melee"  }, -- Havoc
-  [581] = { role="TANK",    style="melee"  }, -- Vengeance
-  -- Druid
-  [102] = { role="DAMAGER", style="ranged" }, -- Balance
-  [103] = { role="DAMAGER", style="melee"  }, -- Feral
-  [104] = { role="TANK",    style="melee"  }, -- Guardian
-  [105] = { role="HEALER",  style="ranged" }, -- Restoration
-  -- Evoker
-  [1467] = { role="DAMAGER", style="ranged" }, -- Devastation
-  [1468] = { role="HEALER",  style="ranged" }, -- Preservation
-  [1473] = { role="DAMAGER", style="ranged" }, -- Augmentation
-  -- Hunter
-  [253] = { role="DAMAGER", style="ranged" }, -- Beast Mastery
-  [254] = { role="DAMAGER", style="ranged" }, -- Marksmanship
-  [255] = { role="DAMAGER", style="melee"  }, -- Survival
-  -- Mage
-  [62]  = { role="DAMAGER", style="ranged" }, -- Arcane
-  [63]  = { role="DAMAGER", style="ranged" }, -- Fire
-  [64]  = { role="DAMAGER", style="ranged" }, -- Frost
-  -- Monk
-  [268] = { role="TANK",    style="melee"  }, -- Brewmaster
-  [269] = { role="DAMAGER", style="melee"  }, -- Windwalker
-  [270] = { role="HEALER",  style="melee"  }, -- Mistweaver
-  -- Paladin
-  [65]  = { role="HEALER",  style="melee"  }, -- Holy
-  [66]  = { role="TANK",    style="melee"  }, -- Protection
-  [70]  = { role="DAMAGER", style="melee"  }, -- Retribution
-  -- Priest
-  [256] = { role="HEALER",  style="ranged" }, -- Discipline
-  [257] = { role="HEALER",  style="ranged" }, -- Holy
-  [258] = { role="DAMAGER", style="ranged" }, -- Shadow
-  -- Rogue
-  [259] = { role="DAMAGER", style="melee"  }, -- Assassination
-  [260] = { role="DAMAGER", style="melee"  }, -- Outlaw
-  [261] = { role="DAMAGER", style="melee"  }, -- Subtlety
-  -- Shaman
-  [262] = { role="DAMAGER", style="ranged" }, -- Elemental
-  [263] = { role="DAMAGER", style="melee"  }, -- Enhancement
-  [264] = { role="HEALER",  style="ranged" }, -- Restoration
-  -- Warlock
-  [265] = { role="DAMAGER", style="ranged" }, -- Affliction
-  [266] = { role="DAMAGER", style="ranged" }, -- Demonology
-  [267] = { role="DAMAGER", style="ranged" }, -- Destruction
-  -- Warrior
-  [71]  = { role="DAMAGER", style="melee"  }, -- Arms
-  [72]  = { role="DAMAGER", style="melee"  }, -- Fury
-  [73]  = { role="TANK",    style="melee"  }, -- Protection
+    -- Death Knight
+    [250] = { role = "TANK", style = "melee" }, -- Blood
+    [251] = { role = "DAMAGER", style = "melee" }, -- Frost
+    [252] = { role = "DAMAGER", style = "melee" }, -- Unholy
+    -- Demon Hunter
+    [577] = { role = "DAMAGER", style = "melee" }, -- Havoc
+    [581] = { role = "TANK", style = "melee" }, -- Vengeance
+    -- Druid
+    [102] = { role = "DAMAGER", style = "ranged" }, -- Balance
+    [103] = { role = "DAMAGER", style = "melee" }, -- Feral
+    [104] = { role = "TANK", style = "melee" }, -- Guardian
+    [105] = { role = "HEALER", style = "ranged" }, -- Restoration
+    -- Evoker
+    [1467] = { role = "DAMAGER", style = "ranged" }, -- Devastation
+    [1468] = { role = "HEALER", style = "ranged" }, -- Preservation
+    [1473] = { role = "DAMAGER", style = "ranged" }, -- Augmentation
+    -- Hunter
+    [253] = { role = "DAMAGER", style = "ranged" }, -- Beast Mastery
+    [254] = { role = "DAMAGER", style = "ranged" }, -- Marksmanship
+    [255] = { role = "DAMAGER", style = "melee" }, -- Survival
+    -- Mage
+    [62] = { role = "DAMAGER", style = "ranged" }, -- Arcane
+    [63] = { role = "DAMAGER", style = "ranged" }, -- Fire
+    [64] = { role = "DAMAGER", style = "ranged" }, -- Frost
+    -- Monk
+    [268] = { role = "TANK", style = "melee" }, -- Brewmaster
+    [269] = { role = "DAMAGER", style = "melee" }, -- Windwalker
+    [270] = { role = "HEALER", style = "melee" }, -- Mistweaver
+    -- Paladin
+    [65] = { role = "HEALER", style = "melee" }, -- Holy
+    [66] = { role = "TANK", style = "melee" }, -- Protection
+    [70] = { role = "DAMAGER", style = "melee" }, -- Retribution
+    -- Priest
+    [256] = { role = "HEALER", style = "ranged" }, -- Discipline
+    [257] = { role = "HEALER", style = "ranged" }, -- Holy
+    [258] = { role = "DAMAGER", style = "ranged" }, -- Shadow
+    -- Rogue
+    [259] = { role = "DAMAGER", style = "melee" }, -- Assassination
+    [260] = { role = "DAMAGER", style = "melee" }, -- Outlaw
+    [261] = { role = "DAMAGER", style = "melee" }, -- Subtlety
+    -- Shaman
+    [262] = { role = "DAMAGER", style = "ranged" }, -- Elemental
+    [263] = { role = "DAMAGER", style = "melee" }, -- Enhancement
+    [264] = { role = "HEALER", style = "ranged" }, -- Restoration
+    -- Warlock
+    [265] = { role = "DAMAGER", style = "ranged" }, -- Affliction
+    [266] = { role = "DAMAGER", style = "ranged" }, -- Demonology
+    [267] = { role = "DAMAGER", style = "ranged" }, -- Destruction
+    -- Warrior
+    [71] = { role = "DAMAGER", style = "melee" }, -- Arms
+    [72] = { role = "DAMAGER", style = "melee" }, -- Fury
+    [73] = { role = "TANK", style = "melee" }, -- Protection
 }
 
 function TA.TalentsAPI.GetSpecInfo(specID)
-  return SpecInfoDB[specID] or { role="DAMAGER", style="melee" }
+    return SpecInfoDB[specID] or { role = "DAMAGER", style = "melee" }
 end
 
 -- Scores active talent node IDs against a stored profile node list.
 -- Returns 0-100 (integer %) or nil when profileNodes is empty (no data).
 function TA.TalentsAPI.ScoreProfile(activeIDs, profileNodes)
-  if not profileNodes or #profileNodes == 0 then return nil end
-  if not activeIDs    or #activeIDs    == 0 then return 0    end
-  local active = {}
-  for _, id in ipairs(activeIDs) do active[id] = true end
-  local hits = 0
-  for _, id in ipairs(profileNodes) do
-    if active[id] then hits = hits + 1 end
-  end
-  return math.floor((hits / #profileNodes) * 100)
+    if not profileNodes or #profileNodes == 0 then
+        return nil
+    end
+    if not activeIDs or #activeIDs == 0 then
+        return 0
+    end
+    local active = {}
+    for _, id in ipairs(activeIDs) do
+        active[id] = true
+    end
+    local hits = 0
+    for _, id in ipairs(profileNodes) do
+        if active[id] then
+            hits = hits + 1
+        end
+    end
+    return math.floor((hits / #profileNodes) * 100)
 end
-
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- SECTION: Algorithmic Leveling Path Generator
@@ -430,20 +477,27 @@ end
 --- @param importString string — the endgame build import string
 --- @return table|nil levelPath — { [level] = "Talent Name", ... } or nil on failure
 function TA.TalentsAPI.GenerateLevelingPath(importString)
-    if not importString or importString == "" then return nil end
-    if not C_Traits or not C_Traits.GetConfigIDBySystemID then return nil end
+    if not importString or importString == "" then
+        return nil
+    end
+    if not C_Traits or not C_Traits.GetConfigIDBySystemID then
+        return nil
+    end
 
     -- Step 1: Get selected node IDs from the import string
     local selectedNodes = TA.TalentsAPI.GetNodeIDsFromString(importString)
-    if not selectedNodes or #selectedNodes == 0 then return nil end
+    if not selectedNodes or #selectedNodes == 0 then
+        return nil
+    end
 
     -- Step 2: Get the active talent config to query tree structure
-    local configID = C_ClassTalents and C_ClassTalents.GetActiveConfigID
-                  and C_ClassTalents.GetActiveConfigID()
-    if not configID then return nil end
+    local configID = C_ClassTalents and C_ClassTalents.GetActiveConfigID and C_ClassTalents.GetActiveConfigID()
+    if not configID then
+        return nil
+    end
 
     -- Step 3: Build dependency graph for selected nodes
-    local nodeInfo = {}   -- [nodeID] = { name, prereqs={}, depth=0 }
+    local nodeInfo = {} -- [nodeID] = { name, prereqs={}, depth=0 }
     local selectedSet = {}
     for _, nodeID in ipairs(selectedNodes) do
         selectedSet[nodeID] = true
@@ -486,21 +540,27 @@ function TA.TalentsAPI.GenerateLevelingPath(importString)
                 name = name,
                 prereqs = prereqs,
                 depth = 0,
-                row = info.posY or 0,  -- tree row position (higher = deeper in tree)
+                row = info.posY or 0, -- tree row position (higher = deeper in tree)
             }
         end
     end
 
     -- Step 4: Calculate depth for each node (max depth of any prereq + 1)
     local function CalcDepth(nID, visited)
-        if visited[nID] then return nodeInfo[nID] and nodeInfo[nID].depth or 0 end
+        if visited[nID] then
+            return nodeInfo[nID] and nodeInfo[nID].depth or 0
+        end
         visited[nID] = true
         local ni = nodeInfo[nID]
-        if not ni then return 0 end
+        if not ni then
+            return 0
+        end
         local maxPrereqDepth = 0
         for _, pID in ipairs(ni.prereqs) do
             local pd = CalcDepth(pID, visited)
-            if pd >= maxPrereqDepth then maxPrereqDepth = pd + 1 end
+            if pd >= maxPrereqDepth then
+                maxPrereqDepth = pd + 1
+            end
         end
         ni.depth = math.max(ni.depth, maxPrereqDepth)
         return ni.depth
@@ -519,7 +579,9 @@ function TA.TalentsAPI.GenerateLevelingPath(importString)
         end
     end
     table.sort(sorted, function(a, b)
-        if a.depth ~= b.depth then return a.depth < b.depth end
+        if a.depth ~= b.depth then
+            return a.depth < b.depth
+        end
         return a.row < b.row
     end)
 
@@ -539,28 +601,41 @@ end
 --- Stores result in TA.charDB.computedLevelPaths[specID].
 function TA.TalentsAPI.ComputeAndCacheLevelPath()
     local specIndex = GetSpecialization()
-    if not specIndex then return nil end
+    if not specIndex then
+        return nil
+    end
     local specID = GetSpecializationInfo(specIndex)
-    if not specID then return nil end
+    if not specID then
+        return nil
+    end
 
     -- Get the endgame build string for this spec
     local T = TA.Data and TA.Data.Talents
     local specData = T and T:GetBySpecID(specID)
-    if not specData or not specData.builds then return nil end
+    if not specData or not specData.builds then
+        return nil
+    end
 
     -- Prefer mplus build (most popular), fallback to raid, then solo
     local buildStr = (specData.builds.mplus and specData.builds.mplus.string)
-                  or (specData.builds.raid and specData.builds.raid.string)
-                  or (specData.builds.solo and specData.builds.solo.string)
-    if not buildStr or buildStr == "" then return nil end
+        or (specData.builds.raid and specData.builds.raid.string)
+        or (specData.builds.solo and specData.builds.solo.string)
+    if not buildStr or buildStr == "" then
+        return nil
+    end
 
     local path = TA.TalentsAPI.GenerateLevelingPath(buildStr)
     if path then
         TA.charDB.computedLevelPaths = TA.charDB.computedLevelPaths or {}
         TA.charDB.computedLevelPaths[specID] = path
         local count = 0
-        for _ in pairs(path) do count = count + 1 end
-        TA:Raw(TA.LOG.OUTPUT, string.format("|cFF4AFF7A[ToonAge]|r Generated leveling path for spec %d (%d talents).", specID, count))
+        for _ in pairs(path) do
+            count = count + 1
+        end
+        TA:Raw(
+            TA.LOG.OUTPUT,
+            string.format("|cFF4AFF7A[ToonAge]|r Generated leveling path for spec %d (%d talents).", specID, count)
+        )
     end
     return path
 end

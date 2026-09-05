@@ -16,7 +16,8 @@
 local TA   = ToonAge
 local U    = TA.Utils
 local TAPI = TA.TalentsAPI
-local PVPD = nil  -- resolved in Init (TA.Data.TalentsPvP)
+local PVPD  = nil  -- resolved in Init (TA.Data.TalentsPvP)
+local PVPMD = nil  -- resolved in Init (TA.Data.PvPMatchups)
 
 local TalentsPvP = {}
 TA:RegisterModule("TalentsPvP", TalentsPvP)
@@ -29,11 +30,31 @@ TalentsPvP.specID      = nil
 
 -- ── Constants ─────────────────────────────────────────────────────────────────
 local PANEL_TABS = {
-    { key = "class", label = "Class Tree" },
-    { key = "spec",  label = "Spec Tree" },
-    { key = "hero",  label = "Hero Talents" },
-    { key = "pvp",   label = "PvP Talents" },
+    { key = "class",    label = "Class Tree" },
+    { key = "spec",     label = "Spec Tree" },
+    { key = "hero",     label = "Hero Talents" },
+    { key = "pvp",      label = "PvP Talents" },
+    { key = "matchups", label = "Matchups" },
 }
+
+-- WoW class token -> display name, used for the Matchups panel. Uses the
+-- localized name where available (LOCALIZED_CLASS_NAMES_MALE) so the panel
+-- reads naturally in any client locale, falling back to the raw token.
+local function ClassDisplayName(classToken)
+    local names = LOCALIZED_CLASS_NAMES_MALE
+    return (names and names[classToken]) or classToken
+end
+
+-- Class-colored text helper for the Matchups panel, using Blizzard's own
+-- RAID_CLASS_COLORS table (falls back to plain gold if unavailable).
+local function ColorizeClass(classToken)
+    local c = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken]
+    local label = ClassDisplayName(classToken)
+    if c and c.colorStr then
+        return "|c" .. c.colorStr .. label .. "|r"
+    end
+    return COL_GOLD .. label .. CLOSE
+end
 
 local COL_GOLD   = "|cFFFFD100"
 local COL_GREEN  = "|cFF4AFF7A"
@@ -207,7 +228,8 @@ function TalentsPvP:Render(content, sidebar, startY)
     for _, f in ipairs(self.frames) do f:Hide(); f:SetParent(nil) end
     self.frames = {}
 
-    PVPD = TA.Data.TalentsPvP  -- resolve reference
+    PVPD  = TA.Data.TalentsPvP    -- resolve reference
+    PVPMD = TA.Data.PvPMatchups   -- resolve reference
 
     local specIndex = GetSpecialization()
     if not specIndex then return end
@@ -280,7 +302,13 @@ function TalentsPvP:Render(content, sidebar, startY)
         lbl:SetJustifyH("CENTER")
         btn:SetScript("OnClick", function()
             self.activePanel = tab.key
-            self:Render(content, sidebar)
+            -- Must re-pass startY (captured as an upvalue from this Render call)
+            -- or it defaults to -10, redrawing this entire panel — header, hero
+            -- recommendation, and tab bar included — back at the top of the
+            -- content frame, on top of Talents.lua's own header/build-type row
+            -- that's still sitting there above it. That was the exact overlap
+            -- bug reported when clicking between Class/Spec/Hero/PvP Talent tabs.
+            self:Render(content, sidebar, startY)
         end)
         Track(btn)
         tx = tx + tabW + 3
@@ -290,6 +318,8 @@ function TalentsPvP:Render(content, sidebar, startY)
     -- ── Panel content ─────────────────────────────────────────────────────
     if self.activePanel == "pvp" then
         y = self:RenderPvPTalentPanel(content, y, w, padL, pvpData)
+    elseif self.activePanel == "matchups" then
+        y = self:RenderMatchupsPanel(content, y, w, padL, specID)
     elseif self.treeCache then
         local nodes = self.treeCache[self.activePanel]
         if nodes and #nodes > 0 then
@@ -373,8 +403,24 @@ function TalentsPvP:RenderTreePanel(content, startY, w, padL, nodes, pvpData)
         else
             shown = shown + 1
 
-            -- Determine recommendation status from PvP data
-            local pvpInfo = pvpData and pvpData.nodes and pvpData.nodes[node.nodeID]
+            -- Determine recommendation status from PvP data.
+            -- IMPORTANT: PvP data is authored by spellID, not nodeID. Real talent-tree
+            -- nodeIDs can only be captured from a live client (C_Traits), so the data
+            -- file can't ship them pre-populated — every spec's `nodes` table used to
+            -- be keyed by a placeholder [0] that node.nodeID (always a real, non-zero
+            -- Blizzard ID in-game) could never match, silently disabling the entire
+            -- "Why/Take this" overlay for every spec. Matching against each entry's
+            -- spellID instead works immediately, since spell IDs are the same for
+            -- everyone and can be sourced from Wowhead/icy-veins ahead of time.
+            local pvpInfo = nil
+            if pvpData and pvpData.nodes then
+                for _, e in ipairs(node.entries) do
+                    if e.spellID and pvpData.nodes[e.spellID] then
+                        pvpInfo = pvpData.nodes[e.spellID]
+                        break
+                    end
+                end
+            end
             local isRecommended = (pvpInfo ~= nil)
             local isActive = node.isActive
 
@@ -588,6 +634,97 @@ function TalentsPvP:RenderPvPTalentPanel(content, startY, w, padL, pvpData)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════════
+-- MATCHUPS PANEL — favorable/unfavorable class reference card
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+--- Renders the current spec's favorable/unfavorable class matchup reference
+--- (Warmode/arena/Solo Shuffle framing — "In Warmode it's always PvP").
+function TalentsPvP:RenderMatchupsPanel(content, startY, w, padL, specID)
+    local y = startY
+    local function Track(f) table.insert(self.frames, f); return f end
+
+    local data = PVPMD and PVPMD:GetForSpec(specID)
+
+    local subhdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    subhdr:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    subhdr:SetText(COL_GREY .. "Who you're strong/weak against in Warmode, arena, and Solo Shuffle — and how to play the weak matchups." .. CLOSE)
+    subhdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    subhdr:SetWidth(w)
+    subhdr:SetJustifyH("LEFT")
+    subhdr:SetWordWrap(true)
+    y = y - subhdr:GetStringHeight() - 12
+
+    if not data then
+        local nodata = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        nodata:SetFont(STANDARD_TEXT_FONT, 10)
+        nodata:SetText(COL_GREY .. "No matchup data available for this spec yet." .. CLOSE)
+        nodata:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        nodata:SetWidth(w)
+        y = y - 24
+        return y
+    end
+
+    -- ── Favorable ─────────────────────────────────────────────────────────
+    if data.favorable and #data.favorable > 0 then
+        local favHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        favHdr:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        favHdr:SetText(COL_GREEN .. "STRONG AGAINST" .. CLOSE)
+        favHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        y = y - 18
+
+        local list = {}
+        for _, classToken in ipairs(data.favorable) do
+            table.insert(list, ColorizeClass(classToken))
+        end
+        local favLine = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        favLine:SetFont(STANDARD_TEXT_FONT, 10)
+        favLine:SetText(table.concat(list, COL_GREY .. "   •   " .. CLOSE))
+        favLine:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        favLine:SetWidth(w)
+        favLine:SetJustifyH("LEFT")
+        favLine:SetWordWrap(true)
+        y = y - favLine:GetStringHeight() - 16
+    end
+
+    -- ── Unfavorable + counters ───────────────────────────────────────────
+    if data.unfavorable and #data.unfavorable > 0 then
+        local unfHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        unfHdr:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        unfHdr:SetText(COL_RED .. "WEAK AGAINST — HOW TO COUNTER" .. CLOSE)
+        unfHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        y = y - 20
+
+        for _, entry in ipairs(data.unfavorable) do
+            local row = CreateFrame("Frame", nil, content, "BackdropTemplate")
+            row:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            row:SetBackdrop(BD)
+            row:SetBackdropColor(0.07, 0.02, 0.02, 0.6)
+            row:SetBackdropBorderColor(1, 0.27, 0.27, 0.3)
+            Track(row)
+
+            local classLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            classLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+            classLbl:SetText(ColorizeClass(entry.class))
+            classLbl:SetPoint("TOPLEFT", row, "TOPLEFT", 8, -6)
+
+            local tipLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            tipLbl:SetFont(STANDARD_TEXT_FONT, 9)
+            tipLbl:SetText(COL_ORANGE .. "Counter: " .. CLOSE .. (entry.tip or ""))
+            tipLbl:SetPoint("TOPLEFT", row, "TOPLEFT", 8, -22)
+            tipLbl:SetWidth(w - 16)
+            tipLbl:SetJustifyH("LEFT")
+            tipLbl:SetWordWrap(true)
+
+            local rowH = 22 + tipLbl:GetStringHeight() + 10
+            row:SetSize(w, rowH)
+            y = y - rowH - 6
+        end
+    end
+
+    return y
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
 -- LEVEL-SCALED ADVISOR
 -- ═══════════════════════════════════════════════════════════════════════════════
 
@@ -694,6 +831,21 @@ end
 
 function TalentsPvP:Init()
     PVPD = TA.Data.TalentsPvP
+end
+
+--- Hide and release every frame this module has drawn into the shared
+--- Talents content frame. Talents.lua owns its own frame list and only ever
+--- clears that one — it has no way to know this module drew anything on top
+--- of it. Without this, switching the outer build-type row away from "PvP"
+--- (e.g. to Leveling/Raid/Mythic+) leaves this module's header, hero
+--- recommendation, tab bar, and panel content sitting there uncleared,
+--- overlapping whatever Talents.lua draws next in the same frame.
+function TalentsPvP:Hide()
+    for _, f in ipairs(self.frames) do
+        if f and f.Hide then f:Hide() end
+        if f and f.SetParent then f:SetParent(nil) end
+    end
+    self.frames = {}
 end
 
 function TalentsPvP:OnEvent(event, ...)

@@ -38,7 +38,9 @@ function C.And(...)
     local fns = { ... }
     return function(s)
         for i = 1, #fns do
-            if not fns[i](s) then return false end
+            if not fns[i](s) then
+                return false
+            end
         end
         return true
     end
@@ -48,14 +50,18 @@ function C.Or(...)
     local fns = { ... }
     return function(s)
         for i = 1, #fns do
-            if fns[i](s) then return true end
+            if fns[i](s) then
+                return true
+            end
         end
         return false
     end
 end
 
 function C.Not(fn)
-    return function(s) return not fn(s) end
+    return function(s)
+        return not fn(s)
+    end
 end
 
 -- ── Aura helpers ──────────────────────────────────────────────────────────────
@@ -66,8 +72,12 @@ end
 --- checks never fire on them.
 local function Remaining(tbl, spellID)
     local a = tbl and tbl[spellID]
-    if not a then return 0 end
-    if not a.expires or a.expires == 0 then return 999 end
+    if not a then
+        return 0
+    end
+    if not a.expires or a.expires == 0 then
+        return 999
+    end
     local left = a.expires - GetTime()
     return left > 0 and left or 0
 end
@@ -75,19 +85,27 @@ end
 C.Remaining = Remaining
 
 function C.HasBuff(spellID)
-    return function(s) return Remaining(s.buffs, spellID) > 0 end
+    return function(s)
+        return Remaining(s.buffs, spellID) > 0
+    end
 end
 
 function C.NoBuff(spellID)
-    return function(s) return Remaining(s.buffs, spellID) <= 0 end
+    return function(s)
+        return Remaining(s.buffs, spellID) <= 0
+    end
 end
 
 function C.HasDebuff(spellID)
-    return function(s) return Remaining(s.debuffs, spellID) > 0 end
+    return function(s)
+        return Remaining(s.debuffs, spellID) > 0
+    end
 end
 
 function C.NoDebuff(spellID)
-    return function(s) return Remaining(s.debuffs, spellID) <= 0 end
+    return function(s)
+        return Remaining(s.debuffs, spellID) <= 0
+    end
 end
 
 --- Buff stacks at or above N (e.g. combo-point-like or ramping procs).
@@ -104,58 +122,84 @@ end
 --- mechanically wrong for every spec, so it needs no per-spec theorycraft.
 function C.DebuffRefresh(spellID, seconds)
     seconds = seconds or 4
-    return function(s) return Remaining(s.debuffs, spellID) <= seconds end
+    return function(s)
+        return Remaining(s.debuffs, spellID) <= seconds
+    end
 end
 
 function C.BuffRefresh(spellID, seconds)
     seconds = seconds or 4
-    return function(s) return Remaining(s.buffs, spellID) <= seconds end
+    return function(s)
+        return Remaining(s.buffs, spellID) <= seconds
+    end
 end
 
 -- ── Resources ─────────────────────────────────────────────────────────────────
 
 function C.PowerAtLeast(n)
-    return function(s) return (s.power or 0) >= n end
+    return function(s)
+        return (s.power or 0) >= n
+    end
 end
 
 function C.PowerBelow(n)
-    return function(s) return (s.power or 0) < n end
+    return function(s)
+        return (s.power or 0) < n
+    end
 end
 
 function C.PowerPctAtLeast(pct)
-    return function(s) return (s.powerPct or 0) >= pct end
+    return function(s)
+        return (s.powerPct or 0) >= pct
+    end
 end
 
 function C.PowerPctBelow(pct)
-    return function(s) return (s.powerPct or 0) < pct end
+    return function(s)
+        return (s.powerPct or 0) < pct
+    end
 end
 
 function C.ComboAtLeast(n)
-    return function(s) return (s.comboPoints or 0) >= n end
+    return function(s)
+        return (s.comboPoints or 0) >= n
+    end
 end
 
 function C.ComboBelow(n)
-    return function(s) return (s.comboPoints or 0) < n end
+    return function(s)
+        return (s.comboPoints or 0) < n
+    end
 end
 
 -- ── Health ────────────────────────────────────────────────────────────────────
 
 function C.HealthBelow(pct)
-    return function(s) return (s.healthPct or 100) < pct end
+    return function(s)
+        return (s.healthPct or 100) < pct
+    end
 end
 
 function C.HealthAtLeast(pct)
-    return function(s) return (s.healthPct or 100) >= pct end
+    return function(s)
+        return (s.healthPct or 100) >= pct
+    end
 end
 
 --- Emergency defensive window.
-function C.Hurt()      return C.HealthBelow(60) end
-function C.Critical()  return C.HealthBelow(35) end
+function C.Hurt()
+    return C.HealthBelow(60)
+end
+function C.Critical()
+    return C.HealthBelow(35)
+end
 
 -- ── Target ────────────────────────────────────────────────────────────────────
 
 function C.TargetBelow(pct)
-    return function(s) return (s.targetPct or 100) < pct end
+    return function(s)
+        return (s.targetPct or 100) < pct
+    end
 end
 
 --- Execute range. Most execute abilities sit at 20% or 35%.
@@ -175,11 +219,15 @@ end
 function C.ExecuteOrProc(pct)
     pct = pct or 20
     return function(s, entry)
-        if (s.targetPct or 100) < pct then return true end
+        if (s.targetPct or 100) < pct then
+            return true
+        end
         local id = entry and entry.spellID
         if id and C_Spell and C_Spell.IsSpellUsable then
             local ok, usable = pcall(C_Spell.IsSpellUsable, id)
-            if ok and usable then return true end
+            if ok and usable then
+                return true
+            end
         end
         return false
     end
@@ -188,34 +236,46 @@ end
 --- Target will live long enough for a ramping ability to pay off.
 function C.TargetLives(seconds)
     seconds = seconds or 6
-    return function(s) return (s.targetTTD or 999) >= seconds end
+    return function(s)
+        return (s.targetTTD or 999) >= seconds
+    end
 end
 
 function C.TargetDying(seconds)
     seconds = seconds or 4
-    return function(s) return (s.targetTTD or 999) < seconds end
+    return function(s)
+        return (s.targetTTD or 999) < seconds
+    end
 end
 
 -- ── Target count ──────────────────────────────────────────────────────────────
 
 function C.AoE(n)
     n = n or 3
-    return function(s) return (s.aoeCount or 1) >= n end
+    return function(s)
+        return (s.aoeCount or 1) >= n
+    end
 end
 
 function C.SingleTarget(maxN)
     maxN = maxN or 2
-    return function(s) return (s.aoeCount or 1) <= maxN end
+    return function(s)
+        return (s.aoeCount or 1) <= maxN
+    end
 end
 
 -- ── Misc ──────────────────────────────────────────────────────────────────────
 
 function C.InCombat()
-    return function(s) return s.inCombat == true end
+    return function(s)
+        return s.inCombat == true
+    end
 end
 
 --- Always true. Useful as an explicit "no condition, and that's deliberate"
 --- marker so a reviewer can tell it apart from an entry nobody has looked at.
 function C.Always()
-    return function() return true end
+    return function()
+        return true
+    end
 end

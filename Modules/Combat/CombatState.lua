@@ -1,4 +1,4 @@
--- ToonAge/Modules/CombatState.lua
+-- ToonAge/Modules/Combat/CombatState.lua
 -- Lightweight combat state snapshot for smart rotation priority highlighting.
 --
 -- Architecture (inspired by WeakAuras trigger system):
@@ -11,7 +11,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
-local U  = TA.Utils
+local U = TA.Utils
 
 local CS = {}
 TA:RegisterModule("CombatState", CS)
@@ -20,30 +20,30 @@ TA:RegisterModule("CombatState", CS)
 -- Readable by Rotation.lua and any module that needs combat context.
 
 CS.state = {
-    inCombat     = false,
-    health       = 100,
-    healthMax    = 100,
-    healthPct    = 100,
-    power        = 0,        -- primary resource (mana, rage, energy, etc.)
-    powerMax     = 100,
-    powerPct     = 0,
-    powerType    = 0,        -- Enum.PowerType
-    comboPoints  = 0,        -- for rogues/druids/etc.
+    inCombat = false,
+    health = 100,
+    healthMax = 100,
+    healthPct = 100,
+    power = 0, -- primary resource (mana, rage, energy, etc.)
+    powerMax = 100,
+    powerPct = 0,
+    powerType = 0, -- Enum.PowerType
+    comboPoints = 0, -- for rogues/druids/etc.
     targetExists = false,
     targetHealth = 100,
-    targetPct    = 100,
-    targetTTD    = 999,      -- Time-To-Die estimate (seconds); 999 = unknown/long-lived
-    buffs        = {},       -- [spellID] = { stacks=N, expires=T }
-    debuffs      = {},       -- [spellID] = { stacks=N, expires=T } (on target)
-    cooldowns    = {},       -- [spellID] = { start=T, duration=D, charges=N }
-    gcd          = 0,        -- remaining GCD in seconds
-    aoeCount     = 1,        -- estimated enemies nearby (from nameplates)
+    targetPct = 100,
+    targetTTD = 999, -- Time-To-Die estimate (seconds); 999 = unknown/long-lived
+    buffs = {}, -- [spellID] = { stacks=N, expires=T }
+    debuffs = {}, -- [spellID] = { stacks=N, expires=T } (on target)
+    cooldowns = {}, -- [spellID] = { start=T, duration=D, charges=N }
+    gcd = 0, -- remaining GCD in seconds
+    aoeCount = 1, -- estimated enemies nearby (from nameplates)
 }
 
 -- ── Internal throttle ─────────────────────────────────────────────────────────
 local POLL_INTERVAL = 0.1
-local pollTicker    = nil
-local dirty         = true   -- set true on any event, cleared after snapshot
+local pollTicker = nil
+local dirty = true -- set true on any event, cleared after snapshot
 
 -- ── Snapshot functions ────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ local function UpdateHealth()
         return h, hm
     end)
     if ok and health then
-        s.health    = health
+        s.health = health
         s.healthMax = healthMax or 1
         s.healthPct = (s.healthMax > 0) and (s.health / s.healthMax * 100) or 100
     end
@@ -73,7 +73,7 @@ local function UpdatePower()
     -- 12.0 PTR: Same taint issue as health. Full pcall around all arithmetic.
     local ok, pType, power, powerMax, cp = pcall(function()
         local pt = UnitPowerType("player") or 0
-        local p  = tonumber(tostring(UnitPower("player"))) or 0
+        local p = tonumber(tostring(UnitPower("player"))) or 0
         local pm = tonumber(tostring(UnitPowerMax("player"))) or 1
         local cpts = 0
         local cpMax2 = tonumber(tostring(UnitPowerMax("player", Enum.PowerType.ComboPoints))) or 0
@@ -83,10 +83,10 @@ local function UpdatePower()
         return pt, p, pm, cpts
     end)
     if ok and power then
-        s.powerType  = pType or 0
-        s.power      = power
-        s.powerMax   = powerMax or 1
-        s.powerPct   = (s.powerMax > 0) and (s.power / s.powerMax * 100) or 0
+        s.powerType = pType or 0
+        s.power = power
+        s.powerMax = powerMax or 1
+        s.powerPct = (s.powerMax > 0) and (s.power / s.powerMax * 100) or 0
         s.comboPoints = cp or 0
     end
 end
@@ -102,19 +102,19 @@ local function UpdateTarget()
         end)
         if ok and h then
             s.targetHealth = h
-            s.targetPct    = (hm and hm > 0) and (h / hm * 100) or 100
+            s.targetPct = (hm and hm > 0) and (h / hm * 100) or 100
         end
     else
         s.targetHealth = 0
-        s.targetPct    = 100
+        s.targetPct = 100
     end
 end
 
 -- ── Time-To-Die (TTD) estimation ──────────────────────────────────────────────
 -- Tracks target HP change rate over a 3-second sliding window.
 -- If target is losing HP steadily, estimates seconds until death.
-local TTD_WINDOW = 3.0       -- seconds of history to consider
-local ttdSamples = {}        -- { { time, healthPct }, ... }
+local TTD_WINDOW = 3.0 -- seconds of history to consider
+local ttdSamples = {} -- { { time, healthPct }, ... }
 
 local function UpdateTTD()
     local s = CS.state
@@ -147,7 +147,7 @@ local function UpdateTTD()
         return
     end
 
-    local dpct = oldest.pct - newest.pct  -- positive = losing health
+    local dpct = oldest.pct - newest.pct -- positive = losing health
     if dpct <= 0 then
         -- Target is healing or stable
         s.targetTTD = 999
@@ -177,70 +177,62 @@ end
 -- used as a key or in arithmetic, not just the ID.
 local function UpdateBuffs()
     local s = CS.state
-    -- Mark existing entries as stale, then overwrite in place (avoids wipe+recreate GC churn)
-    for id in pairs(s.buffs) do s.buffs[id].stacks = 0; s.buffs[id].expires = 0; s.buffs[id]._active = false end
+    wipe(s.buffs)
     for i = 1, 40 do
         local ok, auraData = pcall(C_UnitAuras.GetBuffDataByIndex, "player", i)
-        if not ok or not auraData then break end
+        -- nil auraData means we ran past the last aura: a real end-of-list.
+        if not ok or not auraData then
+            break
+        end
         local id = U.SafeNum(auraData.spellId)
         if id > 0 then
-            local entry = s.buffs[id]
-            if not entry then
-                entry = { stacks = 0, expires = 0, _active = true }
-                s.buffs[id] = entry
-            end
-            entry.stacks  = U.SafeNum(auraData.applications)
-            entry.expires = U.SafeNum(auraData.expirationTime)
-            entry._active = true
+            s.buffs[id] = {
+                stacks = U.SafeNum(auraData.applications),
+                expires = U.SafeNum(auraData.expirationTime),
+            }
         end
-    end
-    -- Remove entries that are no longer active
-    for id, entry in pairs(s.buffs) do
-        if not entry._active then s.buffs[id] = nil end
     end
 end
 
 local function UpdateDebuffsOnTarget()
     local s = CS.state
+    wipe(s.debuffs)
     if not s.targetExists then
-        for id in pairs(s.debuffs) do s.debuffs[id] = nil end
         return
     end
-    -- Mark existing entries stale, overwrite in place
-    for id in pairs(s.debuffs) do s.debuffs[id].stacks = 0; s.debuffs[id].expires = 0; s.debuffs[id]._active = false end
     for i = 1, 40 do
+        -- 12.0: GetDebuffDataByIndex can error when tainted, and its returned
+        -- fields are secret -- see the note above UpdateBuffs for why the key
+        -- must be coerced before it touches the table.
         local ok, auraData = pcall(C_UnitAuras.GetDebuffDataByIndex, "target", i, "PLAYER")
-        if not ok or not auraData then break end
+        if not ok or not auraData then
+            break
+        end
         local id = U.SafeNum(auraData.spellId)
         if id > 0 then
-            local entry = s.debuffs[id]
-            if not entry then
-                entry = { stacks = 0, expires = 0, _active = true }
-                s.debuffs[id] = entry
-            end
-            entry.stacks  = U.SafeNum(auraData.applications)
-            entry.expires = U.SafeNum(auraData.expirationTime)
-            entry._active = true
+            s.debuffs[id] = {
+                stacks = U.SafeNum(auraData.applications),
+                expires = U.SafeNum(auraData.expirationTime),
+            }
         end
-    end
-    for id, entry in pairs(s.debuffs) do
-        if not entry._active then s.debuffs[id] = nil end
     end
 end
 
 local function UpdateCooldowns(spellIDs)
     local s = CS.state
     -- Only update specific spellIDs if provided, otherwise skip (too expensive to scan all)
-    if not spellIDs then return end
+    if not spellIDs then
+        return
+    end
     for _, spellID in ipairs(spellIDs) do
         local cdInfo = C_Spell.GetSpellCooldown(spellID)
         if cdInfo then
             -- Coerced on the way in, so every reader gets plain numbers.
             -- IsReady() adds these together; arithmetic on a secret throws.
             s.cooldowns[spellID] = {
-                start    = U.SafeNum(cdInfo.startTime),
+                start = U.SafeNum(cdInfo.startTime),
                 duration = U.SafeNum(cdInfo.duration),
-                charges  = 0,
+                charges = 0,
             }
             -- Check charges
             local charges = C_Spell.GetSpellCharges(spellID)
@@ -253,7 +245,7 @@ end
 
 local function UpdateGCD()
     local s = CS.state
-    local start, duration = U.GetSpellCooldown(61304)  -- 61304 = the hidden GCD spell
+    local start, duration = U.GetSpellCooldown(61304) -- 61304 = the hidden GCD spell
     if start and start > 0 and duration and duration > 0 then
         local remaining = (start + duration) - GetTime()
         s.gcd = remaining > 0 and remaining or 0
@@ -296,7 +288,9 @@ end
 -- ── Polling ticker ────────────────────────────────────────────────────────────
 
 local function OnPoll()
-    if not CS.state.inCombat and not dirty then return end
+    if not CS.state.inCombat and not dirty then
+        return
+    end
     CS:Snapshot()
 end
 
@@ -307,7 +301,9 @@ end
 --- @return boolean active, number stacks, number remainingSec
 function CS:HasBuff(spellID)
     local b = self.state.buffs[spellID]
-    if not b then return false, 0, 0 end
+    if not b then
+        return false, 0, 0
+    end
     local remaining = b.expires > 0 and (b.expires - GetTime()) or 999
     return remaining > 0, b.stacks, remaining
 end
@@ -317,7 +313,9 @@ end
 --- @return boolean active, number stacks, number remainingSec
 function CS:HasDebuff(spellID)
     local d = self.state.debuffs[spellID]
-    if not d then return false, 0, 0 end
+    if not d then
+        return false, 0, 0
+    end
     local remaining = d.expires > 0 and (d.expires - GetTime()) or 999
     return remaining > 0, d.stacks, remaining
 end
@@ -330,14 +328,18 @@ function CS:IsReady(spellID)
     if not cd then
         -- Not tracked yet — do a live check
         local cdInfo = C_Spell.GetSpellCooldown(spellID)
-        if not cdInfo then return true, 0 end
+        if not cdInfo then
+            return true, 0
+        end
         -- Live path: these come straight off the API and are secret in 12.0,
         -- so coerce before the arithmetic rather than after.
         local remaining = (U.SafeNum(cdInfo.startTime) + U.SafeNum(cdInfo.duration)) - GetTime()
         return remaining <= 0, math.max(0, remaining)
     end
     local remaining = (cd.start + cd.duration) - GetTime()
-    if remaining <= 0 then return true, 0 end
+    if remaining <= 0 then
+        return true, 0
+    end
     return false, remaining
 end
 
@@ -363,13 +365,22 @@ end
 local function IsLongRamp(entry)
     if entry.name then
         local ln = entry.name:lower()
-        if ln:find("mark") or (ln:find("shock") and ln:find("flame"))
-        or ln:find("corruption") or ln:find("agony")
-        or ln:find("moonfire") or ln:find("sunfire")
-        or ln:find("rake") or ln:find("rip")
-        or ln:find("rupture") or ln:find("garrote")
-        or ln:find("pain") or ln:find("vampiric")
-        or ln:find("immolate") or ln:find("unstable") then
+        if
+            ln:find("mark")
+            or (ln:find("shock") and ln:find("flame"))
+            or ln:find("corruption")
+            or ln:find("agony")
+            or ln:find("moonfire")
+            or ln:find("sunfire")
+            or ln:find("rake")
+            or ln:find("rip")
+            or ln:find("rupture")
+            or ln:find("garrote")
+            or ln:find("pain")
+            or ln:find("vampiric")
+            or ln:find("immolate")
+            or ln:find("unstable")
+        then
             return true
         end
     end
@@ -381,15 +392,19 @@ end
 --- must never hide an ability, only fail to promote it.
 --- @return boolean eligible
 local function PassesWhen(entry, state)
-    if not entry.when then return true end
+    if not entry.when then
+        return true
+    end
     -- Predicates receive (state, entry); the entry lets proc-aware conditions
     -- such as C.ExecuteOrProc consult the spellID.
     local ok, want = pcall(entry.when, state, entry)
     if not ok then
         if TA.ErrorLog then
-            TA.ErrorLog:Log("Rotation condition",
-                string.format("%s (%s): %s", entry.name or "?",
-                    tostring(entry.spellID), tostring(want)), "")
+            TA.ErrorLog:Log(
+                "Rotation condition",
+                string.format("%s (%s): %s", entry.name or "?", tostring(entry.spellID), tostring(want)),
+                ""
+            )
         end
         return true
     end
@@ -407,26 +422,33 @@ end
 --- Deliberately *not* applied to `isCd`/`isMajorCd` entries (already excluded
 --- from prediction) or to entries with an explicit `when` — an author who wrote
 --- a condition has said what they mean, and this should not second-guess it.
-local AURA_REFRESH_WINDOW = 4  -- seconds; refresh inside this is fine (pandemic-ish)
+local AURA_REFRESH_WINDOW = 4 -- seconds; refresh inside this is fine (pandemic-ish)
 
 local function AlreadyActive(entry, state)
-    if entry.when then return false end
+    if entry.when then
+        return false
+    end
     local id = entry.spellID
-    if not id then return false end
+    if not id then
+        return false
+    end
 
     local d = state.debuffs and state.debuffs[id]
     if d and d.expires and d.expires > 0 then
-        if (d.expires - GetTime()) > AURA_REFRESH_WINDOW then return true end
+        if (d.expires - GetTime()) > AURA_REFRESH_WINDOW then
+            return true
+        end
     end
 
     local b = state.buffs and state.buffs[id]
     if b and b.expires and b.expires > 0 then
-        if (b.expires - GetTime()) > AURA_REFRESH_WINDOW then return true end
+        if (b.expires - GetTime()) > AURA_REFRESH_WINDOW then
+            return true
+        end
     end
 
     return false
 end
-
 
 --- Get the recommended "next ability" index from a priority list.
 --- Evaluates: spell is known, off cooldown, meets level requirement.
@@ -435,34 +457,51 @@ end
 --- @param playerLevel number
 --- @return number|nil bestIndex, table|nil bestEntry
 function CS:GetNextAbility(priorities, playerLevel)
-    if not priorities then return nil, nil end
+    if not priorities then
+        return nil, nil
+    end
     local now = GetTime()
 
     for i, entry in ipairs(priorities) do
         local dominated = false
-        repeat  -- single-pass block for "continue" via break
-
+        repeat -- single-pass block for "continue" via break
             -- Skip cooldowns section (those are situational)
-            if entry.isCd or entry.isMajorCd then dominated = true; break end
+            if entry.isCd or entry.isMajorCd then
+                dominated = true
+                break
+            end
 
             -- Level gate
-            if entry.unlockLv and playerLevel < entry.unlockLv then dominated = true; break end
+            if entry.unlockLv and playerLevel < entry.unlockLv then
+                dominated = true
+                break
+            end
 
             -- Suppress long-ramp abilities on a target that's about to die
             if IsLongRamp(entry) and self.state.targetTTD and self.state.targetTTD < 3 then
-                dominated = true; break
+                dominated = true
+                break
             end
 
             -- Must be a known spell
             if entry.spellID then
                 local isKnown = U.IsSpellKnown(entry.spellID)
-                if not isKnown then dominated = true; break end
+                if not isKnown then
+                    dominated = true
+                    break
+                end
 
                 -- Authored condition (Data/RotationConditions.lua)
-                if not PassesWhen(entry, self.state) then dominated = true; break end
+                if not PassesWhen(entry, self.state) then
+                    dominated = true
+                    break
+                end
 
                 -- Already ticking as a DoT/self-buff — don't suggest a re-cast
-                if AlreadyActive(entry, self.state) then dominated = true; break end
+                if AlreadyActive(entry, self.state) then
+                    dominated = true
+                    break
+                end
 
                 -- Must be off cooldown (or have charges available)
                 -- 12.0 PTR: cdInfo fields can be tainted secret numbers
@@ -482,12 +521,18 @@ function CS:GetNextAbility(priorities, playerLevel)
                         end
                     end
                 end)
-                if not cdOk then dominated = true; break end
+                if not cdOk then
+                    dominated = true
+                    break
+                end
 
                 -- Must be usable (resource, etc.)
                 if C_Spell.IsSpellUsable then
                     local usOk, usable = pcall(C_Spell.IsSpellUsable, entry.spellID)
-                    if usOk and usable == false then dominated = true; break end
+                    if usOk and usable == false then
+                        dominated = true
+                        break
+                    end
                 end
             end
 
@@ -514,14 +559,16 @@ end
 function CS:GetNextN(priorities, playerLevel, count)
     count = count or 3
     local results = {}
-    if not priorities then return results end
+    if not priorities then
+        return results
+    end
     local now = GetTime()
 
     -- Simulated state: tracks which spellIDs have been "used" and at what
     -- simulated future time they become available again.
-    local simUsed = {}       -- [spellID] = simulated CD end time
-    local simTime = now      -- advances by GCD after each selection
-    local GCD_LENGTH = 1.5   -- base GCD (haste would reduce, but 1.5 is safe)
+    local simUsed = {} -- [spellID] = simulated CD end time
+    local simTime = now -- advances by GCD after each selection
+    local GCD_LENGTH = 1.5 -- base GCD (haste would reduce, but 1.5 is safe)
 
     -- Get current haste for more accurate GCD estimate
     -- 12.0 PTR: GetHaste() can return a tainted "secret number"
@@ -550,17 +597,24 @@ function CS:GetNextN(priorities, playerLevel, count)
                 local dominated = false
                 repeat
                     local isKnown = U.IsSpellKnown(entry.spellID)
-                    if not isKnown then dominated = true; break end
+                    if not isKnown then
+                        dominated = true
+                        break
+                    end
 
                     -- Authored condition (Data/RotationConditions.lua).
-                    if not PassesWhen(entry, self.state) then dominated = true; break end
+                    if not PassesWhen(entry, self.state) then
+                        dominated = true
+                        break
+                    end
 
                     -- Generic aura rule: don't re-suggest a DoT/self-buff that is
                     -- already ticking. Only applied on the first simulated slot —
                     -- by slots 2 and 3 the aura may legitimately need refreshing,
                     -- and we can't model its decay accurately that far ahead.
                     if pass == 1 and AlreadyActive(entry, self.state) then
-                        dominated = true; break
+                        dominated = true
+                        break
                     end
 
                     -- Check if this spell was already "used" in a prior simulated GCD
@@ -573,17 +627,21 @@ function CS:GetNextN(priorities, playerLevel, count)
                             local realCharges = charges and charges.currentCharges or 0
                             local usedCount = 0
                             for _, r in ipairs(results) do
-                                if r.entry.spellID == entry.spellID then usedCount = usedCount + 1 end
+                                if r.entry.spellID == entry.spellID then
+                                    usedCount = usedCount + 1
+                                end
                             end
                             if realCharges <= usedCount then
-                                dominated = true; break
+                                dominated = true
+                                break
                             end
                         else
                             -- Spell CD has "expired" in sim, but don't repeat
                             -- the same filler back-to-back (looks wrong on the bar)
                             local lastPicked = results[#results]
                             if lastPicked and lastPicked.entry.spellID == entry.spellID then
-                                dominated = true; break
+                                dominated = true
+                                break
                             end
                         end
                     end
@@ -600,18 +658,24 @@ function CS:GetNextN(priorities, playerLevel, count)
                                 if cdEnd > simTime + 0.1 then
                                     local charges = C_Spell.GetSpellCharges(entry.spellID)
                                     if not charges or charges.currentCharges == 0 then
-                                        error("blocked")  -- signal to outer pcall
+                                        error("blocked") -- signal to outer pcall
                                     end
                                 end
                             end
                         end
                     end)
-                    if not cdBlocked then dominated = true; break end
+                    if not cdBlocked then
+                        dominated = true
+                        break
+                    end
 
                     -- Resource check (only for first pass — we can't predict regen accurately)
                     if pass == 1 and C_Spell.IsSpellUsable then
                         local usOk, usable = pcall(C_Spell.IsSpellUsable, entry.spellID)
-                        if usOk and usable == false then dominated = true; break end
+                        if usOk and usable == false then
+                            dominated = true
+                            break
+                        end
                     end
                 until true
 
@@ -621,7 +685,9 @@ function CS:GetNextN(priorities, playerLevel, count)
                 end
             end
 
-            if bestEntry then break end  -- found best for this pass
+            if bestEntry then
+                break
+            end -- found best for this pass
         end
 
         if bestEntry then
@@ -637,13 +703,15 @@ function CS:GetNextN(priorities, playerLevel, count)
                     local cdInfo = C_Spell.GetSpellCooldown(bestEntry.spellID)
                     if cdInfo then
                         local dur = tonumber(tostring(cdInfo.duration)) or 0
-                        if dur > 1.5 then spellCD = dur end
+                        if dur > 1.5 then
+                            spellCD = dur
+                        end
                     end
                 end)
                 simUsed[bestEntry.spellID] = now + spellCD
             end
         else
-            break  -- no more abilities available in simulated future
+            break -- no more abilities available in simulated future
         end
     end
 
@@ -660,15 +728,27 @@ function CS:OnEvent(event, ...)
         self.state.inCombat = false
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
         local unit = ...
-        if unit == "player" then UpdateHealth() end
-        if unit == "target" then UpdateTarget() end
+        if unit == "player" then
+            UpdateHealth()
+        end
+        if unit == "target" then
+            UpdateTarget()
+        end
     elseif event == "UNIT_POWER_FREQUENT" or event == "UNIT_POWER_UPDATE" then
         local unit = ...
-        if unit == "player" then UpdatePower(); dirty = true end
+        if unit == "player" then
+            UpdatePower()
+            dirty = true
+        end
     elseif event == "UNIT_AURA" then
         local unit = ...
-        if unit == "player" then UpdateBuffs(); dirty = true end
-        if unit == "target" then UpdateDebuffsOnTarget() end
+        if unit == "player" then
+            UpdateBuffs()
+            dirty = true
+        end
+        if unit == "target" then
+            UpdateDebuffsOnTarget()
+        end
     elseif event == "PLAYER_TARGET_CHANGED" then
         UpdateTarget()
         UpdateDebuffsOnTarget()
