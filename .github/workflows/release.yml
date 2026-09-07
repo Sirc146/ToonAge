@@ -1,0 +1,31 @@
+name: Package and Release
+
+# Builds a proper WowUp-compatible release zip and attaches it to a GitHub
+# Release automatically whenever a version tag (v1.0.0, v2.1.0-anniversary,
+# etc.) is pushed. This is the piece WowUp actually needs — it reads a
+# repo's GitHub Releases and looks for a built zip attached to the release,
+# not the repo's source code directly.
+#
+# To cut a release: bump ## Version in ToonAge.toc, commit, then:
+#   git tag v2.1.0-anniversary
+#   git push origin v2.1.0-anniversary
+# This workflow does the rest.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Package and release
+        uses: BigWigsMods/packager@v2
+        env:
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
