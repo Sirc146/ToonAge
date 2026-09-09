@@ -49,6 +49,35 @@ local function GetVers()
     return 0
 end
 
+-- DR (diminishing-returns) soft-cap RATING thresholds — file-scoped (not
+-- local to UpdateData) because both UpdateData's stat-row rendering AND
+-- BuildUI's OnEnter tooltip closure need to read it, and BuildUI runs once
+-- at setup time while UpdateData re-runs on every refresh; a local declared
+-- inside UpdateData is invisible to a closure created back in BuildUI.
+--
+-- These are Blizzard's actual secondary-stat DR breakpoints — the rating at
+-- which each stat crosses its 20%-effectiveness-lost tier — confirmed
+-- identical across all 39 specs via icy-veins/Wowhead's published DR tables
+-- (Patch 12.1 "Midnight" Season 2). Comparing RATING against these (not a
+-- flat percentage of the displayed effect %) is what fixes the false "DR
+-- cap" positive on stats like Preservation Evoker's Mastery, whose % per
+-- rating point runs much higher than other specs' — see the longer comment
+-- at the DR_SOFT_CAP use-site in UpdateData for the full explanation.
+-- First DR bracket (the 30%-effect breakpoint) in RATING, level 90, Patch
+-- 12.0.1 "Midnight" — verified maxroll.gg 2026 "Stat Diminishing Returns".
+-- These are the rating at which each secondary FIRST begins losing value
+-- (−10% per point beyond this). The earlier 1760/1840/2160 values were the
+-- SECOND bracket (the −20% breakpoint), so the old "DR soft cap" readout
+-- fired one whole tier late — a stat was already inside its first −10% band
+-- before the UI called it capped. Kept in exact sync with Core/StatEngine.lua's
+-- DR_BRACKETS (first bound of each). Mastery shares Crit's rating bounds.
+local DR_SOFT_CAP = {
+    CRIT    = 1380,
+    HASTE   = 1320,
+    MASTERY = 1380,
+    VERS    = 1620,
+}
+
 -- ── Backdrop shorthand ────────────────────────────────────────────────
 local function Backdrop(frame, br, bg, bb, ba, er, eg, eb, ea)
     frame:SetBackdrop({
@@ -316,7 +345,9 @@ function Character:BuildUI(content, sidebar)
             if s.key == "VERS" then
                 GameTooltip:AddDoubleLine("Damage reduction", string.format("%.2f%%", s.pct / 2), 0.7,0.7,0.7, 0.45,0.60,0.75)
             end
-            if s.pct >= 33.0 then
+            local capRating = DR_SOFT_CAP[s.key]
+            GameTooltip:AddDoubleLine("DR soft cap", string.format("%d rating", capRating), 0.7,0.7,0.7, 0.6,0.6,0.6)
+            if s.rating >= capRating then
                 local suggestion = s.redirectTarget and ("Redirect itemization into " .. s.redirectTarget .. " instead.")
                                                      or "Every secondary is capped — prioritize item level instead."
                 GameTooltip:AddLine("At or past DR soft cap.", 1, 0.27, 0.27, true)
@@ -410,7 +441,8 @@ function Character:UpdateData()
     self.widgets.hpLbl:SetText("Max HP  " .. U.FormatNumber(UnitHealthMax("player")))
 
     -- Secondaries sorted by weight
-    local SOFT_CAP = 33.0
+    -- (DR_SOFT_CAP is file-scoped above GetVers() — see comment there — so
+    -- both this function and BuildUI's tooltip closure share the same table.)
     local RANK_COLORS = {
         [1] = { 0.76, 0.35, 1.00 },
         [2] = { 0.29, 1.00, 0.48 },
@@ -419,23 +451,54 @@ function Character:UpdateData()
     }
     local RANK_LABELS = { "#1 Priority", "#2 Priority", "#3", "#4" }
 
+    -- Combat-rating indices below correspond to Blizzard's CR_* constants:
+    -- CR_CRIT_MELEE=9, CR_HASTE_MELEE=18, CR_MASTERY=26, CR_VERSATILITY_DAMAGE_DONE=29.
+    -- The previous 1/3/14 values were CR_WEAPON_SKILL, CR_DODGE, and
+    -- CR_HIT_TAKEN_SPELL — none of which track Crit/Haste/Mastery at all, so
+    -- GetCombatRating always returned 0 for those three (only Versatility's
+    -- index of 29 was ever correct). The displayed % values were unaffected
+    -- (GetCritChance/GetHaste/GetMasteryEffect are separate, correct calls) —
+    -- only the "N rating" readout under each stat was silently wrong.
     local secondaries = {
-        { key="CRIT",    name="Critical Strike", pct=SafeCall(GetCritChance),    rating=SafeCall(GetCombatRating, 1)  },
-        { key="HASTE",   name="Haste",           pct=SafeCall(GetHaste),         rating=SafeCall(GetCombatRating, 3)  },
-        { key="MASTERY", name="Mastery",         pct=SafeCall(GetMasteryEffect), rating=SafeCall(GetCombatRating, 14) },
+        { key="CRIT",    name="Critical Strike", pct=SafeCall(GetCritChance),    rating=SafeCall(GetCombatRating, 9)  },
+        { key="HASTE",   name="Haste",           pct=SafeCall(GetHaste),         rating=SafeCall(GetCombatRating, 18) },
+        { key="MASTERY", name="Mastery",         pct=SafeCall(GetMasteryEffect), rating=SafeCall(GetCombatRating, 26) },
         { key="VERS",    name="Versatility",     pct=GetVers(),                  rating=SafeCall(GetCombatRating, 29) },
     }
-    for _, s in ipairs(secondaries) do s.weight = weights[s.key] or 0.5 end
+    -- Priority weight per stat. When the live DR-aware StatEngine is available
+    -- AND we're showing the player's OWN active spec (so live combat ratings
+    -- apply), use the engine's MARGINAL value — the worth of the NEXT rating
+    -- point at the player's current rating, with diminishing returns, pet
+    -- inheritance, and tank leans folded in. This is what makes the priority
+    -- ordering DR-honest: a stat you've already stacked past its soft cap
+    -- correctly falls in rank instead of staying #1 on its static weight.
+    -- Off-spec views and PvP mode fall back to the static directional weight.
+    local playerSpecID = U.GetPlayerSpecID and U.GetPlayerSpecID()
+    local useEngine = TA.StatEngine and pvxMode ~= "pvp" and specID == playerSpecID
+    for _, s in ipairs(secondaries) do
+        -- staticWeight = spec's directional weight (stable across DR state) —
+        -- drives the WEIGHTED SCORE headline so that number stays comparable.
+        -- weight = the priority ranking key: DR-aware marginal value when the
+        -- live engine is active, else the static weight. The two differ once a
+        -- stat is past its soft cap, which is exactly the point of the engine.
+        s.staticWeight = weights[s.key] or 0.5
+        if useEngine then
+            s.weight = TA.StatEngine:GetMarginalValue(s.key, specID)
+        else
+            s.weight = s.staticWeight
+        end
+    end
     table.sort(secondaries, function(a, b) return a.weight > b.weight end)
 
-    -- Best-weighted stat that ISN'T at/past the DR soft cap — the actual
-    -- redirect target recommended to any stat that is capped. secondaries
-    -- is already sorted highest-weight-first, so the first uncapped entry
-    -- found is the correct answer. nil only when every secondary is capped
-    -- (a real near-BiS scenario, not a bug) — handled with a distinct message.
+    -- Highest-priority stat that ISN'T at/past the DR soft cap — the actual
+    -- redirect target recommended to any stat that is capped. secondaries is
+    -- already sorted highest-priority-first (by marginal value when the engine
+    -- is active, else by static weight), so the first uncapped entry found is
+    -- the correct answer. nil only when every secondary is capped (a real
+    -- near-BiS scenario, not a bug) — handled with a distinct message.
     local redirectTarget = nil
     for _, s in ipairs(secondaries) do
-        if s.pct < SOFT_CAP then
+        if s.rating < DR_SOFT_CAP[s.key] then
             redirectTarget = s.name
             break
         end
@@ -458,10 +521,13 @@ function Character:UpdateData()
             row.row:SetBackdropBorderColor(0.35, 0.28, 0.06, 0.40)
         end
 
-        -- DR fill bar
-        local fillW = math.max((row.row:GetWidth() - 2) * math.min(s.pct / SOFT_CAP, 1.0), 1)
+        -- DR fill bar — proportion of THIS stat's own rating-based soft cap,
+        -- not a shared percentage scale (see DR_SOFT_CAP comment above).
+        local capRating = DR_SOFT_CAP[s.key]
+        local isCapped  = s.rating >= capRating
+        local fillW = math.max((row.row:GetWidth() - 2) * math.min(s.rating / capRating, 1.0), 1)
         row.fill:SetWidth(fillW)
-        if s.pct >= SOFT_CAP then
+        if isCapped then
             row.fill:SetColorTexture(0.75, 0.10, 0.10, 0.20)
         elseif i == 1 then
             row.fill:SetColorTexture(0.45, 0.08, 0.75, 0.18)
@@ -471,7 +537,7 @@ function Character:UpdateData()
 
         -- Sub-line: DR cap warning takes priority; VERS shows damage reduction below cap
         s.redirectTarget = redirectTarget  -- stashed on the stat table so the OnEnter tooltip can reuse it
-        if s.pct >= SOFT_CAP then
+        if isCapped then
             local suggestion = redirectTarget and ("redirect into " .. redirectTarget)
                                               or "all secondaries capped — prioritize item level"
             row.subLbl:SetText("|cFFFF4444DR cap — " .. suggestion .. "|r")
@@ -488,7 +554,13 @@ function Character:UpdateData()
         row.badgeLbl:SetText(RANK_LABELS[i] .. "  w" .. string.format("%.2f", s.weight))
         row.badgeLbl:SetTextColor(rc[1], rc[2], rc[3], 0.85)
 
-        totalScore = totalScore + s.weight * s.pct
+        -- Headline WEIGHTED SCORE uses the STATIC directional weight so the
+        -- number is stable and comparable across gear/DR states (the DR effect
+        -- is already shown per-row via the badge, fill bar and cap warning).
+        -- Mixing the DR-scaled marginal weight in here would make the same
+        -- character's score drop as they gear into a soft cap, conflating stat
+        -- magnitude with DR state.
+        totalScore = totalScore + s.staticWeight * s.pct
     end
 
     -- Weighted score

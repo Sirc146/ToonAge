@@ -150,7 +150,22 @@ local function CalculateItemScore(itemLink, specID, mode)
         if ok and val then return CleanProxyValue(val) end
     end
 
-    local baseScore = CleanProxyValue(SW:ScoreItem(stats, specID, mode))
+    -- DR-aware scoring: route through StatEngine so two items that both add
+    -- the same secondary are no longer scored identically once the player is
+    -- past that stat's soft cap. StatEngine also applies pet-inheritance and
+    -- tank survival leans. It reads live combat ratings, so it's only used for
+    -- the PLAYER's active spec (specID == player's spec); for off-spec/other-
+    -- spec scoring (specID passed in differs) the live DR read wouldn't apply,
+    -- so we fall back to the static directional weights in that case.
+    -- mode == "pvp" is also excluded from the live engine (DR curves shown are
+    -- PvE breakpoints; PvP has its own scaling handled by the ilvl uplift below).
+    local baseScore
+    local playerSpecID = U.GetPlayerSpecID and U.GetPlayerSpecID()
+    if TA.StatEngine and mode ~= "pvp" and specID == playerSpecID then
+        baseScore = CleanProxyValue(TA.StatEngine:ScoreItem(stats, specID))
+    else
+        baseScore = CleanProxyValue(SW:ScoreItem(stats, specID, mode))
+    end
 
     -- PvP ilvl scaling: In instanced PvP (arena/BG), items with a PvP ilvl
     -- receive a proportional stat budget increase.  C_Item.GetItemStats() only

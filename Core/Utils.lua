@@ -235,6 +235,13 @@ function U.GetPlayerSpec()
     return id, name, icon
 end
 
+-- Just the numeric spec ID (e.g. 253 = Beast Mastery), or nil if unavailable.
+-- Convenience wrapper so callers that only need the ID don't discard two
+-- return values at every call site.
+function U.GetPlayerSpecID()
+    return (U.GetPlayerSpec())
+end
+
 function U.GetPlayerRole()
     local specIndex = GetSpecialization()
     if not specIndex then return "NONE" end

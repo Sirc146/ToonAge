@@ -20,6 +20,7 @@ Core\UI.lua
 Core\UIModern.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
+Core\StatEngine.lua
 
 # ── Static Data ────────────────────────────────────────────────────────
 Data\ApiManifest.lua
