@@ -2,7 +2,7 @@
 ## Title: |cFFFFD100ToonAge|r |cFF888780Anniversary|r
 ## Notes: TBC character advisor — stat caps, weapon skill, cap-aware gear scoring, racials and profession perks.
 ## Author: SIRC
-## Version: 2.1.0-anniversary
+## Version: 2.2.1-anniversary
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB
 
@@ -11,11 +11,34 @@
 #
 # Scope: advisory only. No guide engine, no navigation, no arrow — the player
 # uses Dugi for questing. See Docs/CLASSIC_ANNIVERSARY_BRIEF.md in the _ptr_ repo.
+#
+# ── FILENAME, RENAMED 2026-09-10 ────────────────────────────────────────
+# This file used to be the unsuffixed ToonAge.toc. Renamed to the Blizzard-
+# recognized "_TBC" suffix (Burning Crusade Classic & Anniversary Edition —
+# verified against Warcraft Wiki's TOC format reference, not assumed) as the
+# first step of the multi-TOC pattern: a future ToonAge_Cata.toc or
+# ToonAge_Mainline.toc can now sit next to this one, each parsed ONLY by its
+# matching client, without the two ever colliding. An unsuffixed ToonAge.toc
+# is Blizzard's universal fallback name — since this one is now correctly
+# suffixed, there is deliberately no generic ToonAge.toc left in this folder;
+# having both would leave a second manifest around that isn't the one the
+# client actually reads on this flavor, which is worse than removing it.
+#
+# IMPORTANT: this rename alone does NOT add Retail or Cataclysm/Mists Classic
+# support. Every file below is still TBC-only game-design data (talent
+# builds, hit/expertise caps, rotations) that would need its own research and
+# its own Data/*.lua per additional flavor — see Core/Environment.lua's
+# header comment for why that part can't be shimmed the way an API
+# difference can.
 
 # ── Core Framework ─────────────────────────────────────────────────────
 # Load order matters: Utils defines TA.Utils, which every later file binds at
 # file scope. Init must precede it to create TA and TA:RegisterModule.
+# Environment loads right after Init so every later file can read real
+# WOW_PROJECT_ID-based flags (TA.IsTBC, TA.flavor, ...) instead of the
+# hardcoded literals Init.lua used to set directly.
 Core\Init.lua
+Core\Environment.lua
 Core\Utils.lua
 Core\State.lua
 Core\Layout.lua
@@ -37,6 +60,7 @@ Data\TBCTalentHit.lua
 Data\TBCTalentBuilds.lua
 Data\TBCSecondaryRoles.lua
 Data\TBCRotations.lua
+Data\TBCLevelingRotations.lua
 Data\TBCArmor.lua
 Data\TBCPvP.lua
 Data\PetFoods.lua

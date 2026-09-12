@@ -2,9 +2,9 @@
 -- The TBC stat breakdown: attributes, attack power, spell power, Mp5, avoidance,
 -- resistances, and where your talent points went.
 --
--- ══════════════════════════════════════════════════════════════════════════════
--- WHAT WAS REMOVED FROM THE MoP VERSION AND WHY
--- ══════════════════════════════════════════════════════════════════════════════
+
+-- ─── WHAT WAS REMOVED FROM THE MoP VERSION AND WHY ───────────────────────────
+
 --
 -- The _classic_ build's Character tab opens UpdateData() with
 --   local specID = U.GetPlayerSpec(); if not specID then return end
@@ -30,9 +30,7 @@ local L  = TA.Layout
 local M = {}
 TA:RegisterModule("Character", M)
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── READS ─────────────────────────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── READS ───────────────────────────────────────────────────────────────────
 
 local STAT_INDEX = { STR = 1, AGI = 2, STA = 3, INT = 4, SPI = 5 }
 local STAT_ORDER = { "STR", "AGI", "STA", "INT", "SPI" }
@@ -77,11 +75,14 @@ local SCHOOLS = {
     { index = 6, key = "Arcane", label = "Arcane" },
 }
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── RENDER ────────────────────────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── RENDER ──────────────────────────────────────────────────────────────────
 
 local function RenderHeadline(content, y)
+    -- NOTE: U.InferRole() (Core/Utils.lua) only ever returns "HEALER" via a manual
+    -- /ta role override. A Holy Paladin, Restoration Druid or Restoration Shaman with
+    -- no shield equipped infers as plain "MELEE" by default, so an untalented-looking
+    -- healer can get a headline telling them to gear melee hit/expertise instead of
+    -- the "no caps apply to you" message a healer should see.
     local role = U.InferRole()
     local caps = TA:GetModule("StatCaps")
 
@@ -185,6 +186,10 @@ local function RenderOffense(content, y, role)
             end
         end
 
+        -- WARN: classic Lua ternary trap. If Try(GetRangedCritChance) ever answers nil
+        -- (API missing or the pcall inside SafeGetNum fails), `a and b or c` falls
+        -- through to Try(GetCritChance) even though role == "RANGED" — the label below
+        -- still reads "Ranged Crit" but the value shown would silently be melee crit.
         local crit = (role == "RANGED") and Try(GetRangedCritChance) or Try(GetCritChance)
         y = L:DataRow(content, y, {
             label = (role == "RANGED") and "Ranged Crit" or "Melee Crit",

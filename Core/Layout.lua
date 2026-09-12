@@ -21,7 +21,7 @@ local U  = TA.Utils
 local L = {}
 TA.Layout = L
 
--- ── Palette (.rules.md) ───────────────────────────────────────────────
+-- ─── Palette (.rules.md) ────────────────────────────────────────────────────
 L.C_PRIMARY   = { 0.92, 0.90, 0.87 }
 L.C_SECONDARY = { 0.62, 0.59, 0.55 }
 L.C_ACCENT    = { 0.40, 0.75, 1.00 }
@@ -44,6 +44,8 @@ L.RPAD = 8    -- between rows
 
 local FONT = "Fonts\\FRIZQT__.TTF"
 local MONO = "Fonts\\ARIALN.TTF"
+
+-- ─── Text Helpers ───────────────────────────────────────────────────────────
 
 local function Colour(key)
     if type(key) == "table" then return key end
@@ -73,11 +75,10 @@ function L:Width(parent)
     return math.floor(math.max(w - L.PAD * 2, 40))
 end
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── BUILDERS ──────────────────────────────────────────────────────────────────
+-- ─── BUILDERS ───────────────────────────────────────────────────────────────
 -- All take (parent, y, ...) and return the next y.
--- ══════════════════════════════════════════════════════════════════════════════
 
+-- ── Structured rows ───────────────────────────────────────────────────
 --- Gold section title with a rule under it.
 function L:SectionHeader(parent, y, title, subtitle)
     y = math.floor(y)
@@ -210,6 +211,7 @@ function L:CapBar(parent, y, opts)
     return y - ROW_H - L.RPAD
 end
 
+-- ── Text builders ─────────────────────────────────────────────────────
 --- Free-form paragraph. Wraps, and the height it consumes is measured after
 --- wrapping rather than assumed — assuming a fixed row height is what makes
 --- text overlap when it wraps to two lines.
@@ -242,6 +244,7 @@ function L:Bullet(parent, y, text, opts)
     return y - h - 2
 end
 
+-- ── Layout primitives ────────────────────────────────────────────────
 function L:Divider(parent, y)
     y = math.floor(y) - 4
     local line = parent:CreateTexture(nil, "ARTWORK")
@@ -281,9 +284,7 @@ function L:Finish(parent, y)
     parent:SetHeight(math.max(math.floor(math.abs(y) + 20), 40))
 end
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── SIDEBAR ───────────────────────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── SIDEBAR ────────────────────────────────────────────────────────────────
 
 --- The identity block every tab shows in the sidebar. Kept in one place so six
 --- tabs cannot drift apart.
@@ -299,6 +300,7 @@ function L:CharacterSidebar(side)
     name:SetWidth(w)
     y = y - 20
 
+    -- NOTE: raceToken is captured but never used below — only raceName renders.
     local raceToken, raceName = U.GetPlayerRace()
     local sub = Text(side, {
         text = string.format("Level %d %s", U.GetPlayerLevel(), U.GetPlayerClassLocalized()),

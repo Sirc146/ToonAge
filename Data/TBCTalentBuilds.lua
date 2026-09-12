@@ -9,7 +9,11 @@
 -- Researched 2026-09-07 against current (2025-2026) TBC Classic Anniversary
 -- guides — Wowhead TBC Classic, Icy Veins TBC Classic, Warcraft Tavern,
 -- wowtbc.gg, Skill Capped, FrostyBoost, PvPSkills, and others, cited per
--- entry. Every build below is graded:
+-- entry. Added 2026-09-09 to the reference set at the user's request: the
+-- "Loon Best In Slot (BIS)" in-game addon (github.com/lgallucci/LoonBestInSlot,
+-- curseforge.com/wow/addons/loon-best-in-slot — itself built on Wowhead's BiS
+-- guides, TBC Classic supported) as a cross-check for gear-driven build
+-- choices. Every build below is graded:
 --
 --   CONFIRMED   Point allocation independently corroborated by 2+ sources
 --               that agree with each other and sum correctly to 61 (the
@@ -132,6 +136,36 @@ TA.Data.TalentBuilds = {
             },
         },
         {
+            -- Added 2026-09-09: reported missing entirely — the Rotation tab
+            -- (Data/TBCRotations.lua) has always had a Retribution DPS entry,
+            -- but this file had no matching talent build, so a Retribution
+            -- Paladin's Talents tab fell back to "show every Paladin spec"
+            -- instead of a targeted build. Icy Veins/Wowhead/Warcraft Tavern
+            -- render their talent trees as JS widgets that didn't scrape as
+            -- plain text (same limitation noted elsewhere in this file), so
+            -- the exact point totals are not independently confirmed from a
+            -- scraped calculator — graded APPROX with verifyPoints.
+            label = "Retribution — Raid PvE DPS (niche/off-spec; TBC Ret is a famously weak raid DPS spec)", context = "pve", role = "dps",
+            allocation = "Deep Retribution capstone build (through Seal of Command / Crusader Strike) with "
+                .. "a small Protection dip for Blessing of Kings + Guardian's Favor and a Holy dip for "
+                .. "Divine Strength — exact point totals not independently confirmed from a scraped calculator",
+            confidence = "APPROX",
+            verifyPoints = true,
+            keyTalents = {
+                "Seal of Command 1/1 (capstone)", "Crusader Strike 1/1",
+                "Benediction 5/5 (mana cost)", "Improved Seal of the Crusader 3/3 (party-wide crit buff)",
+                "Sanctified Judgement 3/3 (mana refund)", "Two-Handed Weapon Specialization 5/5",
+                "-- Protection dip: Blessing of Kings 1/1, Guardian's Favor 2/2",
+                "-- Holy dip: Divine Strength (Str)",
+            },
+            notes = "TBC Retribution is well-documented as a weak raid DPS spec — it doesn't come into its own until Wrath. This entry exists for solo/leveling/off-spec/5-man play, matching why Data/TBCRotations.lua already carries a Retribution DPS priority list. It is not a recommendation to bring a Ret Paladin as a raid main-spec.",
+            sources = {
+                "https://www.wowhead.com/tbc/guide/classes/paladin/retribution/dps-talent-builds-pve",
+                "https://www.icy-veins.com/tbc-classic/retribution-paladin-dps-pve-spec-builds-talents",
+                "https://www.warcrafttavern.com/tbc/guides/pve-retribution-paladin-talents-builds/",
+            },
+        },
+        {
             label = "Protection — Raid/Dungeon Tank", context = "pve", role = "tank",
             allocation = "Holy 0 / Protection 49 / Retribution 12", confidence = "CONFIRMED",
             keyTalents = {
@@ -187,6 +221,32 @@ TA.Data.TalentBuilds = {
             },
         },
         {
+            -- Added 2026-09-09: same gap pattern as Retribution Paladin —
+            -- Data/TBCRotations.lua has a Beast Mastery DPS entry but this
+            -- file had no matching build, so a BM Hunter fell back to
+            -- "show every Hunter spec." Exact point totals not independently
+            -- confirmed from a scraped calculator (JS-widget limitation).
+            label = "Beast Mastery — Raid PvE DPS (niche; pet-focused, weaker than Survival)", context = "pve", role = "dps",
+            allocation = "Beast Mastery capstone build (through Bestial Wrath / The Beast Within) with a "
+                .. "20-point Marksmanship floor for Mortal Shots — exact point totals not independently "
+                .. "confirmed from a scraped calculator",
+            confidence = "APPROX",
+            verifyPoints = true,
+            keyTalents = {
+                "Bestial Wrath 1/1 (capstone)", "The Beast Within (pairs with Bestial Wrath)",
+                "Frenzy 4/5 (pet haste — deliberately not 5/5; the 5th point is redundant once 100% uptime is reached)",
+                "Unleashed Fury 5/5", "Ferocity 5/5", "Improved Mend Pet",
+                "-- Marksmanship floor: Mortal Shots 5/5 (mandatory in every PvE Hunter build)",
+                "-- flex: Efficiency OR Improved Hunter's Mark (situational, same tradeoff as the Survival build)",
+            },
+            notes = "Real but secondary to Survival for raid DPS — Icy Veins and Warcraft Tavern both frame Beast Mastery as pet-focused and lower-ceiling than Survival's Expose Weakness raid buff. This is the spec Data/TBCSecondaryRoles.lua's own Hunter pet-off-tanking entry assumes (deep Beast Mastery investment for a tanky pet), so it earns its own build entry rather than only existing as a rotation.",
+            sources = {
+                "https://www.icy-veins.com/tbc-classic/beast-mastery-hunter-dps-pve-spec-builds-talents",
+                "https://www.warcrafttavern.com/tbc/guides/pve-beast-mastery-hunter-talents-builds/",
+                "https://wowtbc.gg/class-guides/beast-mastery-hunter/",
+            },
+        },
+        {
             label = "Marksmanship (or SV/MM hybrid) — Arena/PvP (corrects the old 'pure Survival' assumption)", context = "pvp", role = "dps",
             allocation = "~7 Beast Mastery / 43 Marksmanship / 11 Survival", confidence = "DISPUTED",
             keyTalents = {
@@ -223,6 +283,32 @@ TA.Data.TalentBuilds = {
                 "https://www.wowhead.com/tbc/guide/classes/rogue/dps-talent-builds-pve",
                 "https://www.icy-veins.com/tbc-classic/rogue-dps-pve-spec-builds-talents",
                 "https://expcarry.com/tbc-anniversary-rogue-pve-guide",
+            },
+        },
+        {
+            -- Added 2026-09-09: same gap pattern as above — the Combat
+            -- build's own notes already namedropped "a full Assassination/
+            -- Mutilate build (41/20/0) is a legitimate lower-ceiling
+            -- alternative," but it never got its own entry, and
+            -- Data/TBCRotations.lua has a standalone Assassination DPS
+            -- rotation with nothing in this file to match it against.
+            label = "Assassination — Raid PvE DPS (Mutilate build; legitimate lower-ceiling alternative to Combat)", context = "pve", role = "dps",
+            allocation = "Assassination 41 (Mutilate capstone) / Combat 20 / Subtlety 0 — mirrors the Combat "
+                .. "build's tree shape in reverse; exact point totals not independently confirmed from a "
+                .. "scraped calculator",
+            confidence = "APPROX",
+            verifyPoints = true,
+            keyTalents = {
+                "Mutilate 1/1 (capstone — replaces Sinister Strike as the finisher-builder, requires Daggers)",
+                "Cold Blood 1/1", "Seal Fate 5/5", "Lethality 5/5 (crit damage on finishers)",
+                "Vile Poisons 5/5", "Puncturing Wounds", "Improved Expose Armor",
+                "-- Combat dip: Combat Potency 3/3, Dual Wield Specialization",
+            },
+            notes = "Dagger-only playstyle, not a specialized raid-utility niche the way Arms Warrior's Blood Frenzy dip is — this is a straight lower-ceiling alternative to the Combat standard for players who prefer Mutilate. The Combat build entry above already flags this build's existence; this gives it its own sourced entry instead of leaving it buried in another spec's notes.",
+            sources = {
+                "https://www.icy-veins.com/tbc-classic/rogue-dps-pve-spec-builds-talents",
+                "https://www.warcrafttavern.com/tbc/guides/pve-assassination-rogue-talents-builds/",
+                "https://wowtbc.gg/class-guides/assassination-rogue/",
             },
         },
         {
@@ -336,6 +422,32 @@ TA.Data.TalentBuilds = {
             },
         },
         {
+            -- Added 2026-09-09: the Elemental PvE entry's own notes already
+            -- named this exact build ("Recommended raid Enhancement build:
+            -- Elemental 17 / Enhancement 44 / Restoration 0") but it was
+            -- never promoted to its own entry, so Data/TBCRotations.lua's
+            -- standalone Enhancement DPS rotation had nothing to match
+            -- against in this file.
+            label = "Enhancement — Raid PvE DPS (secondary raid role: melee + Windfury/Unleashed Rage support)", context = "pve", role = "dps",
+            allocation = "Elemental 17 / Enhancement 44 / Restoration 0 (an alternate Restoration-dip build "
+                .. "trades some of the Elemental points for deeper totem support via Totemic Focus)",
+            confidence = "APPROX",
+            verifyPoints = true,
+            keyTalents = {
+                "Stormstrike 1/1 (capstone — extra attack that also debuffs the target for +20% Nature damage taken)",
+                "Dual Wield 1/1", "Unleashed Rage 3/3 (raid-wide melee attack power buff)",
+                "Shamanistic Rage 1/1", "Flurry 5/5", "Weapon Mastery",
+                "-- Elemental dip: Elemental Devastation, Reverberation (shock cooldown, smooths totem-twisting)",
+                "-- Restoration-variant alt: Totemic Focus, Totemic Mastery (stronger totem uptime, less personal damage)",
+            },
+            notes = "Real but secondary raid role, same framing as the Elemental entry above: melee contribution plus the Windfury/Unleashed Rage group buffs, not top-tier personal DPS. Two build variants exist (Elemental-dip for smoother shock/Stormstrike totem-twisting vs. Restoration-dip for stronger totem support on long fights) — neither guide crowns one as universally better.",
+            sources = {
+                "https://www.icy-veins.com/tbc-classic/enhancement-shaman-dps-pve-spec-builds-talents",
+                "https://www.warcrafttavern.com/tbc/guides/pve-enhancement-shaman-talents-builds/",
+                "https://www.invenglobal.com/articles/14456/guide-elemental-enhancement-shaman-wow-tbc-classic-talents-gear-rotation",
+            },
+        },
+        {
             label = "Restoration — Arena/PvP (dominant Shaman PvP spec)", context = "pvp", role = "healer",
             allocation = "'Toughness' (2v2): Elem 0 / Enh 20 / Resto 41  |  'Mana Tide' (3v3/5v5/BG): Elem 0 / Enh 9 / Resto 52", confidence = "CONFIRMED",
             keyTalents = {
@@ -355,6 +467,29 @@ TA.Data.TalentBuilds = {
     -- ════════════════════════════════════════════════════════════════════
     MAGE = {
         {
+            -- Added 2026-09-09: the Fire entry below has said since it was
+            -- written that "Arcane, not Fire or Frost, is the actual #1 raid
+            -- DPS spec... not researched here since it wasn't asked for" —
+            -- an explicitly flagged, self-acknowledged gap. Filling it now.
+            -- Confirmed directly from a live Icy Veins fetch (not just guide
+            -- prose), unlike most of the other entries added in this pass.
+            label = "Arcane — Raid PvE DPS (the actual #1 raid DPS Mage spec, ahead of Fire)", context = "pve", role = "dps",
+            allocation = "Arcane 40 / Fire 0 / Frost 21 ('Arcane IV' / Arcane-Frost hybrid)", confidence = "CONFIRMED",
+            keyTalents = {
+                "Arcane Subtlety 2/2 (threat reduction + resist debuff)", "Arcane Focus 5/5 (Arcane spell hit)",
+                "Arcane Power 1/1 (capstone — 30% damage cooldown, at the cost of +30% damage taken)",
+                "Spell Power 3/3 (50% increased critical damage on Arcane spells)", "Presence of Mind 1/1",
+                "-- Frost dip: Improved Frostbolt 5/5, Icy Veins 1/1 (casting speed + pushback immunity), "
+                    .. "Cold Snap 1/1 (resets Icy Veins for a second burst window), Ice Shards 5/5",
+            },
+            notes = "Confirmed directly from Icy Veins' spec-builds page: Arcane Blast spammed during Arcane Power + Icy Veins/Bloodlust is the build's burst window, with Frostbolt as the between-cooldowns filler. This is the spec the Fire entry below has been pointing at since it was written.",
+            sources = {
+                "https://www.icy-veins.com/tbc-classic/arcane-mage-dps-pve-spec-builds-talents",
+                "https://www.icy-veins.com/tbc-classic/arcane-mage-dps-pve-guide",
+                "https://www.warcrafttavern.com/tbc/guides/pve-arcane-mage-talents-builds/",
+            },
+        },
+        {
             label = "Fire — Raid PvE DPS (#2 behind Arcane; Scorch debuff provider)", context = "pve", role = "dps",
             allocation = "Arcane 2 / Fire 48 / Frost 11", confidence = "APPROX",
             keyTalents = {
@@ -362,7 +497,7 @@ TA.Data.TalentBuilds = {
                 "Empowered Fireball 3/3", "Master of Elements 3/3", "Improved Scorch 3/3 (essential if others in the raid deal Fire damage)",
                 "Critical Mass 3/3", "Fire Power 5/5", "Pyroblast 1/1", "Icy Veins 1/1 (Frost dip)",
             },
-            notes = "Correction to premise: Arcane, not Fire or Frost, is the actual #1 raid DPS spec ('absolutely the top-level spec' per Wowhead/Icy Veins) — not researched here since it wasn't asked for, but noting so this file isn't read as claiming Fire is #1. Fire is the real, commonly-used #2. An 'Arcane Fire' niche variant (40/17/3) stays mostly Arcane while still picking up the Scorch debuff.",
+            notes = "Arcane, not Fire or Frost, is the actual #1 raid DPS spec ('absolutely the top-level spec' per Wowhead/Icy Veins) — see the Arcane entry above, added 2026-09-09 to close what had been a flagged, unfilled gap in this file. Fire is the real, commonly-used #2. An 'Arcane Fire' niche variant (40/17/3) stays mostly Arcane while still picking up the Scorch debuff.",
             verifyPoints = true,
             sources = {
                 "https://www.wowhead.com/tbc/guide/classes/mage/dps-talent-builds-pve",
@@ -478,6 +613,42 @@ TA.Data.TalentBuilds = {
             sources = {
                 "https://www.wowhead.com/tbc/guide/classes/druid/healer-talent-builds-pve",
                 "https://www.icy-veins.com/tbc-classic/restoration-druid-healer-pve-spec-builds-talents",
+            },
+        },
+        {
+            -- Added 2026-09-09: reported missing entirely — DRUID's PvE
+            -- entries covered Restoration (heal) and both Feral specs but
+            -- had no Balance build at all, a real gap the schema validator
+            -- never caught (it only checks that SOME PvE build exists per
+            -- class, not that every real spec has one). Wowhead and Icy
+            -- Veins both name the key/capstone talents clearly, but neither
+            -- publishes their talent-calculator build as scrapeable plain
+            -- text (same JS-widget limitation noted elsewhere in this
+            -- file), so the exact secondary point split is not independently
+            -- confirmed as a single hard number — graded APPROX with
+            -- verifyPoints, same treatment as the other guide-prose-only
+            -- entries above.
+            label = "Balance — Raid PvE DPS ('Boomkin')", context = "pve", role = "dps",
+            allocation = "Deep Balance capstone build (through Force of Nature) with a small Restoration "
+                .. "dip for Intensity / Natural Shapeshifter / Improved Mark of the Wild — exact point "
+                .. "totals not confirmed from a scraped calculator",
+            confidence = "APPROX",
+            verifyPoints = true,
+            keyTalents = {
+                "Starlight Wrath", "Improved Moonfire", "Insect Swarm", "Vengeance",
+                "Lunar Guidance", "Nature's Grace", "Moonglow", "Moonfury",
+                "Balance of Power", "Dreamstate", "Moonkin Form", "Wrath of Cenarius",
+                "Force of Nature (capstone)",
+                "-- Raid utility: Improved Faerie Fire (doesn't help your own damage, but is why raids want one)",
+            },
+            notes = "Icy Veins: 'Balance Druids are tight on points' — Naturalist/Nature's Focus/Natural "
+                .. "Shapeshifter get swapped based on personal mana needs, so treat the Restoration tail as "
+                .. "flexible rather than fixed. Moonkin Form's 5% raid-wide spell crit aura is a group buff, "
+                .. "not just personal DPS.",
+            sources = {
+                "https://www.wowhead.com/tbc/guide/classes/druid/balance/dps-talent-builds-pve",
+                "https://www.icy-veins.com/tbc-classic/balance-druid-dps-pve-spec-builds-talents",
+                "https://wowtbc.gg/class-guides/balance-druid/",
             },
         },
         {

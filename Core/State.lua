@@ -1,5 +1,7 @@
--- ToonAge/Core/State.lua (Classic)
+-- ToonAge/Core/State.lua (Anniversary — TBC Classic / Interface 20506)
 -- Central display-state cache. Identical to Retail — uses only GetTime() and TA.Utils.
+
+-- ─── Module Setup & State ──────────────────────────────────────────────────
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -9,17 +11,27 @@ TA.State = State
 
 TA:RegisterModule("State", State)
 
+-- Owners that may never write here, with the reason.
 local BARRED_OWNERS = {
     CombatState = "taint isolation",
 }
 
+-- key -> { owner = string, events = { [EVENT] = true } }
 local registry = {}
+-- key -> { value = any, stamp = number }   (absent means "no valid value")
 local entries = {}
+
+-- ─── Registration ────────────────────────────────────────────────────────────
 
 function State:Register(key, owner, invalidatedBy)
     if type(key) ~= "string" or type(owner) ~= "string" then
         return false
     end
+    -- NOTE: enforcement of BARRED_OWNERS lives entirely here — a barred owner
+    -- can never claim a key, so it can never reach the reg.owner == owner
+    -- check in Set(). The write is still refused there, just reported under
+    -- the generic "unregistered key" / "owned by someone else" message
+    -- instead of naming the bar explicitly.
     if BARRED_OWNERS[owner] then
         local msg = ("%s may not use TA.State (%s)"):format(owner, BARRED_OWNERS[owner])
         if TA.ErrorLog then TA.ErrorLog:Log("State:Register", msg, key) end
@@ -42,6 +54,8 @@ function State:Register(key, owner, invalidatedBy)
     return true
 end
 
+-- ─── Read / Write ────────────────────────────────────────────────────────────
+
 function State:Set(key, value, owner)
     local reg = registry[key]
     if not reg then
@@ -57,6 +71,11 @@ function State:Set(key, value, owner)
         end
         return false
     end
+    -- NOTE: U.SafeNum(value) is called with no explicit fallback, so it
+    -- defaults to 0 on a failed conversion (tainted secret number, NaN,
+    -- etc). That 0 is stored and stamped exactly like a legitimately-written
+    -- zero — a reader has no way to tell "scrubbed from garbage" apart from
+    -- "owner really did write 0".
     if type(value) == "number" then
         value = U.SafeNum(value)
     end
@@ -70,6 +89,11 @@ function State:Get(key)
     return e.value, GetTime() - e.stamp
 end
 
+-- WARN: an owner calling State:Set(key, nil, owner) stores a live entry whose
+-- .value field is nil (entries[key] is a non-nil wrapper table). Has() checks
+-- `entries[key] ~= nil`, so it reports true for that key while Get() returns
+-- nil for the value — indistinguishable from an unset/invalidated key to any
+-- caller that only looks at Get()'s first return.
 function State:Has(key)
     return entries[key] ~= nil
 end
@@ -77,6 +101,8 @@ end
 function State:Clear(key)
     entries[key] = nil
 end
+
+-- ─── Invalidation ────────────────────────────────────────────────────────────
 
 function State:Invalidate(event)
     if not event then return 0 end
@@ -93,6 +119,8 @@ end
 function State:Wipe()
     entries = {}
 end
+
+-- ─── Diagnostics ─────────────────────────────────────────────────────────────
 
 State.SlashCommands = {
     state = function(self)

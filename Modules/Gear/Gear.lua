@@ -205,13 +205,6 @@ function M:FindUpgrades(role, gaps, equipped)
                 local name, _, quality, ilvl, minLevel, _, _, _, equipLoc = U.GetItemInfo(link)
                 local targetSlots = equipLoc and EQUIP_TO_SLOTS[equipLoc]
 
-                -- WARN: a two-handed candidate (INVTYPE_2HWEAPON -> slot 16 only) is
-                -- scored against the main-hand item alone. Equipping it also clears
-                -- slot 17, but that off-hand item's score is never subtracted from
-                -- `gain` below. For any dual-wielder (Rogue, Fury Warrior, Enhancement
-                -- Shaman, Retribution/Ret-hybrid builds, Hunter) this can recommend a
-                -- 2H "upgrade" that is actually a net loss once the off-hand piece is
-                -- accounted for.
                 if targetSlots and U.SafeNum(minLevel) <= U.GetPlayerLevel() then
                     local score = self:ScoreItem(link, role, gaps)
 
@@ -220,51 +213,127 @@ function M:FindUpgrades(role, gaps, equipped)
                         candidateHidden = TA.TooltipScan:HasHiddenValue(link, score, equipLoc)
                     end
 
-                    -- Compare against the WEAKER of the candidate slots: replacing
-                    -- your worse ring is the upgrade, not replacing your better one.
-                    -- This is the one place paired slots genuinely matter, and it
-                    -- is why rings and trinkets need their own handling at all.
-                    --
-                    -- Slots holding an unscoreable item are SKIPPED as replacement
-                    -- targets. Their score is not a real number, so "beats it" is
-                    -- not a real comparison — this is what stopped a green ring
-                    -- being offered as an upgrade over Bloodlust Brooch.
-                    --
-                    -- NOTE: if BOTH slots of a pair (rings, trinkets) hold an
-                    -- unscoreable item, `worstSlot` never gets set — every candidate
-                    -- for that slot type is silently dropped below, with no row and
-                    -- no message. A player wearing two on-use trinkets (a common TBC
-                    -- loadout) stops seeing trinket upgrades at all, not just the
-                    -- ones that fail to beat the current pair.
-                    local worstSlot, worstScore, blockedByHidden
-                    for _, s in ipairs(targetSlots) do
-                        local cur = equipped[s]
-                        if cur and cur.unscoreable then
-                            blockedByHidden = true
+                    -- Fixed 2026-09-09: a two-handed candidate (INVTYPE_2HWEAPON ->
+                    -- slot 16 only in EQUIP_TO_SLOTS) used to be scored against the
+                    -- main-hand item ALONE. Equipping it also clears slot 17, but
+                    -- that off-hand item's score was never subtracted from `gain` —
+                    -- so any 2H weapon, which is itemized with roughly double the
+                    -- stat budget of a one-hand piece, only had to beat the
+                    -- main-hand alone to look like a big "upgrade". This showed up
+                    -- as a 2H sword being recommended to a Mage over a wand/off-hand
+                    -- combo purely because of its bigger raw stat total, which read
+                    -- as "picking the higher item level" even though the score
+                    -- itself has never used item level. Netted against BOTH slots'
+                    -- combined score below instead.
+                    if equipLoc == "INVTYPE_2HWEAPON" then
+                        local mh, oh = equipped[16], equipped[17]
+                        if (mh and mh.unscoreable) or (oh and oh.unscoreable) then
+                            -- One of the two pieces being replaced has an
+                            -- effect the score can't see — same "don't guess"
+                            -- rule as the unscoreable handling below.
                         else
-                            local curScore = cur and cur.score or -1
-                            if not worstScore or curScore < worstScore then
-                                worstSlot, worstScore = s, curScore
+                            local combined = (mh and mh.score or 0) + (oh and oh.score or 0)
+                            if score > combined then
+                                upgrades[#upgrades + 1] = {
+                                    link = link, name = name, quality = quality,
+                                    ilvl = U.SafeNum(ilvl), score = score,
+                                    slot = 16, currentScore = combined,
+                                    gain = score - combined,
+                                    unscoreable = candidateHidden,
+                                    clearsOffhand = (oh ~= nil),
+                                }
                             end
                         end
-                    end
+                    else
+                        -- Fixed 2026-09-09: an off-hand-only candidate (a held item,
+                        -- shield, or off-hand weapon — the three equip types that map
+                        -- to slot 17 alone) used to be scored and offered as a plain
+                        -- "upgrade" with no regard for whether it could actually be
+                        -- worn. Equipping ANYTHING in the off-hand slot is physically
+                        -- impossible while a two-handed weapon occupies the main-hand
+                        -- — the game won't allow it until that 2H weapon is swapped
+                        -- for a one-hander first — and recommending an off-hand piece
+                        -- with an empty main-hand buries the far bigger problem (no
+                        -- weapon at all) under a comparatively trivial one. Reported
+                        -- as "offhands are getting recommended when there is no main
+                        -- hand to hold... no justification as to why". Both cases are
+                        -- now flagged with the reason instead of silently ignored.
+                        local offHandOnly = (equipLoc == "INVTYPE_WEAPONOFFHAND"
+                            or equipLoc == "INVTYPE_HOLDABLE" or equipLoc == "INVTYPE_SHIELD")
+                        local mainHandBlocks, mainHandNote
+                        if offHandOnly then
+                            local mh = equipped[16]
+                            if mh and mh.equipLoc == "INVTYPE_2HWEAPON" then
+                                mainHandBlocks = true
+                                mainHandNote = "can't actually be equipped yet — you're "
+                                    .. "wielding a two-handed weapon, which blocks the "
+                                    .. "off-hand slot entirely until you swap it for a "
+                                    .. "one-hander."
+                            elseif not mh then
+                                mainHandBlocks = true
+                                mainHandNote = "your main-hand is empty — getting any "
+                                    .. "weapon there matters far more than this off-hand "
+                                    .. "piece does."
+                            end
+                        end
 
-                    if worstSlot and score > (worstScore or -1) then
-                        upgrades[#upgrades + 1] = {
-                            link = link, name = name, quality = quality,
-                            ilvl = U.SafeNum(ilvl), score = score,
-                            slot = worstSlot, currentScore = worstScore,
-                            gain = score - math.max(worstScore or 0, 0),
-                            unscoreable = candidateHidden,
-                            blockedByHidden = blockedByHidden,
-                        }
+                        -- Compare against the WEAKER of the candidate slots: replacing
+                        -- your worse ring is the upgrade, not replacing your better one.
+                        -- This is the one place paired slots genuinely matter, and it
+                        -- is why rings and trinkets need their own handling at all.
+                        --
+                        -- Slots holding an unscoreable item are SKIPPED as replacement
+                        -- targets. Their score is not a real number, so "beats it" is
+                        -- not a real comparison — this is what stopped a green ring
+                        -- being offered as an upgrade over Bloodlust Brooch.
+                        --
+                        -- NOTE: if BOTH slots of a pair (rings, trinkets) hold an
+                        -- unscoreable item, `worstSlot` never gets set — every candidate
+                        -- for that slot type is silently dropped below, with no row and
+                        -- no message. A player wearing two on-use trinkets (a common TBC
+                        -- loadout) stops seeing trinket upgrades at all, not just the
+                        -- ones that fail to beat the current pair.
+                        local worstSlot, worstScore, blockedByHidden
+                        for _, s in ipairs(targetSlots) do
+                            local cur = equipped[s]
+                            if cur and cur.unscoreable then
+                                blockedByHidden = true
+                            else
+                                local curScore = cur and cur.score or -1
+                                if not worstScore or curScore < worstScore then
+                                    worstSlot, worstScore = s, curScore
+                                end
+                            end
+                        end
+
+                        if worstSlot and score > (worstScore or -1) then
+                            upgrades[#upgrades + 1] = {
+                                link = link, name = name, quality = quality,
+                                ilvl = U.SafeNum(ilvl), score = score,
+                                slot = worstSlot, currentScore = worstScore,
+                                gain = score - math.max(worstScore or 0, 0),
+                                unscoreable = candidateHidden,
+                                blockedByHidden = blockedByHidden,
+                                mainHandBlocks = mainHandBlocks,
+                                mainHandNote = mainHandNote,
+                            }
+                        end
                     end
                 end
             end
         end
     end
 
-    table.sort(upgrades, function(a, b) return a.gain > b.gain end)
+    -- Not-yet-equippable recommendations (mainHandBlocks) sort below every
+    -- actionable one regardless of raw gain — a huge score on something you
+    -- can't currently wear shouldn't outrank a smaller upgrade you can put
+    -- on right now.
+    table.sort(upgrades, function(a, b)
+        if (not a.mainHandBlocks) ~= (not b.mainHandBlocks) then
+            return not a.mainHandBlocks
+        end
+        return a.gain > b.gain
+    end)
     return upgrades
 end
 
@@ -336,6 +405,47 @@ function M:Render(content, side)
             "|cFFFF9A1ARating conversion is approximate|r — you hold too little rating for the "
             .. "client's own ratio to be readable, so the level formula was used. It sharpens "
             .. "automatically once you have some.", { color = L.C_WARNING })
+    end
+
+    y = L:Spacer(y, 4)
+    y = L:Divider(content, y)
+
+    -- ── Stat weights actually being used ────────────────────────────────
+    -- Added 2026-09-09: the tab only ever surfaced a final score number, with
+    -- no way to see what was weighted or by how much — requested after the
+    -- MELEE role-inference bug (see U.InferRole in Core/Utils.lua) made it
+    -- clear players need to be able to check the inputs themselves rather
+    -- than trust a score blindly. This prints the exact
+    -- TA.Data.RoleWeights/PvPRoleWeights table the score above was computed
+    -- from — not a summary of it.
+    local pvpMode = TA.db and TA.db.pvpMode
+    local weights = TA.Data.GetWeights(role, pvpMode)
+    y = L:SectionHeader(content, y, "STAT WEIGHTS USED",
+        string.format("Every weighted stat for %s%s, normalised so %s = 1.00. This is the exact "
+            .. "table the score above came from. |cFFFF9A1AApproximate|r — community-consensus "
+            .. "estimates, not computed like the cap arithmetic is.",
+            role, pvpMode and " in PvP mode" or "", TA.Data.StatLabels[weights.primary] or weights.primary or "?"))
+
+    local weightRows = {}
+    for key, value in pairs(weights) do
+        if key ~= "primary" and key ~= "note" and type(value) == "number" then
+            weightRows[#weightRows + 1] = { key = key, value = value }
+        end
+    end
+    table.sort(weightRows, function(a, b) return a.value > b.value end)
+
+    for _, r in ipairs(weightRows) do
+        y = L:DataRow(content, y, {
+            label = TA.Data.StatLabels[r.key] or r.key,
+            value = string.format("%.2f", r.value),
+            status = (r.key == weights.primary) and "good" or "neutral",
+            bold = (r.key == weights.primary),
+        })
+    end
+
+    if weights.note then
+        y = L:Spacer(y, 2)
+        y = L:Paragraph(content, y, weights.note, { color = L.C_DIM, size = 9 })
     end
 
     y = L:Spacer(y, 4)
@@ -460,11 +570,19 @@ function M:Render(content, side)
                     .. " pair holds an item with an effect, which was left out of the "
                     .. "comparison rather than guessed at.|r"
             end
+            if up.clearsOffhand then
+                note = note .. "  |cFF888780· two-handed — also replaces your off-hand slot, "
+                    .. "already counted in the score above.|r"
+            end
+            if up.mainHandBlocks then
+                note = note .. "  |cFFFF9A1A⚠ " .. up.mainHandNote .. "|r"
+                status = "warn"
+            end
 
             y = L:DataRow(content, y, {
                 label  = U.ColourItemName(up.name or "?", up.quality)
                        .. "  |cFF555049→ " .. (U.SLOT_NAMES[up.slot] or "?") .. "|r",
-                value  = "+" .. U.Score(up.gain),
+                value  = (up.mainHandBlocks and "|cFFFF9A1Anot yet|r  " or "") .. "+" .. U.Score(up.gain),
                 status = status, bold = true,
                 note   = note,
                 tooltip = { "Score gain is in weighted stat points, not a percentage.",

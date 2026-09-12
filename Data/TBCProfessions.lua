@@ -1,9 +1,7 @@
 -- ToonAge/Data/TBCProfessions.lua (Anniversary — TBC Classic / Interface 20506)
 -- Which professions actually give combat power in The Burning Crusade.
 --
--- ══════════════════════════════════════════════════════════════════════════════
--- CORRECTIONS TO Docs/CLASSIC_ANNIVERSARY_BRIEF.md
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── CORRECTIONS TO Docs/CLASSIC_ANNIVERSARY_BRIEF.md ────────────────────────
 --
 -- The brief's profession list carries two Wrath-era perks and omits the largest
 -- TBC one:
@@ -30,9 +28,7 @@
 local TA = ToonAge
 TA.Data = TA.Data or {}
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── TIER GATES ────────────────────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── TIER GATES ──────────────────────────────────────────────────────────────
 --
 -- GetSkillLineInfo reports the CURRENT tier ceiling, not the eventual 375. A
 -- freshly learned profession reads 1/75, and that 75 is a training gate, not a
@@ -180,9 +176,7 @@ TA.Data.Professions = {
     },
 }
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── THE GATHER-THEN-SWAP PLAN ─────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── THE GATHER-THEN-SWAP PLAN ───────────────────────────────────────────────
 --
 -- Level gathering professions 1-70, bank the mats, then drop them for the
 -- crafting professions you actually want. You arrive at 70 with the materials

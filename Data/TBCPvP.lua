@@ -1,9 +1,7 @@
 -- ToonAge/Data/TBCPvP.lua (Anniversary — TBC Classic / Interface 20506)
 -- Arena and battleground reference data.
 --
--- ══════════════════════════════════════════════════════════════════════════════
--- CONFIDENCE, STATED UP FRONT
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── CONFIDENCE, STATED UP FRONT ─────────────────────────────────────────────
 --
 -- This file mixes three grades of certainty and labels each one, because a PvP
 -- tab that presents a half-remembered rating requirement with the same
@@ -29,9 +27,7 @@
 local TA = ToonAge
 TA.Data = TA.Data or {}
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── RESILIENCE (EXACT — effects computed in Core/TBCStats.lua) ────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── RESILIENCE (EXACT — effects computed in Core/TBCStats.lua) ──────────────
 
 TA.Data.ResilienceNotes = {
     "One percent of resilience does three things at once: −1% chance to be crit, "
@@ -46,9 +42,7 @@ TA.Data.ResilienceNotes = {
         .. "half, because it applies to every crit you fail to avoid.",
 }
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── DIMINISHING RETURNS (REFERENCE) ───────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── DIMINISHING RETURNS (REFERENCE) ─────────────────────────────────────────
 -- The single most important PvP mechanic that has no UI anywhere in the game.
 -- Categories share a DR chain: full duration, then half, then a quarter, then
 -- immune. The chain resets after roughly 15 seconds without a new application.
@@ -77,9 +71,7 @@ TA.Data.DRNotes = {
         .. "Not carrying one is the single most common gearing mistake in arena.",
 }
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── ARENA POINTS (FORMULA — unverified on this client) ────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── ARENA POINTS (FORMULA — unverified on this client) ──────────────────────
 --
 -- The documented TBC curve. Points are awarded weekly per team, scaled by
 -- bracket, and you must have played enough of the team's games to be paid.
@@ -117,9 +109,7 @@ function TA.Data.ArenaPointsFor(rating, bracketFactor)
     return base * bracketFactor
 end
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── GEAR SOURCES (REFERENCE) ──────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── GEAR SOURCES (REFERENCE) ────────────────────────────────────────────────
 
 TA.Data.PvPGearSources = {
     {
@@ -159,9 +149,7 @@ TA.Data.RatingGateWarning =
     .. "They changed between seasons and this build has not verified them against "
     .. "Anniversary. The vendor tooltip is authoritative — read it there."
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── POWER SPIKES ──────────────────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── POWER SPIKES ────────────────────────────────────────────────────────────
 --
 -- PvP strength in TBC arrives in steps, not as a smooth curve. Three of the four
 -- steps are things this addon can MEASURE rather than describe:
@@ -183,6 +171,12 @@ TA.Data.TALENT_SPIKE_41 = 40   -- points in tree required to reach the 41-point 
 --- The signature talent each class gains at its deep thresholds. Reference text:
 --- keyed by class, NOT by tree, because tree names are localized and this is
 --- only ever shown as "what you are working toward".
+-- FIXME: the WARRIOR line below misattributes Blood Frenzy to the Fury 41-point
+-- tier alongside Rampage. Blood Frenzy (bleed targets take +4% physical damage)
+-- is an Arms-tree talent sitting well below the 41-point capstone, not a second
+-- Fury talent at that threshold — Rampage is Fury's sole 41-point talent. The
+-- value is left as-is per this pass's no-data-changes scope; a future data fix
+-- should either drop "and Blood Frenzy" or move it into a separate Arms clause.
 TA.Data.ClassSpikes = {
     WARRIOR = "Mortal Strike (Arms) or Bloodthirst (Fury) at 31; Rampage and Blood Frenzy at 41.",
     PALADIN = "Repentance and Crusader Strike shape Retribution; Holy Shock defines Holy.",
@@ -219,9 +213,7 @@ TA.Data.TrinketSpikeNotes = {
         .. "pretending otherwise.",
 }
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── PRIORITIES BY ROLE (REFERENCE) ────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── PRIORITIES BY ROLE (REFERENCE) ──────────────────────────────────────────
 
 TA.Data.PvPPriorities = {
     MELEE = {

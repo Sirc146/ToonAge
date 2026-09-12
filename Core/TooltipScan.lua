@@ -1,9 +1,7 @@
 -- ToonAge/Core/TooltipScan.lua (Anniversary — TBC Classic / 20506)
 -- Reads item tooltip lines to find the value GetItemStats cannot see.
 --
--- ══════════════════════════════════════════════════════════════════════════════
--- THE BUG THIS EXISTS TO FIX
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── THE BUG THIS EXISTS TO FIX ─────────────────────────────────────────────
 --
 -- GetItemStats returns STATIC stats only. It returns nothing at all for:
 --
@@ -30,9 +28,7 @@
 -- refuse to rank it against items that were scored fully. An honest "cannot
 -- compare this" beats a confident wrong answer.
 --
--- ══════════════════════════════════════════════════════════════════════════════
--- LOCALE
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── LOCALE ─────────────────────────────────────────────────────────────────
 --
 -- Matching is done against Blizzard's own localized globals — ITEM_SPELL_TRIGGER_ONUSE
 -- and friends — not against hardcoded English. Those globals hold "Use:" on an
@@ -45,7 +41,7 @@ local U  = TA.Utils
 local T = {}
 TA.TooltipScan = T
 
--- ── The scanning tooltip ──────────────────────────────────────────────
+-- ── The scanning tooltip ─────────────────────────────────────────────
 -- A hidden tooltip of our own. Using GameTooltip directly would flicker the
 -- player's real tooltip and fight with any other addon that hooks it.
 local scanner
@@ -97,6 +93,13 @@ function T:ReadLines(link)
 
     -- A tooltip with one line means the item is not in the client's cache yet.
     -- Report that rather than concluding "this item has no effects".
+    -- WARN: this heuristic assumes every cached item tooltip has 2+ left lines.
+    -- A genuinely minimal item (no bind text, no item level/type line shown,
+    -- nothing but the name) would report n == 1 while fully cached, and gets
+    -- permanently misread as "not cached yet" here — GetItemFlags then returns
+    -- all-false with cached=false, and HasHiddenValue reports "the client has
+    -- not cached this item yet" forever for that item, never re-checking since
+    -- nothing about a truly 1-line tooltip changes on a later scan.
     return lines, (n > 1)
 end
 

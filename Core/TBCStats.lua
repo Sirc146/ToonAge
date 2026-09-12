@@ -545,6 +545,18 @@ end
 -- a jump at +3, and 1% of it can never be removed by +hit:
 --     delta 0 -> 4%,  +1 -> 5%,  +2 -> 6%,  +3 -> 17%
 -- so the +3 cap is 16%, which is the figure the brief quotes.
+--
+-- Re-verified 2026-09-09 at the user's request ("double check the caster hit
+-- percentage"): 3% same-level / 16% vs. a raid boss are the standard,
+-- widely-cited TBC Classic numbers (Wowhead's own spell hit rating pages
+-- state exactly these two breakpoints), so this table and the -1%
+-- unavoidable-miss constant below are correct as they stand — nothing
+-- changed. Cross-referenced against "Extended Character Stats" (often
+-- abbreviated ECS), a TBC Classic-supported addon that surfaces the
+-- character sheet's raw Hit/Crit/etc — useful for confirming
+-- S:GetSpellHitPercent() below is reading the same rating-to-percent
+-- conversion the client itself reports, though it does not compute a
+-- target-level-aware cap the way GetSpellHitCap() does.
 
 local SPELL_BASE_MISS = { [0] = 4, [1] = 5, [2] = 6, [3] = 17 }
 local SPELL_UNAVOIDABLE = 1.0

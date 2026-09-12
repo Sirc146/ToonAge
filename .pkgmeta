@@ -1,1 +1,9 @@
 package-as: ToonAge
+enable-nolib-creation: no
+
+ignore:
+  - .github
+  - .git
+  - .gitignore
+  - README.md
+  - ToonAge.toc

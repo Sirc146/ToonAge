@@ -244,7 +244,15 @@ function U.GetTalentSummary()
     local bestName, bestPoints = "No talents spent", 0
 
     for tab = 1, numTabs do
-        local ok, name, _, _, pointsSpent = pcall(GetTalentTabInfo, tab)
+        -- Fixed 2026-09-09: GetTalentTabInfo(tab) returns
+        -- name, iconTexture, pointsSpent, background, previewPointsSpent —
+        -- pointsSpent is the 3rd return value. This used to capture the 4th
+        -- (background, which this client leaves nil) into pointsSpent
+        -- instead, so every character always read 0 points spent in every
+        -- tree no matter how many were actually spent (confirmed via a
+        -- level 65 Frost Mage with 56 points spent in Frost showing "No
+        -- talents yet" / all-zero trees in-game).
+        local ok, name, _, pointsSpent = pcall(GetTalentTabInfo, tab)
         if ok and name then
             pointsSpent = U.SafeNum(pointsSpent)
             trees[#trees + 1] = { name = name, points = pointsSpent }
@@ -300,16 +308,73 @@ end
 --- Fixed 2026-09-07: called from 9 real files (Layout.lua, Gear.lua,
 --- StatCaps.lua, ProfessionAdvisor.lua, Character.lua, PvPAdvisor.lua) but
 --- never defined anywhere in this file.
+-- Fixed 2026-09-09 (first pass): this only ever recognised a Wand as "not
+-- melee", but a caster's spellpower weapon (staff, sword, dagger) sits in
+-- the MAIN-HAND slot (16) — Wands are equipped in the RANGED slot (18) and
+-- were never read from there at all. So the Wand check below could
+-- basically never fire for a real caster, and every Mage/Warlock/Priest
+-- fell through to the MELEE default, driving gear scoring, stat caps and
+-- the sidebar's role label to weight and recommend MELEE gear for them.
+-- Reported via a level 65 Mage's Gear tab reading "Role: MELEE (inferred)"
+-- and offering a two-handed sword/warhammer as a "Main Hand" upgrade.
+--
+-- Fixed 2026-09-09 (second pass): that first fix hard-set Priest to CASTER
+-- unconditionally alongside Mage/Warlock — correct for Shadow, but wrong
+-- for Holy/Discipline. A forced-CASTER Holy Priest got shown a spell hit %
+-- target in Stat Caps that does nothing for a healer (healing spells cannot
+-- miss), and switching specs between Shadow and Holy never changed the
+-- detected role at all without a manual /ta role override — reported as
+-- "on healers its showing DPS options... if I activate a different spec it
+-- will not change the role for me". Mage/Warlock genuinely have no other
+-- spec shape (every tree is a caster-DPS tree), so they stay hard-set. For
+-- every class with a REAL role split across its trees (Warrior, Paladin,
+-- Priest, Shaman, Druid), role is now read from the live deepest talent
+-- tree via U.GetTalentSummary() — the same source the Talents/Rotation tabs
+-- already trust — so it tracks a respec automatically instead of freezing
+-- on whatever the weapon or class alone implied.
+local TREE_ROLE = {
+    WARRIOR = { Protection = "TANK" },
+    PALADIN = { Holy = "HEALER", Protection = "TANK", Retribution = "MELEE" },
+    PRIEST  = { Holy = "HEALER", Discipline = "HEALER", Shadow = "CASTER" },
+    SHAMAN  = { Elemental = "CASTER", Enhancement = "MELEE", Restoration = "HEALER" },
+    -- Feral Combat deliberately omitted: it covers both Bear tank and Cat
+    -- DPS, and the tree alone can't tell those apart — that needs the
+    -- current shapeshift form, not just points spent. Falls through to the
+    -- weapon/MELEE default below, same as before, until overridden manually.
+    DRUID   = { Balance = "CASTER", Restoration = "HEALER" },
+}
+
 function U.InferRole()
     local override = TA.charDB and TA.charDB.roleOverride
     if override and override ~= "auto" then
         return override
     end
 
+    local class = U.GetPlayerClass()
+    if class == "MAGE" or class == "WARLOCK" then
+        return "CASTER"
+    elseif class == "HUNTER" then
+        return "RANGED"
+    end
+
+    local treeName = U.GetTalentSummary()
+    local classTrees = TREE_ROLE[class]
+    if classTrees and treeName and classTrees[treeName] then
+        return classTrees[treeName]
+    end
+
+    -- Priest never has a melee spec at all, so even with no clear talent
+    -- lean yet (a fresh level with 0 points, or a mixed spread that hasn't
+    -- committed to Shadow) CASTER is still the correct default — just no
+    -- longer forced PAST a real Holy/Discipline investment above.
+    if class == "PRIEST" then
+        return "CASTER"
+    end
+
     local mainHandLink = GetInventoryItemLink and GetInventoryItemLink("player", 16)
     if mainHandLink then
         local _, _, _, _, _, _, itemSubType = U.GetItemInfo(mainHandLink)
-        if itemSubType == "Wand" then
+        if itemSubType == "Wand" or itemSubType == "Staves" then
             return "CASTER"
         elseif itemSubType == "Bows" or itemSubType == "Guns"
             or itemSubType == "Crossbows" or itemSubType == "Thrown" then
@@ -423,22 +488,54 @@ function U.GetSpellInfo(spellID)
 end
 
 -- Added 2026-09-07 for the "spellbook has a spell/rank your action bars
--- don't" check (Modules/Character/Spells.lua, /ta spells). Matches by SPELL
--- NAME rather than spellID on purpose: GetSpellBookItemName already returns
--- (name, rankText) directly, with no need to also resolve a spellID through
--- GetSpellBookItemInfo — whose return shape has changed across client
--- versions elsewhere in retail and isn't worth relying on here when the
--- name+rank pair is all this check needs.
+-- don't" check (Modules/Character/Spells.lua, /ta spells).
+--
+-- FIXED 2026-09-07: the first version of ScanActionBarRanks got the rank of
+-- an action-bar spell from GetSpellInfo(id)'s second return, on the
+-- pre-existing (and, it turns out, wrong-for-this-client) assumption a few
+-- lines above in this file that "Classic GetSpellInfo returns: name, rank,
+-- icon, castTime". In testing every single spell that WAS correctly matched
+-- by name still showed up as "bar has Rank 0" — including ones clearly
+-- sitting on a visible bar slot in a screenshot — which only makes sense if
+-- that second return isn't rank text at all on this client (most likely the
+-- icon). GetSpellBookItemName's (name, rankText) pair, used below, is the
+-- one place this file has actually confirmed real "Rank N" text. So instead
+-- of trusting GetSpellInfo's positional return for rank, ScanSpellbook now
+-- also builds a spellID -> rank map from the spellbook itself (resolving
+-- each slot's spellID defensively, since GetSpellBookItemInfo's return
+-- shape is exactly the kind of thing that has already changed across client
+-- versions elsewhere), and ScanActionBarRanks looks a bar spell's rank up in
+-- that map instead of asking GetSpellInfo for it a second, less reliable, way.
+
+--- Resolves a spellbook slot's spellID across the two GetSpellBookItemInfo
+--- shapes seen across client versions: legacy (itemType, id, ...) multiple
+--- returns, or a single table with a spellID/actionID/id field. Returns nil
+--- rather than guessing if neither shape matches.
+local function ResolveSpellBookID(slot, bookType)
+    if type(GetSpellBookItemInfo) ~= "function" then return nil end
+    local ok, a, b = pcall(GetSpellBookItemInfo, slot, bookType)
+    if not ok then return nil end
+    if type(a) == "table" then
+        return a.spellID or a.actionID or a.id
+    end
+    if (a == "SPELL" or a == "FUTURESPELL") and b then
+        return b
+    end
+    return nil
+end
 
 --- Every spell name known in the spellbook, mapped to the highest rank
 --- number currently known (0 for spells with no rank concept — most
 --- non-damage/utility spells). Passives are excluded via IsPassiveSpell —
 --- they're never meant to go on an action bar, so including them would just
 --- be noise in the "missing from your bars" list.
+--- @return table byName, table idRanks — idRanks maps spellID -> rank for
+---         every spellbook entry that resolved a spellID; pass it into
+---         ScanActionBarRanks so the two scans agree on what a "rank" is.
 function U.ScanSpellbook()
-    local result = {}
+    local byName, idRanks = {}, {}
     if type(GetNumSpellTabs) ~= "function" or type(GetSpellBookItemName) ~= "function" then
-        return result
+        return byName, idRanks
     end
     local numTabs = U.SafeGetNum(GetNumSpellTabs)
     for tab = 1, numTabs do
@@ -451,14 +548,18 @@ function U.ScanSpellbook()
                 local passiveOk, isPassive = pcall(IsPassiveSpell, slot, BOOKTYPE_SPELL)
                 if nameOk and name and name ~= "" and not (passiveOk and isPassive) then
                     local rankNum = (rankText and tonumber(rankText:match("(%d+)"))) or 0
-                    if not result[name] or rankNum > result[name] then
-                        result[name] = rankNum
+                    if not byName[name] or rankNum > byName[name] then
+                        byName[name] = rankNum
+                    end
+                    local spellID = ResolveSpellBookID(slot, BOOKTYPE_SPELL)
+                    if spellID and (not idRanks[spellID] or rankNum > idRanks[spellID]) then
+                        idRanks[spellID] = rankNum
                     end
                 end
             end
         end
     end
-    return result
+    return byName, idRanks
 end
 
 --- Highest rank of each spell NAME currently placed on any action bar slot.
@@ -466,15 +567,18 @@ end
 --- numbering already includes the extra MultiBar rows); stance/possess/
 --- vehicle bars use a separate, form-specific slot range this deliberately
 --- does not scan, since those are contextual rather than "your normal bars."
-function U.ScanActionBarRanks()
+--- @param idRanks table|nil spellID -> rank map from ScanSpellbook's 2nd
+---        return; scans the spellbook itself if not given one.
+function U.ScanActionBarRanks(idRanks)
+    idRanks = idRanks or select(2, U.ScanSpellbook())
     local result = {}
     if type(GetActionInfo) ~= "function" then return result end
     for slot = 1, 120 do
         local ok, actionType, id = pcall(GetActionInfo, slot)
         if ok and actionType == "spell" and id then
-            local infoOk, name, rankText = pcall(GetSpellInfo, id)
+            local infoOk, name = pcall(GetSpellInfo, id)
             if infoOk and name then
-                local rankNum = (rankText and tonumber(rankText:match("(%d+)"))) or 0
+                local rankNum = idRanks[id] or 0
                 if not result[name] or rankNum > result[name] then
                     result[name] = rankNum
                 end
@@ -491,8 +595,8 @@ end
 --- meaningless 0, not a real "rank 0"); onBar is true with barRank < knownRank
 --- when it's on a bar but at a stale/lower rank.
 function U.FindMissingSpellRanks()
-    local known = U.ScanSpellbook()
-    local onBars = U.ScanActionBarRanks()
+    local known, idRanks = U.ScanSpellbook()
+    local onBars = U.ScanActionBarRanks(idRanks)
     local missing = {}
     for name, knownRank in pairs(known) do
         local barRank = onBars[name]

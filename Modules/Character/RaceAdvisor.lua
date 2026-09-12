@@ -5,6 +5,7 @@
 -- The split between "this changes your hit cap" and "this is reference text" is
 -- enforced in Data/TBCRaces.lua, not here — see that file's header.
 
+-- ─── Module Setup ──────────────────────────────────────────────────────────
 local TA = ToonAge
 local U  = TA.Utils
 local L  = TA.Layout
@@ -12,6 +13,7 @@ local L  = TA.Layout
 local M = {}
 TA:RegisterModule("RaceAdvisor", M)
 
+-- ─── Render: Character Panel ───────────────────────────────────────────────
 function M:Render(content, side)
     L:CharacterSidebar(side)
 
@@ -53,6 +55,11 @@ function M:Render(content, side)
         })
     end
 
+    -- NOTE: a race with BOTH a melee/ranged hit bonus and a spell hit bonus
+    -- would only ever show the spell value here — `or` picks one, and the
+    -- generic "Hit chance" label does not say which. No current TBC race data
+    -- sets both fields at once, but the row silently drops one bonus the day
+    -- Data/TBCRaces.lua ever does.
     if mech and (mech.meleeHitPercent or mech.spellHitPercent) then
         hasMechanical = true
         y = L:DataRow(content, y, {

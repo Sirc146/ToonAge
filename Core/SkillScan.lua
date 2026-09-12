@@ -1,9 +1,7 @@
 -- ToonAge/Core/SkillScan.lua (Anniversary — TBC Classic / Interface 20506)
 -- Reads the player's skill lines: weapon skills, professions, secondary skills.
 --
--- ══════════════════════════════════════════════════════════════════════════════
--- THE SIDE EFFECT, AND WHY IT IS HANDLED THIS WAY
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── THE SIDE EFFECT, AND WHY IT IS HANDLED THIS WAY ───────────────────────
 --
 -- GetSkillLineInfo() only enumerates lines under EXPANDED headers. A player with
 -- "Weapon Skills" collapsed — the default for many — is invisible to a plain
@@ -18,9 +16,7 @@
 -- The whole thing runs at most once per SKILL_LINES_CHANGED (and once on first
 -- use), never per frame and never during a render loop.
 --
--- ══════════════════════════════════════════════════════════════════════════════
--- LOCALE
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── LOCALE ─────────────────────────────────────────────────────────────────
 --
 -- Skill and header names are localized. Nothing here classifies by matching an
 -- English header name. Grouping is positional (a line belongs to the last header
@@ -35,7 +31,6 @@
 --   * GetSkillLineInfo return order (assumed TBC order, documented below)
 --   * that ExpandSkillHeader(0) expands all headers
 --   * UnitAttackBothHands return shape
--- ══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -95,9 +90,7 @@ local function RestoreCollapsed(names)
     end
 end
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── THE SCAN ──────────────────────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── THE SCAN ───────────────────────────────────────────────────────────────
 
 Scan.cache = nil
 
@@ -151,7 +144,7 @@ function Scan:Scan(force)
         RestoreCollapsed(collapsed)
     end
 
-    -- ── Identifying the weapon group ──────────────────────────────────
+    -- ── Identifying the weapon group ────────────────────────────────────
     -- A weapon skill's ceiling is exactly playerLevel * 5. That alone is not
     -- enough to identify the group, because at the levels where level*5 lands
     -- on 75 / 150 / 225 / 300 / 375 it collides with the profession tier caps,
@@ -165,6 +158,14 @@ function Scan:Scan(force)
     -- involved. The count heuristic is kept only for the unarmed case.
     local levelCap = U.GetPlayerLevel() * 5
 
+    -- NOTE: eq.mainSubType/offSubType come from U.GetItemInfo, a bare
+    -- GetItemInfo passthrough with no cache-miss retry (Utils.lua). On a cold
+    -- item cache — e.g. this scan firing from the very first SKILL_LINES_CHANGED
+    -- right after login, before the client has cached the equipped weapon's
+    -- item data — GetItemInfo returns nil and anchorName silently resolves to
+    -- nil here, falling through to the count-heuristic below. The result then
+    -- gets written to Scan.cache and stays wrong for the rest of the session
+    -- unless SKILL_LINES_CHANGED or PLAYER_LEVEL_UP fires again to invalidate it.
     local anchorName
     local eq = self:GetEquippedWeaponSkill()
     local subToSkill = (TA.Data and TA.Data.SubTypeToSkill) or {}
@@ -214,9 +215,7 @@ function Scan:Scan(force)
     return result
 end
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── EQUIPPED WEAPON SKILL ─────────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── EQUIPPED WEAPON SKILL ──────────────────────────────────────────────────
 
 --- Skill of the weapons actually in your hands. No side effects — this does not
 --- touch the skill window at all, so it is the reliable path even if the scan
@@ -272,16 +271,12 @@ function Scan:GetActiveWeaponSkill()
     return U.GetPlayerLevel() * 5, false
 end
 
--- ══════════════════════════════════════════════════════════════════════════════
--- ── PROFESSIONS ───────────────────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── PROFESSIONS ────────────────────────────────────────────────────────────
 -- GetProfessions() does not exist in TBC (it arrived in 3.0), so professions
 -- come from the same skill scan. Primary professions are the group that is not
 -- the weapon group and whose lines cap at a multiple of 75.
 
--- ══════════════════════════════════════════════════════════════════════════════
--- WHY THIS IS A WHITELIST AND NOT A HEURISTIC
--- ══════════════════════════════════════════════════════════════════════════════
+-- ─── WHY THIS IS A WHITELIST AND NOT A HEURISTIC ───────────────────────────
 --
 -- The first version of this function took every non-weapon skill line whose
 -- maxRank was 75/150/225/300/375. That set is not specific to professions, and

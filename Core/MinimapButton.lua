@@ -18,6 +18,7 @@ function TA:InitMinimap()
     btn:RegisterForDrag("LeftButton")
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp", "MiddleButtonUp")
 
+    -- ─── Icon & Border ────────────────────────────────────────────────────
     local icon = btn:CreateTexture(nil, "BACKGROUND")
     icon:SetSize(21, 21)
     icon:SetPoint("CENTER", btn, "CENTER", -1, 1)
@@ -28,6 +29,7 @@ function TA:InitMinimap()
     border:SetSize(53, 53)
     border:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
 
+    -- ─── Radial Orbit Geometry ────────────────────────────────────────────
     local ORBIT_RADIUS = 78
     local angle = (TA.db and TA.db.minimap and TA.db.minimap.position) or 45
 
@@ -39,6 +41,7 @@ function TA:InitMinimap()
             math.floor(ORBIT_RADIUS * math.sin(math.rad(angle))))
     end
 
+    -- ─── Drag: OnUpdate Only While Dragging ────────────────────────────────
     local function TrackCursor()
         local cx, cy = Minimap:GetCenter()
         if not cx then return end
@@ -63,6 +66,13 @@ function TA:InitMinimap()
         end
     end)
 
+    -- ─── Clicks ─────────────────────────────────────────────────────────
+    -- WARN: the MiddleButton branch below indexes TA.db.minimap.minimized
+    -- with no nil-guard, unlike OnDragStop just above (which checks `TA.db
+    -- and TA.db.minimap` first) and the minimized-restore check further down.
+    -- If OnClick ever fires before TA.db.minimap exists — e.g. SavedVariables
+    -- not yet loaded/defaulted — a middle-click here throws "attempt to index
+    -- a nil value" instead of failing quietly like its siblings do.
     btn:SetScript("OnClick", function(_, button)
         if button == "LeftButton" then
             TA:ToggleUI()
@@ -76,6 +86,7 @@ function TA:InitMinimap()
         end
     end)
 
+    -- ─── Tooltip ────────────────────────────────────────────────────────
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("|cFFFFD100ToonAge|r |cFF888780Anniversary|r", 1, 1, 1)
@@ -88,6 +99,7 @@ function TA:InitMinimap()
 
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+    -- ─── Initial State ──────────────────────────────────────────────────
     UpdatePosition()
 
     if TA.db and TA.db.minimap and TA.db.minimap.minimized then

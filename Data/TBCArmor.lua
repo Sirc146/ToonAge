@@ -2,7 +2,7 @@
 -- Armor type by class, and the level-40 switch.
 --
 -- ══════════════════════════════════════════════════════════════════════════════
--- WHY THIS TABLE IS SMALL
+-- ── WHY THIS TABLE IS SMALL ───────────────────────────────────────────────────
 -- ══════════════════════════════════════════════════════════════════════════════
 --
 -- Nine classes, one armor type each, one switch in the whole game. That is short

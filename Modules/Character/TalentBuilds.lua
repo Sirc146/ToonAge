@@ -22,6 +22,19 @@ TA:RegisterModule("TalentBuilds", M)
 
 local CONFIDENCE_STATUS = { CONFIRMED = "good", APPROX = "warn", DISPUTED = "bad" }
 
+-- Added 2026-09-09: this tab lists EVERY viable PvE (or PvP) build for the
+-- class — e.g. Frost, Fire and Arcane for Mage — with no indication of which
+-- one, if any, matches the talents the player has actually spent. Reported
+-- as "why is it telling me to respec to Fire": Fire simply sorts first in
+-- the Mage data and nothing distinguished it from the player's real Frost
+-- spec. Labels are "<Tree> — description", so the tree name is the text
+-- before the em dash; matched case-insensitively against the live deepest
+-- tree from U.GetTalentSummary().
+local function BuildTreeName(label)
+    local dash = label:find(" — ", 1, true)
+    return dash and label:sub(1, dash - 1) or label
+end
+
 function M:Render(content, side)
     L:CharacterSidebar(side)
 
@@ -50,6 +63,27 @@ function M:Render(content, side)
         if b.context == wantContext then builds[#builds + 1] = b end
     end
 
+    -- Fixed 2026-09-09: builds were listed in raw data order with no regard
+    -- for role, so a healer (e.g. Holy Priest) could see a DPS build (Shadow)
+    -- ahead of their own — reported as "on healers its showing DPS options
+    -- ... and not the healing talents". Partitioned (stable, not re-sorted
+    -- within each group) so builds matching the player's LIVE role via
+    -- U.InferRole() come first — the other roles' builds are still shown
+    -- below, just not ahead of the one that's actually theirs.
+    local ROLE_GROUP = { TANK = "tank", HEALER = "healer" }
+    local myRoleGroup = ROLE_GROUP[U.InferRole()] or "dps"
+    local mineCount
+    do
+        local mine, other = {}, {}
+        for _, b in ipairs(builds) do
+            if b.role == myRoleGroup then mine[#mine + 1] = b else other[#other + 1] = b end
+        end
+        mineCount = #mine
+        builds = {}
+        for _, b in ipairs(mine) do builds[#builds + 1] = b end
+        for _, b in ipairs(other) do builds[#builds + 1] = b end
+    end
+
     local headerTitle = pvpMode and "RECOMMENDED TALENT BUILDS — PVP" or "RECOMMENDED TALENT BUILDS — PVE"
     local headerColor = pvpMode and "|cFFFF6E6E" or "|cFF4AFF7A"
 
@@ -62,15 +96,27 @@ function M:Render(content, side)
         return
     end
 
+    local ROLE_TAG = { dps = "DPS", tank = "TANK", healer = "HEALER" }
     y = L:SectionHeader(content, y, headerTitle,
         headerColor .. (pvpMode and "PvP mode is ON" or "PvE mode") .. "|r  |cFF888780(/ta pvp to switch)|r"
-        .. " — researched against current TBC Classic guides, graded by how well sources agree. "
-        .. "|cFF4AFF7AGreen|r = confirmed by 2+ sources, |cFFFF9A1Aorange|r = single source or "
-        .. "approximate, |cFFFF6E6Ered|r = sources genuinely disagree — see notes below each.")
+        .. " — every viable spec for this class is listed below, not a single pick, grouped so your "
+        .. "current role (" .. (ROLE_TAG[myRoleGroup] or myRoleGroup) .. ") comes first. "
+        .. "|cFF4AFF7A✓|r marks the one matching your CURRENT talents; the rest are alternatives, "
+        .. "not a suggestion to respec. |cFF4AFF7AGreen|r confidence = confirmed by 2+ sources, "
+        .. "|cFFFF9A1Aorange|r = single source or approximate, |cFFFF6E6Ered|r = sources genuinely "
+        .. "disagree — see notes below each.")
+
+    local specName = U.GetTalentSummary()
 
     for i, b in ipairs(builds) do
+        local isCurrent = specName and specName ~= "" and specName ~= "No talents spent"
+            and BuildTreeName(b.label):lower() == specName:lower()
+        local roleTag = ROLE_TAG[b.role] or b.role
+
         y = L:DataRow(content, y, {
-            label = b.label, value = b.confidence,
+            label = (isCurrent and "|cFF4AFF7A✓ |r" or "") .. b.label
+                .. "  |cFF555049[" .. tostring(roleTag) .. "]|r",
+            value = (isCurrent and "|cFF4AFF7AYOUR SPEC|r  " or "") .. b.confidence,
             status = CONFIDENCE_STATUS[b.confidence] or "neutral",
             bold = true, note = b.allocation,
         })
@@ -94,7 +140,15 @@ function M:Render(content, side)
         end
 
         y = L:Spacer(y, 6)
-        if i < #builds then y = L:Divider(content, y) end
+        if i < #builds then
+            y = L:Divider(content, y)
+            if mineCount > 0 and i == mineCount then
+                y = L:Paragraph(content, y,
+                    "|cFF888780Other roles for this class — not yours currently, shown for reference:|r",
+                    { color = L.C_DIM, size = 9 })
+                y = L:Spacer(y, 4)
+            end
+        end
     end
 
     y = L:Spacer(y, 4)

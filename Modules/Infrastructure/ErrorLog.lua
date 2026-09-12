@@ -1,4 +1,4 @@
--- ToonAge/Modules/ErrorLog.lua (Classic — MoP 5.4.x / Interface 50504)
+-- ToonAge/Modules/Infrastructure/ErrorLog.lua (Anniversary — TBC Classic / Interface 20506)
 -- Captures all ToonAge Lua errors into a persistent log stored in SavedVariables.
 -- View in-game with /ta errors, or copy from WTF/Account/.../SavedVariables/ToonAge.lua
 --
@@ -12,26 +12,30 @@
 --   • /ta errors clear — wipes the log
 --   • /ta errors copy — opens a copyable edit box with full log text
 --
--- ═══════════════════════════════════════════════════════════════════════════════
+-- ───────────────────────────────────────────────────────────────────────────────
 
 local TA = ToonAge
 
 local EL = {}
 TA:RegisterModule("ErrorLog", EL)
 
--- ── Constants ─────────────────────────────────────────────────────────────────
+-- ─── Constants ────────────────────────────────────────────────────────────────
 local MAX_LOG_SIZE = 200
 
--- ── State ─────────────────────────────────────────────────────────────────────
+-- ─── State ────────────────────────────────────────────────────────────────────
 EL.copyFrame = nil
 
--- ── Core logging function ─────────────────────────────────────────────────────
+-- ─── Core logging function ────────────────────────────────────────────────────
 
 --- Log an error entry. Called from Init.lua pcall wrappers and the global handler.
 --- @param source string — module name or "Global"
 --- @param msg string — error message
 --- @param stack string|nil — stack trace
 function EL:Log(source, msg, stack)
+    -- NOTE: if this fires before TA.db exists (very early load, before the
+    -- ADDON_LOADED / saved-variables assignment), the entry is dropped on the
+    -- floor with no buffering — an error during that window is never recorded,
+    -- even though early-load errors are often the ones worth seeing most.
     if not TA.db then return end
     TA.db.errorLog = TA.db.errorLog or {}
 
@@ -84,7 +88,7 @@ function EL:FormatLog()
     return table.concat(lines, "\n")
 end
 
--- ── Copy frame (scrollable edit box for copying log text) ─────────────────────
+-- ─── Copy frame (scrollable edit box for copying log text) ────────────────────
 
 function EL:ShowCopyFrame()
     if not self.copyFrame then
@@ -122,6 +126,11 @@ function EL:ShowCopyFrame()
         editBox:SetMultiLine(true)
         editBox:SetFontObject(GameFontHighlightSmall)
         editBox:SetFont("Fonts\\FRIZQT__.TTF", 10, "")
+        -- WARN: scroll's width is derived purely from its TOPLEFT/BOTTOMRIGHT
+        -- anchors (no explicit SetWidth), and anchor-derived dimensions are not
+        -- guaranteed to have resolved yet on the same frame they're set on —
+        -- GetWidth() called this early can read back 0, which would set
+        -- editBox to a width of -10 the first time this frame is built.
         editBox:SetWidth(scroll:GetWidth() - 10)
         editBox:SetAutoFocus(false)
         editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -168,7 +177,7 @@ function EL:ShowCopyFrame()
     self.copyFrame.editBox:SetFocus()
 end
 
--- ── Global error handler ──────────────────────────────────────────────────────
+-- ─── Global error handler ─────────────────────────────────────────────────────
 
 local function IsOurError(msg)
     if not msg then return false end
@@ -177,9 +186,21 @@ end
 
 local originalHandler = geterrorhandler()
 
+-- WARN: this replaces the *global* error handler, so it runs for every addon's
+-- error, not just ToonAge's — the debugstack(2, 6, 0) call below is paid on
+-- every single Lua error in the client (including ones from unrelated addons)
+-- just to test whether ToonAge shows up in the stack. Usually cheap, but a
+-- misbehaving addon that errors every frame would make this handler run every
+-- frame too.
 local function ToonAgeErrorHandler(msg)
     if IsOurError(msg) then
         local stack = debugstack(2, 6, 0) or ""
+        -- WARN: EL:Log() is called directly here, unguarded by pcall. This is
+        -- the global error handler — if Log() itself ever errors (e.g. TA.db.
+        -- errorLog got clobbered into a non-table by something else), calling
+        -- geterrorhandler() again to report *that* failure re-enters this same
+        -- function, which is the shape of an infinite recursion / stack
+        -- overflow rather than a normal Lua error.
         EL:Log("Global", msg, stack)
     else
         local stack = debugstack(2, 6, 0) or ""
@@ -192,7 +213,7 @@ local function ToonAgeErrorHandler(msg)
     end
 end
 
--- ── Init ──────────────────────────────────────────────────────────────────────
+-- ─── Init ─────────────────────────────────────────────────────────────────────
 
 function EL:Init()
     if TA.db then
@@ -201,7 +222,7 @@ function EL:Init()
     seterrorhandler(ToonAgeErrorHandler)
 end
 
--- ── Slash commands ────────────────────────────────────────────────────────────
+-- ─── Slash commands ───────────────────────────────────────────────────────────
 
 EL.SlashCommands = {
     errors = function(self, args)
@@ -240,5 +261,5 @@ EL.SlashCommands = {
     end,
 }
 
--- ── Public API for other modules ──────────────────────────────────────────────
+-- ─── Public API for other modules ─────────────────────────────────────────────
 TA.ErrorLog = EL

@@ -64,8 +64,8 @@ end
 function M:CheckNewlyLearned()
     TA.charDB.seenSpellRanks = TA.charDB.seenSpellRanks or {}
     local seen = TA.charDB.seenSpellRanks
-    local known = U.ScanSpellbook()
-    local onBars = U.ScanActionBarRanks()
+    local known, idRanks = U.ScanSpellbook()
+    local onBars = U.ScanActionBarRanks(idRanks)
 
     local newlyLearned = {}
     for name, rank in pairs(known) do

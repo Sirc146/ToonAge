@@ -6,17 +6,22 @@
 -- uses Dugi for questing. Every Navigation module from the retail/classic builds
 -- is deliberately absent, not missing.
 
-local ADDON_NAME    = "ToonAge"
-local ADDON_VERSION = "2.0.0-anniversary"
+local ADDON_NAME = "ToonAge"
 
 ToonAge = ToonAge or {}
 local TA = ToonAge
 
-TA.version       = ADDON_VERSION
-TA.isClassic     = true
-TA.isTBC         = true
-TA.flavor        = "anniversary"
-TA.interfaceCode = 20506
+-- Fixed 2026-09-10: TA.version used to be a hand-maintained literal here,
+-- separate from the ## Version line in the .toc — the two had already drifted
+-- (.toc said 2.2.1-anniversary while this said 2.0.0-anniversary). Reading it
+-- from the running client's own addon metadata means there is only one place
+-- version now needs to be bumped, and it can never disagree with itself.
+-- TA.isClassic / TA.isTBC / TA.flavor / TA.interfaceCode used to be hardcoded
+-- literals here too; they're now set by Core/Environment.lua (loaded right
+-- after this file) from real WOW_PROJECT_ID detection instead of an assumption.
+TA.version = (GetAddOnMetadata and GetAddOnMetadata(ADDON_NAME, "Version"))
+    or (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version"))
+    or "unknown"
 
 TA.modules = {}
 TA.eventFrame = CreateFrame("Frame", "ToonAgeEventFrame")
@@ -399,7 +404,8 @@ function TA:SlashCommand(msg)
         TA:Raw(TA.LOG.OUTPUT, "  /ta profs      — profession combat perks")
         TA:Raw(TA.LOG.OUTPUT, "  /ta talents    — open the Talents tab (recommended builds for your class)")
         TA:Raw(TA.LOG.OUTPUT, "  /ta builds [class] — print recommended talent builds to chat, with sources")
-        TA:Raw(TA.LOG.OUTPUT, "  /ta rotation   — open the Rotation tab (priority list for your current spec)")
+        TA:Raw(TA.LOG.OUTPUT, "  /ta rotation   — open the Rotation tab (priority list for your current spec; "
+            .. "shows the LEVELING version below level 70, the raid version at 70)")
         TA:Raw(TA.LOG.OUTPUT, "  /ta rotation [class] [spec] — print a rotation/priority list to chat")
         TA:Raw(TA.LOG.OUTPUT, "  /ta spells     — open the Spells tab: spells not on any action bar, or not at their best rank")
         TA:Raw(TA.LOG.OUTPUT, "  /ta pvp        — toggle PvP mode (flips caps, weights and resilience)")
@@ -514,7 +520,23 @@ function TA:SlashCommand(msg)
             class = (UnitClass and select(2, UnitClass("player"))) or ""
         end
 
-        local specs = TA.Data and TA.Data.Rotations and TA.Data.Rotations[class]
+        -- Fixed 2026-09-09: this always read the max-level Data/TBCRotations.lua
+        -- table regardless of the player's actual level — wrong advice for
+        -- anyone still leveling (see Modules/Character/Rotation.lua's matching
+        -- fix for the full reasoning). Below level 70, prefer the parallel
+        -- Data/TBCLevelingRotations.lua table, falling back to the max-level
+        -- one only if leveling data for that class is ever missing.
+        local ROTATION_MAX_LEVEL = 70
+        local playerLevel = (TA.Utils and TA.Utils.GetPlayerLevel and TA.Utils.GetPlayerLevel()) or 70
+        local usingLeveling = playerLevel < ROTATION_MAX_LEVEL
+        local specs
+        if usingLeveling then
+            specs = TA.Data and TA.Data.LevelingRotations and TA.Data.LevelingRotations[class]
+        end
+        if not specs or #specs == 0 then
+            specs = TA.Data and TA.Data.Rotations and TA.Data.Rotations[class]
+            usingLeveling = false
+        end
         if not specs or #specs == 0 then
             TA:Printf(TA.LOG.OUTPUT, nil,
                 "No rotation data for '%s'. Usage: /ta rotation <WARRIOR|PALADIN|HUNTER|ROGUE|PRIEST|SHAMAN|MAGE|WARLOCK|DRUID> [spec]",
@@ -526,7 +548,8 @@ function TA:SlashCommand(msg)
         local CONF_COLOR = { CONFIRMED = "FF4AFF7A", APPROX = "FFFF9A1A", DISPUTED = "FFFF6E6E" }
         local ROLE_LABEL = { dps = "DPS", heal = "HPS", tank = "TPS" }
         local printed = 0
-        TA:Printf(TA.LOG.OUTPUT, nil, "|cFFFFD100━━━ %s Rotation / Priority ━━━|r", class)
+        TA:Printf(TA.LOG.OUTPUT, nil, "|cFFFFD100━━━ %s Rotation / Priority%s ━━━|r", class,
+            usingLeveling and string.format(" — LEVELING (%d/%d)", playerLevel, ROTATION_MAX_LEVEL) or "")
         for _, s in ipairs(specs) do
             if specQuery == "" or s.spec:lower():find(specQuery, 1, true) then
                 printed = printed + 1
@@ -544,7 +567,8 @@ function TA:SlashCommand(msg)
         if printed == 0 then
             TA:Printf(TA.LOG.OUTPUT, nil, "No %s spec matches '%s'.", class, specQuery)
         else
-            TA:Raw(TA.LOG.OUTPUT, "|cFF888780Sources are in the addon file, not printed here — see Data/TBCRotations.lua.|r")
+            TA:Raw(TA.LOG.OUTPUT, "|cFF888780Sources are in the addon file, not printed here — see Data/"
+                .. (usingLeveling and "TBCLevelingRotations.lua" or "TBCRotations.lua") .. ".|r")
         end
         return
     end

@@ -64,6 +64,11 @@ TA.Data.ApiManifest = {
         ["GetNumSpellTabs"]       = { "Core/Utils.lua" },
         ["GetSpellTabInfo"]       = { "Core/Utils.lua" },
         ["GetSpellBookItemName"]  = { "Core/Utils.lua" },
+        -- Fixed 2026-09-07: GetSpellInfo's 2nd return turned out NOT to be
+        -- rank text on this client (see Core/Utils.lua's ScanActionBarRanks
+        -- comment) — GetSpellBookItemInfo resolves each spellbook slot's
+        -- spellID instead, defensively across its two known return shapes.
+        ["GetSpellBookItemInfo"]  = { "Core/Utils.lua" },
         ["IsPassiveSpell"]        = { "Core/Utils.lua" },
         ["GetActionInfo"]         = { "Core/Utils.lua" },
         ["IsSpellKnown"]     = { "Core/Utils.lua" },
