@@ -1,0 +1,44 @@
+## Interface: 16001
+## Title: |cFFFFD100ToonAge|r |cFF888780Forever|r
+## Notes: WoW Forever edition — core engine only while Forever content is built.
+## Author: Chris
+## Version: 2.0.0-dev.1
+## DefaultState: enabled
+## SavedVariables: ToonAgeDB
+## X-Flavor: Forever
+## X-Curse-Project-ID:
+## X-Wago-ID:
+# ── WoW Forever TOC ──
+# SCAFFOLD. This flavor is recognized by Core/Environment.lua and has its own
+# profile in Core/Profile.lua, but no researched Data/<Flavor> content yet, so
+# this TOC lists the shared Core engine and ErrorLog ONLY. The addon loads,
+# reports its own state and captures errors; it gives no advice at all rather
+# than applying another expansion's numbers to this one. Add the flavor's
+# Data/ and Modules/ files here at the same time its profile stops being a
+# scaffold — the TOC is the packaging backstop, the profile the runtime one.
+#
+# Interface 16001 = the 2026-09 Forever beta (folder _classic_beta_, WowB.exe).
+# Forever reports WOW_PROJECT_MAINLINE with a 1.60.x interface: Vanilla-era
+# content on Mainline's API. Whether the client actually looks for a
+# _Forever suffix is unconfirmed; if it does not, it falls through to
+# ToonAge_Mainline.toc / ToonAge.toc, and Core/Profile.lua still gates it
+# to the forever profile. Both paths are safe; only the addon-list title
+# differs, which is how we will tell which one the client picked.
+
+# ── Libraries ──────────────────────────────────────────────────────────
+Libs\LibStub.lua
+
+# ── Core Framework (SHARED — flavor-neutral) ───────────────────────────
+Core\Init.lua
+Core\Environment.lua
+Core\Compat\API.lua
+Core\Utils.lua
+Core\State.lua
+Core\UI.lua
+Core\UIModern.lua
+Core\MinimapButton.lua
+Core\ApiGuard.lua
+Core\Profile.lua
+
+# ── Shared infrastructure (no game-rule content) ───────────────────────
+Modules\Infrastructure\ErrorLog.lua

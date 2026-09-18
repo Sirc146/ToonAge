@@ -1,0 +1,182 @@
+## Interface: 120100, 120105, 120001, 16001
+## Title: |cFFFFD100ToonAge|r
+## Notes: All-in-one leveling, gear, rotation, and endgame companion.
+## Author: Chris
+## Version: 2.0.0-dev.1
+## DefaultState: enabled
+## SavedVariables: ToonAgeDB
+## AddonCompartmentFunc: ToonAge_OnAddonCompartmentClick
+## AddonCompartmentFuncOnEnter: ToonAge_OnAddonCompartmentEnter
+## AddonCompartmentFuncOnLeave: ToonAge_OnAddonCompartmentLeave
+## X-Flavor: fallback
+# ── Generic fallback TOC ───────────────────────────────────────────────
+# Per Warcraft Wiki (.toc): the client uses a flavor-suffixed TOC
+# (ToonAge_Mainline.toc, ToonAge_TBC.toc, ...) when one matches the running
+# client, and falls back to this unsuffixed ToonAge.toc only when none matches.
+# It mirrors the Mainline (retail) file set so an unrecognized retail-family
+# client still loads a working addon rather than nothing. Flavor-specific
+# clients (TBC/Mists/etc.) match their own suffixed TOC and never reach this.
+
+# ── Libraries ──────────────────────────────────────────────────────────
+Libs\LibStub.lua
+
+# ── Core Framework ─────────────────────────────────────────────────────
+Core\Init.lua
+Core\Environment.lua
+Core\Compat\API.lua
+Core\Utils.lua
+Core\State.lua
+Core\UI.lua
+Core\UIModern.lua
+Core\MinimapButton.lua
+Core\ApiGuard.lua
+Core\Profile.lua
+Core\StatEngine.lua
+
+# ── Static Data ────────────────────────────────────────────────────────
+Data\Retail\ApiManifest.lua
+Data\Retail\StatWeights.lua
+Data\Retail\Spells.lua
+Data\Retail\Talents.lua
+Data\Retail\TalentsPvP.lua
+Data\Retail\RotationConditions.lua
+Data\Retail\Rotations.lua
+Data\Retail\Professions.lua
+Data\Retail\ItemLevels.lua
+Data\Retail\Pets.lua
+Data\Retail\Enchants.lua
+Data\Retail\FarmRoutes.lua
+Data\Retail\Dungeons.lua
+
+# ── Guide Data ─────────────────────────────────────────────────────────
+Data\Retail\Guides\TAG_Midnight_Intro.lua
+Data\Retail\Guides\TAG_Exiles_Reach.lua
+Data\Retail\Guides\TAG_Hallowfall.lua
+Data\Retail\Guides\TAG_Eversong_Midnight.lua
+Data\Retail\Guides\TAG_Silvermoon_Midnight.lua
+Data\Retail\Guides\TAG_Naigtal.lua
+Data\Retail\Guides\TAG_ExilesReach_Alliance.lua
+Data\Retail\Guides\TAG_ExilesReach_Horde.lua
+Data\Retail\Guides\TAG_EasternKingdoms_Alliance.lua
+Data\Retail\Guides\TAG_EasternKingdoms_Horde.lua
+Data\Retail\Guides\TAG_Kalimdor_Alliance.lua
+Data\Retail\Guides\TAG_Kalimdor_Horde.lua
+Data\Retail\Guides\TAG_TheBurningCrusade_Alliance.lua
+Data\Retail\Guides\TAG_TheBurningCrusade_Horde.lua
+Data\Retail\Guides\TAG_WrathOfTheLichKing.lua
+Data\Retail\Guides\TAG_Cataclysm_Alliance.lua
+Data\Retail\Guides\TAG_Cataclysm_Horde.lua
+Data\Retail\Guides\TAG_MistsOfPandaria.lua
+Data\Retail\Guides\TAG_MistsOfPandaria_Alliance.lua
+Data\Retail\Guides\TAG_MistsOfPandaria_Horde.lua
+Data\Retail\Guides\TAG_WarlordsOfDraenor_Alliance.lua
+Data\Retail\Guides\TAG_WarlordsOfDraenor_Horde.lua
+Data\Retail\Guides\TAG_Legion.lua
+Data\Retail\Guides\TAG_Legion_Alliance.lua
+Data\Retail\Guides\TAG_Legion_Horde.lua
+Data\Retail\Guides\TAG_BattleForAzeroth_Alliance.lua
+Data\Retail\Guides\TAG_BattleForAzeroth_Horde.lua
+Data\Retail\Guides\TAG_Shadowlands.lua
+Data\Retail\Guides\TAG_Shadowlands_Alliance.lua
+Data\Retail\Guides\TAG_Shadowlands_Horde.lua
+Data\Retail\Guides\TAG_Dragonflight.lua
+Data\Retail\Guides\TAG_Dragonflight_Alliance.lua
+Data\Retail\Guides\TAG_Dragonflight_horde.lua
+Data\Retail\Guides\TAG_10_70_Ally_EclipseGlaives.lua
+Data\Retail\Guides\TAG_TheWarWithin.lua
+Data\Retail\Guides\TAG_TheWarWithin_Isle_of_Dorn.lua
+Data\Retail\Guides\TAG_TheWarWithin_Ringing_Deeps.lua
+Data\Retail\Guides\TAG_TheWarWithin_Hallowfall.lua
+Data\Retail\Guides\TAG_TheWarWithin_Azj_Kahet.lua
+Data\Retail\Guides\TAG_Midnight.lua
+Data\Retail\Guides\TAG_Midnight_Eversong_Woods.lua
+Data\Retail\Guides\TAG_Midnight_Harandar.lua
+Data\Retail\Guides\TAG_Midnight_Voidstorm.lua
+Data\Retail\Guides\TAG_Midnight_Zulaman.lua
+Data\Retail\Guides\TAG_Arathi_Highlands_Returning_Player.lua
+
+# ── Modules: Infrastructure (load first) ──────────────────────────────
+Modules\Infrastructure\DevHelpers.lua
+Modules\Infrastructure\ErrorLog.lua
+Modules\Infrastructure\CoordHarvester.lua
+
+# ── Modules: Combat (helpers before consumers) ────────────────────────
+Modules\Combat\TalentsHelpers.lua
+Modules\Combat\CombatState.lua
+Modules\Combat\Rotation.lua
+Modules\Combat\PullPlanner.lua
+Modules\Combat\SpecAdaptive.lua
+
+# ── Modules: Character ─────────────────────────────────────────────────
+Modules\Character\Character.lua
+Modules\Character\Talents.lua
+Modules\Character\TalentsPvP.lua
+Modules\Character\Professions.lua
+Modules\Character\Pets.lua
+
+# ── Modules: Gear ──────────────────────────────────────────────────────
+Modules\Gear\Gear.lua
+Modules\Gear\DungeonGear.lua
+Modules\Gear\GearSets.lua
+Modules\Gear\AutoEquip.lua
+Modules\Gear\TooltipScorer.lua
+Modules\Gear\QuestRewardAdvisor.lua
+
+# ── Modules: Navigation ───────────────────────────────────────────────
+Modules\Navigation\GuideParser.lua
+Modules\Navigation\GuideImporter.lua
+Modules\Navigation\GuideBrowser.lua
+Modules\Navigation\GuideContextMenu.lua
+Modules\Navigation\QuestTracker.lua
+Modules\Navigation\Arrow.lua
+Modules\Navigation\CoordResolver.lua
+Modules\Navigation\AntTrail.lua
+Modules\Navigation\NavHud.lua
+Modules\Navigation\MapPins.xml
+Modules\Navigation\MapPins.lua
+Modules\Navigation\TravelModes.lua
+Modules\Navigation\TravelRouter.lua
+
+# ── Modules: Progression ──────────────────────────────────────────────
+Modules\Progression\XPTracker.lua
+Modules\Progression\Weekly.lua
+Modules\Progression\WorldQuests.lua
+Modules\Progression\Delves.lua
+Modules\Progression\DungeonGuide.lua
+Modules\Progression\DungeonTalents.lua
+Modules\Progression\AltTracker.lua
+Modules\Progression\AltQuickStart.lua
+
+# ── Modules: Farming ──────────────────────────────────────────────────
+Modules\Farming\FarmOptimizer.lua
+Modules\Farming\FarmOptimizerHUD.lua
+Modules\Farming\GatherTracker.lua
+Modules\Farming\ProfQuesting.lua
+
+# ── Modules: Automation ───────────────────────────────────────────────
+Modules\Automation\CutsceneSkip.lua
+Modules\Automation\AutoMount.lua
+Modules\Automation\DeathRecovery.lua
+Modules\Automation\RestOptimizer.lua
+Modules\Automation\NameplateObjectives.lua
+Modules\Automation\RoleMorph.lua
+Modules\Automation\TargetMarker.lua
+Modules\Automation\Retrospective.lua
+Modules\Automation\SocialAwareness.lua
+
+# ── Modules: Infrastructure (settings/onboarding load last) ───────────
+Modules\Infrastructure\Settings.lua
+Modules\Infrastructure\Onboarding.lua
+Modules\Infrastructure\ChatCopy.lua
+
+# Bindings.xml is deliberately NOT listed here. WoW loads an addon's
+# Bindings.xml automatically from the addon root; listing it in the TOC makes
+# the client parse it a second time as ordinary UI XML, where <Binding> is not
+# a valid element -- that is the "Unrecognized XML: Binding" seen on login
+# 2026-08-16. Corrected 2026-08-29.
+#
+# The earlier diagnosis (a `category` attribute on <Binding>) was wrong.
+# Census of all 63 addons shipping a Bindings.xml across the five installs:
+# 51 of them use category= and load fine, and ToonAge was the only addon in
+# any client that listed Bindings.xml in its TOC. That listing was the one
+# variable unique to ToonAge.

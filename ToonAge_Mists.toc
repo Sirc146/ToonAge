@@ -1,0 +1,86 @@
+## Interface: 50504
+## Title: |cFFFFD100ToonAge|r |cFF888780Mists|r
+## Notes: Leveling companion — navigation, gear scoring, and quest guidance. Mists of Pandaria Classic edition.
+## Author: Chris
+## Version: 2.0.0-dev.1
+## DefaultState: enabled
+## SavedVariables: ToonAgeDB
+## X-Flavor: Mists
+## X-Curse-Project-ID:
+## X-Wago-ID:
+# ── Mists of Pandaria Classic TOC ──────────────────────────────────────
+# Interface 50504 = Mists of Pandaria Classic (per Warcraft Wiki current-
+# interface table). Matched by MoP Classic clients ahead of the generic
+# ToonAge.toc fallback.
+#
+# A trimmed LEVELING companion (navigation/guide + character + gear), not the
+# full retail endgame set. Uses the SHARED Core engine and SHARED Utils/ErrorLog
+# unchanged — MoP modules need no flavor-specific utils extension (unlike TBC).
+# Lists NO Data/Retail/ and NO Data/TBC/ file; the mists profile
+# (Core/Profile.lua) is the runtime backstop, this TOC the packaging backstop.
+# StatEngine.lua (retail DR) and Layout.lua/TBCStats (TBC) are intentionally
+# absent.
+
+# ── Libraries ──────────────────────────────────────────────────────────
+Libs\LibStub.lua
+
+# ── Core Framework (SHARED — flavor-neutral) ───────────────────────────
+Core\Init.lua
+Core\Environment.lua
+Core\Compat\API.lua
+Core\Utils.lua
+Core\State.lua
+Core\UI.lua
+Core\UIModern.lua
+Core\MinimapButton.lua
+Core\ApiGuard.lua
+Core\Profile.lua
+
+# ── Static Data (Mists) ────────────────────────────────────────────────
+Data\Mists\ApiManifest.lua
+Data\Mists\StatWeights.lua
+Data\Mists\Spells.lua
+Data\Mists\ItemLevels.lua
+Data\Mists\PetFoods.lua
+
+# ── Guide Data (Mists) ─────────────────────────────────────────────────
+Data\Mists\Guides\TAG_Exiles_Reach.lua
+
+# ── Modules: Infrastructure (SHARED ErrorLog first) ────────────────────
+Modules\Mists\DevHelpers.lua
+Modules\Infrastructure\ErrorLog.lua
+
+# ── Modules: Character / Gear ──────────────────────────────────────────
+Modules\Mists\Character.lua
+Modules\Mists\PetCare.lua
+Modules\Mists\Gear.lua
+Modules\Mists\AutoEquip.lua
+
+# ── Modules: Navigation ────────────────────────────────────────────────
+Modules\Mists\GuideParser.lua
+Modules\Mists\GuideImporter.lua
+Modules\Mists\GuideBrowser.lua
+Modules\Mists\GuideContextMenu.lua
+Modules\Mists\QuestTracker.lua
+Modules\Mists\Arrow.lua
+Modules\Mists\CoordResolver.lua
+Modules\Mists\AntTrail.lua
+Modules\Mists\NavHud.lua
+Modules\Mists\MapPins.lua
+
+# ── Modules: Progression / Farming ─────────────────────────────────────
+Modules\Mists\XPTracker.lua
+Modules\Mists\RestOptimizer.lua
+Modules\Mists\GatherTracker.lua
+
+# ── Modules: Automation ────────────────────────────────────────────────
+Modules\Mists\CutsceneSkip.lua
+Modules\Mists\AutoMount.lua
+Modules\Mists\DeathRecovery.lua
+
+# ── Modules: Infrastructure (settings load last) ───────────────────────
+Modules\Mists\Settings.lua
+Modules\Mists\ChatCopy.lua
+
+# Bindings.xml is deliberately NOT listed here (WoW auto-loads it; listing
+# double-parses and errors). See ToonAge.toc.

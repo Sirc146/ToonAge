@@ -1,0 +1,82 @@
+## Interface: 20506
+## Title: |cFFFFD100ToonAge|r |cFF888780TBC|r
+## Notes: TBC character advisor — stat caps, weapon skill, cap-aware gear scoring, racials and profession perks.
+## Author: Chris
+## Version: 2.0.0-dev.1
+## DefaultState: enabled
+## SavedVariables: ToonAgeDB
+## X-Flavor: TBC
+## X-Curse-Project-ID:
+## X-Wago-ID:
+# ── TBC Anniversary TOC ────────────────────────────────────────────────
+# Interface 20506 = Burning Crusade Classic & Classic Anniversary Edition
+# (per Warcraft Wiki current-interface table). Matched by TBC clients ahead of
+# the generic ToonAge.toc fallback.
+#
+# Scope: advisory only (stat caps, weapon skill, cap-aware gear). No guide /
+# navigation engine on TBC — the player uses Zygor for questing. See
+# Docs/CLASSIC_ANNIVERSARY_BRIEF.md.
+#
+# This TOC lists the SHARED, flavor-neutral Core engine plus (from Task 7) the
+# TBC-specific Data/TBC/* and TBC modules. It deliberately lists NO Data/Retail/
+# file and NO retail-only module: the flavor gate in Core/Profile.lua (tbc
+# profile) is the runtime backstop, and this TOC is the packaging backstop, so a
+# TBC install ships only TBC content. StatEngine.lua is retail-DR-specific and
+# is intentionally absent — TBC uses hard stat caps (Data/TBC), not DR curves.
+
+# ── Libraries ──────────────────────────────────────────────────────────
+Libs\LibStub.lua
+
+# ── Core Framework (SHARED — flavor-neutral) ───────────────────────────
+Core\Init.lua
+Core\Environment.lua
+Core\Compat\API.lua
+Core\Utils.lua
+Core\TBCUtils.lua
+Core\State.lua
+Core\UI.lua
+Core\UIModern.lua
+Core\Layout.lua
+Core\MinimapButton.lua
+Core\ApiGuard.lua
+Core\Profile.lua
+
+# ── Combat maths (TBC-only Core) ───────────────────────────────────────
+Core\TBCStats.lua
+Core\SkillScan.lua
+Core\TooltipScan.lua
+
+# ── Static Data (TBC) ──────────────────────────────────────────────────
+Data\TBC\ApiManifest.lua
+Data\TBC\TBCRaces.lua
+Data\TBC\TBCWeights.lua
+Data\TBC\TBCProfessions.lua
+Data\TBC\TBCTalentHit.lua
+Data\TBC\TBCTalentBuilds.lua
+Data\TBC\TBCSecondaryRoles.lua
+Data\TBC\TBCRotations.lua
+Data\TBC\TBCLevelingRotations.lua
+Data\TBC\TBCArmor.lua
+Data\TBC\TBCPvP.lua
+Data\TBC\PetFoods.lua
+
+# ── Modules: Infrastructure (SHARED — load first) ──────────────────────
+Modules\Infrastructure\ErrorLog.lua
+
+# ── Modules: TBC (Character first — dependents follow) ─────────────────
+Modules\TBC\Character.lua
+Modules\TBC\StatCaps.lua
+Modules\TBC\WeaponSkill.lua
+Modules\TBC\RaceAdvisor.lua
+Modules\TBC\ProfessionAdvisor.lua
+Modules\TBC\TalentBuilds.lua
+Modules\TBC\Rotation.lua
+Modules\TBC\Spells.lua
+Modules\TBC\PetCare.lua
+Modules\TBC\Gear.lua
+Modules\TBC\AutoEquip.lua
+Modules\TBC\PvPAdvisor.lua
+
+# Bindings.xml is deliberately NOT listed here. WoW loads an addon's
+# Bindings.xml automatically from the addon root; listing it makes the client
+# parse it a second time as ordinary UI XML, which errors. See ToonAge.toc.

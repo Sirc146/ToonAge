@@ -1,0 +1,223 @@
+-- ToonAge/Modules/Character/TalentBuilds.lua (Anniversary — TBC Classic / 20506)
+-- Recommended talent builds for your class, by role and context — the panel
+-- view of Data/TBCTalentBuilds.lua.
+--
+-- This tab shows RECOMMENDATIONS, not your own current talent spend — for
+-- that, see the "deepest tree" line the sidebar already shows on every tab
+-- (U.GetSpecLabel(), Core/Layout.lua:CharacterSidebar). A real "your talents
+-- vs. the recommended build, tree by tree" comparison view is a reasonable
+-- next step but is not what this tab does today.
+--
+-- Confidence grading (CONFIRMED/APPROX/DISPUTED) and full source citations
+-- live in Data/TBCTalentBuilds.lua's header and per-build `sources` field —
+-- this tab shows the graded label and notes but not the raw URLs; use
+-- /ta builds [class] to print sources to chat, or open the data file.
+
+local TA = ToonAge
+local U  = TA.Utils
+local L  = TA.Layout
+
+local M = {}
+TA:RegisterModule("TalentBuilds", M)
+
+local CONFIDENCE_STATUS = { CONFIRMED = "good", APPROX = "warn", DISPUTED = "bad" }
+
+-- Added 2026-09-09: this tab lists EVERY viable PvE (or PvP) build for the
+-- class — e.g. Frost, Fire and Arcane for Mage — with no indication of which
+-- one, if any, matches the talents the player has actually spent. Reported
+-- as "why is it telling me to respec to Fire": Fire simply sorts first in
+-- the Mage data and nothing distinguished it from the player's real Frost
+-- spec. Labels are "<Tree> — description", so the tree name is the text
+-- before the em dash; matched case-insensitively against the live deepest
+-- tree from U.GetTalentSummary().
+local function BuildTreeName(label)
+    local dash = label:find(" — ", 1, true)
+    return dash and label:sub(1, dash - 1) or label
+end
+
+function M:Render(content, side)
+    L:CharacterSidebar(side)
+
+    local class = U.GetPlayerClass()
+    local allBuilds = TA.Data.TalentBuilds and TA.Data.TalentBuilds[class]
+    local y = -8
+
+    if not allBuilds or #allBuilds == 0 then
+        y = L:SectionHeader(content, y, "TALENT BUILDS")
+        y = L:Paragraph(content, y, string.format(
+            "No talent build data for '%s' yet.", tostring(class)), { color = L.C_WARNING })
+        L:Finish(content, y)
+        return
+    end
+
+    -- Fixed 2026-09-07: this tab used to list every build regardless of mode,
+    -- so switching /ta pvp on left it showing PvE builds first (or mixed in)
+    -- instead of following the same one-flag-flips-everything pattern every
+    -- other tab (Caps, Gear, PvPAdvisor) already uses. Filter to the active
+    -- context, same as they do.
+    local pvpMode = TA.db and TA.db.pvpMode
+    local wantContext = pvpMode and "pvp" or "pve"
+
+    local builds = {}
+    for _, b in ipairs(allBuilds) do
+        if b.context == wantContext then builds[#builds + 1] = b end
+    end
+
+    -- Fixed 2026-09-09: builds were listed in raw data order with no regard
+    -- for role, so a healer (e.g. Holy Priest) could see a DPS build (Shadow)
+    -- ahead of their own — reported as "on healers its showing DPS options
+    -- ... and not the healing talents". Partitioned (stable, not re-sorted
+    -- within each group) so builds matching the player's LIVE role via
+    -- U.InferRole() come first — the other roles' builds are still shown
+    -- below, just not ahead of the one that's actually theirs.
+    local ROLE_GROUP = { TANK = "tank", HEALER = "healer" }
+    local myRoleGroup = ROLE_GROUP[U.InferRole()] or "dps"
+    local mineCount
+    do
+        local mine, other = {}, {}
+        for _, b in ipairs(builds) do
+            if b.role == myRoleGroup then mine[#mine + 1] = b else other[#other + 1] = b end
+        end
+        mineCount = #mine
+        builds = {}
+        for _, b in ipairs(mine) do builds[#builds + 1] = b end
+        for _, b in ipairs(other) do builds[#builds + 1] = b end
+    end
+
+    local headerTitle = pvpMode and "RECOMMENDED TALENT BUILDS — PVP" or "RECOMMENDED TALENT BUILDS — PVE"
+    local headerColor = pvpMode and "|cFFFF6E6E" or "|cFF4AFF7A"
+
+    if #builds == 0 then
+        y = L:SectionHeader(content, y, headerTitle)
+        y = L:Paragraph(content, y, string.format(
+            "No %s build data for %s yet — showing nothing rather than the wrong mode's build.",
+            wantContext, tostring(class)), { color = L.C_WARNING })
+        L:Finish(content, y)
+        return
+    end
+
+    local ROLE_TAG = { dps = "DPS", tank = "TANK", healer = "HEALER" }
+    y = L:SectionHeader(content, y, headerTitle,
+        headerColor .. (pvpMode and "PvP mode is ON" or "PvE mode") .. "|r"
+        .. " — every viable spec for this class is listed below, not a single pick, grouped so your "
+        .. "current role (" .. (ROLE_TAG[myRoleGroup] or myRoleGroup) .. ") comes first. "
+        .. "|cFF4AFF7A✓|r marks the one matching your CURRENT talents; the rest are alternatives, "
+        .. "not a suggestion to respec. |cFF4AFF7AGreen|r confidence = confirmed by 2+ sources, "
+        .. "|cFFFF9A1Aorange|r = single source or approximate, |cFFFF6E6Ered|r = sources genuinely "
+        .. "disagree — see notes below each.")
+
+    y = L:ButtonRow(content, y, {
+        { label = pvpMode and "Show PvE builds" or "Show PvP builds", onClick = function()
+            TA.db.pvpMode = not pvpMode
+            L:RefreshUI()
+        end, tooltip = { "PvE / PvP", "Switches the whole addon: builds, caps and gear weights." } },
+    })
+
+    local specName = U.GetTalentSummary()
+
+    for i, b in ipairs(builds) do
+        local isCurrent = specName and specName ~= "" and specName ~= "No talents spent"
+            and BuildTreeName(b.label):lower() == specName:lower()
+        local roleTag = ROLE_TAG[b.role] or b.role
+
+        y = L:DataRow(content, y, {
+            label = (isCurrent and "|cFF4AFF7A✓ |r" or "") .. b.label
+                .. "  |cFF555049[" .. tostring(roleTag) .. "]|r",
+            value = (isCurrent and "|cFF4AFF7AYOUR SPEC|r  " or "") .. b.confidence,
+            status = CONFIDENCE_STATUS[b.confidence] or "neutral",
+            bold = true, note = b.allocation,
+        })
+
+        if b.keyTalents then
+            for _, t in ipairs(b.keyTalents) do
+                y = L:Bullet(content, y, t, { color = L.C_SECONDARY })
+            end
+        end
+
+        if b.notes then
+            y = L:Spacer(y, 2)
+            y = L:Paragraph(content, y, b.notes, { color = L.C_DIM, size = 9 })
+        end
+
+        if b.verifyPoints then
+            y = L:Paragraph(content, y,
+                "|cFFFF9A1A⚠|r Some secondary talent point costs here came from guide prose, "
+                .. "not a scraped calculator — spot-check before treating them as exact.",
+                { color = L.C_WARNING, size = 9 })
+        end
+
+        y = L:Spacer(y, 6)
+        if i < #builds then
+            y = L:Divider(content, y)
+            if mineCount > 0 and i == mineCount then
+                y = L:Paragraph(content, y,
+                    "|cFF888780Other roles for this class — not yours currently, shown for reference:|r",
+                    { color = L.C_DIM, size = 9 })
+                y = L:Spacer(y, 4)
+            end
+        end
+    end
+
+    y = L:Spacer(y, 4)
+    y = L:Paragraph(content, y,
+        "Full source links for every build are in Data/TBC/TBCTalentBuilds.lua.", { color = L.C_DIM, size = 9 })
+
+    y = M:RenderSecondaryRoles(content, y, class)
+
+    L:Finish(content, y)
+end
+
+-- Added 2026-09-07: "out of the box" secondary/hybrid capability suggestions
+-- — real things this class can do OUTSIDE its normal role in dungeon
+-- content (off-healing, off-tanking, unique utility), gated behind the
+-- player's LIVE talent investment via U.GetTalentPointsInTree() rather than
+-- shown just because the class theoretically can. Explicitly a SECONDARY,
+-- optional section below the main recommended build above — never a
+-- replacement for it. See Data/TBCSecondaryRoles.lua for the sourced data
+-- and confidence grading.
+function M:RenderSecondaryRoles(content, y, class)
+    local roles = TA.Data.SecondaryRoles and TA.Data.SecondaryRoles[class]
+    if not roles or #roles == 0 then return y end
+
+    local available, locked = {}, {}
+    for _, r in ipairs(roles) do
+        if r.requiredTree == "none" then
+            available[#available + 1] = r
+        else
+            local have = U.GetTalentPointsInTree(r.requiredTree)
+            if have >= (r.requiredPoints or 0) then
+                available[#available + 1] = r
+            else
+                r._have = have
+                locked[#locked + 1] = r
+            end
+        end
+    end
+
+    y = L:Spacer(y, 8)
+    y = L:Divider(content, y)
+    y = L:SectionHeader(content, y, "SECONDARY / HYBRID OPTIONS",
+        "|cFF888780Optional — not the recommended build above. Real \"out of the box\" plays this class "
+        .. "can pull off in dungeons, shown only when your CURRENT talent investment actually supports them.|r")
+
+    for _, r in ipairs(available) do
+        y = L:DataRow(content, y, {
+            label = r.label, value = "AVAILABLE NOW",
+            status = "good", bold = true,
+        })
+        y = L:Paragraph(content, y, r.description, { color = L.C_DIM, size = 9 })
+        y = L:Paragraph(content, y, "|cFF888780When: " .. r.context .. "|r", { color = L.C_SECONDARY, size = 9 })
+        y = L:Spacer(y, 4)
+    end
+
+    for _, r in ipairs(locked) do
+        y = L:DataRow(content, y, {
+            label = r.label,
+            value = string.format("needs %d in %s (have %d)", r.requiredPoints or 0, r.requiredTree, r._have or 0),
+            status = "dim", bold = false,
+        })
+        y = L:Spacer(y, 2)
+    end
+
+    return y
+end

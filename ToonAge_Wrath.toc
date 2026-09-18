@@ -1,0 +1,39 @@
+## Interface: 30405
+## Title: |cFFFFD100ToonAge|r |cFF888780Wrath|r
+## Notes: Wrath of the Lich King Classic edition — core engine only while Wrath content is built.
+## Author: Chris
+## Version: 2.0.0-dev.1
+## DefaultState: enabled
+## SavedVariables: ToonAgeDB
+## X-Flavor: Wrath
+## X-Curse-Project-ID:
+## X-Wago-ID:
+# ── Wrath of the Lich King Classic TOC ──
+# SCAFFOLD. This flavor is recognized by Core/Environment.lua and has its own
+# profile in Core/Profile.lua, but no researched Data/<Flavor> content yet, so
+# this TOC lists the shared Core engine and ErrorLog ONLY. The addon loads,
+# reports its own state and captures errors; it gives no advice at all rather
+# than applying another expansion's numbers to this one. Add the flavor's
+# Data/ and Modules/ files here at the same time its profile stops being a
+# scaffold — the TOC is the packaging backstop, the profile the runtime one.
+#
+# Interface 30405 = the final Wrath Classic build. Kept for the Anniversary
+# realm progression (TBC -> Wrath), which will ship a Wrath client again.
+
+# ── Libraries ──────────────────────────────────────────────────────────
+Libs\LibStub.lua
+
+# ── Core Framework (SHARED — flavor-neutral) ───────────────────────────
+Core\Init.lua
+Core\Environment.lua
+Core\Compat\API.lua
+Core\Utils.lua
+Core\State.lua
+Core\UI.lua
+Core\UIModern.lua
+Core\MinimapButton.lua
+Core\ApiGuard.lua
+Core\Profile.lua
+
+# ── Shared infrastructure (no game-rule content) ───────────────────────
+Modules\Infrastructure\ErrorLog.lua

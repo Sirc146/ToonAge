@@ -1,0 +1,986 @@
+-- ToonAge/Modules/Weekly.lua
+-- Great Vault progress tracker using the real C_WeeklyRewards API.
+--
+-- Great Vault is NOT quest-based. It uses C_WeeklyRewards.GetActivities(),
+-- keyed by Enum.WeeklyRewardChestThresholdType, which returns progress toward
+-- each unlock tier. Quest IDs were never the right mechanism here.
+--
+-- Activity types (Midnight — verify against live API with /taweekly):
+--   1 = Dungeon/M+  (3 tiers: clear 1 / 4 / 8)
+--   2 = Raid        (3 tiers: kill 3 / 7 / ~heroic bosses)
+--   3 = World/Delve (3 tiers: complete 1 / 3 / 4 bountiful delves)
+--
+-- Run /taweekly to dump live activity data and verify field names for this
+-- PTR build before any season-reset update.
+
+local TA = ToonAge
+local U  = TA.Utils
+
+local Weekly = {}
+TA:RegisterModule("Weekly", Weekly)
+
+Weekly.frames = {}
+
+-- ── Colour helpers ────────────────────────────────────────────────────────────
+local function Hex(r, g, b) return string.format("|cFF%02X%02X%02X", r * 255, g * 255, b * 255) end
+local COL_GOLD    = "|cFFFFD100"
+local COL_GREEN   = "|cFF4AFF7A"
+local COL_ORANGE  = "|cFFFF9A1A"
+local COL_GREY    = "|cFF888780"
+local COL_RED     = "|cFFFF4444"
+local CLOSE       = "|r"
+
+-- ── API availability guard ────────────────────────────────────────────────────
+local function WeeklyAPIAvailable()
+    return C_WeeklyRewards ~= nil
+       and C_WeeklyRewards.GetActivities ~= nil
+end
+
+-- ── Activity type constants ───────────────────────────────────────────────────
+-- Prefer the official Enum; fall back to positional integers that have been
+-- stable since Dragonflight. If neither works the /taweekly dump will reveal
+-- the correct values for this build.
+local ACTIVITY_TYPE = {}
+if Enum and Enum.WeeklyRewardChestThresholdType then
+    ACTIVITY_TYPE.DUNGEON = Enum.WeeklyRewardChestThresholdType.Activities
+                         or Enum.WeeklyRewardChestThresholdType.MythicPlus
+                         or 1
+    ACTIVITY_TYPE.RAID    = Enum.WeeklyRewardChestThresholdType.Raid    or 2
+    ACTIVITY_TYPE.WORLD   = Enum.WeeklyRewardChestThresholdType.World   or 3
+else
+    ACTIVITY_TYPE.DUNGEON = 1
+    ACTIVITY_TYPE.RAID    = 2
+    ACTIVITY_TYPE.WORLD   = 3
+end
+
+-- ── Per-activity-type metadata ────────────────────────────────────────────────
+local ACTIVITY_META = {
+    [ACTIVITY_TYPE.DUNGEON] = {
+        label   = "Dungeons / M+",
+        icon    = "Interface\\Icons\\Achievement_Dungeon_GloryoftheRaider",
+        tiers   = { "Clear 1",  "Clear 4",  "Clear 8"  },
+    },
+    [ACTIVITY_TYPE.RAID]    = {
+        label   = "Raid",
+        icon    = "Interface\\Icons\\Achievement_Raid_GloryoftheRaider",
+        tiers   = { "Kill 3",   "Kill 7",   "Kill bosses"  },
+    },
+    [ACTIVITY_TYPE.WORLD]   = {
+        label   = "World / Delves",
+        icon    = "Interface\\Icons\\Achievement_Challenges_Delves",
+        tiers   = { "Complete 1", "Complete 3", "Complete 4 Bountiful" },
+    },
+}
+
+-- ── Fetch and normalise activity data ─────────────────────────────────────────
+-- Returns an array of activity groups, each:
+--   { typeID, meta, tiers = { {threshold,progress,isUnlocked,reward}, ... } }
+-- Returns nil + error string on API failure.
+local function FetchActivities()
+    if not WeeklyAPIAvailable() then
+        return nil, "C_WeeklyRewards not available on this client build."
+    end
+
+    local groups = {}
+
+    for _, typeID in ipairs({ ACTIVITY_TYPE.DUNGEON, ACTIVITY_TYPE.RAID, ACTIVITY_TYPE.WORLD }) do
+        local ok, activities = pcall(C_WeeklyRewards.GetActivities, typeID)
+        if not ok or type(activities) ~= "table" then
+            -- Skip silently; individual activity types may be absent on PTR
+            activities = {}
+        end
+
+        local meta  = ACTIVITY_META[typeID] or { label = "Activity " .. typeID, tiers = {} }
+        local tiers = {}
+        for i, act in ipairs(activities) do
+            -- Field names confirmed via /taweekly dump: threshold, progress, isUnlocked
+            -- rewardItemIlvl may or may not be present depending on vault state.
+            -- act.id is the activity ID used by GetExampleRewardItemHyperlinks.
+            local threshold  = act.threshold  or 0
+            local progress   = act.progress   or 0
+            local isUnlocked = act.isUnlocked or (progress >= threshold and threshold > 0)
+            local ilvl       = act.rewardItemIlvl or 0
+
+            table.insert(tiers, {
+                activityID = act.id,
+                threshold  = threshold,
+                progress   = progress,
+                isUnlocked = isUnlocked,
+                ilvl       = ilvl,
+                tierLabel  = meta.tiers[i] or ("Tier " .. i),
+            })
+        end
+
+        table.insert(groups, {
+            typeID = typeID,
+            meta   = meta,
+            tiers  = tiers,
+        })
+    end
+
+    return groups
+end
+
+-- ── Check whether the vault has any claim available ───────────────────────────
+local function HasVaultReward()
+    if not WeeklyAPIAvailable() or not C_WeeklyRewards.HasAvailableRewards then
+        return false
+    end
+    local ok, has = pcall(C_WeeklyRewards.HasAvailableRewards)
+    return ok and has == true
+end
+
+-- ── Render helpers ────────────────────────────────────────────────────────────
+local BD = {
+    bgFile   = "Interface\\Buttons\\WHITE8X8",
+    edgeFile = "Interface\\Buttons\\WHITE8X8",
+    edgeSize = 1,
+}
+
+local function MkBackdrop(f, br, bg, bb, ba, er, eg, eb, ea)
+    f:SetBackdrop(BD)
+    f:SetBackdropColor(br or 0.05, bg or 0.04, bb or 0.02, ba or 1)
+    f:SetBackdropBorderColor(er or 0.20, eg or 0.20, eb or 0.20, ea or 0.6)
+end
+
+-- ── Vault reward scoring ──────────────────────────────────────────────────────
+-- Attempts to score a vault reward using Gear's stat-weight engine.
+-- Returns: scoreText (formatted string with upgrade info) or nil
+local function ScoreVaultReward(activityID, ilvl)
+    if not activityID then return nil end
+    if not C_WeeklyRewards.GetExampleRewardItemHyperlinks then return nil end
+
+    local ok, link = pcall(C_WeeklyRewards.GetExampleRewardItemHyperlinks, activityID)
+    if not ok or not link or link == "" then return nil end
+
+    local Gear = TA:GetModule("Gear")
+    if not Gear or not Gear.CalculateItemScore then return nil end
+
+    local specID = U.GetPlayerSpec and U.GetPlayerSpec()
+    if not specID then return nil end
+
+    local mode = (TA.charDB and TA.charDB.pvxMode) or "pve"
+    local rewardScore = Gear.CalculateItemScore(link, specID, mode)
+    if not rewardScore or rewardScore <= 0 then return nil end
+
+    -- Compare against the average of currently equipped gear scores
+    -- to determine if this reward is an upgrade
+    local equippedAvg = 0
+    local count = 0
+    for slot = 1, 17 do
+        local eqLink = GetInventoryItemLink("player", slot)
+        if eqLink then
+            local eqScore = Gear.CalculateItemScore(eqLink, specID, mode)
+            if eqScore and eqScore > 0 then
+                equippedAvg = equippedAvg + eqScore
+                count = count + 1
+            end
+        end
+    end
+
+    if count > 0 then equippedAvg = equippedAvg / count end
+    if equippedAvg <= 0 then return string.format("Score: %d", math.floor(rewardScore)) end
+
+    local diff = rewardScore - equippedAvg
+    local pct = math.floor((diff / equippedAvg) * 100)
+
+    if pct > 0 then
+        return COL_GREEN .. "+" .. pct .. "% upgrade" .. CLOSE
+    elseif pct < -5 then
+        return COL_GREY .. "sidegrade" .. CLOSE
+    else
+        return COL_GREY .. "~equal" .. CLOSE
+    end
+end
+
+-- ── Priority Advisor: BuildRecommendations ────────────────────────────────────
+-- Returns an ordered array of { text = string, reason = string, priority = number }
+-- Each entry is a recommendation the player can act on right now.
+function Weekly:BuildRecommendations()
+    local recs = {}
+
+    -- 1. Check vault progress gaps
+    if WeeklyAPIAvailable() then
+        local groups = FetchActivities()
+        if groups then
+            for _, group in ipairs(groups) do
+                local meta = group.meta
+                for i, tier in ipairs(group.tiers) do
+                    if not tier.isUnlocked and tier.threshold > 0 then
+                        local remaining = tier.threshold - tier.progress
+                        if remaining > 0 and remaining <= tier.threshold then
+                            local text
+                            if group.typeID == ACTIVITY_TYPE.DUNGEON then
+                                text = "Run " .. remaining .. " more dungeon" .. (remaining > 1 and "s" or "") .. " for Vault Tier " .. i
+                            elseif group.typeID == ACTIVITY_TYPE.RAID then
+                                text = "Kill " .. remaining .. " more raid boss" .. (remaining > 1 and "es" or "") .. " for Vault Tier " .. i
+                            elseif group.typeID == ACTIVITY_TYPE.WORLD then
+                                text = "Complete " .. remaining .. " more Delve" .. (remaining > 1 and "s" or "") .. " for Vault Tier " .. i
+                            end
+                            if text then
+                                -- Higher priority for tiers closer to completion
+                                local pct = tier.progress / tier.threshold
+                                table.insert(recs, {
+                                    text = text,
+                                    reason = meta.label,
+                                    priority = 100 + math.floor(pct * 50) - (i * 10),
+                                })
+                            end
+                        end
+                        break  -- Only show the NEXT unlockable tier per category
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. Check vault claimable
+    if HasVaultReward() then
+        table.insert(recs, {
+            text = "Claim your Great Vault reward!",
+            reason = "Ready now",
+            priority = 200,
+        })
+    end
+
+    -- 3. Check incomplete daily/weekly tasks
+    if TA.charDB and TA.charDB.tasks and TA.charDB.tasks.list then
+        local now = time()
+        local dailyUndone, weeklyUndone = 0, 0
+        for _, task in ipairs(TA.charDB.tasks.list) do
+            if not task.done then
+                if task.reset == "daily" then dailyUndone = dailyUndone + 1
+                elseif task.reset == "weekly" then weeklyUndone = weeklyUndone + 1 end
+            end
+        end
+
+        if dailyUndone > 0 then
+            table.insert(recs, {
+                text = dailyUndone .. " daily task" .. (dailyUndone > 1 and "s" or "") .. " remaining",
+                reason = "Resets tomorrow",
+                priority = 150,
+            })
+        end
+
+        if weeklyUndone > 3 then
+            table.insert(recs, {
+                text = weeklyUndone .. " weekly tasks still open",
+                reason = "Before reset",
+                priority = 80,
+            })
+        end
+    end
+
+    -- 4. Check for high-value world quests expiring soon
+    local WQMod = TA:GetModule("WorldQuests")
+    if WQMod and WQMod.GetFilteredQuests then
+        local gearWQs = WQMod:GetFilteredQuests(nil, "gear")
+        if #gearWQs > 0 then
+            local best = gearWQs[1]
+            if best.timeLeft and best.timeLeft > 0 and best.timeLeft < 360 then
+                table.insert(recs, {
+                    text = "Gear WQ expiring soon: " .. best.title,
+                    reason = best.timeLeft < 60 and (best.timeLeft .. "m left") or (math.floor(best.timeLeft / 60) .. "h left"),
+                    priority = 140,
+                })
+            elseif #gearWQs >= 2 then
+                table.insert(recs, {
+                    text = #gearWQs .. " gear world quests available in this zone",
+                    reason = "Upgrades",
+                    priority = 60,
+                })
+            end
+        end
+    end
+
+    -- 5. Conquest cap (PvP) — check if PvP task is uncompleted
+    if TA.charDB and TA.charDB.tasks and TA.charDB.tasks.list then
+        for _, task in ipairs(TA.charDB.tasks.list) do
+            if task.id == "conquest" and not task.done then
+                table.insert(recs, {
+                    text = "Cap Conquest for PvP vault column",
+                    reason = "PvP",
+                    priority = 50,
+                })
+                break
+            end
+        end
+    end
+
+    -- Sort by priority descending
+    table.sort(recs, function(a, b) return a.priority > b.priority end)
+
+    return recs
+end
+
+-- Small action button used by the Weekly tab (replaces "/ta ..." instructions).
+local function ActionButton(parent, label, width, onClick, tooltip)
+    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    b:SetSize(width, 20)
+    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+    b:SetBackdropColor(0.12, 0.10, 0.04, 1)
+    b:SetBackdropBorderColor(0.60, 0.50, 0.15, 1)
+    local l = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    l:SetFont(STANDARD_TEXT_FONT, 9, "")
+    l:SetText(label)
+    l:SetTextColor(1, 0.82, 0, 1)
+    l:SetPoint("CENTER")
+    b:SetScript("OnClick", onClick)
+    b:SetScript("OnEnter", function(self)
+        self:SetBackdropColor(0.20, 0.16, 0.06, 1)
+        if tooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(label, 1, 0.82, 0)
+            GameTooltip:AddLine(tooltip, 0.9, 0.9, 0.9, true)
+            GameTooltip:Show()
+        end
+    end)
+    b:SetScript("OnLeave", function(self)
+        self:SetBackdropColor(0.12, 0.10, 0.04, 1)
+        GameTooltip:Hide()
+    end)
+    return b
+end
+
+local function RunVaultDiagnostic()
+    if SlashCmdList and SlashCmdList["TAWEEKLY"] then SlashCmdList["TAWEEKLY"]("") end
+end
+
+-- ── Main render ───────────────────────────────────────────────────────────────
+function Weekly:Render(content, sidebar)
+    for _, f in ipairs(self.frames) do f:Hide(); f:SetParent(nil) end
+    self.frames = {}
+
+    -- Render world quests in the sidebar
+    local WQMod = TA:GetModule("WorldQuests")
+    if WQMod and WQMod.RenderSidebar and sidebar then
+        WQMod:RenderSidebar(sidebar, (TA.charDB and TA.charDB.wqFilter) or "all")
+    end
+
+    local y    = -10
+    local padL = 10
+    local w    = content:GetWidth() - 20
+
+    local function Track(f) table.insert(self.frames, f); return f end
+    local function Label(text, size, r, g, b, px, py)
+        local f = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        f:SetFont(STANDARD_TEXT_FONT, size or 11, "OUTLINE")
+        f:SetText(text)
+        f:SetTextColor(r or 0.78, g or 0.73, b or 0.48, 1)
+        f:SetPoint("TOPLEFT", content, "TOPLEFT", padL + (px or 0), py or y)
+        return f
+    end
+
+    -- ══════════════════════════════════════════════════════════════════════
+    -- "WHAT TO DO NEXT" PRIORITY ADVISOR
+    -- Surfaces the highest-value activities based on current progress.
+    -- ══════════════════════════════════════════════════════════════════════
+    local recommendations = self:BuildRecommendations()
+
+    if #recommendations > 0 then
+        local advHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        advHdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+        advHdr:SetText("WHAT TO DO NEXT")
+        advHdr:SetTextColor(0.29, 1.00, 0.48, 1)
+        advHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        y = y - 18
+
+        for i, rec in ipairs(recommendations) do
+            if i > 5 then break end
+
+            local recRow = Track(CreateFrame("Frame", nil, content, "BackdropTemplate"))
+            recRow:SetSize(w, 28)
+            recRow:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            recRow:SetBackdrop(BD)
+            recRow:SetBackdropColor(0.04, 0.08, 0.04, 1)
+            recRow:SetBackdropBorderColor(0.20, 0.55, 0.30, 0.6)
+
+            -- Priority number
+            local numF = recRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            numF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+            numF:SetText(COL_GREEN .. i .. "." .. CLOSE)
+            numF:SetPoint("LEFT", recRow, "LEFT", 8, 0)
+
+            -- Recommendation text
+            local recTextF = recRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            recTextF:SetFont(STANDARD_TEXT_FONT, 10, "")
+            recTextF:SetText(rec.text)
+            recTextF:SetTextColor(0.88, 0.83, 0.65, 1)
+            recTextF:SetPoint("LEFT", recRow, "LEFT", 26, 0)
+            recTextF:SetPoint("RIGHT", recRow, "RIGHT", -70, 0)
+            recTextF:SetWordWrap(false)
+
+            -- Reason badge (right)
+            local reasonF = recRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            reasonF:SetFont(STANDARD_TEXT_FONT, 8, "")
+            reasonF:SetText(COL_GREY .. rec.reason .. CLOSE)
+            reasonF:SetPoint("RIGHT", recRow, "RIGHT", -8, 0)
+
+            y = y - 32
+        end
+
+        -- Separator after advisor
+        y = y - 4
+        local advSep = Track(content:CreateTexture(nil, "ARTWORK"))
+        advSep:SetHeight(1)
+        advSep:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL, y)
+        advSep:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+        advSep:SetColorTexture(0.30, 0.30, 0.30, 0.3)
+        y = y - 12
+    end
+
+    -- ── Header ────────────────────────────────────────────────────────────
+    local hdrF = Label("GREAT VAULT", 13, 1.00, 0.82, 0.00)
+    hdrF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+
+    -- Vault-open badge (top-right)
+    if HasVaultReward() then
+        local badge = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        badge:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        badge:SetText(COL_GREEN .. "⬛ Vault Open — claim your reward!" .. CLOSE)
+        badge:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+    end
+
+    y = y - 22
+
+    local sep = Track(content:CreateTexture(nil, "ARTWORK"))
+    sep:SetHeight(1)
+    sep:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL, y)
+    sep:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+    sep:SetColorTexture(0.55, 0.40, 0.08, 0.25)
+    y = y - 10
+
+    -- ── API unavailable graceful fallback ─────────────────────────────────
+    if not WeeklyAPIAvailable() then
+        local warn = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        warn:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        warn:SetText(COL_RED .. "C_WeeklyRewards not available on this build." .. CLOSE
+                  .. "\n\nUse " .. COL_GOLD .. "Diagnose vault data" .. CLOSE
+                  .. " on live to verify the correct API fields for this version.")
+        warn:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        warn:SetWidth(w)
+        warn:SetWordWrap(true)
+        warn:SetJustifyH("LEFT")
+        content:SetHeight(120)
+        return
+    end
+
+    -- ── Fetch live data ───────────────────────────────────────────────────
+    local groups, err = FetchActivities()
+    if not groups then
+        local errF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        errF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        errF:SetText(COL_RED .. "Error reading weekly data: " .. tostring(err) .. CLOSE)
+        errF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        errF:SetWidth(w)
+        errF:SetWordWrap(true)
+        content:SetHeight(100)
+        return
+    end
+
+    -- ── Activity groups ───────────────────────────────────────────────────
+    for _, group in ipairs(groups) do
+        local meta  = group.meta
+        local tiers = group.tiers
+
+        -- Section header
+        local gHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        gHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        gHdr:SetText(string.upper(meta.label))
+        gHdr:SetTextColor(0.55, 0.40, 0.08, 1)
+        gHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        y = y - 18
+
+        if #tiers == 0 then
+            -- No data from API for this activity type
+            local nodata = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+            nodata:SetFont(STANDARD_TEXT_FONT, 9)
+            nodata:SetText(COL_GREY .. "No data — open the Great Vault once, or use Diagnose vault data below." .. CLOSE)
+            nodata:SetPoint("TOPLEFT", content, "TOPLEFT", padL + 8, y)
+            y = y - 20
+        else
+            for i, tier in ipairs(tiers) do
+                local unlocked  = tier.isUnlocked
+                local progress  = tier.progress
+                local threshold = tier.threshold
+                local pct       = threshold > 0 and math.min(1.0, progress / threshold) or 0
+
+                local cardH = 46
+                local card  = Track(CreateFrame("Frame", nil, content, "BackdropTemplate"))
+                card:SetSize(w, cardH)
+                card:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+                if unlocked then
+                    MkBackdrop(card, 0.02, 0.08, 0.02, 1, 0.20, 0.55, 0.20, 0.8)
+                else
+                    MkBackdrop(card, 0.05, 0.05, 0.05, 1, 0.20, 0.20, 0.20, 0.6)
+                end
+
+                -- Status icon
+                local statusF = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                statusF:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+                statusF:SetText(unlocked and (COL_GREEN .. "✓" .. CLOSE) or (COL_GREY .. "○" .. CLOSE))
+                statusF:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -8)
+
+                -- Tier label
+                local tierF = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                tierF:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+                tierF:SetText(tier.tierLabel)
+                tierF:SetTextColor(unlocked and 0.29 or 0.78, unlocked and 1.00 or 0.73, unlocked and 0.48 or 0.48, 1)
+                tierF:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -7)
+
+                -- iLvl reward badge with stat-weight scoring (top-right)
+                if tier.ilvl and tier.ilvl > 0 then
+                    local scoreText = nil
+                    if tier.isUnlocked and tier.activityID then
+                        scoreText = ScoreVaultReward(tier.activityID, tier.ilvl)
+                    end
+
+                    local ilvlF = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                    ilvlF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+                    if scoreText then
+                        ilvlF:SetText(COL_GOLD .. tier.ilvl .. " iLvl" .. CLOSE .. "  " .. scoreText)
+                    else
+                        ilvlF:SetText(COL_GOLD .. tier.ilvl .. " iLvl" .. CLOSE)
+                    end
+                    ilvlF:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -7)
+                end
+
+                -- Progress bar
+                local barW    = w - 40
+                local filledW = math.max(2, math.floor(barW * pct))
+                local barBG = card:CreateTexture(nil, "ARTWORK")
+                barBG:SetSize(barW, 5)
+                barBG:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 28, 10)
+                barBG:SetColorTexture(0.10, 0.10, 0.10, 1)
+
+                local barFG = card:CreateTexture(nil, "ARTWORK")
+                barFG:SetSize(filledW, 5)
+                barFG:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 28, 10)
+                if unlocked then
+                    barFG:SetColorTexture(0.22, 0.72, 0.22, 1)
+                else
+                    barFG:SetColorTexture(0.45, 0.35, 0.08, 1)
+                end
+
+                -- Progress text
+                local progF = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                progF:SetFont(STANDARD_TEXT_FONT, 9)
+                local progStr
+                if threshold > 0 then
+                    progStr = progress .. " / " .. threshold
+                    if unlocked then
+                        progStr = COL_GREEN .. progStr .. CLOSE
+                    end
+                else
+                    progStr = COL_GREY .. "no data" .. CLOSE
+                end
+                progF:SetText(progStr)
+                progF:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 28, 18)
+
+                y = y - cardH - 4
+            end
+        end
+
+        y = y - 8
+    end
+
+    -- ── Vault status footer ───────────────────────────────────────────────
+    y = y - 4
+    local footerLine = Track(content:CreateTexture(nil, "ARTWORK"))
+    footerLine:SetHeight(1)
+    footerLine:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL, y)
+    footerLine:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+    footerLine:SetColorTexture(0.25, 0.20, 0.05, 0.35)
+    y = y - 8
+
+    local footerNote = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    footerNote:SetFont(STANDARD_TEXT_FONT, 8)
+    footerNote:SetText(COL_GREY
+        .. "Data sourced from C_WeeklyRewards.GetActivities(). If values look wrong after a "
+        .. "season reset, diagnose to print the raw API output to chat."
+        .. CLOSE)
+    footerNote:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    footerNote:SetWidth(w - 150)
+    footerNote:SetWordWrap(true)
+    footerNote:SetJustifyH("LEFT")
+    local diagBtn = Track(ActionButton(content, "Diagnose vault data", 140, RunVaultDiagnostic,
+        "Prints the Great Vault API's raw activity data to chat."))
+    diagBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+    y = y - 28
+
+    -- ══════════════════════════════════════════════════════════════════════
+    -- WEEKLY TASKS SECTION
+    -- ══════════════════════════════════════════════════════════════════════
+    y = y - 8
+
+    local tasksSep = Track(content:CreateTexture(nil, "ARTWORK"))
+    tasksSep:SetHeight(1)
+    tasksSep:SetPoint("TOPLEFT",  content, "TOPLEFT",  padL, y)
+    tasksSep:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+    tasksSep:SetColorTexture(0.55, 0.40, 0.08, 0.25)
+    y = y - 14
+
+    -- Tasks header with completion summary
+    local total, done = self:GetTaskSummary()
+    local tasksHdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    tasksHdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+    tasksHdr:SetText("WEEKLY TASKS")
+    tasksHdr:SetTextColor(1.00, 0.82, 0.00, 1)
+    tasksHdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+
+    local summaryF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    summaryF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    local summaryColor = (done >= total and total > 0) and COL_GREEN or COL_GREY
+    summaryF:SetText(summaryColor .. done .. "/" .. total .. " done" .. CLOSE)
+    summaryF:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
+    y = y - 22
+
+    -- Render tasks grouped by category
+    if total == 0 then
+        local noTasksF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        noTasksF:SetFont(STANDARD_TEXT_FONT, 10)
+        noTasksF:SetText(COL_GREY .. "No tasks yet — add one below." .. CLOSE)
+        noTasksF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        noTasksF:SetWidth(w)
+        y = y - 20
+    else
+        local cats = self:GetTasksByCategory()
+        -- Sort category names for consistent display
+        local catNames = {}
+        for cat in pairs(cats) do catNames[#catNames + 1] = cat end
+        table.sort(catNames)
+
+        for _, cat in ipairs(catNames) do
+            local tasks = cats[cat]
+
+            -- Category label
+            local catF = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+            catF:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+            catF:SetText(cat:upper())
+            catF:SetTextColor(0.55, 0.40, 0.08, 1)
+            catF:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            y = y - 14
+
+            for _, task in ipairs(tasks) do
+                local rowH = 24
+                local row = Track(CreateFrame("Button", nil, content, "BackdropTemplate"))
+                row:SetSize(w, rowH)
+                row:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+
+                if task.done then
+                    MkBackdrop(row, 0.02, 0.06, 0.02, 1, 0.15, 0.40, 0.15, 0.6)
+                else
+                    MkBackdrop(row, 0.05, 0.05, 0.05, 1, 0.20, 0.20, 0.20, 0.4)
+                end
+
+                -- Checkbox indicator
+                local check = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                check:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+                check:SetText(task.done and (COL_GREEN .. "✓" .. CLOSE) or (COL_GREY .. "○" .. CLOSE))
+                check:SetPoint("LEFT", row, "LEFT", 8, 0)
+
+                -- Task text
+                local textF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                textF:SetFont(STANDARD_TEXT_FONT, 10, "")
+                textF:SetText(task.done and (COL_GREY .. task.text .. CLOSE) or task.text)
+                textF:SetTextColor(0.88, 0.83, 0.65, 1)
+                textF:SetPoint("LEFT", row, "LEFT", 26, 0)
+                textF:SetPoint("RIGHT", row, "RIGHT", -60, 0)
+                textF:SetWordWrap(false)
+
+                -- Reset type badge (right side)
+                local resetF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                resetF:SetFont(STANDARD_TEXT_FONT, 8, "")
+                resetF:SetText(COL_GREY .. task.reset .. CLOSE)
+                resetF:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+
+                -- Left-click toggles; right-click removes a task you added
+                local taskID = task.id
+                local isCustom = (task.category == "Custom") or tostring(taskID):find("^custom_")
+                row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+                row:SetScript("OnClick", function(_, button)
+                    if button == "RightButton" then
+                        if isCustom then
+                            Weekly:RemoveTask(taskID)
+                            if TA.UI and TA.UI.Refresh then TA.UI:Refresh() end
+                        end
+                        return
+                    end
+                    Weekly:ToggleTask(taskID)
+                    -- Refresh the row visually
+                    local nowDone = false
+                    for _, t in ipairs(TA.charDB.tasks.list or {}) do
+                        if t.id == taskID then nowDone = t.done; break end
+                    end
+                    check:SetText(nowDone and (COL_GREEN .. "✓" .. CLOSE) or (COL_GREY .. "○" .. CLOSE))
+                    textF:SetText(nowDone and (COL_GREY .. task.text .. CLOSE) or task.text)
+                    if nowDone then
+                        MkBackdrop(row, 0.02, 0.06, 0.02, 1, 0.15, 0.40, 0.15, 0.6)
+                    else
+                        MkBackdrop(row, 0.05, 0.05, 0.05, 1, 0.20, 0.20, 0.20, 0.4)
+                    end
+                    -- Update summary
+                    local t2, d2 = Weekly:GetTaskSummary()
+                    local col = (d2 >= t2 and t2 > 0) and COL_GREEN or COL_GREY
+                    summaryF:SetText(col .. d2 .. "/" .. t2 .. " done" .. CLOSE)
+                end)
+
+                -- Hover feedback
+                row:SetScript("OnEnter", function(f)
+                    f:SetBackdropColor(0.10, 0.08, 0.03, 1)
+                    GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(task.text, 1, 0.82, 0, 1, true)
+                    GameTooltip:AddLine("Click to mark done / not done.", 0.9, 0.9, 0.9)
+                    if isCustom then GameTooltip:AddLine("Right-click to remove.", 0.9, 0.9, 0.9) end
+                    GameTooltip:Show()
+                end)
+                row:SetScript("OnLeave", function(f)
+                    GameTooltip:Hide()
+                    local nowDone = false
+                    for _, t in ipairs(TA.charDB.tasks.list or {}) do
+                        if t.id == taskID then nowDone = t.done; break end
+                    end
+                    if nowDone then
+                        f:SetBackdropColor(0.02, 0.06, 0.02, 1)
+                    else
+                        f:SetBackdropColor(0.05, 0.05, 0.05, 1)
+                    end
+                end)
+
+                y = y - rowH - 3
+            end
+
+            y = y - 4
+        end
+    end
+
+    -- Add a task: text box + Weekly / Daily buttons
+    y = y - 6
+    local box = Track(CreateFrame("EditBox", nil, content, "BackdropTemplate"))
+    box:SetSize(w - 150, 22)
+    box:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    MkBackdrop(box, 0.03, 0.03, 0.03, 1, 0.30, 0.25, 0.10, 0.8)
+    box:SetFont(STANDARD_TEXT_FONT, 10, "")
+    box:SetTextInsets(6, 6, 0, 0)
+    box:SetAutoFocus(false)
+    box:SetMaxLetters(80)
+    local hint = box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hint:SetFont(STANDARD_TEXT_FONT, 9, "")
+    hint:SetText(COL_GREY .. "New task, e.g. \"Farm Mistcrests\"" .. CLOSE)
+    hint:SetPoint("LEFT", box, "LEFT", 6, 0)
+    box:SetScript("OnTextChanged", function(self) hint:SetShown(self:GetText() == "") end)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+
+    local function Add(reset)
+        local text = (box:GetText() or ""):match("^%s*(.-)%s*$")
+        if text == "" then box:SetFocus(); return end
+        Weekly:AddTask(text, reset)
+        box:SetText("")
+        box:ClearFocus()
+        if TA.UI and TA.UI.Refresh then TA.UI:Refresh() end
+    end
+    box:SetScript("OnEnterPressed", function() Add("weekly") end)
+
+    local addWeekly = Track(ActionButton(content, "Add weekly", 70, function() Add("weekly") end,
+        "Resets with the weekly reset. Enter also adds a weekly task."))
+    addWeekly:SetPoint("LEFT", box, "RIGHT", 6, 0)
+    local addDaily = Track(ActionButton(content, "Add daily", 66, function() Add("daily") end,
+        "Resets every day."))
+    addDaily:SetPoint("LEFT", addWeekly, "RIGHT", 4, 0)
+    y = y - 30
+
+    local tasksFooter = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    tasksFooter:SetFont(STANDARD_TEXT_FONT, 8)
+    tasksFooter:SetText(COL_GREY .. "Click a task to toggle it  ·  right-click a task you added to remove it" .. CLOSE)
+    tasksFooter:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    tasksFooter:SetWidth(w)
+    tasksFooter:SetWordWrap(true)
+    y = y - 20
+
+    content:SetHeight(math.abs(y) + 20)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- CUSTOM TASKS SYSTEM (BtWTodo-inspired)
+-- Configurable per-character weekly/daily checklist with auto-reset.
+-- ═══════════════════════════════════════════════════════════════════════════════
+
+-- Default tasks (user can add/remove via /ta todo add "description")
+local DEFAULT_TASKS = {
+    { id = "lair",        text = "Clear a Lair (world boss)", reset = "weekly", category = "PvE" },
+    { id = "vault_m4",    text = "Run 4 M+ dungeons (Vault)", reset = "weekly", category = "PvE" },
+    { id = "vault_m8",    text = "Run 8 M+ dungeons (Vault)", reset = "weekly", category = "PvE" },
+    { id = "delve_bount", text = "Complete 4 Bountiful Delves", reset = "weekly", category = "PvE" },
+    { id = "conquest",    text = "Cap Conquest (PvP)",        reset = "weekly", category = "PvP" },
+    { id = "spark",       text = "Collect Spark of Tides",    reset = "weekly", category = "Crafting" },
+    { id = "weeklyquest", text = "Complete Weekly Quest",     reset = "weekly", category = "General" },
+    { id = "profession",  text = "Do profession weekly quests", reset = "weekly", category = "Crafting" },
+    { id = "outdoor",     text = "Weekly outdoor events (Champion Mistcrests)", reset = "weekly", category = "General" },
+}
+
+-- Saved task lists are seeded once, so default text shipped by an older version
+-- stays in players' SavedVariables forever. Each entry here rewrites a task that
+-- still carries an old DEFAULT text (never one the player edited) to the current
+-- default. `id=nil` in `to` keeps the id. 12.1: world bosses moved into Lairs,
+-- the Season 2 spark is Spark of Tides, and Callings are a Shadowlands system.
+local TASK_MIGRATIONS = {
+    { id = "worldboss", oldText = "Kill World Boss",          to = { id = "lair",    text = "Clear a Lair (world boss)" } },
+    { id = "spark",     oldText = "Collect Spark of Omens",   to = { text = "Collect Spark of Tides" } },
+    { id = "callings",  oldText = "Complete today's Calling", to = { id = "outdoor", text = "Weekly outdoor events (Champion Mistcrests)", reset = "weekly" } },
+}
+
+--- Initialize the tasks system.
+function Weekly:InitTasks()
+    if not TA.charDB then return end
+    TA.charDB.tasks = TA.charDB.tasks or {}
+
+    -- Seed with defaults if empty
+    if not TA.charDB.tasks.list then
+        TA.charDB.tasks.list = {}
+        for _, t in ipairs(DEFAULT_TASKS) do
+            table.insert(TA.charDB.tasks.list, {
+                id       = t.id,
+                text     = t.text,
+                reset    = t.reset,
+                category = t.category,
+                done     = false,
+            })
+        end
+    end
+
+    -- Migrate stale default task text (see TASK_MIGRATIONS).
+    for _, task in ipairs(TA.charDB.tasks.list) do
+        for _, m in ipairs(TASK_MIGRATIONS) do
+            if task.id == m.id and task.text == m.oldText then
+                task.id    = m.to.id or task.id
+                task.text  = m.to.text or task.text
+                task.reset = m.to.reset or task.reset
+            end
+        end
+    end
+
+    -- Check for resets
+    self:CheckResets()
+end
+
+--- Check if weekly/daily resets have occurred and clear done status.
+function Weekly:CheckResets()
+    if not TA.charDB or not TA.charDB.tasks then return end
+    local tasks = TA.charDB.tasks
+
+    local now = time()
+    local weeklyReset = tasks.lastWeeklyReset or 0
+    local dailyReset  = tasks.lastDailyReset or 0
+
+    -- Get next reset timestamps from WoW API
+    local nextWeekly = GetWeeklyQuestResetTime and (time() + GetWeeklyQuestResetTime()) or 0
+    local nextDaily  = C_DateAndTime and C_DateAndTime.GetSecondsUntilDailyReset
+                       and (time() + C_DateAndTime.GetSecondsUntilDailyReset()) or 0
+
+    -- Detect if a weekly reset happened since last check
+    -- Simple heuristic: if stored lastReset is older than 7 days ago
+    if weeklyReset > 0 and (now - weeklyReset) > 604800 then
+        -- Weekly reset occurred — clear all weekly tasks
+        for _, task in ipairs(tasks.list or {}) do
+            if task.reset == "weekly" then task.done = false end
+        end
+        tasks.lastWeeklyReset = now
+    elseif weeklyReset == 0 then
+        tasks.lastWeeklyReset = now
+    end
+
+    -- Daily reset: if stored lastReset was before today
+    if dailyReset > 0 and (now - dailyReset) > 86400 then
+        for _, task in ipairs(tasks.list or {}) do
+            if task.reset == "daily" then task.done = false end
+        end
+        tasks.lastDailyReset = now
+    elseif dailyReset == 0 then
+        tasks.lastDailyReset = now
+    end
+end
+
+--- Toggle a task's done status.
+function Weekly:ToggleTask(taskID)
+    if not TA.charDB or not TA.charDB.tasks then return end
+    for _, task in ipairs(TA.charDB.tasks.list or {}) do
+        if task.id == taskID then
+            task.done = not task.done
+            return
+        end
+    end
+end
+
+--- Add a custom task.
+function Weekly:AddTask(text, reset)
+    if not TA.charDB or not TA.charDB.tasks then return end
+    TA.charDB.tasks.list = TA.charDB.tasks.list or {}
+    local id = "custom_" .. time() .. "_" .. math.random(1000, 9999)
+    table.insert(TA.charDB.tasks.list, {
+        id       = id,
+        text     = text,
+        reset    = reset or "weekly",
+        category = "Custom",
+        done     = false,
+    })
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Added task: " .. text .. " (" .. (reset or "weekly") .. " reset)")
+end
+
+--- Remove a task by ID.
+function Weekly:RemoveTask(taskID)
+    if not TA.charDB or not TA.charDB.tasks then return end
+    local list = TA.charDB.tasks.list or {}
+    for i, task in ipairs(list) do
+        if task.id == taskID then
+            table.remove(list, i)
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Removed task: " .. task.text)
+            return
+        end
+    end
+end
+
+--- Get tasks organized by category.
+function Weekly:GetTasksByCategory()
+    if not TA.charDB or not TA.charDB.tasks then return {} end
+    local cats = {}
+    for _, task in ipairs(TA.charDB.tasks.list or {}) do
+        local cat = task.category or "General"
+        cats[cat] = cats[cat] or {}
+        table.insert(cats[cat], task)
+    end
+    return cats
+end
+
+--- Get summary stats.
+function Weekly:GetTaskSummary()
+    if not TA.charDB or not TA.charDB.tasks then return 0, 0 end
+    local total, done = 0, 0
+    for _, task in ipairs(TA.charDB.tasks.list or {}) do
+        total = total + 1
+        if task.done then done = done + 1 end
+    end
+    return total, done
+end
+
+
+-- ── Module Init ───────────────────────────────────────────────────────────────
+function Weekly:Init()
+    self:InitTasks()
+end
+
+Weekly.SlashCommands = {
+    todo = function(self)
+        local total, done = self:GetTaskSummary()
+        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[ToonAge Weekly]|r %d/%d tasks done this week.", done, total))
+        local cats = self:GetTasksByCategory()
+        for cat, tasks in pairs(cats) do
+            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100" .. cat .. ":|r")
+            for _, t in ipairs(tasks) do
+                local status = t.done and "|cFF4AFF7A✓|r" or "|cFFFF4444○|r"
+                TA:Raw(TA.LOG.OUTPUT, "    " .. status .. " " .. t.text)
+            end
+        end
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780/ta todo add \"text\" weekly|daily — add custom task|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780/ta todo done <id> — toggle task completion|r")
+    end,
+}
