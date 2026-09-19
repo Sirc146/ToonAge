@@ -284,6 +284,14 @@ function Settings:Render(content, sidebar)
     -- ═══════════════════════════════════════════════════════════════════
     -- QUEST AUTOMATION
     -- ═══════════════════════════════════════════════════════════════════
+    y = MakeToggleRow(content, y, w, "Share anonymous usage stats (only if you run the Wago App)", function()
+        return not (TA.db and TA.db.analytics == false)
+    end, function()
+        if TA.db then TA.db.analytics = (TA.db.analytics == false) end
+    end)
+
+    y = y - 8
+
     y = MakeSection(content, y, w, "QUEST AUTOMATION")
 
     y = MakeToggleRow(content, y, w, "Let Zygor handle questing, arrow and auto-equip when it's loaded", function()

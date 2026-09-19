@@ -1,13 +1,14 @@
 ## Interface: 30405
 ## Title: |cFFFFD100ToonAge|r |cFF888780Wrath|r
 ## Notes: Wrath of the Lich King Classic edition — core engine only while Wrath content is built.
-## Author: Chris
+## Author: SIRC
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB
 ## X-Flavor: Wrath
 ## X-Curse-Project-ID:
-## X-Wago-ID:
+## X-Wago-ID: 56ndnjG9
+## OptionalDependencies: WagoAnalytics
 # ── Wrath of the Lich King Classic TOC ──
 # SCAFFOLD. This flavor is recognized by Core/Environment.lua and has its own
 # profile in Core/Profile.lua, but no researched Data/<Flavor> content yet, so
@@ -22,6 +23,7 @@
 
 # ── Libraries ──────────────────────────────────────────────────────────
 Libs\LibStub.lua
+Libs\WagoAnalytics\Shim.lua
 
 # ── Core Framework (SHARED — flavor-neutral) ───────────────────────────
 Core\Init.lua
@@ -34,6 +36,7 @@ Core\UIModern.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Analytics.lua
 
 # ── Shared infrastructure (no game-rule content) ───────────────────────
 Modules\Infrastructure\ErrorLog.lua

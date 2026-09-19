@@ -1,13 +1,14 @@
 ## Interface: 20506
 ## Title: |cFFFFD100ToonAge|r |cFF888780TBC|r
 ## Notes: TBC character advisor — stat caps, weapon skill, cap-aware gear scoring, racials and profession perks.
-## Author: Chris
+## Author: SIRC
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB
 ## X-Flavor: TBC
 ## X-Curse-Project-ID:
-## X-Wago-ID:
+## X-Wago-ID: 56ndnjG9
+## OptionalDependencies: WagoAnalytics
 # ── TBC Anniversary TOC ────────────────────────────────────────────────
 # Interface 20506 = Burning Crusade Classic & Classic Anniversary Edition
 # (per Warcraft Wiki current-interface table). Matched by TBC clients ahead of
@@ -26,6 +27,7 @@
 
 # ── Libraries ──────────────────────────────────────────────────────────
 Libs\LibStub.lua
+Libs\WagoAnalytics\Shim.lua
 
 # ── Core Framework (SHARED — flavor-neutral) ───────────────────────────
 Core\Init.lua
@@ -40,6 +42,7 @@ Core\Layout.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Analytics.lua
 
 # ── Combat maths (TBC-only Core) ───────────────────────────────────────
 Core\TBCStats.lua

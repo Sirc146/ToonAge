@@ -137,6 +137,12 @@ local DB_DEFAULTS = {
     -- /ta verbose <error|warn|info|debug> changes it.
     logLevel = 2,   -- TA.LOG.WARN
 
+    -- Usage reporting (Core/Analytics.lua). Records a handful of aggregate
+    -- switches into the Wago App's analytics addon IF the player has that app
+    -- installed with sharing on; ToonAge itself never sends anything. false
+    -- here turns it off regardless. Settings -> Usage reporting.
+    analytics = true,
+
     -- Safe Mode boot flag. Persisted deliberately: the whole point is to
     -- survive a reload when the addon is too broken to reach its own UI.
     -- Cleared only by the user via /ta safemode.
@@ -745,6 +751,13 @@ function TA:OnLogin()
 
     -- Install clickable hyperlink system for interactive /ta commands
     self:InstallSlashLinkHook()
+
+    -- Usage reporting, after modules are up so the session snapshot is real.
+    -- Three gates inside decide whether anything is recorded at all.
+    if TA.Analytics then
+        TA.Analytics:Init()
+        TA.Analytics:RecordSession()
+    end
 
     -- INFO, not OUTPUT: nobody typed a command to get this. At the WARN default
     -- it stays quiet, which is the "healthy install is silent at login" promise

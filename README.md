@@ -5,7 +5,7 @@ professions, pets and weekly guidance in a single panel — with the game-rule
 content researched separately for each expansion instead of guessed from
 another one.
 
-**Version:** 2.0.0 · **Author:** Chris
+**Version:** 2.0.0 · **Author:** SIRC
 
 > Unofficial fan project. Not affiliated with, endorsed by, or sponsored by
 > Blizzard Entertainment.
@@ -81,8 +81,33 @@ those jobs.
 
 ## Privacy
 
-Nothing is collected and nothing is transmitted. The addon has no network
-access and no telemetry.
+ToonAge has no network access. It cannot send anything anywhere, and it stores
+your settings and character data only in your own `ToonAgeDB` saved-variables
+file.
+
+The one exception is optional usage reporting, and it needs three things to be
+true at once before a single value is recorded:
+
+1. You have the **Wago App** installed, with its data sharing switched on. The
+   Wago App's own addon does the recording and the uploading — ToonAge just
+   writes values into it, and with the app absent those calls do nothing.
+2. The build carries a Wago project id in its `.toc`.
+3. You have not turned it off in Settings → "Share anonymous usage stats".
+
+What it records is fixed and coarse: which game version you are on, whether the
+unified or fragmented layout is in use, whether auto-quest, auto-equip and
+cutscene skip are enabled, whether Zygor is installed and whether ToonAge is
+standing down for it, how many modules loaded, and how many errors were caught
+this session. Booleans and counts, nothing else.
+
+What it never records: character, realm, guild or account names, your spec,
+gear, quests, coordinates, or anything else that could identify you or your
+session. `Tools/test_analytics.py` enforces that — it fails the build if a
+recorded key contains an identifying word or a recorded value is a string.
+
+Everything is in [`Core/Analytics.lua`](Core/Analytics.lua), which is short and
+worth reading if this matters to you. `/ta health` reports whether reporting is
+on or off, and why.
 
 ## Reporting a bug
 

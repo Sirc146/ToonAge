@@ -1,7 +1,7 @@
 ## Interface: 120100, 120105, 120001, 16001
 ## Title: |cFFFFD100ToonAge|r |cFF888780Midnight|r
 ## Notes: All-in-one leveling, gear, rotation, and endgame companion.
-## Author: Chris
+## Author: SIRC
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB
@@ -10,7 +10,8 @@
 ## AddonCompartmentFuncOnLeave: ToonAge_OnAddonCompartmentLeave
 ## X-Flavor: Mainline
 ## X-Curse-Project-ID:
-## X-Wago-ID:
+## X-Wago-ID: 56ndnjG9
+## OptionalDependencies: WagoAnalytics
 # ── Mainline (Retail) TOC ──────────────────────────────────────────────
 # Interface list covers the retail test/live targets, per Warcraft Wiki's
 # current-interface table (warcraft.wiki.gg/wiki/.toc):
@@ -26,6 +27,7 @@
 
 # ── Libraries ──────────────────────────────────────────────────────────
 Libs\LibStub.lua
+Libs\WagoAnalytics\Shim.lua
 
 # ── Core Framework ─────────────────────────────────────────────────────
 Core\Init.lua
@@ -38,6 +40,7 @@ Core\UIModern.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Analytics.lua
 Core\StatEngine.lua
 
 # ── Static Data ────────────────────────────────────────────────────────

@@ -1,13 +1,14 @@
 ## Interface: 50504
 ## Title: |cFFFFD100ToonAge|r |cFF888780Mists|r
 ## Notes: Leveling companion — navigation, gear scoring, and quest guidance. Mists of Pandaria Classic edition.
-## Author: Chris
+## Author: SIRC
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB
 ## X-Flavor: Mists
 ## X-Curse-Project-ID:
-## X-Wago-ID:
+## X-Wago-ID: 56ndnjG9
+## OptionalDependencies: WagoAnalytics
 # ── Mists of Pandaria Classic TOC ──────────────────────────────────────
 # Interface 50504 = Mists of Pandaria Classic (per Warcraft Wiki current-
 # interface table). Matched by MoP Classic clients ahead of the generic
@@ -23,6 +24,7 @@
 
 # ── Libraries ──────────────────────────────────────────────────────────
 Libs\LibStub.lua
+Libs\WagoAnalytics\Shim.lua
 
 # ── Core Framework (SHARED — flavor-neutral) ───────────────────────────
 Core\Init.lua
@@ -35,6 +37,7 @@ Core\UIModern.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Analytics.lua
 
 # ── Static Data (Mists) ────────────────────────────────────────────────
 Data\Mists\ApiManifest.lua

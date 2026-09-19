@@ -1,7 +1,7 @@
 ## Interface: 120100, 120105, 120001, 16001
 ## Title: |cFFFFD100ToonAge|r
 ## Notes: All-in-one leveling, gear, rotation, and endgame companion.
-## Author: Chris
+## Author: SIRC
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB
@@ -9,6 +9,9 @@
 ## AddonCompartmentFuncOnEnter: ToonAge_OnAddonCompartmentEnter
 ## AddonCompartmentFuncOnLeave: ToonAge_OnAddonCompartmentLeave
 ## X-Flavor: fallback
+## X-Curse-Project-ID:
+## X-Wago-ID: 56ndnjG9
+## OptionalDependencies: WagoAnalytics
 # ── Generic fallback TOC ───────────────────────────────────────────────
 # Per Warcraft Wiki (.toc): the client uses a flavor-suffixed TOC
 # (ToonAge_Mainline.toc, ToonAge_TBC.toc, ...) when one matches the running
@@ -19,6 +22,7 @@
 
 # ── Libraries ──────────────────────────────────────────────────────────
 Libs\LibStub.lua
+Libs\WagoAnalytics\Shim.lua
 
 # ── Core Framework ─────────────────────────────────────────────────────
 Core\Init.lua
@@ -31,6 +35,7 @@ Core\UIModern.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Analytics.lua
 Core\StatEngine.lua
 
 # ── Static Data ────────────────────────────────────────────────────────
