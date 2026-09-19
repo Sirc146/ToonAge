@@ -1,0 +1,49 @@
+name: Publish to Wago
+
+# Runs on the same version tags as the GitHub release workflow, and uploads
+# the packaged addon to Wago Addons so the Wago app can update testers.
+#
+# Setup, once:
+#   1. Create the addon project at https://addons.wago.io and note its project id.
+#   2. Put that id in every TOC's "## X-Wago-ID:" line (the packager reads it).
+#   3. Create a Wago API token in your Wago account settings.
+#   4. Add it to this repository as the secret WAGO_API_TOKEN
+#      (Settings -> Secrets and variables -> Actions -> New repository secret).
+#
+# Until the secret exists this workflow is skipped rather than failed, so it is
+# safe to merge before the Wago project is set up.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  wago:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Is the Wago token configured?
+        id: gate
+        run: |
+          if [ -n "${{ secrets.WAGO_API_TOKEN }}" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "WAGO_API_TOKEN is not set — skipping the Wago upload."
+          fi
+
+      - name: Package and upload to Wago
+        if: steps.gate.outputs.ready == 'true'
+        uses: BigWigsMods/packager@v2
+        env:
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+        # No GITHUB_OAUTH on purpose: release.yml already publishes the GitHub
+        # release, and two workflows creating it would collide. The packager
+        # reads the project id from the TOC's X-Wago-ID field.
+        with:
+          args: -d

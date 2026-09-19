@@ -1,0 +1,75 @@
+name: Package and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Package addon ZIP
+        run: |
+          mkdir -p release/ToonAge
+          # Copy only addon files (exclude dev-only folders)
+          rsync -a --exclude='.git' \
+                   --exclude='.github' \
+                   --exclude='Tools' \
+                   --exclude='Docs' \
+                   --exclude='.claude' \
+                   --exclude='__pycache__' \
+                   --exclude='*.pyc' \
+                   --exclude='*.py' \
+                   --exclude='CLAUDE.md' \
+                   --exclude='.rules.md' \
+                   --exclude='.gitignore' \
+                   ./ release/ToonAge/
+          sed -i "s/^## Version: .*/## Version: ${{ steps.version.outputs.version }}/" release/ToonAge/*.toc
+          cd release
+          zip -r ../ToonAge-${{ steps.version.outputs.version }}.zip ToonAge/
+
+      - name: Write release.json (flavor map for WowUp / addon managers)
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cat > release.json <<JSON
+          {
+            "releases": [
+              {
+                "name": "ToonAge $VERSION",
+                "version": "$VERSION",
+                "filename": "ToonAge-$VERSION.zip",
+                "nolib": false,
+                "metadata": [
+                  { "flavor": "mainline", "interface": 120100 },
+                  { "flavor": "bcc",      "interface": 20506  },
+                  { "flavor": "mists",    "interface": 50504  },
+                  { "flavor": "classic",  "interface": 11509  },
+                  { "flavor": "cata",     "interface": 40402  },
+                  { "flavor": "wrath",    "interface": 30405  }
+                ]
+              }
+            ]
+          }
+          JSON
+          cat release.json
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ToonAge-${{ steps.version.outputs.version }}.zip
+            release.json
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, 'dev') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'test') }}
