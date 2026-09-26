@@ -167,6 +167,36 @@ lua.execute('UnitHealth = function() error("secret") end')
 lua.execute("ToonAge.modules.CombatState._UpdateGroup()")
 check("unreadable health: heal gates stay permissive", fol.when(st, fol) is True)
 
+
+
+# ── Aura name matching (cast id != aura id) ───────────────────────────────
+def test_aura_name_fallback():
+    """Shield Block casts as 2565 but lands as buff 132404. An id-only lookup
+    calls it inactive forever and the rotation keeps recommending it."""
+    src = (ROOT / "Modules/Combat/CombatState.lua").read_text(encoding="utf-8")
+    check("state carries a buff name index", "buffNames = {}" in src, True)
+    check("state carries a debuff name index", "debuffNames = {}" in src, True)
+    check("buff names are wiped each scan", "wipe(s.buffNames)" in src, True)
+    check("debuff names are wiped each scan", "wipe(s.debuffNames)" in src, True)
+    check("names are coerced off secret values", 'tostring(auraData.name)' in src, True)
+    # AlreadyActive must consult the name index, not only the id tables.
+    body = src[src.index("local function AlreadyActive"):src.index("-- ── Spell facts")]
+    check("AlreadyActive falls back to the name", "SpellName(id)" in body, True)
+    check("AlreadyActive checks both name tables",
+          "buffNames" in body and "debuffNames" in body, True)
+
+    cond = (ROOT / "Data/Retail/RotationConditions.lua").read_text(encoding="utf-8")
+    check("HasBuffNamed exists", "function C.HasBuffNamed" in cond, True)
+    rot = (ROOT / "Data/Retail/Rotations.lua").read_text(encoding="utf-8")
+    check("Darkest Night matched by name, not a guessed id",
+          "C.HasBuff(457058)" not in rot and "C.HasBuffNamed(457058)" in rot, True)
+    check("Hammer of the Righteous uses the castable id",
+          "spellID = 88263" not in rot and "spellID = 53595" in rot, True)
+
+
+test_aura_name_fallback()
+
+
 passed = sum(_results)
 print(f"[{'OK' if passed == len(_results) else 'FAIL'}] {passed}/{len(_results)} assertions passed.")
 sys.exit(0 if passed == len(_results) else 1)

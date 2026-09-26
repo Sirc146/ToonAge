@@ -200,7 +200,7 @@ end
 function XP:Init()
     if IsMaxLevel() then return end  -- no point tracking at max level
 
-    TA.eventFrame:RegisterEvent("PLAYER_XP_UPDATE")
+    TA:RegisterEvent("PLAYER_XP_UPDATE")
 
     self.sessionStart  = GetTime()
     self.lastKnownXP   = GetTotalXP()

@@ -1,0 +1,560 @@
+<title>Classic WoW Source Directory</title>
+<style>
+:root{
+  --bg:#EDEEE7; --surface:#F7F7F2; --surface-2:#FFFFFF;
+  --ink:#211F1A; --ink-dim:#5B5A50; --ink-faint:#8A887B;
+  --rule:#D9D7C9; --rule-strong:#C7C4B2;
+  --gold:#9C6B00; --gold-fill:#FFD100; --gold-ink:#3A2C00;
+  --good:#2E9E56; --approx:#B4740E; --known:#8A887B;
+  --link:#21201B;
+  --radius:6px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161409; --surface:#1E1B10; --surface-2:#242015;
+    --ink:#F1EEE2; --ink-dim:#B7B3A2; --ink-faint:#847F6E;
+    --rule:#37331F; --rule-strong:#4A4526;
+    --gold:#FFD100; --gold-fill:#FFD100; --gold-ink:#3A2C00;
+    --good:#4AFF7A; --approx:#FF9A1A; --known:#847F6E;
+    --link:#F1EEE2;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#161409; --surface:#1E1B10; --surface-2:#242015;
+  --ink:#F1EEE2; --ink-dim:#B7B3A2; --ink-faint:#847F6E;
+  --rule:#37331F; --rule-strong:#4A4526;
+  --gold:#FFD100; --gold-fill:#FFD100; --gold-ink:#3A2C00;
+  --good:#4AFF7A; --approx:#FF9A1A; --known:#847F6E;
+  --link:#F1EEE2;
+}
+
+*{box-sizing:border-box;}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Public Sans",-apple-system,BlinkMacSystemFont,sans-serif;
+  line-height:1.5;
+}
+h1,h2{ font-family:"Fraunces","Palatino Linotype",serif; text-wrap:balance; }
+.mono{ font-family:"JetBrains Mono",ui-monospace,Menlo,monospace; }
+
+.wrap{ max-width:880px; margin:0 auto; padding:2.75rem 1.5rem 5rem; }
+
+/* ── header ───────────────────────────────────────────── */
+header.page{
+  border-bottom:2px solid var(--gold-fill);
+  padding-bottom:1.5rem; margin-bottom:1.75rem;
+}
+.eyebrow{
+  font-family:"JetBrains Mono",monospace; font-size:.72rem; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--gold); margin:0 0 .6rem;
+}
+h1.title{ font-size:2.15rem; font-weight:600; margin:0 0 .55rem; letter-spacing:-.01em; }
+.dek{ color:var(--ink-dim); font-size:1.02rem; max-width:64ch; margin:0 0 1.1rem; }
+
+.meta-row{
+  display:flex; flex-wrap:wrap; gap:.5rem 1.4rem; align-items:center;
+  font-size:.82rem; color:var(--ink-faint);
+}
+.meta-row .mono{ color:var(--ink-dim); }
+
+/* ── legend ───────────────────────────────────────────── */
+.legend{
+  display:flex; flex-wrap:wrap; gap:.4rem .9rem; align-items:center;
+  background:var(--surface); border:1px solid var(--rule);
+  border-radius:var(--radius); padding:.75rem 1rem; margin:1.1rem 0 0;
+  font-size:.82rem; color:var(--ink-dim);
+}
+.legend b{ color:var(--ink); font-weight:600; }
+.legend-item{ display:flex; align-items:center; gap:.4rem; white-space:nowrap; }
+.dot{ width:8px; height:8px; border-radius:50%; flex:none; }
+.dot.good{ background:var(--good); }
+.dot.approx{ background:var(--approx); }
+.dot.known{ background:var(--known); }
+.chip{
+  font-family:"JetBrains Mono",monospace; font-size:.66rem; letter-spacing:.04em;
+  padding:.08rem .38rem; border:1px solid var(--gold-fill); border-radius:3px; color:var(--gold);
+  text-transform:uppercase;
+}
+
+/* ── quick jump ───────────────────────────────────────── */
+nav.jump{
+  display:flex; flex-wrap:wrap; gap:.5rem;
+  margin:1.5rem 0 0;
+}
+nav.jump a{
+  font-size:.78rem; color:var(--ink-dim); text-decoration:none;
+  border:1px solid var(--rule); border-radius:999px; padding:.3rem .75rem;
+  transition:border-color .15s, color .15s;
+}
+nav.jump a:hover{ border-color:var(--gold-fill); color:var(--ink); }
+
+/* ── categories ───────────────────────────────────────── */
+section.cat{ margin-top:2.6rem; scroll-margin-top:1.5rem; }
+.cat-head{ display:flex; align-items:baseline; gap:.7rem; margin-bottom:.2rem; }
+.cat-num{
+  font-family:"JetBrains Mono",monospace; font-size:.78rem; color:var(--gold);
+  flex:none;
+}
+h2.cat-title{ font-size:1.32rem; font-weight:600; margin:0; }
+.cat-desc{ color:var(--ink-dim); font-size:.9rem; margin:.3rem 0 0; max-width:62ch; }
+
+.entries{ margin-top:.9rem; border-top:1px solid var(--rule); }
+.entry{
+  padding:.95rem 0; border-bottom:1px solid var(--rule);
+  display:flex; flex-direction:column; gap:.28rem;
+}
+.entry-top{
+  display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap;
+}
+.entry-name{
+  font-weight:600; font-size:1rem; color:var(--link); text-decoration:none;
+}
+.entry-name:hover{ text-decoration:underline; text-decoration-color:var(--gold-fill); }
+.entry-name .arrow{ color:var(--gold); font-weight:400; margin-left:.15rem; }
+.entry-right{ display:flex; align-items:center; gap:.55rem; flex:none; }
+.entry-url{ font-size:.76rem; color:var(--ink-faint); word-break:break-all; }
+.entry-desc{ font-size:.92rem; color:var(--ink-dim); max-width:64ch; }
+
+footer.page{
+  margin-top:3rem; padding-top:1.3rem; border-top:1px solid var(--rule);
+  font-size:.82rem; color:var(--ink-faint);
+}
+footer.page p{ margin:.4rem 0; max-width:66ch; }
+footer.page a{ color:var(--ink-dim); }
+</style>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<div class="wrap">
+
+  <header class="page">
+    <p class="eyebrow">Research reference · Burning Crusade &amp; Classic Anniversary</p>
+    <h1 class="title">Classic WoW Source Directory</h1>
+    <p class="dek">Every major site worth trusting for Classic-era, TBC, and Anniversary WoW data — class guides, databases, BiS lists, logs, PvP rankings, and more — checked for currency rather than pulled from memory.</p>
+    <div class="meta-row">
+      <span class="mono">Verified 2026-09-09</span>
+      <span>·</span>
+      <span>41 sources across 11 categories</span>
+      <span>·</span>
+      <span>Compiled for the ToonAge addon's data sourcing</span>
+    </div>
+
+    <div class="legend">
+      <span><b>Confidence:</b></span>
+      <span class="legend-item"><span class="dot good"></span>Confirmed — fetched or cross-confirmed today</span>
+      <span class="legend-item"><span class="dot approx"></span>Likely current — found in today's search, not fetched</span>
+      <span class="legend-item"><span class="dot known"></span>Well-known — long-established, not re-checked this pass</span>
+      <span class="legend-item"><span class="chip">ToonAge</span>already cited in the addon's data files</span>
+    </div>
+
+    <nav class="jump">
+      <a href="#official">Official</a>
+      <a href="#guides">Class guides</a>
+      <a href="#databases">Databases &amp; calculators</a>
+      <a href="#bis">Best-in-slot</a>
+      <a href="#logs">Logs &amp; parses</a>
+      <a href="#pvp">PvP tier lists</a>
+      <a href="#professions">Professions &amp; gold</a>
+      <a href="#addons">Addon hosts</a>
+      <a href="#wiki">Wiki &amp; lore</a>
+      <a href="#armory">Character lookup</a>
+      <a href="#community">Community</a>
+    </nav>
+  </header>
+
+  <section class="cat" id="official">
+    <div class="cat-head"><span class="cat-num">01</span><h2 class="cat-title">Official (Blizzard)</h2></div>
+    <p class="cat-desc">Patch notes, realm announcements, and the only place a rule dispute gets settled.</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://worldofwarcraft.blizzard.com/en-us/classic" target="_blank" rel="noopener">Blizzard — WoW Classic <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">worldofwarcraft.blizzard.com/en-us/classic</div>
+        <div class="entry-desc">Official Classic hub: news, patch notes, and Anniversary-realm announcements straight from Blizzard.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://wowclassic.blizzard.com/" target="_blank" rel="noopener">Blizzard — WoW Classic landing page <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">wowclassic.blizzard.com</div>
+        <div class="entry-desc">Marketing/overview page for the Classic product line, including current Anniversary realm framing.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://us.forums.blizzard.com/en/wow/c/wow-classic/wow-classic-general-discussion/" target="_blank" rel="noopener">Official WoW Classic Forums <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">us.forums.blizzard.com/en/wow</div>
+        <div class="entry-desc">Player forums with official "blue post" replies — the primary source for confirming intended vs. bugged behavior.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="guides">
+    <div class="cat-head"><span class="cat-num">02</span><h2 class="cat-title">Class guides &amp; theorycrafting</h2></div>
+    <p class="cat-desc">Spec overviews, talent builds, and rotation priorities — the backbone of ToonAge's own data files.</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.wowhead.com/tbc" target="_blank" rel="noopener">Wowhead — TBC Classic <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="chip">ToonAge</span><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">wowhead.com/tbc</div>
+        <div class="entry-desc">The largest WoW reference site: class guides, talent builds, rotations, and the item/spell database, all filterable to TBC Classic.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.icy-veins.com/tbc-classic/" target="_blank" rel="noopener">Icy Veins — TBC Classic <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="chip">ToonAge</span><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">icy-veins.com/tbc-classic</div>
+        <div class="entry-desc">Spec-by-spec PvE/PvP guides, leveling guides, and BiS lists; one of the two most-cited sources across ToonAge's talent and rotation data.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.warcrafttavern.com/tbc/" target="_blank" rel="noopener">Warcraft Tavern — TBC Classic <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="chip">ToonAge</span><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">warcrafttavern.com/tbc</div>
+        <div class="entry-desc">Guides plus a talent calculator and BiS tool; good for cross-checking Icy Veins/Wowhead on contested picks.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://wowtbc.gg/" target="_blank" rel="noopener">wowtbc.gg <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="chip">ToonAge</span><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">wowtbc.gg</div>
+        <div class="entry-desc">Class guides, rotation priorities, BiS lists, and tier lists in one site — often names alternate/situational talent splits explicitly.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://noobtoboss.com/" target="_blank" rel="noopener">noobtoboss.com <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="chip">ToonAge</span><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">noobtoboss.com</div>
+        <div class="entry-desc">Independent leveling and class guides — the most useful second source for confirming a build isn't just an Icy Veins/Wowhead echo.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.skill-capped.com/wowarticles/tbc/" target="_blank" rel="noopener">Skill Capped — TBC articles <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">skill-capped.com/wowarticles/tbc</div>
+        <div class="entry-desc">Coaching site with written tier lists and guides; its deeper video content sits behind a subscription.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://boosting-ground.com/wow-classic/guides/the-burning-crusade-guides" target="_blank" rel="noopener">Boosting Ground — TBC guides <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="chip">ToonAge</span><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">boosting-ground.com/wow-classic</div>
+        <div class="entry-desc">Class and leveling guide articles; used for a couple of leveling-rotation cross-checks (e.g. Resto Druid).</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="databases">
+    <div class="cat-head"><span class="cat-num">03</span><h2 class="cat-title">Databases &amp; talent calculators</h2></div>
+    <p class="cat-desc">Item, spell, and talent data — for looking something up rather than reading a guide's opinion.</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.wowhead.com/tbc/talent-calc" target="_blank" rel="noopener">Wowhead — TBC talent calculator <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">wowhead.com/tbc/talent-calc</div>
+        <div class="entry-desc">The database everything else gets cross-checked against — items, spells, NPCs, and a full TBC talent tree calculator.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://classic.warcraftdb.com/" target="_blank" rel="noopener">WarcraftDB — Classic <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">classic.warcraftdb.com</div>
+        <div class="entry-desc">Classic-era item/talent/NPC database, including a talent calculator.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://classicdb.ch/" target="_blank" rel="noopener">ClassicDB <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">classicdb.ch</div>
+        <div class="entry-desc">Long-running Classic-era item and talent database; a common fallback when Wowhead's TBC filter is inconvenient.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://wowarmory.gg/talents" target="_blank" rel="noopener">WoW Armory — talent calculators <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">wowarmory.gg/talents</div>
+        <div class="entry-desc">Third-party armory and talent calculators spanning Classic, TBC, and retail.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://royalgiraffe.github.io/" target="_blank" rel="noopener">Royal Giraffe — Classic calculators <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">royalgiraffe.github.io</div>
+        <div class="entry-desc">Community-built theorycrafting calculators for Classic-era mechanics (rating conversions and similar).</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="bis">
+    <div class="cat-head"><span class="cat-num">04</span><h2 class="cat-title">Best-in-slot (BiS) lists</h2></div>
+    <p class="cat-desc">Per-phase, per-spec gear lists with drop sources.</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.wowhead.com/tbc/guides/classes/best-in-slot-guides-burning-crusade-classic" target="_blank" rel="noopener">Wowhead — BiS guide index <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">wowhead.com/tbc/guides/classes/best-in-slot-guides…</div>
+        <div class="entry-desc">Index of every class/spec's BiS gear guide for TBC Classic.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://wowtbc.gg/bis-list/" target="_blank" rel="noopener">wowtbc.gg — BiS lists <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">wowtbc.gg/bis-list</div>
+        <div class="entry-desc">Per-spec BiS lists, e.g. Holy Priest, Fire Mage — organized by raid phase.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.warcrafttavern.com/tbc/tools/bis/" target="_blank" rel="noopener">Warcraft Tavern — BiS tool <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">warcrafttavern.com/tbc/tools/bis</div>
+        <div class="entry-desc">Interactive BiS gear tool alongside its written guides.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.tbcbis.com/" target="_blank" rel="noopener">TBCBIS.com <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">tbcbis.com</div>
+        <div class="entry-desc">Dedicated single-purpose BiS list site for every class and spec.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://tbc-bis-guide.com/" target="_blank" rel="noopener">TBC BiS Guide <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">tbc-bis-guide.com</div>
+        <div class="entry-desc">Another dedicated BiS-only reference, useful as a tie-breaker when Wowhead and wowtbc.gg disagree.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="logs">
+    <div class="cat-head"><span class="cat-num">05</span><h2 class="cat-title">Logs &amp; parses</h2></div>
+    <p class="cat-desc">Where "confirmed by a source" gives way to "confirmed by real raid data."</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://classic.warcraftlogs.com/" target="_blank" rel="noopener">Warcraft Logs — Classic <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">classic.warcraftlogs.com</div>
+        <div class="entry-desc">The standard combat-log analysis and parse-ranking site for Classic-era raiding, including TBC.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://parseforge.gg/" target="_blank" rel="noopener">ParseForge <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">parseforge.gg</div>
+        <div class="entry-desc">Independent free log analyzer positioned as a Warcraft Logs alternative for Classic/TBC.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="pvp">
+    <div class="cat-head"><span class="cat-num">06</span><h2 class="cat-title">PvP tier lists</h2></div>
+    <p class="cat-desc">Arena comps, spec viability, and battleground rankings.</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.icy-veins.com/tbc-classic/dps-pvp-rankings-tier-list-for-tbc-classic" target="_blank" rel="noopener">Icy Veins — PvP DPS rankings <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">icy-veins.com/tbc-classic/dps-pvp-rankings…</div>
+        <div class="entry-desc">DPS PvP tier list, kept current phase-to-phase.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.warcrafttavern.com/tbc/guides/arena-class-tier-list/" target="_blank" rel="noopener">Warcraft Tavern — arena tier list <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">warcrafttavern.com/tbc/guides/arena-class-tier-list</div>
+        <div class="entry-desc">Class/spec arena tier list with comp reasoning.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://wowtbc.gg/class-rankings/pvp-rankings/" target="_blank" rel="noopener">wowtbc.gg — PvP rankings <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">wowtbc.gg/class-rankings/pvp-rankings</div>
+        <div class="entry-desc">Arena rankings by class and comp.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.pvpskills.com/comps" target="_blank" rel="noopener">PvPSkills — arena comps <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">pvpskills.com/comps</div>
+        <div class="entry-desc">Arena composition tier list, cited elsewhere as a play-rate data point (e.g. Rogue PvP builds).</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.skill-capped.com/wowarticles/tbc/tier-lists/" target="_blank" rel="noopener">Skill Capped — TBC tier lists <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">skill-capped.com/wowarticles/tbc/tier-lists</div>
+        <div class="entry-desc">Written tier-list articles pulled from their coaching content.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="professions">
+    <div class="cat-head"><span class="cat-num">07</span><h2 class="cat-title">Professions &amp; gold</h2></div>
+    <p class="cat-desc">Crafting priorities and gold-making routes.</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.icy-veins.com/tbc-classic/tbc-classic-goldmaking-guide-the-best-ways-to-make-gold" target="_blank" rel="noopener">Icy Veins — goldmaking guide <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">icy-veins.com/tbc-classic/…goldmaking-guide</div>
+        <div class="entry-desc">Overview of the best gold-making routes for the current TBC Classic phase.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://noobtoboss.com/tbc-classic-professions-guide/" target="_blank" rel="noopener">noobtoboss — professions guide <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">noobtoboss.com/tbc-classic-professions-guide</div>
+        <div class="entry-desc">Profession-by-profession breakdown for TBC Classic.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://bittsguides.com/tbc-classic-gold-professions/" target="_blank" rel="noopener">Bitt's Guides — gold &amp; professions <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">bittsguides.com/tbc-classic-gold-professions</div>
+        <div class="entry-desc">Long-form gold and profession guides specific to TBC Classic.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="addons">
+    <div class="cat-head"><span class="cat-num">08</span><h2 class="cat-title">Addon hosts</h2></div>
+    <p class="cat-desc">Where ToonAge itself gets distributed, and where to find everything else.</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.curseforge.com/wow/addons" target="_blank" rel="noopener">CurseForge <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="chip">ToonAge</span><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">curseforge.com/wow/addons</div>
+        <div class="entry-desc">The primary addon host and what WowUp reads for GitHub-based addons like ToonAge — also home to Loon Best In Slot.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.wowinterface.com/" target="_blank" rel="noopener">WoWInterface <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">wowinterface.com</div>
+        <div class="entry-desc">Long-running alternate addon host, still maintained for Classic/TBC-era addons.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://addons.wago.io/" target="_blank" rel="noopener">Wago Addons <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">addons.wago.io</div>
+        <div class="entry-desc">Addon and WeakAura host; strong for TBC-era WeakAura strings specifically.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="wiki">
+    <div class="cat-head"><span class="cat-num">09</span><h2 class="cat-title">Wiki &amp; lore</h2></div>
+    <p class="cat-desc">Mechanics history and lore context — not a rotation source, but useful for "why does this exist."</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://warcraft.wiki.gg/" target="_blank" rel="noopener">Warcraft Wiki <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot good"></span></div>
+        </div>
+        <div class="entry-url mono">warcraft.wiki.gg</div>
+        <div class="entry-desc">The community wiki formerly known as Wowpedia, migrated off Fandom in 2023 — this is the current, actively maintained one.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://wowpedia.fandom.com/" target="_blank" rel="noopener">Wowpedia (legacy) <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">wowpedia.fandom.com</div>
+        <div class="entry-desc">The original wiki, largely superseded by Warcraft Wiki above — still indexed and sometimes ranks higher, but treat as secondary.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="armory">
+    <div class="cat-head"><span class="cat-num">10</span><h2 class="cat-title">Character lookup / armory</h2></div>
+    <p class="cat-desc">Third-party armories for looking up a specific character's gear and talents.</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://murlok.io/" target="_blank" rel="noopener">Murlok.io <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">murlok.io</div>
+        <div class="entry-desc">Character profile and gear lookup spanning Classic-era realms.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://classicwowarmory.com/" target="_blank" rel="noopener">Classic WoW Armory <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot approx"></span></div>
+        </div>
+        <div class="entry-url mono">classicwowarmory.com</div>
+        <div class="entry-desc">Character armory specifically for Classic-era realms, including TBC.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cat" id="community">
+    <div class="cat-head"><span class="cat-num">11</span><h2 class="cat-title">Community</h2></div>
+    <p class="cat-desc">Where real players argue about the things guides present as settled.</p>
+    <div class="entries">
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.reddit.com/r/classicwow/" target="_blank" rel="noopener">r/classicwow <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot known"></span></div>
+        </div>
+        <div class="entry-url mono">reddit.com/r/classicwow</div>
+        <div class="entry-desc">General Classic-era WoW discussion. Reddit blocks automated fetches, so this wasn't re-verified live this pass — included on well-established general knowledge.</div>
+      </div>
+      <div class="entry">
+        <div class="entry-top">
+          <a class="entry-name" href="https://www.reddit.com/r/tbcclassic/" target="_blank" rel="noopener">r/tbcclassic <span class="arrow">↗</span></a>
+          <div class="entry-right"><span class="dot known"></span></div>
+        </div>
+        <div class="entry-url mono">reddit.com/r/tbcclassic</div>
+        <div class="entry-desc">TBC-specific discussion and patch reactions. Same verification caveat as above.</div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="page">
+    <p><b>Methodology:</b> every entry above was located via live web search on 2026-09-09; entries marked with the green dot were additionally fetched and read directly (or matched content already fetched earlier in this addon's development). Reddit entries couldn't be fetched (its automated-access block applies here too) and rest on general knowledge instead of a fresh check.</p>
+    <p>Already integrated as a live in-game tool rather than a website: <a href="https://www.curseforge.com/wow/addons/loon-best-in-slot" target="_blank" rel="noopener">Loon Best In Slot</a> (<a href="https://github.com/lgallucci/LoonBestInSlot" target="_blank" rel="noopener">GitHub</a>) — the class/spec/phase BiS browser already cited in ToonAge's gear-weight and talent data.</p>
+    <p>This list favors sites that were still live, TBC-relevant, and returning current content as of the verification date above — not a claim that no other legitimate site exists.</p>
+  </footer>
+
+</div>

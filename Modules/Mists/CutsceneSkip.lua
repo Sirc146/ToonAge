@@ -73,8 +73,8 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function CS:Init()
-    TA.eventFrame:RegisterEvent("CINEMATIC_START")
-    TA.eventFrame:RegisterEvent("PLAY_MOVIE")
+    TA:RegisterEvent("CINEMATIC_START")
+    TA:RegisterEvent("PLAY_MOVIE")
 
     -- Default cutsceneSkip to false (opt-in).
     if TA.charDB and TA.charDB.tracker then

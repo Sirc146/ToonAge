@@ -30,8 +30,8 @@ function CH:Init()
     TA.db.coordHarvest = TA.db.coordHarvest or {}
 
     -- Register quest events on our own schedule (piggyback on TA.eventFrame)
-    TA.eventFrame:RegisterEvent("QUEST_TURNED_IN")
-    TA.eventFrame:RegisterEvent("QUEST_LOG_UPDATE")
+    TA:RegisterEvent("QUEST_TURNED_IN")
+    TA:RegisterEvent("QUEST_LOG_UPDATE")
 end
 
 -- ── Event handling ────────────────────────────────────────────────────────────

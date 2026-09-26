@@ -64,7 +64,7 @@ function Guard:Probe()
         -- at all, so "no manifest" is the expected state there, not a packaging
         -- fault. Report it quietly instead of as an error the player can't fix.
         local prof = TA.GetProfile and TA:GetProfile()
-        if prof and (prof.scaffold or prof.unknown) then
+        if prof and (prof.scaffold or prof.unknown or prof.partial) then
             TA:Print(TA.LOG.INFO, "ApiGuard",
                 "No API manifest for this flavor yet (" .. tostring(TA.flavor) .. ") -- nothing to probe.")
             return 0

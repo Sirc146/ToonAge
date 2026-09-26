@@ -101,9 +101,7 @@ function A:RecordSession()
     -- Product shape: which optional behaviors people actually run with.
     self:Switch("layout:unified",      db.layout ~= "fragmented")
     self:Switch("safeMode",            db.safeMode == true)
-    self:Switch("autoQuest",           tracker.autoQuest == true)
-    self:Switch("autoEquip",           tracker.autoEquip == true)
-    self:Switch("cutsceneSkip",        tracker.cutsceneSkip == true)
+
     self:Switch("zygor:installed",     (TA.Utils and TA.Utils.ZygorLoaded and TA.Utils.ZygorLoaded()) or false)
     self:Switch("zygor:deferring",     (TA.Utils and TA.Utils.DeferToZygor and TA.Utils.DeferToZygor()) or false)
 

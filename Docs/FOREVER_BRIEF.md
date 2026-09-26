@@ -12,13 +12,25 @@ shipped as advice until it is confirmed in-game.
 | Executable | `WowB.exe` |
 | Product tag (`.flavor.info`) | `wow_classic_beta` |
 | `WOW_PROJECT_ID` | `WOW_PROJECT_MAINLINE` (1) — **unverified in-game** |
-| Interface | `16001` (1.60.x line) — **unverified in-game** |
+| Interface | `16001` (client reports version **1.60.1**, seen in ToonAge's own header) |
 | API surface | Mainline / Midnight (12.1.5-era), per Blizzard in the WoW UI Discord |
 
 The project id and interface come from community capture, not from our own
 `/dump` yet. Detection in `Core/Environment.lua` keys off "Mainline project id
 with an interface below 100000", which holds for either value as long as the
 client stays on the 1.6x line.
+
+**Which TOC the client picks: `ToonAge_Mainline.toc`.** Confirmed in-game on
+2026-09-19 — the addon list showed the Mainline title, not the Forever one, so
+Blizzard's flavor suffix for this client is `_Mainline` and `ToonAge_Forever.toc`
+never matches. It is kept in case a dedicated suffix appears later; until then
+Forever loads the full Retail file set and is held back entirely by the profile
+gate in `Core/Profile.lua`, which is why the window opens with no tabs. The
+Mainline TOC title therefore says "Retail" rather than "Midnight": one TOC now
+serves both clients and cannot name either.
+
+**Addons were switched off in the beta earlier on 2026-09-19, then enabled.** ToonAge now loads and renders on the beta client, so the probe addon can be
+run whenever the addon system is available.
 
 Blizzard has said Forever carries Midnight's addon API restrictions, and that
 the beta loads addons and keybinds from the Retail folder — which is why
@@ -82,6 +94,19 @@ lines look like on a geared caster, and whether `C_Item.GetItemStats` returns
 the Vanilla `ITEM_MOD_*` keys — Spirit especially, since Retail dropped it.
 All three need a `/dump` from a character with gear on.
 
+## Profession slots do NOT match Retail's order (observed 2026-09-19)
+
+Retail's `GetProfessions()` returns six slots in a fixed order: primary 1,
+primary 2, archaeology, fishing, cooking, first aid. **Forever does not.** A
+character with Tailoring, Enchanting, Cooking and First Aid returned First Aid
+in the slot Retail uses for archaeology, so positional labelling printed
+"Archaeology: First Aid".
+
+Rule for any Forever code touching professions: use the position only to tell
+first primary from second, and label everything else with the name
+`GetProfessionInfo` reports for that slot. That is correct whatever order this
+game returns, and it is localized, which a hardcoded label is not.
+
 ## PvP ranks (observed in-game, fresh character)
 
 The PvP window is the Vanilla rank ladder, rebuilt rather than copied:
@@ -106,6 +131,40 @@ Unverified: which API exposes rank and rank points on this client. The Classic
 calls (`UnitPVPRank`, `GetPVPRankInfo`) are part of the old global set this
 client is said to have dropped, and Retail's `C_PvP` honor-level functions
 describe a different system. Probe both before writing anything.
+
+## Spell IDs (observed via /ta spellaudit on the beta, 2026-09-19)
+
+Running the Retail spell audit on Forever is mostly noise — 483 of 641 Retail
+IDs are absent, which is correct for a Vanilla-era game. The signal is in the
+IDs that DID resolve, because they prove Forever kept Vanilla's original spell
+IDs rather than renumbering:
+
+| ID | Name on Forever | Note |
+|---|---|---|
+| 589 | Shadow Word: Pain | unchanged |
+| 139 | Renew | unchanged |
+| 703 | Garrote | unchanged |
+| 1943 | Rupture | unchanged |
+| 980 | **Bane of Agony** | Vanilla name, Retail calls it Agony |
+| 48108 | Hot Streak | unchanged |
+| 20271 | **Judgement** | Vanilla spelling, Retail dropped the second 'e' |
+| 2050 | **Lesser Heal** | Retail reused this ID for Holy Word: Serenity |
+| 8004 | **Lesser Healing Wave** | Retail reused it for Healing Surge |
+| 2098 | **Eviscerate** | Retail reused it for Dispatch |
+| 12472 | **Cold Snap** | Retail reused it for Icy Veins |
+| 1122 | **Inferno** | Retail calls it Summon Infernal |
+| 18540 | **Ritual of Doom** | Retail calls it Summon Doomguard |
+
+Two conclusions for `Data/Forever`:
+
+1. Vanilla spell IDs are the right starting point, not Retail's.
+2. An ID existing is NOT proof it means the same thing. Blizzard reused several
+   Vanilla IDs for unrelated Retail spells, so every ID has to be confirmed by
+   the NAME the client reports, not assumed from a Retail data file.
+
+Also absent: `61304` (the Retail GCD spell) and the Mistcrest upgrade
+currencies `3442`–`3446`, so nothing in the Gear or rotation engines can lean
+on those here.
 
 ## Camping (from published guides, NOT yet verified)
 

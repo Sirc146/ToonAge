@@ -123,10 +123,37 @@ local function HasGuideContent()
 end
 TA.HasGuideContent = HasGuideContent
 
+-- Generic per-tab visibility conditions. A tab def may carry
+-- `condition = "<key>"`; the matching function here decides whether the tab is
+-- shown at all. This is the extensible successor to the hard-coded guide check
+-- below: new conditional tabs add a key here and a `condition` field on the tab
+-- rather than growing another `if tabDef.id == ...` branch. A condition that is
+-- not registered is treated as "no opinion" (tab shown), so a typo fails open
+-- rather than hiding a tab silently.
+local TabConditions = {
+    -- Pets: only classes that actually command a persistent pet. On Vanilla-era
+    -- Forever that is Hunter and Warlock; every other class would see an empty
+    -- tab, so it is hidden for them entirely.
+    hasPetClass = function()
+        -- UnitClass returns (localizedName, ENGLISH_TOKEN); the token is stable
+        -- across locales, so gate on it.
+        local _, token = UnitClass("player")
+        return token == "HUNTER" or token == "WARLOCK"
+    end,
+}
+TA.TabConditions = TabConditions
+
 local function TabAvailable(tabDef)
     if not TA:GetModule(tabDef.module) then return false end
     if TA.ModuleAllowed and not TA:ModuleAllowed(tabDef.module) then return false end
     if tabDef.id == "guide" and not HasGuideContent() then return false end
+    if tabDef.condition then
+        local cond = TabConditions[tabDef.condition]
+        if type(cond) == "function" then
+            local ok, visible = pcall(cond)
+            if ok and not visible then return false end
+        end
+    end
     return true
 end
 
@@ -290,6 +317,21 @@ function TA:InitUI()
         -- (e.g. from a previous session) -- fall back to the always-on tab.
         if not IsTabEnabled(tabID) then tabID = "character" end
 
+        -- Keep the reader's place.
+        --
+        -- Refresh() re-runs SetTab on the CURRENT tab whenever a watched event
+        -- fires, and RebuildChild ends with SetVerticalScroll(0). Scrolling down
+        -- the gear list therefore lasted only until the next inventory or
+        -- item-info event, which snapped the view back to the top -- looking for
+        -- all the world like the scroll was broken.
+        --
+        -- Switching to a DIFFERENT tab still starts at the top, which is what
+        -- anyone expects; only a rebuild of the tab you are already reading
+        -- restores the offset.
+        local sameTab = (self.activeTab == tabID)
+        local keepScroll = sameTab and self.contentScroll
+            and self.contentScroll:GetVerticalScroll() or 0
+
         -- Update tab button states
         for id, btn in pairs(self.tabButtons) do
             local isActive = (id == tabID)
@@ -320,6 +362,11 @@ function TA:InitUI()
         self.contentChild = RebuildChild(self.contentScroll, self.contentWidth)
         self.sideChild    = RebuildChild(self.sideScroll,    self.sideWidth)
 
+        -- Restored AFTER the module renders, below: the scroll range is zero
+        -- until the child has its real height, so restoring here would clamp to
+        -- nothing. Remembered now because RebuildChild has just zeroed it.
+        self._restoreScroll = (keepScroll > 0) and keepScroll or nil
+
         -- Ask the module to render into the fresh panes
         local tabDef = FindTab(tabID)
         if tabDef then
@@ -337,6 +384,20 @@ function TA:InitUI()
                     errF:SetJustifyH("LEFT")
                     self.contentChild:SetHeight(200)
                 end
+            end
+
+            -- Put the view back where it was. One frame later: the scroll
+            -- range is computed from the child's height, and that height was
+            -- only just set by Finish() inside the render above.
+            if self._restoreScroll and C_Timer and C_Timer.After then
+                local want, sf = self._restoreScroll, self.contentScroll
+                self._restoreScroll = nil
+                C_Timer.After(0, function()
+                    if not (sf and sf.GetVerticalScrollRange) then return end
+                    local maxScroll = sf:GetVerticalScrollRange() or 0
+                    if maxScroll <= 0 then return end
+                    sf:SetVerticalScroll(math.min(want, maxScroll))
+                end)
             end
 
             -- ── Guide tab conditional behavior ────────────────────────────
@@ -648,11 +709,62 @@ function TA:InitUI()
             end
         end
 
+        -- A flavor with no shipped content (Core/Profile.lua scaffolds: Classic
+        -- Era, Cataclysm, Wrath, WoW Forever) has no tabs at all, and an empty
+        -- window with no explanation reads as a broken addon rather than a
+        -- deliberate one. Say so, in the window, instead of leaving it blank.
+        if not next(self.tabButtons) then
+            self:ShowNoContentNotice()
+            return
+        end
+        if self.noContent then self.noContent:Hide() end
+
         -- Re-select the previously active tab, falling back to "character"
         -- if it was just disabled.
         local tabToShow = self.activeTab or "character"
         if not IsTabEnabled(tabToShow) then tabToShow = "character" end
         self:SetTab(tabToShow)
+    end
+
+    --- Panel shown when the running client has no ToonAge content yet.
+    function frame:ShowNoContentNotice()
+        local profile = (TA.GetProfile and TA:GetProfile()) or {}
+        local label   = profile.label or "this client"
+
+        if not self.noContent then
+            local box = CreateFrame("Frame", nil, self)
+            box:SetPoint("TOPLEFT", 24, -(TAB_HEIGHT + 28))
+            box:SetPoint("BOTTOMRIGHT", -24, 24)
+
+            local title = box:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            title:SetPoint("TOP", 0, -40)
+            title:SetText("|cFFFFD100ToonAge|r")
+
+            local body = box:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            body:SetPoint("TOP", title, "BOTTOM", 0, -16)
+            body:SetWidth(460)
+            body:SetJustifyH("CENTER")
+            body:SetSpacing(4)
+            box.body = body
+
+            self.noContent = box
+        end
+
+        local version, _, _, iface = GetBuildInfo()
+        self.noContent.body:SetText(
+            "Loaded on |cFFFFFFFF" .. label .. "|r (" .. tostring(version)
+            .. ", interface " .. tostring(iface) .. ").\n\n"
+            .. "There is no gear, rotation or leveling content for this version yet, so\n"
+            .. "ToonAge is deliberately staying quiet rather than giving you another\n"
+            .. "expansion's numbers.\n\n"
+            .. (profile.partial
+                and ("Navigation, the guide tracker and leveling tools DO run here — import a\n"
+                     .. "guide and the Guide tab appears. Gear, rotation and talent advice wait\n"
+                     .. "for researched data for this version.\n\n")
+                or "")
+            .. "Error capture is running, so anything that breaks is still recorded:\n"
+            .. "type |cFFFFD100/ta errors|r to see it, or |cFFFFD100/ta health|r for what loaded.")
+        self.noContent:Show()
     end
 
     -- Initial tab build — all frame methods are now defined above this call.
@@ -693,6 +805,121 @@ function TA:InitUI()
             TA.Modern:InitDrawer()
         end)
     end
+end
+
+-- ── Copyable text window ──────────────────────────────────────────────
+-- Chat is the wrong place for a 56-line report: the frame is small, the
+-- scrollback is shared with combat spam, and you cannot select any of it.
+-- Anything long enough to want pasting into an issue goes here instead.
+-- Colour codes are stripped, since they paste as literal |cFF... noise.
+local function Plain(text)
+    return (tostring(text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
+end
+
+function TA:ShowCopyWindow(title, text)
+    local f = self._copyWindow
+    if not f then
+        f = CreateFrame("Frame", "ToonAgeCopyWindow", UIParent, "BackdropTemplate")
+        f:SetSize(620, 460)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f:SetBackdrop({
+            bgFile   = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+        })
+        f:SetBackdropColor(0.05, 0.05, 0.06, 0.96)
+        f:SetBackdropBorderColor(0.85, 0.65, 0.13, 0.85)
+
+        local hdr = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        hdr:SetPoint("TOPLEFT", 12, -10)
+        f.header = hdr
+
+        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        close:SetSize(24, 24)
+        close:SetPoint("TOPRIGHT", -4, -4)
+
+        local scroll = CreateFrame("ScrollFrame", "ToonAgeCopyWindowScroll", f, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 12, -32)
+        scroll:SetPoint("BOTTOMRIGHT", -30, 40)
+
+        local edit = CreateFrame("EditBox", nil, scroll)
+        edit:SetMultiLine(true)
+        edit:SetFontObject(ChatFontNormal)
+        edit:SetWidth(560)
+        edit:SetAutoFocus(false)
+        edit:SetScript("OnEscapePressed", function() f:Hide() end)
+        scroll:SetScrollChild(edit)
+        f.editBox = edit
+
+        local sel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        sel:SetSize(90, 22)
+        sel:SetPoint("BOTTOMLEFT", 12, 10)
+        sel:SetText("Select All")
+        sel:SetScript("OnClick", function()
+            edit:SetFocus()
+            edit:HighlightText()
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Selected — press Ctrl+C to copy.")
+        end)
+
+        tinsert(UISpecialFrames, "ToonAgeCopyWindow")
+        self._copyWindow = f
+    end
+
+    f.header:SetText("|cFFFFD100" .. tostring(title) .. "|r  (Ctrl+A to select, Ctrl+C to copy)")
+    f.editBox:SetText(Plain(text))
+    f.editBox:SetCursorPosition(0)
+    f:Show()
+end
+
+--- Collect a multi-line report, then put it where it can actually be read.
+---
+--- Chat is fine for a line or two. A 50-line module list, a diagnostic dump or
+--- an API probe scrolls straight out of a chat frame that cannot be selected,
+--- which is how you end up retyping output into a bug report. Anything past
+--- `threshold` lines opens in the copy window instead, with one line left in
+--- chat saying so.
+---
+--- Usage:
+---     local r = TA:BeginReport("Tracker Diagnostics")
+---     r:Add("step 4 of 19")
+---     r:Finish()
+function TA:BeginReport(title, threshold)
+    local r = {
+        title = title or "ToonAge",
+        lines = {},
+        threshold = threshold or 8,
+    }
+
+    function r:Add(text)
+        self.lines[#self.lines + 1] = tostring(text)
+    end
+
+    function r:Addf(fmt, ...)
+        self:Add(string.format(fmt, ...))
+    end
+
+    --- Returns true if the report went to the window rather than to chat.
+    function r:Finish()
+        local body = table.concat(self.lines, "\n")
+        if #self.lines > self.threshold and TA.ShowCopyWindow then
+            TA:ShowCopyWindow(self.title, body)
+            TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100[ToonAge]|r %s — %d lines, opened in a window you can select and paste.")
+                  :format(self.title, #self.lines))
+            return true
+        end
+        for _, line in ipairs(self.lines) do
+            TA:Raw(TA.LOG.OUTPUT, line)
+        end
+        return false
+    end
+
+    return r
 end
 
 -- ── Options panel — toggle which tabs are shown ────────────────────────

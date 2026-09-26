@@ -38,9 +38,19 @@ def _read(rel):
     return (ROOT / rel).read_text(encoding="utf-8")
 
 
-def detect(project_id, interface_code):
-    """Load Environment.lua under a stubbed client and return the ToonAge table."""
+def detect(project_id, interface_code, toc_flavor=None):
+    """Load Environment.lua under a stubbed client and return the ToonAge table.
+
+    toc_flavor stubs C_AddOns.GetAddOnMetadata(..., "X-Flavor"); None leaves
+    C_AddOns undefined, as on a client where the metadata read is unavailable.
+    """
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    if toc_flavor is not None:
+        lua.execute(f"""
+        C_AddOns = {{ GetAddOnMetadata = function(name, field)
+            if field == "X-Flavor" then return "{toc_flavor}" end
+        end }}
+        """)
     # Minimal stub: Environment.lua reads WOW_PROJECT_ID and GetBuildInfo()'s
     # 4th return (interface code). It also references CreateFrame only inside
     # the (now-removed) TBC guard rail; the shared version has no such call, so
@@ -155,6 +165,40 @@ def test_forever():
     check("tbc not forever",           ta.IsForever or False, False)
 
 
+def test_forever_toc_fallback():
+    section("Forever launch-day fallback (unknown project id + Forever TOC)")
+    # Live Forever ships its own WOW_PROJECT_* id: the Forever TOC rescues it.
+    ta = detect(42, 16100, toc_flavor="Forever")
+    check("new id + Forever TOC -> forever", ta.flavor, "forever")
+    check("new id + Forever TOC -> IsForever", ta.IsForever, True)
+    check("new id + Forever TOC -> not retail", ta.IsRetail or False, False)
+    check("fallback is reported", ta.flavorSource, "toc-fallback")
+    # Unknown id with any other TOC stays unknown -- no guessing.
+    ta = detect(42, 16100, toc_flavor="Mainline")
+    check("new id + Mainline TOC -> unknown", ta.flavor, "unknown")
+    ta = detect(42, 16100, toc_flavor="fallback")
+    check("new id + fallback TOC -> unknown", ta.flavor, "unknown")
+    # A recognized client is never overridden by metadata.
+    ta = detect(1, 120100, toc_flavor="Forever")
+    check("retail id + Forever TOC stays retail", ta.flavor, "retail")
+    check("retail detection source", ta.flavorSource, "project-id")
+    ta = detect(5, 20506, toc_flavor="Forever")
+    check("tbc id + Forever TOC stays tbc", ta.flavor, "tbc")
+    # Beta shape still detected by id, not by the fallback.
+    ta = detect(1, 16001, toc_flavor="Forever")
+    check("beta shape -> forever by id", ta.flavorSource, "project-id")
+    # Metadata call that errors must not break loading.
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute("""
+    WOW_PROJECT_ID = 42
+    GetBuildInfo = function() return "1.61.0", "0", "", 16100 end
+    C_AddOns = { GetAddOnMetadata = function() error("boom") end }
+    ToonAge = {}
+    """)
+    lua.execute(_read("Core/Environment.lua"))
+    check("erroring metadata -> unknown, no crash", lua.globals().ToonAge.flavor, "unknown")
+
+
 def test_isflavor_helper():
     section("TA:IsFlavor helper")
     ta = detect(1, 120007)
@@ -169,6 +213,7 @@ def main():
     test_tbc_old_client_gotcha()
     test_unknown_client()
     test_forever()
+    test_forever_toc_fallback()
     test_isflavor_helper()
 
     passed = sum(1 for ok, *_ in _results if ok)

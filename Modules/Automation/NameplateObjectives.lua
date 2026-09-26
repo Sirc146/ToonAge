@@ -241,8 +241,8 @@ end
 
 function NP:Init()
     -- Register nameplate events on the main event frame
-    TA.eventFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
-    TA.eventFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+    TA:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+    TA:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
 
     -- Initial objective scan (delayed to let quest log load)
     C_Timer.After(2, function()

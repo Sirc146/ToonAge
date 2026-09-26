@@ -2,7 +2,20 @@
 -- Addon object, event registration, SavedVariables, module system
 
 local ADDON_NAME = "ToonAge"
-local ADDON_VERSION = "2.0.0-dev.1"
+
+-- The TOC's "## Version" is the single source of truth: it is what the packager
+-- stamps, what WowUp and Wago read, and what the addon list shows. A second
+-- copy here drifts the moment a release bumps one and not the other, and the
+-- version a tester reads off /ta health is then not the version they installed.
+-- Read directly rather than through Core/Compat/API.lua -- that file loads
+-- after this one.
+local ADDON_VERSION = (function()
+    local get = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+    if type(get) ~= "function" then return "unknown" end
+    local ok, v = pcall(get, ADDON_NAME, "Version")
+    if ok and type(v) == "string" and v ~= "" then return v end
+    return "unknown"
+end)()
 
 -- ── Dev Build Tester Lock ─────────────────────────────────────────────────────
 -- When IS_DEV_BUILD is true, only characters listed in AUTHORIZED_TESTERS can
@@ -31,6 +44,36 @@ TA.modules = {}
 
 -- Event frame
 TA.eventFrame = CreateFrame("Frame", "ToonAgeEventFrame")
+
+-- ── Registering an event the client may not have ──────────────────────
+--
+-- RegisterEvent THROWS on an event the running client does not define, and
+-- module Init calls it directly. One bad name therefore takes the whole module
+-- down: on WoW Forever, DataHarvester died at Init on LEARNED_SPELL_IN_TAB --
+-- an event modern clients replaced with LEARNED_SPELL_IN_SKILL_LINE -- and
+-- with it went the item, spell and talent recording that client exists to
+-- collect. Every other event it asked for was fine.
+--
+-- This is the same shape as calling an API the client lacks, and it gets the
+-- same treatment: attempt it, survive the miss, and write down what was
+-- missing so it can be reported rather than rediscovered.
+--
+-- What the client does NOT define is real information about that client --
+-- the same kind the API manifest exists to capture -- so the names are kept
+-- and surfaced by /ta health rather than silently swallowed.
+TA.unknownEvents = {}
+
+--- Registers an event, or records it as unavailable on this client.
+--- Returns true when the client accepted it.
+function TA:RegisterEvent(event)
+    if type(event) ~= "string" or event == "" then return false end
+    local ok = pcall(self.eventFrame.RegisterEvent, self.eventFrame, event)
+    if not ok then
+        self.unknownEvents[event] = true
+        return false
+    end
+    return true
+end
 
 -- ── Chat output ───────────────────────────────────────────────────────────
 -- One funnel for everything the addon says. Before this there were 309 direct
@@ -64,12 +107,150 @@ local LOG_COLOR = {
 -- before InitDB runs -- this value applies, so early output is quiet too.
 TA.logLevel = TA.LOG.WARN
 
+-- ── Output routing ────────────────────────────────────────────────────────
+-- Three destinations, and every line belongs to exactly one of them:
+--
+--   PANEL  -- game data the player asked to look at (XP, stats, gear). That
+--            belongs on a tab in the addon window. A PANEL command opens the
+--            tab and prints nothing at all, so there is no text to route.
+--   REPORT -- diagnostics, dumps, module lists, anything the user might paste
+--            into a bug report. Goes to the selectable copy window, the same
+--            one /ta errors copy opens.
+--   CHAT   -- one-line acknowledgements. Nothing else is allowed here.
+--
+-- Two design decisions worth stating, because the obvious implementations of
+-- both are wrong:
+--
+-- 1. The capture is installed at the PRINTER, not at the call site. That is the
+--    whole point: ~300 TA:Print calls across the modules need no edit, and a
+--    module written next month is routed correctly without knowing any of this
+--    exists. A per-call-site sink argument would have to be added 300 times and
+--    would be forgotten the 301st.
+--
+-- 2. There is no table mapping command -> sink. Such a table goes stale the
+--    first time a command is added, which is exactly the failure that produced
+--    three disagreeing copies of the command list further down this file.
+--    Instead every command captures to REPORT and the LINE COUNT decides:
+--    ACK_MAX lines or fewer is an acknowledgement and prints to chat, more than
+--    that is a report and opens the window. "Debug mode: ON" needs no window;
+--    a 40-line module list cannot live in a chat frame you can't select.
+TA.SINK = { CHAT = "chat", REPORT = "report", PANEL = "panel" }
+
+-- Output this short is an acknowledgement, not a report. Three, not one: the
+-- short status replies are two or three lines ("Chat verbosity is warn." plus
+-- its usage hint), and putting a usage hint in a window the user has to close
+-- is worse than the chat line it replaced. Anything genuinely worth reading in
+-- one place -- a module list, a diagnostic, an error dump -- is well past this.
+local ACK_MAX = 3
+
+-- Active capture, or nil when output goes straight to chat.
+TA._sink = nil
+
+-- The one place a line leaves this addon. Every printer below funnels here.
+local function Emit(text)
+    local sink = TA._sink
+    if sink then
+        sink.lines[#sink.lines + 1] = tostring(text)
+        return
+    end
+    print(tostring(text))
+end
+TA.Emit = Emit
+
+-- ── Background errors ─────────────────────────────────────────────────────
+-- An error thrown by a module's event handler is not a reply to anything the
+-- user typed, so it does not belong in chat as text -- and it cannot open a
+-- window either, because a handler that throws on UNIT_AURA throws forty times
+-- a fight. The log already has the full entry with its stack. Chat gets one
+-- throttled line pointing at it, and nothing else.
+local ERROR_NOTICE_INTERVAL = 20   -- seconds between chat notices
+local lastErrorNotice, pendingErrors = 0, 0
+
+--- Log a background error and, at most once per interval, say so in one line.
+--- @param source string  module name, or a label like "UI refresh"
+--- @param msg    string  the error
+function TA:NoteError(source, msg)
+    if TA.ErrorLog and TA.ErrorLog.Log then
+        TA.ErrorLog:Log(source or "Background", msg, debugstack(2, 6, 0))
+    end
+    pendingErrors = pendingErrors + 1
+
+    local now = (GetTime and GetTime()) or 0
+    if now - lastErrorNotice < ERROR_NOTICE_INTERVAL then return end
+    lastErrorNotice = now
+
+    local n = pendingErrors
+    pendingErrors = 0
+    print(("|cFFFF4444[ToonAge]|r %d error%s logged -- %s"):format(
+        n, n == 1 and "" or "s",
+        (TA.MakeSlashLink and TA:MakeSlashLink("errors copy", "open the log"))
+            or "/ta errors copy"))
+end
+
+--- Run `fn(...)` with everything it prints captured and routed to `sink`.
+--- @param sink string   one of TA.SINK
+--- @param title string  window header if the output ends up in the copy window
+function TA:WithSink(sink, title, fn, ...)
+    if sink == TA.SINK.CHAT then return fn(...) end
+
+    local prev = TA._sink
+    TA._sink = { lines = {}, title = title }
+
+    local ok, err = pcall(fn, ...)
+
+    local cap = TA._sink
+    -- Restore BEFORE flushing. Flushing prints, printing goes through Emit, and
+    -- Emit would capture the flush into the capture it is flushing.
+    TA._sink = prev
+
+    if not ok then
+        -- A command that threw is precisely what the copy window is for: the
+        -- partial output and the error together, selectable, in one place.
+        cap.lines[#cap.lines + 1] = "|cFFFF4444error:|r " .. tostring(err)
+        if TA.ErrorLog and TA.ErrorLog.Log then
+            TA.ErrorLog:Log("Command:" .. tostring(title), err, debugstack(2, 6, 0))
+        end
+    end
+
+    if #cap.lines == 0 then return ok end
+
+    -- Nested capture: an inner command's lines belong to the outer report.
+    if prev then
+        for _, line in ipairs(cap.lines) do
+            prev.lines[#prev.lines + 1] = line
+        end
+        return ok
+    end
+
+    if ok and #cap.lines <= ACK_MAX then
+        for _, line in ipairs(cap.lines) do print(line) end
+        return ok
+    end
+
+    if TA.ShowCopyWindow then
+        TA:ShowCopyWindow(cap.title or "ToonAge", table.concat(cap.lines, "\n"))
+        print(("|cFFFFD100[ToonAge]|r %s -- %d lines, opened in a window you can select and paste.")
+              :format(cap.title or "report", #cap.lines))
+    else
+        -- No window available (UI not initialised yet): chat is the fallback,
+        -- because losing the output entirely is worse than putting it here.
+        for _, line in ipairs(cap.lines) do print(line) end
+    end
+    return ok
+end
+
 -- module is optional:  TA:Print(TA.LOG.INFO, "Arrow", msg)  ->  [TA Arrow] msg
 --                      TA:Print(TA.LOG.INFO, nil, msg)      ->  [TA] msg
+--
+-- The level filter is skipped while a capture is active. A diagnostic command
+-- whose output is DEBUG-level printed NOTHING at the WARN default -- you had to
+-- raise verbosity first to see the thing you just asked for. Inside a capture
+-- the destination is a window the user opened on purpose, so there is nothing
+-- to protect them from.
 function TA:Print(level, module, msg)
     level = level or TA.LOG.INFO
-    if level > (TA.logLevel or TA.LOG.WARN) then return end
-    print(string.format("|c%s[%s]|r %s",
+    if not TA._sink and level > (TA.logLevel or TA.LOG.WARN) then return end
+    Emit(string.format("|c%s[%s]|r %s",
         LOG_COLOR[level] or LOG_COLOR[3],
         module and ("TA " .. module) or "TA",
         tostring(msg)))
@@ -80,13 +261,13 @@ end
 -- be noise. Same level rules; only the tag is dropped.
 function TA:Raw(level, msg)
     level = level or TA.LOG.INFO
-    if level > (TA.logLevel or TA.LOG.WARN) then return end
-    print(tostring(msg))
+    if not TA._sink and level > (TA.logLevel or TA.LOG.WARN) then return end
+    Emit(msg)
 end
 
 function TA:Printf(level, module, fmt, ...)
     level = level or TA.LOG.INFO
-    if level > (TA.logLevel or TA.LOG.WARN) then return end
+    if not TA._sink and level > (TA.logLevel or TA.LOG.WARN) then return end
     -- Format under pcall: a bad format string in a log line must never be the
     -- thing that breaks a module. Fall back to the raw format string.
     local ok, out = pcall(string.format, fmt, ...)
@@ -108,9 +289,6 @@ local DB_DEFAULTS = {
         DungeonGear  = true,
         TravelRouter = true,
         Onboarding   = true,
-        CutsceneSkip = true,
-        AutoEquip          = true,
-        AutoMount          = true,
         QuestRewardAdvisor = true,
         DungeonGuide       = true,
     },
@@ -363,7 +541,31 @@ function TA:RegisterModule(name, module)
     end
 end
 
+--- The module, IF it is running on this client.
+---
+--- Returns nil for anything the flavor profile skipped, Safe Mode skipped, the
+--- user turned off, or that auto-disabled after errors. All four mean the same
+--- thing: Init never ran, so its state is not set up and calling into it is a
+--- bug waiting to happen.
+---
+--- This is the gate for cross-module calls. QuestTracker asking SpecAdaptive
+--- for a dungeon tip found this the hard way on WoW Forever: the profile
+--- skipped SpecAdaptive, but GetModule handed it over anyway and it threw on
+--- the first API a specless client does not have. Every caller already writes
+--- `local M = TA:GetModule("X"); if M and M.Fn then`, so returning nil makes
+--- all 190-odd call sites correct at once.
+---
+--- Use GetRegisteredModule when you specifically need a module that is off —
+--- the health report and the toggle list do.
 function TA:GetModule(name)
+    local mod = self.modules[name]
+    if not mod then return nil end
+    if mod._disabled or mod._profileSkipped then return nil end
+    return mod
+end
+
+--- The module whether or not it is running. For diagnostics and toggles only.
+function TA:GetRegisteredModule(name)
     return self.modules[name]
 end
 
@@ -413,6 +615,37 @@ local ERROR_PRINT_LIMIT = 3
 -- Initialised even in safe mode. The seven core modules the addon is unusable
 -- without, plus ErrorLog — safe mode exists to diagnose a problem, and
 -- disabling the thing that records problems would defeat it entirely.
+-- ── Engine modules the flavor gate must never skip ────────────────────
+--
+-- A few pieces under Core/ register themselves as modules so they get Init and
+-- OnEvent like everything else. They are ENGINE, not product: no flavor
+-- profile lists them, because a profile answers "what does this flavor ship?"
+-- and the answer for the engine is always "all of it".
+--
+-- Leaving them to the gate broke two things silently, on exactly the clients
+-- least able to absorb it:
+--
+--   ApiGuard  Its Init is what calls Probe(). Skip it and Guard.hasRun stays
+--             false, and TA:HasAPI() short-circuits to `return true` for
+--             everything. The whole design is TWO gates -- the profile says
+--             what a flavor ships, ApiGuard says what the client can actually
+--             do -- and the second gate was off on every non-retail flavor.
+--             Retail is allowAll so it ran there; Forever, whose API surface is
+--             only part mapped and which needs it most, got nothing.
+--
+--   SkillScan Its OnEvent clears the skill cache on SKILL_LINES_CHANGED and
+--             PLAYER_LEVEL_UP. A skipped module receives no events, so on TBC
+--             the cache went stale and never refreshed -- under StatCaps and
+--             WeaponSkill, the two features that exist to read skill levels.
+--
+-- State and TBCStats have neither Init nor OnEvent, so they cost nothing
+-- either way; they are listed because the rule is "the engine always runs",
+-- not "the engine runs where we noticed it mattered".
+local ENGINE_MODULES = {
+    ApiGuard = true, State = true, SkillScan = true, TBCStats = true,
+    ErrorLog = true,   -- a client that errors is when you need this most
+}
+
 local SAFE_MODE_KEEP = {
     ErrorLog = true,
     Character = true, Gear = true, Talents = true, Rotation = true,
@@ -421,6 +654,47 @@ local SAFE_MODE_KEEP = {
 
 function TA:InitModules()
     local safe = self.db and self.db.safeMode
+
+    -- ── Wrong build for this client ───────────────────────────────────────
+    -- A client that does not recognise a TOC suffix does not error: it reads
+    -- whichever TOC it does recognise, and the addon runs another flavour's
+    -- module set with no sign anything is wrong. That is exactly how Forever
+    -- came to load the entire retail product.
+    --
+    -- Core/Environment.lua already detects it (TA:TocFlavorMismatch compares
+    -- the client against the loaded TOC's "## X-Flavor"), but until now the
+    -- only place that said so was /ta health -- printed long after every wrong
+    -- module had initialised. This is where the detection has to bite.
+    --
+    -- ENGINE_MODULES still start, so /ta health, /ta errors and /ta apiprobe
+    -- can explain the situation and be copied into a bug report.
+    local wantFlavor, gotFlavor
+    if self.TocFlavorMismatch then wantFlavor, gotFlavor = self:TocFlavorMismatch() end
+    if wantFlavor then
+        self.wrongPackage = { want = wantFlavor, got = gotFlavor }
+        TA:Printf(TA.LOG.ERROR, nil,
+            "This is a %s client but the %s build loaded. Nothing will run -- "
+            .. "install the %s build. |cFFFFD100/ta health|r for detail.",
+            tostring(wantFlavor), tostring(gotFlavor), tostring(wantFlavor))
+        for name, mod in pairs(self.modules) do
+            mod._errorCount   = 0
+            mod._autoDisabled = false
+            if ENGINE_MODULES[name] then
+                mod._disabled = false
+                if type(mod.Init) == "function" then
+                    local ok, err = pcall(mod.Init, mod)
+                    if not ok then
+                        TA:NoteError(name, ("Init failed: %s"):format(tostring(err)))
+                    end
+                end
+            else
+                mod._disabled       = true
+                mod._profileSkipped = true
+                mod._profileReason  = "wrong build for this client"
+            end
+        end
+        return
+    end
 
     if safe then
         TA:Print(TA.LOG.WARN, nil, "SAFE MODE — only core modules loaded. "
@@ -445,7 +719,7 @@ function TA:InitModules()
         -- "allowed" rather than disabling everything.
         local profileReason
         local profileSkipped = false
-        if self.ModuleAllowed then
+        if self.ModuleAllowed and not ENGINE_MODULES[name] then
             local allowed, reason = self:ModuleAllowed(name)
             if not allowed then
                 profileSkipped = true
@@ -465,7 +739,7 @@ function TA:InitModules()
                 local ok, err = pcall(mod.Init, mod)
                 if not ok then
                     mod._initError = tostring(err)
-                    TA:Printf(TA.LOG.ERROR, nil, "Error initialising module %s: %s", name, tostring(err))
+                    TA:NoteError(name, ("init failed: %s"):format(tostring(err)))
                     if TA.ErrorLog then TA.ErrorLog:Log(name .. " Init", tostring(err), "") end
                 end
             end
@@ -483,30 +757,35 @@ local EVENT_ROUTES = {
     GET_ITEM_INFO_RECEIVED = { "Gear" },
     QUEST_LOG_UPDATE = { "CoordHarvester", "NameplateObjectives", "PullPlanner", "QuestTracker", "TargetMarker" },
     UNIT_AURA = { "CombatState" },
-    UNIT_STATS = {  },
+    UNIT_STATS = { "ForeverCharacter" },
     COMBAT_RATING_UPDATE = {  },
     UNIT_POWER_UPDATE = { "CombatState" },
     UNIT_HEALTH = { "CombatState", "RoleMorph" },
     CHAT_MSG_SYSTEM = {  },
-    PLAYER_XP_UPDATE = { "XPTracker" },
+    PLAYER_XP_UPDATE = { "ForeverCharacter", "XPTracker" },
     ACTIONBAR_SLOT_CHANGED = {  },
     SPELL_UPDATE_COOLDOWN = {  },
     PLAYER_TARGET_CHANGED = { "CombatState", "Gear" },
     UNIT_ATTACK_POWER = {  },
-    BAG_UPDATE_DELAYED = { "AutoEquip" },
+    BAG_UPDATE_DELAYED = { "DataHarvester" },
     ZONE_CHANGED = { "CoordResolver", "TravelRouter" },
 }
 -- END GENERATED EVENT_ROUTES
 
 local function DispatchToModule(name, mod, event, ...)
-    if mod.OnEvent and not mod._disabled then
+    -- _profileSkipped is checked as well as _disabled. They are set together in
+    -- InitModules, but a module that was never initialised for this flavor must
+    -- not receive events under any circumstances: its OnEvent will reach for
+    -- data that was deliberately not loaded, and the player gets an error for a
+    -- module the health report says is off.
+    if mod.OnEvent and not mod._disabled and not mod._profileSkipped then
         do
             local ok, err = pcall(mod.OnEvent, mod, event, ...)
             if not ok then
                 mod._errorCount = (mod._errorCount or 0) + 1
 
                 if mod._errorCount <= ERROR_PRINT_LIMIT then
-                    TA:Printf(TA.LOG.ERROR, nil, "Module %s OnEvent error: %s", name, tostring(err))
+                    TA:NoteError(name, ("OnEvent error: %s"):format(tostring(err)))
                 elseif mod._errorCount == ERROR_PRINT_LIMIT + 1 then
                     TA:Printf(TA.LOG.WARN, nil, "%s keeps failing — muting further errors. "
                           .. "|cFF888780/ta errors to read them.|r", name)
@@ -577,12 +856,12 @@ local PERSISTENT_EVENTS = {
 }
 
 -- Register one-shot boot events
-TA.eventFrame:RegisterEvent("ADDON_LOADED")
-TA.eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+TA:RegisterEvent("ADDON_LOADED")
+TA:RegisterEvent("PLAYER_ENTERING_WORLD")
 
 -- Register persistent events
 for _, event in ipairs(PERSISTENT_EVENTS) do
-    TA.eventFrame:RegisterEvent(event)
+    TA:RegisterEvent(event)
 end
 
 TA.eventFrame:SetScript("OnEvent", function(self, event, ...)
@@ -665,6 +944,10 @@ function TA:QueueUIRefresh(event)
     -- queueing work that would be thrown away on flush.
     if not (self.UI and self.UI:IsVisible()) then return end
 
+    -- A caller that forgets to pass the event through still wants a refresh;
+    -- a nil table index would throw, so fall back to a sentinel key.
+    if event == nil then event = "UNSPECIFIED" end
+
     self._pendingUIEvents = self._pendingUIEvents or {}
     self._pendingUIEvents[event] = true
 
@@ -701,7 +984,7 @@ function TA:QueueUIRefresh(event)
 
         local ok, err = pcall(TA.UI.Refresh, TA.UI, events)
         if not ok then
-            TA:Printf(TA.LOG.ERROR, nil, "UI refresh error: %s", tostring(err))
+            TA:NoteError("UI refresh", tostring(err))
             if TA.ErrorLog then TA.ErrorLog:Log("UI Refresh", tostring(err), "") end
         end
     end
@@ -767,8 +1050,57 @@ function TA:OnLogin()
         .. self:MakeSlashLink("help", "/ta help") .. " for clickable commands.")
 end
 
+-- ── Built-in command registry ─────────────────────────────────────────
+-- Non-tab commands, declared once. `label` is what the help listing prints.
+-- Tab commands are NOT here: they are generated from the active profile, so a
+-- command for a tab this client does not ship cannot exist.
+local SYSTEM_COMMANDS = {
+    { name = "options",  label = "Settings"        },
+    { name = "toggle",   label = "Module Toggles"  },
+    { name = "layout",   label = "Toggle Layout"   },
+    { name = "verbose",  label = "Chat Verbosity"  },
+    { name = "health",   label = "Module Health"   },
+    { name = "safemode", label = "Safe Mode"       },
+    { name = "reset",    label = "Reset Data"      },
+    { name = "debug",    label = "Debug Mode"      },
+    { name = "help",     label = "This List"       },
+}
+
+--- Tab ids that are real on THIS client, in profile order, minus `character`
+--- (that one is the anchor tab -- /ta with no argument already opens it).
+---
+--- This exists because the tab commands used to be written out by hand in three
+--- places -- the BUILTIN table below, GetAllCommandNames, and
+--- PrintInteractiveHelp -- and all three carried the RETAIL list. On Forever,
+--- whose tabs are character/gear/talents/spells/pets/pvp/harvest, `/ta rotation`
+--- therefore existed, called OpenTab("rotation"), failed IsTabEnabled inside
+--- SetTab, and silently landed on Character. Same for /ta prof, /ta weekly and
+--- /ta guide. A command that quietly does the wrong thing is worse than one
+--- that reports it does not exist.
+function TA:TabCommandNames()
+    local out = {}
+    for _, tab in ipairs((self.ProfileTabs and self:ProfileTabs()) or {}) do
+        if tab.id ~= "character"
+           and (not self.IsTabAvailable or self:IsTabAvailable(tab.id)) then
+            out[#out + 1] = tab.id
+        end
+    end
+    return out
+end
+
+--- Every built-in command name that exists on this client.
+function TA:BuiltinCommandNames()
+    local names = { "open" }
+    for _, id in ipairs(self:TabCommandNames()) do names[#names + 1] = id end
+    for _, c in ipairs(SYSTEM_COMMANDS) do names[#names + 1] = c.name end
+    return names
+end
+
 -- ── Slash command handler ─────────────────────────────────────────────
-function TA:SlashCommand(msg)
+-- Dispatch is the body. TA:SlashCommand below wraps it in an output capture so
+-- that everything it prints is routed per TA.SINK, rather than each of the ~300
+-- print sites having to know where its output belongs.
+local function Dispatch(self, msg)
     msg = msg and msg:lower():match("^%s*(.-)%s*$") or ""
 
     -- Split into command + args (e.g. "switchto 12345" → cmd="switchto", args="12345")
@@ -783,13 +1115,6 @@ function TA:SlashCommand(msg)
 
     -- ── Built-in commands (exact match) ───────────────────────────────
     local BUILTIN = {
-        gear     = function() self:OpenTab("gear") end,
-        talents  = function() self:OpenTab("talents") end,
-        rotation = function() self:OpenTab("rotation") end,
-        prof     = function() self:OpenTab("professions") end,
-        pets     = function() self:OpenTab("pets") end,
-        weekly   = function() self:OpenTab("weekly") end,
-        guide    = function() self:OpenTab("guide") end,
         options  = function() self:ToggleOptionsPanel() end,
         debug    = function()
             TA.debug = not TA.debug
@@ -826,17 +1151,42 @@ function TA:SlashCommand(msg)
             end
         end,
         health   = function()
-            local report = self:GetHealthReport()
+            -- NAMING, deliberately: the module list and the output window are
+            -- two different things and must not share a name. They did once --
+            -- both were called `report` -- and the second declaration shadowed
+            -- the first, so the loop below walked the WINDOW instead of the
+            -- module list. ipairs() over a window object yields nothing, so
+            -- every count came out zero and not one module line printed. The
+            -- report claimed "0 loaded · 0 off · 0 errored" on a client where
+            -- every module had in fact loaded, which reads exactly like a total
+            -- addon failure. A diagnostic that lies is worse than none.
+            local entries = self:GetHealthReport()
             local loaded, off, errored = 0, 0, 0
 
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge Module Health ━━━|r")
-            for _, entry in ipairs(report) do
-                local mod = self.modules[entry.name]
+            -- Every line is collected as well as printed, so "/ta health copy"
+            -- can hand the whole report over in a selectable window. Chat holds
+            -- ~50 visible lines and cannot be selected; this report is longer
+            -- than that on any flavor that skips modules.
+            local win = TA.BeginReport and TA:BeginReport("ToonAge Module Health")
+            local lines = {}
+            local function Say(text)
+                lines[#lines + 1] = text
+                if win then win:Add(text) else TA:Raw(TA.LOG.OUTPUT, text) end
+            end
+
+            Say("━━━ ToonAge Module Health ━━━")
+            Say(("client: %s · profile: %s · build %s (interface %s)"):format(
+                tostring(TA.flavor),
+                tostring((TA.GetProfile and TA:GetProfile() or {}).label or "?"),
+                tostring(select(1, GetBuildInfo())),
+                tostring(select(4, GetBuildInfo()))))
+            for _, entry in ipairs(entries) do
+                local mod = self:GetRegisteredModule(entry.name)
                 if entry.status == "loaded" then
                     loaded = loaded + 1
                 elseif entry.status == "errored" then
                     errored = errored + 1
-                    TA:Raw(TA.LOG.OUTPUT, ("  |cFFFF4444✗ %s|r — init failed: %s"):format(entry.name, tostring(entry.error)))
+                    Say(("  ✗ %s — init failed: %s"):format(entry.name, tostring(entry.error)))
                 else
                     off = off + 1
                     -- Distinguish the three ways a module ends up off. "Disabled"
@@ -853,27 +1203,85 @@ function TA:SlashCommand(msg)
                         -- Not a fault: e.g. a retail-only module on a TBC client.
                         why = mod._profileReason or "not in this flavor's profile"
                     end
-                    TA:Raw(TA.LOG.OUTPUT, ("  |cFF888780○ %s — %s|r"):format(entry.name, why))
+                    Say(("  ○ %s — %s"):format(entry.name, why))
                 end
             end
 
-            TA:Raw(TA.LOG.OUTPUT, ("  |cFF4AFF7A%d loaded|r · |cFF888780%d off|r · |cFFFF4444%d errored|r")
-                  :format(loaded, off, errored))
+            Say(("  %d loaded · %d off · %d errored"):format(loaded, off, errored))
+
+            -- Events this client does not define. Not a fault: a name that
+            -- was valid three expansions ago, or one this flavor never had.
+            -- Worth stating, because it is measured knowledge about the
+            -- client and the alternative is rediscovering it as a dead
+            -- module next time.
+            local unknown = {}
+            for name in pairs(self.unknownEvents or {}) do unknown[#unknown + 1] = name end
+            if #unknown > 0 then
+                table.sort(unknown)
+                Say(("  %d event(s) this client does not define:"):format(#unknown))
+                for _, name in ipairs(unknown) do
+                    Say("    |cFF888780" .. name .. "|r")
+                end
+            end
+
+            -- A TOC the client no longer recognizes does not error -- it is
+            -- skipped, and another product's TOC loads in its place. Nothing
+            -- else in the addon would ever mention it.
+            if self.TocFlavorMismatch then
+                local want, got = self:TocFlavorMismatch()
+                if want then
+                    Say(("  |cFFFF4444Wrong TOC loaded:|r this is a %s client, but the"
+                        .. " %s TOC was read."):format(want, got))
+                    Say("  |cFF888780The client no longer recognizes this flavor's TOC"
+                        .. " suffix, so it fell back. Everything below is the wrong"
+                        .. " product's module set.|r")
+                end
+            end
+
+            -- Forever identified by its TOC, not its project id: the client
+            -- reports an id Core/Environment.lua does not know. Everything
+            -- still runs, but the id belongs in PROJECT_IDS so detection
+            -- stops depending on the fallback.
+            if self.flavorSource == "toc-fallback" then
+                Say(("  |cFFFFD100Forever detected by TOC fallback:|r client reports"
+                    .. " project id %s, interface %s. Add this id to"
+                    .. " Core/Environment.lua PROJECT_IDS."):format(
+                    tostring(self.projectId), tostring(self.interfaceCode)))
+            end
 
             -- Outstanding item-data requests. Should sit at 0 most of the time;
             -- a number that climbs and never falls means GET_ITEM_INFO_RECEIVED
             -- is not resolving them and the 10s timeout is doing all the work.
             local pending = TA.Utils and TA.Utils.PendingItemCount and TA.Utils.PendingItemCount()
             if pending and pending > 0 then
-                TA:Raw(TA.LOG.OUTPUT, ("  |cFF888780%d item request(s) awaiting GET_ITEM_INFO_RECEIVED|r"):format(pending))
+                Say(("  %d item request(s) awaiting GET_ITEM_INFO_RECEIVED"):format(pending))
             end
             if self.db.safeMode then
-                TA:Raw(TA.LOG.OUTPUT, "  |cFFFF9A1ASafe Mode is ON.|r |cFF888780/ta safemode to turn it off.|r")
+                Say("  Safe Mode is ON. /ta safemode to turn it off.")
             end
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+            if TA.Analytics and TA.Analytics.StatusLine then
+                Say("  " .. TA.Analytics:StatusLine())
+            end
+            Say("━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            -- "copy" opens the same report in a selectable window; without it,
+            -- point at that, because this list scrolls out of chat instantly.
+            if win then
+                -- Always the window for this one: it is one line per module.
+                win.threshold = 0
+                win:Finish()
+            elseif TA.ShowCopyWindow then
+                TA:ShowCopyWindow("ToonAge Module Health", table.concat(lines, "\n"))
+            end
         end,
         help     = function() self:PrintInteractiveHelp() end,
     }
+
+    -- Tab commands, generated from the active flavor. These are PANEL sink:
+    -- they open a tab and print nothing, because the data belongs on the tab.
+    for _, id in ipairs(self:TabCommandNames()) do
+        BUILTIN[id] = function() self:OpenTab(id) end
+    end
 
     -- Check exact built-in match
     if BUILTIN[cmd] then
@@ -935,8 +1343,17 @@ function TA:SlashCommand(msg)
     end
 
     -- ── Module slash commands (exact match first) ─────────────────────
-    for _, mod in pairs(self.modules) do
-        if mod.SlashCommands then
+    -- Skips modules that are not running on this client, and says so rather
+    -- than failing silently: typing a command that belongs to a module the
+    -- flavor does not ship should explain itself, not throw from inside it.
+    for name, mod in pairs(self.modules) do
+        if mod.SlashCommands and mod.SlashCommands[cmd]
+           and (mod._disabled or mod._profileSkipped) then
+            TA:Print(TA.LOG.OUTPUT, nil, ("/ta %s belongs to %s, which is not running here (%s)."):format(
+                cmd, name, mod._profileReason or "switched off"))
+            return
+        end
+        if mod.SlashCommands and not mod._disabled and not mod._profileSkipped then
             local fn = mod.SlashCommands[cmd]
             if fn then fn(mod, args); return end
         end
@@ -986,6 +1403,20 @@ function TA:SlashCommand(msg)
 
     -- ── Nothing matched: show interactive help ────────────────────────
     self:PrintInteractiveHelp()
+end
+
+--- Entry point for /ta and for any module calling TA:SlashCommand(...).
+---
+--- Everything the command prints is captured here and routed: two lines or
+--- fewer go to chat as an acknowledgement, anything longer opens the selectable
+--- copy window. See TA.SINK at the top of this file for why the routing lives
+--- at the printer instead of at each call site.
+function TA:SlashCommand(msg)
+    local cmd = ((msg or ""):lower():match("^%s*(%S*)")) or ""
+    local title = (cmd ~= "" and cmd ~= "open")
+        and ("ToonAge -- /ta " .. cmd)
+        or  "ToonAge"
+    return self:WithSink(TA.SINK.REPORT, title, Dispatch, self, msg)
 end
 
 -- ── Clickable slash command hyperlink system ──────────────────────────────────
@@ -1076,11 +1507,11 @@ end
 --- Collect all registered command names (built-in + module).
 function TA:GetAllCommandNames()
     local names = {}
-    -- Built-in commands
-    local builtins = {"gear","talents","rotation","prof","pets","weekly","guide",
-                      "options","debug","reset","layout","help","toggle","open",
-                      "safemode","health"}
-    for _, n in ipairs(builtins) do names[#names+1] = n end
+    -- Built-ins, from the registry rather than a second hand-written list. The
+    -- list that used to be here named rotation/prof/weekly/guide on every
+    -- flavor, so the prefix matcher would happily complete `/ta rot` into a
+    -- command that did not work.
+    for _, n in ipairs(self:BuiltinCommandNames()) do names[#names+1] = n end
 
     -- Module commands
     for _, mod in pairs(self.modules) do
@@ -1098,46 +1529,87 @@ end
 -- ── Interactive help with clickable commands ──────────────────────────────────
 
 function TA:PrintInteractiveHelp()
-    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100ToonAge|r — click any command to run it:")
-    TA:Raw(TA.LOG.OUTPUT, "")
-    TA:Raw(TA.LOG.OUTPUT, "  " .. self:MakeSlashLink("", "Open/Close ToonAge"))
-    TA:Raw(TA.LOG.OUTPUT, "")
-    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780TABS:|r")
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("gear", "Gear")
-        .. "  " .. self:MakeSlashLink("talents", "Talents")
-        .. "  " .. self:MakeSlashLink("rotation", "Rotation"))
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("prof", "Professions")
-        .. "  " .. self:MakeSlashLink("pets", "Pets")
-        .. "  " .. self:MakeSlashLink("weekly", "Weekly"))
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("guide", "Guide"))
-    TA:Raw(TA.LOG.OUTPUT, "")
-    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780TRACKER:|r")
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("tracker", "Toggle Tracker")
-        .. "  " .. self:MakeSlashLink("autoselect", "Auto-Select Guide"))
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("diag", "Diagnose Tracker")
-        .. "  " .. self:MakeSlashLink("missed", "Missed Content"))
-    TA:Raw(TA.LOG.OUTPUT, "")
-    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780HUD:|r")
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("arrow", "Toggle Arrow")
-        .. "  " .. self:MakeSlashLink("hud", "Toggle NavHud"))
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("trail", "Toggle AntTrail")
-        .. "  " .. self:MakeSlashLink("farmhud", "Farm Optimizer"))
-    TA:Raw(TA.LOG.OUTPUT, "")
-    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780TOOLS:|r")
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("coord", "Show Coordinates")
-        .. "  " .. self:MakeSlashLink("xp", "XP Stats"))
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("alts", "Alt Roster")
-        .. "  " .. self:MakeSlashLink("todo", "Weekly Todo"))
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("gather", "Gather History")
-        .. "  " .. self:MakeSlashLink("errors", "Error Log"))
-    TA:Raw(TA.LOG.OUTPUT, "")
-    TA:Raw(TA.LOG.OUTPUT, "  |cFF888780SYSTEM:|r")
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("options", "Settings")
-        .. "  " .. self:MakeSlashLink("layout", "Toggle Layout"))
-    TA:Raw(TA.LOG.OUTPUT, "    " .. self:MakeSlashLink("toggle", "Module Toggles")
-        .. "  " .. self:MakeSlashLink("reset", "Reset Data"))
-    TA:Raw(TA.LOG.OUTPUT, "")
-    TA:Raw(TA.LOG.OUTPUT, "  |cFF555555Tip: You can type partial commands — /ta mis → missed|r")
+    -- Generated, never written out. The block that used to be here was the
+    -- third hand-written copy of the command list, and the most misleading: it
+    -- advertised `hud` (NavHud, since removed), `rotation`, `prof`, `weekly`,
+    -- `guide`, plus a dozen tracker and HUD commands from modules this flavor
+    -- does not load. Every line of it was a command that either did nothing or
+    -- silently opened the Character tab.
+    --
+    -- TABS comes from the active profile. COMMANDS comes from the modules that
+    -- actually loaded, so a module that is off, skipped by Safe Mode or absent
+    -- from this flavor's profile contributes nothing.
+    local R = TA:BeginReport("ToonAge -- Commands", 0)
+
+    R:Add("|cFFFFD100ToonAge|r v" .. tostring(self.version or "?")
+        .. "  |cFF888780" .. tostring((self.GetProfile and self:GetProfile() or {}).label or "?") .. "|r")
+    R:Add("Click any command to run it.")
+    R:Add("")
+    R:Add("  " .. self:MakeSlashLink("", "Open/Close ToonAge"))
+    R:Add("")
+
+    -- ── Tabs ──────────────────────────────────────────────────────────
+    local tabIDs = self:TabCommandNames()
+    if #tabIDs > 0 then
+        R:Add("  |cFF888780TABS:|r")
+        local labels = {}
+        for _, tab in ipairs((self.ProfileTabs and self:ProfileTabs()) or {}) do
+            labels[tab.id] = tab.label or tab.id
+        end
+        local row = {}
+        for _, id in ipairs(tabIDs) do
+            row[#row + 1] = self:MakeSlashLink(id, labels[id] or id)
+            if #row == 3 then
+                R:Add("    " .. table.concat(row, "  "))
+                row = {}
+            end
+        end
+        if #row > 0 then R:Add("    " .. table.concat(row, "  ")) end
+        R:Add("")
+    end
+
+    -- ── Module commands ───────────────────────────────────────────────
+    local modCmds = {}
+    for name, mod in pairs(self.modules or {}) do
+        if mod.SlashCommands and not mod._disabled and not mod._profileSkipped then
+            for cmd, fn in pairs(mod.SlashCommands) do
+                if type(fn) == "function" then
+                    modCmds[#modCmds + 1] = { cmd = cmd, module = name }
+                end
+            end
+        end
+    end
+    table.sort(modCmds, function(a, b) return a.cmd < b.cmd end)
+    if #modCmds > 0 then
+        R:Add("  |cFF888780COMMANDS:|r")
+        local row = {}
+        for _, e in ipairs(modCmds) do
+            row[#row + 1] = self:MakeSlashLink(e.cmd, e.cmd)
+            if #row == 4 then
+                R:Add("    " .. table.concat(row, "  "))
+                row = {}
+            end
+        end
+        if #row > 0 then R:Add("    " .. table.concat(row, "  ")) end
+        R:Add("")
+    end
+
+    -- ── System ────────────────────────────────────────────────────────
+    R:Add("  |cFF888780SYSTEM:|r")
+    local row = {}
+    for _, c in ipairs(SYSTEM_COMMANDS) do
+        row[#row + 1] = self:MakeSlashLink(c.name, c.label)
+        if #row == 2 then
+            R:Add("    " .. table.concat(row, "  "))
+            row = {}
+        end
+    end
+    if #row > 0 then R:Add("    " .. table.concat(row, "  ")) end
+
+    R:Add("")
+    R:Add("|cFF555555Partial commands work: /ta heal -> health.|r")
+    R:Add("|cFF555555Long output opens in a window you can select and copy.|r")
+    R:Finish()
 end
 
 function TA:ToggleUI()
@@ -1208,6 +1680,23 @@ end
 -- Keybind display names (localization)
 BINDING_HEADER_TOONAGE = "ToonAge"
 BINDING_NAME_TOONAGE_TOGGLE_NAVHUD = "Toggle NavHud"
+
+--- Bind a key to one of ToonAge's actions, saving it to the active binding set.
+--- Only ever called from a button the player clicked: silently rebinding
+--- someone's keyboard is the kind of thing that gets an addon uninstalled.
+--- Returns true, or false plus a reason.
+function TA:BindKey(key, action)
+    if InCombatLockdown() then return false, "not while in combat" end
+    if type(SetBinding) ~= "function" then return false, "binding API unavailable" end
+
+    local existing = GetBindingAction and GetBindingAction(key)
+    local ok = SetBinding(key, action)
+    if not ok then return false, "the game refused that key" end
+    if SaveBindings and GetCurrentBindingSet then
+        SaveBindings(GetCurrentBindingSet())
+    end
+    return true, existing
+end
 BINDING_NAME_TOONAGE_TOGGLE_ARROW = "Toggle Arrow"
 BINDING_NAME_TOONAGE_TOGGLE_TRACKER = "Toggle Tracker"
 BINDING_NAME_TOONAGE_TOGGLE_PANEL = "Toggle Main Panel"

@@ -74,6 +74,11 @@ UnitRace  = function() return "Gnome", "Gnome" end
 GetTime = function() return 0 end
 InCombatLockdown = function() return false end
 time = function() return 1750000000 end
+-- Lua's date(), which WoW provides. ErrorLog stamps entries with it. The
+-- harness never needed it before because ErrorLog was profile-skipped on
+-- TBC -- which was the bug: a client with no error log is the one you most
+-- want an error log on. It is engine now, so it boots here too.
+date = function(fmt) return "2026-01-01 00:00:00" end
 
 -- Old tab-based talent API (classic family)
 GetNumTalentTabs = function() return 3 end

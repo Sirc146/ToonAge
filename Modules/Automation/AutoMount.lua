@@ -244,8 +244,8 @@ AutoMount.SlashCommands = {
 
 function AutoMount:Init()
     -- Register events needed by this module
-    TA.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    TA.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    TA:RegisterEvent("PLAYER_REGEN_ENABLED")
+    TA:RegisterEvent("PLAYER_REGEN_DISABLED")
 
     -- Ensure settings exist in the database
     GetSettings()

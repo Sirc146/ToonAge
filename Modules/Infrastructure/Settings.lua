@@ -180,6 +180,26 @@ end
 
 -- ── Render ────────────────────────────────────────────────────────────────────
 
+-- ── Which sections this client actually has ───────────────────────────────
+--
+-- Settings.lua is shared: retail, TBC and Forever all render this same file.
+-- Rows for modules a flavour does not ship used to draw anyway -- on Forever
+-- that meant toggles for the guide stack, the arrow, dungeon gear and combat
+-- state, none of which exist here, several of which silently did nothing when
+-- clicked. Deleting them was not an option: retail ships every one.
+--
+-- So each section asks whether ANY of the modules it controls is actually
+-- registered on this client. A module only registers when its file is in the
+-- TOC, so this is a fact about the running build rather than a guess about the
+-- flavour, and it needs no maintenance when a flavour's module set changes.
+local function Has(...)
+    if not TA.GetModule then return true end   -- can't tell: show, don't hide
+    for i = 1, select("#", ...) do
+        if TA:GetModule((select(i, ...))) then return true end
+    end
+    return false
+end
+
 function Settings:Render(content, sidebar)
     -- Clear previous frames
     for _, f in ipairs(self.frames) do
@@ -191,95 +211,99 @@ function Settings:Render(content, sidebar)
     local y = -10
     local w = content:GetWidth()
 
-    -- ═══════════════════════════════════════════════════════════════════
-    -- NAVIGATION & HUD
-    -- ═══════════════════════════════════════════════════════════════════
-    y = MakeSection(content, y, w, "NAVIGATION & HUD")
+    -- Waypoints, HUD and map pins: guide-era navigation, not shipped on every flavour.
+    if Has("Arrow", "NavHud", "MapPins", "TravelRouter") then
+        -- ═══════════════════════════════════════════════════════════════════
+        -- NAVIGATION & HUD
+        -- ═══════════════════════════════════════════════════════════════════
+        y = MakeSection(content, y, w, "NAVIGATION & HUD")
 
-    y = MakeToggleRow(content, y, w, "Navigation Arrow (compass arrow pointing to waypoint)", function()
-        local A = TA:GetModule("Arrow")
-        return A and A.frame and A.frame:IsVisible()
-    end, function()
-        local A = TA:GetModule("Arrow")
-        if A then A:Toggle() end
-    end)
+        y = MakeToggleRow(content, y, w, "Navigation Arrow (compass arrow pointing to waypoint)", function()
+            local A = TA:GetModule("Arrow")
+            return A and A.frame and A.frame:IsVisible()
+        end, function()
+            local A = TA:GetModule("Arrow")
+            if A then A:Toggle() end
+        end)
 
-    y = MakeToggleRow(content, y, w, "NavHud (transparent FarmHud-style overlay with nodes & waypoints)", function()
-        local NH = TA:GetModule("NavHud")
-        return NH and NH:IsVisible()
-    end, function()
-        local NH = TA:GetModule("NavHud")
-        if NH then NH:Toggle() end
-    end)
+        y = MakeToggleRow(content, y, w, "NavHud (transparent FarmHud-style overlay with nodes & waypoints)", function()
+            local NH = TA:GetModule("NavHud")
+            return NH and NH:IsVisible()
+        end, function()
+            local NH = TA:GetModule("NavHud")
+            if NH then NH:Toggle() end
+        end)
 
-    -- NavHud sub-options — FarmHud-style controls, following it as the
-    -- reference: scale/opacity sliders plus per-element visibility toggles,
-    -- instead of the single on/off switch this used to be limited to.
-    -- Wrapped in its own background card (below) so it reads as "these are
-    -- NavHud's sub-settings" rather than 9 more rows in the general list.
-    local navHudGroupTop = y + 4
-    do
-        local NH = TA:GetModule("NavHud")
-        local function NHGet(key) return NH and NH.GetSetting and NH.GetSetting(key) end
-        local function NHSet(key, v)
-            if NH and NH.SetSetting then NH.SetSetting(key, v) end
-            if NH and NH.ApplySettings then NH:ApplySettings() end
+        -- NavHud sub-options — FarmHud-style controls, following it as the
+        -- reference: scale/opacity sliders plus per-element visibility toggles,
+        -- instead of the single on/off switch this used to be limited to.
+        -- Wrapped in its own background card (below) so it reads as "these are
+        -- NavHud's sub-settings" rather than 9 more rows in the general list.
+        local navHudGroupTop = y + 4
+        do
+            local NH = TA:GetModule("NavHud")
+            local function NHGet(key) return NH and NH.GetSetting and NH.GetSetting(key) end
+            local function NHSet(key, v)
+                if NH and NH.SetSetting then NH.SetSetting(key, v) end
+                if NH and NH.ApplySettings then NH:ApplySettings() end
+            end
+
+            y = MakeSliderRow(content, y, w, "  NavHud Scale", 0.5, 2.5, 0.1,
+                function() return NHGet("scale") or 1.4 end,
+                function(v) NHSet("scale", v) end)
+
+            y = MakeSliderRow(content, y, w, "  NavHud Opacity", 0.1, 1.0, 0.05,
+                function() return NHGet("opacity") or 0.85 end,
+                function(v) NHSet("opacity", v) end)
+
+            y = MakeToggleRow(content, y, w, "  Show Cardinal Points (N/S/E/W)", function() return NHGet("showCardinals") end,
+                function() NHSet("showCardinals", not NHGet("showCardinals")) end)
+
+            y = MakeToggleRow(content, y, w, "  Show Coordinates", function() return NHGet("showCoords") end,
+                function() NHSet("showCoords", not NHGet("showCoords")) end)
+
+            y = MakeToggleRow(content, y, w, "  Show Distance to Waypoint", function() return NHGet("showDistance") end,
+                function() NHSet("showDistance", not NHGet("showDistance")) end)
+
+            y = MakeToggleRow(content, y, w, "  Show Step Description", function() return NHGet("showStepText") end,
+                function() NHSet("showStepText", not NHGet("showStepText")) end)
+
+            y = MakeToggleRow(content, y, w, "  Show Proximity Ring", function() return NHGet("showRing") end,
+                function() NHSet("showRing", not NHGet("showRing")) end)
+
+            y = MakeToggleRow(content, y, w, "  Show Waypoint Pins", function() return NHGet("showPins") end,
+                function() NHSet("showPins", not NHGet("showPins")) end)
         end
 
-        y = MakeSliderRow(content, y, w, "  NavHud Scale", 0.5, 2.5, 0.1,
-            function() return NHGet("scale") or 1.4 end,
-            function(v) NHSet("scale", v) end)
+        -- Background card behind the NavHud sub-options, drawn at BACKGROUND
+        -- layer so the toggle/slider rows (separate Frames) sit on top of it.
+        do
+            local card = content:CreateTexture(nil, "BACKGROUND")
+            card:SetPoint("TOPLEFT",     content, "TOPLEFT",  6, navHudGroupTop)
+            card:SetPoint("BOTTOMRIGHT", content, "TOPRIGHT", -6, y - 2)
+            card:SetColorTexture(1, 0.82, 0, 0.05)
+            table.insert(Settings.frames, card)
+        end
 
-        y = MakeSliderRow(content, y, w, "  NavHud Opacity", 0.1, 1.0, 0.05,
-            function() return NHGet("opacity") or 0.85 end,
-            function(v) NHSet("opacity", v) end)
+        y = MakeToggleRow(content, y, w, "World Map Pins (numbered step markers on world map)", function()
+            return TA.db and TA.db.modules and TA.db.modules.MapPins ~= false
+        end, function()
+            if TA.db and TA.db.modules then
+                TA.db.modules.MapPins = not TA.db.modules.MapPins
+            end
+        end)
 
-        y = MakeToggleRow(content, y, w, "  Show Cardinal Points (N/S/E/W)", function() return NHGet("showCardinals") end,
-            function() NHSet("showCardinals", not NHGet("showCardinals")) end)
+        y = MakeToggleRow(content, y, w, "Travel Route Suggestions (portal/flight suggestions for cross-zone steps)", function()
+            return TA.db and TA.db.modules and TA.db.modules.TravelRouter ~= false
+        end, function()
+            if TA.db and TA.db.modules then
+                TA.db.modules.TravelRouter = not TA.db.modules.TravelRouter
+            end
+        end)
 
-        y = MakeToggleRow(content, y, w, "  Show Coordinates", function() return NHGet("showCoords") end,
-            function() NHSet("showCoords", not NHGet("showCoords")) end)
-
-        y = MakeToggleRow(content, y, w, "  Show Distance to Waypoint", function() return NHGet("showDistance") end,
-            function() NHSet("showDistance", not NHGet("showDistance")) end)
-
-        y = MakeToggleRow(content, y, w, "  Show Step Description", function() return NHGet("showStepText") end,
-            function() NHSet("showStepText", not NHGet("showStepText")) end)
-
-        y = MakeToggleRow(content, y, w, "  Show Proximity Ring", function() return NHGet("showRing") end,
-            function() NHSet("showRing", not NHGet("showRing")) end)
-
-        y = MakeToggleRow(content, y, w, "  Show Waypoint Pins", function() return NHGet("showPins") end,
-            function() NHSet("showPins", not NHGet("showPins")) end)
+        y = y - 8
     end
 
-    -- Background card behind the NavHud sub-options, drawn at BACKGROUND
-    -- layer so the toggle/slider rows (separate Frames) sit on top of it.
-    do
-        local card = content:CreateTexture(nil, "BACKGROUND")
-        card:SetPoint("TOPLEFT",     content, "TOPLEFT",  6, navHudGroupTop)
-        card:SetPoint("BOTTOMRIGHT", content, "TOPRIGHT", -6, y - 2)
-        card:SetColorTexture(1, 0.82, 0, 0.05)
-        table.insert(Settings.frames, card)
-    end
-
-    y = MakeToggleRow(content, y, w, "World Map Pins (numbered step markers on world map)", function()
-        return TA.db and TA.db.modules and TA.db.modules.MapPins ~= false
-    end, function()
-        if TA.db and TA.db.modules then
-            TA.db.modules.MapPins = not TA.db.modules.MapPins
-        end
-    end)
-
-    y = MakeToggleRow(content, y, w, "Travel Route Suggestions (portal/flight suggestions for cross-zone steps)", function()
-        return TA.db and TA.db.modules and TA.db.modules.TravelRouter ~= false
-    end, function()
-        if TA.db and TA.db.modules then
-            TA.db.modules.TravelRouter = not TA.db.modules.TravelRouter
-        end
-    end)
-
-    y = y - 8
 
     -- ═══════════════════════════════════════════════════════════════════
     -- QUEST AUTOMATION
@@ -292,289 +316,295 @@ function Settings:Render(content, sidebar)
 
     y = y - 8
 
-    y = MakeSection(content, y, w, "QUEST AUTOMATION")
+    -- Quest automation: the protected-action features. Absent from builds that removed them.
+    if Has("AutoQuest", "AutoEquip", "QuestTracker", "VendorAssist") then
+        y = MakeSection(content, y, w, "QUEST AUTOMATION")
 
-    y = MakeToggleRow(content, y, w, "Let Zygor handle questing, arrow and auto-equip when it's loaded", function()
-        local t = TA.charDB and TA.charDB.tracker
-        return not (t and t.deferToZygor == false)
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            local on = TA.charDB.tracker.deferToZygor ~= false
-            TA.charDB.tracker.deferToZygor = not on
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Let Zygor handle questing, arrow and auto-equip when it's loaded", function()
+            local t = TA.charDB and TA.charDB.tracker
+            return not (t and t.deferToZygor == false)
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                local on = TA.charDB.tracker.deferToZygor ~= false
+                TA.charDB.tracker.deferToZygor = not on
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Auto-Accept & Auto-Turn-In (hold Shift to pause)", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoQuest
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.autoQuest = not TA.charDB.tracker.autoQuest
-        end
-    end)
+        y = y - 8
+    end
 
-    y = MakeToggleRow(content, y, w, "  └ Only accept quests in active guide (stricter mode)", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoQuestGuideOnly
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.autoQuestGuideOnly = not TA.charDB.tracker.autoQuestGuideOnly
-        end
-    end)
 
-    y = MakeToggleRow(content, y, w, "Skip Cutscenes Automatically", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.cutsceneSkip
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.cutsceneSkip = not TA.charDB.tracker.cutsceneSkip
-        end
-    end)
+    -- Guide display: nothing to display without the guide stack.
+    if Has("GuideBrowser", "GuideParser", "QuestTracker", "MapPins") then
+        -- ═══════════════════════════════════════════════════════════════════
+        -- GUIDE DISPLAY
+        -- ═══════════════════════════════════════════════════════════════════
+        y = MakeSection(content, y, w, "GUIDE DISPLAY")
 
-    y = MakeToggleRow(content, y, w, "Auto-Equip Looted Upgrades (hold Shift to pause)", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoEquip
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.autoEquip = not TA.charDB.tracker.autoEquip
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Show available quests (unstarted quests from guide on map)", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.showAvailableQuests
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.showAvailableQuests = not TA.charDB.tracker.showAvailableQuests
+            end
+        end)
 
-    y = y - 8
+        y = MakeToggleRow(content, y, w, "Use small icons for map pins", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.smallMapPins
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.smallMapPins = not TA.charDB.tracker.smallMapPins
+            end
+        end)
 
-    -- ═══════════════════════════════════════════════════════════════════
-    -- GUIDE DISPLAY
-    -- ═══════════════════════════════════════════════════════════════════
-    y = MakeSection(content, y, w, "GUIDE DISPLAY")
+        y = MakeToggleRow(content, y, w, "Show category as grid (compact guide browser layout)", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.showCategoryGrid
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.showCategoryGrid = not TA.charDB.tracker.showCategoryGrid
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Show available quests (unstarted quests from guide on map)", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.showAvailableQuests
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.showAvailableQuests = not TA.charDB.tracker.showAvailableQuests
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Show category headers in guide browser", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.showCategoryHeaders
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.showCategoryHeaders = not TA.charDB.tracker.showCategoryHeaders
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Use small icons for map pins", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.smallMapPins
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.smallMapPins = not TA.charDB.tracker.smallMapPins
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Group completed quests together", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.groupCompleted
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.groupCompleted = not TA.charDB.tracker.groupCompleted
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Show category as grid (compact guide browser layout)", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.showCategoryGrid
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.showCategoryGrid = not TA.charDB.tracker.showCategoryGrid
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Group ignored/skipped quests together", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.groupIgnored
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.groupIgnored = not TA.charDB.tracker.groupIgnored
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Show category headers in guide browser", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.showCategoryHeaders
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.showCategoryHeaders = not TA.charDB.tracker.showCategoryHeaders
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Show quest chain tooltip (prerequisite info on hover)", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.showQuestChainTooltip
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.showQuestChainTooltip = not TA.charDB.tracker.showQuestChainTooltip
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Group completed quests together", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.groupCompleted
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.groupCompleted = not TA.charDB.tracker.groupCompleted
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Spoiler free (hide quest text/objectives until accepted)", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.spoilerFree
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.spoilerFree = not TA.charDB.tracker.spoilerFree
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Group ignored/skipped quests together", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.groupIgnored
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.groupIgnored = not TA.charDB.tracker.groupIgnored
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Use TomTom waypoints (set waypoints via TomTom if installed)", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.useTomTomWaypoints
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.useTomTomWaypoints = not TA.charDB.tracker.useTomTomWaypoints
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Show quest chain tooltip (prerequisite info on hover)", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.showQuestChainTooltip
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.showQuestChainTooltip = not TA.charDB.tracker.showQuestChainTooltip
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Account-Bound settings (share guide progress across characters)", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.accountBound
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.accountBound = not TA.charDB.tracker.accountBound
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Spoiler free (hide quest text/objectives until accepted)", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.spoilerFree
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.spoilerFree = not TA.charDB.tracker.spoilerFree
-        end
-    end)
+        y = y - 8
+    end
 
-    y = MakeToggleRow(content, y, w, "Use TomTom waypoints (set waypoints via TomTom if installed)", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.useTomTomWaypoints
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.useTomTomWaypoints = not TA.charDB.tracker.useTomTomWaypoints
-        end
-    end)
 
-    y = MakeToggleRow(content, y, w, "Account-Bound settings (share guide progress across characters)", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.accountBound
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.accountBound = not TA.charDB.tracker.accountBound
-        end
-    end)
+    -- Combat: rotation prediction and nameplate markers.
+    if Has("CombatState", "SpecAdaptive", "NameplateObjectives", "TooltipScorer") then
+        -- ═══════════════════════════════════════════════════════════════════
+        -- COMBAT & ROTATION
+        -- ═══════════════════════════════════════════════════════════════════
+        y = MakeSection(content, y, w, "COMBAT & ROTATION")
 
-    y = y - 8
+        y = MakeToggleRow(content, y, w, "Combat State Tracking (enables 'NEXT' ability highlighting in Rotation tab)", function()
+            return TA.db and TA.db.modules and TA.db.modules.CombatState ~= false
+        end, function()
+            if TA.db and TA.db.modules then
+                TA.db.modules.CombatState = not TA.db.modules.CombatState
+            end
+        end)
 
-    -- ═══════════════════════════════════════════════════════════════════
-    -- COMBAT & ROTATION
-    -- ═══════════════════════════════════════════════════════════════════
-    y = MakeSection(content, y, w, "COMBAT & ROTATION")
+        y = MakeToggleRow(content, y, w, "Floating 'Next 3' Prediction Bar (shows next abilities during combat)", function()
+            return TA.charDB and TA.charDB.predictBar and TA.charDB.predictBar.visible
+        end, function()
+            local Rot = TA:GetModule("Rotation")
+            if Rot then Rot:TogglePredictBar() end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Combat State Tracking (enables 'NEXT' ability highlighting in Rotation tab)", function()
-        return TA.db and TA.db.modules and TA.db.modules.CombatState ~= false
-    end, function()
-        if TA.db and TA.db.modules then
-            TA.db.modules.CombatState = not TA.db.modules.CombatState
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Nameplate Quest Markers (X on kill targets, ★ on loot targets)", function()
+            return TA.db and TA.db.modules and TA.db.modules.NameplateObjectives ~= false
+        end, function()
+            if TA.db and TA.db.modules then
+                TA.db.modules.NameplateObjectives = not (TA.db.modules.NameplateObjectives ~= false)
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Floating 'Next 3' Prediction Bar (shows next abilities during combat)", function()
-        return TA.charDB and TA.charDB.predictBar and TA.charDB.predictBar.visible
-    end, function()
-        local Rot = TA:GetModule("Rotation")
-        if Rot then Rot:TogglePredictBar() end
-    end)
+        y = MakeToggleRow(content, y, w, "Tooltip Upgrade Scoring (show +% upgrade on item hover)", function()
+            return TA.db and TA.db.modules and TA.db.modules.TooltipScorer ~= false
+        end, function()
+            if TA.db and TA.db.modules then
+                TA.db.modules.TooltipScorer = not (TA.db.modules.TooltipScorer ~= false)
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Nameplate Quest Markers (X on kill targets, ★ on loot targets)", function()
-        return TA.db and TA.db.modules and TA.db.modules.NameplateObjectives ~= false
-    end, function()
-        if TA.db and TA.db.modules then
-            TA.db.modules.NameplateObjectives = not (TA.db.modules.NameplateObjectives ~= false)
-        end
-    end)
+        y = y - 8
+    end
 
-    y = MakeToggleRow(content, y, w, "Tooltip Upgrade Scoring (show +% upgrade on item hover)", function()
-        return TA.db and TA.db.modules and TA.db.modules.TooltipScorer ~= false
-    end, function()
-        if TA.db and TA.db.modules then
-            TA.db.modules.TooltipScorer = not (TA.db.modules.TooltipScorer ~= false)
-        end
-    end)
 
-    y = y - 8
+    -- Gear automation: dungeon suggestions and set swapping.
+    if Has("DungeonGear", "GearSets") then
+        -- ═══════════════════════════════════════════════════════════════════
+        -- GEAR & DUNGEONS
+        -- ═══════════════════════════════════════════════════════════════════
+        y = MakeSection(content, y, w, "GEAR & DUNGEONS")
 
-    -- ═══════════════════════════════════════════════════════════════════
-    -- GEAR & DUNGEONS
-    -- ═══════════════════════════════════════════════════════════════════
-    y = MakeSection(content, y, w, "GEAR & DUNGEONS")
+        y = MakeToggleRow(content, y, w, "Dungeon Gear Suggestions (shows best upgrade per slot from M+ dungeons)", function()
+            return TA.db and TA.db.modules and TA.db.modules.DungeonGear ~= false
+        end, function()
+            if TA.db and TA.db.modules then
+                TA.db.modules.DungeonGear = not TA.db.modules.DungeonGear
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Dungeon Gear Suggestions (shows best upgrade per slot from M+ dungeons)", function()
-        return TA.db and TA.db.modules and TA.db.modules.DungeonGear ~= false
-    end, function()
-        if TA.db and TA.db.modules then
-            TA.db.modules.DungeonGear = not TA.db.modules.DungeonGear
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Gear Sets Auto-Swap (auto-equip sets on spec change or PvP entry)", function()
+            return TA.db and TA.db.modules and TA.db.modules.GearSets ~= false
+        end, function()
+            if TA.db and TA.db.modules then
+                TA.db.modules.GearSets = not (TA.db.modules.GearSets ~= false)
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Gear Sets Auto-Swap (auto-equip sets on spec change or PvP entry)", function()
-        return TA.db and TA.db.modules and TA.db.modules.GearSets ~= false
-    end, function()
-        if TA.db and TA.db.modules then
-            TA.db.modules.GearSets = not (TA.db.modules.GearSets ~= false)
-        end
-    end)
+        y = y - 8
+    end
 
-    y = y - 8
 
-    -- ═══════════════════════════════════════════════════════════════════
-    -- UI & LAYOUT
-    -- ═══════════════════════════════════════════════════════════════════
-    y = MakeSection(content, y, w, "UI & LAYOUT")
+    -- Layout: both rows describe the arrow/tracker windows.
+    if Has("Arrow", "QuestTracker") then
+        -- ═══════════════════════════════════════════════════════════════════
+        -- UI & LAYOUT
+        -- ═══════════════════════════════════════════════════════════════════
+        y = MakeSection(content, y, w, "UI & LAYOUT")
 
-    y = MakeToggleRow(content, y, w, "Unified HUD Layout (arrow + tracker in one frame vs. independent windows)", function()
-        return TA.db and TA.db.useUnifiedUI
-    end, function()
-        if TA.db then
-            TA.db.useUnifiedUI = not TA.db.useUnifiedUI
-            if TA.ApplyLayout then TA:ApplyLayout() end
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Unified HUD Layout (arrow + tracker in one frame vs. independent windows)", function()
+            return TA.db and TA.db.useUnifiedUI
+        end, function()
+            if TA.db then
+                TA.db.useUnifiedUI = not TA.db.useUnifiedUI
+                if TA.ApplyLayout then TA:ApplyLayout() end
+            end
+        end)
 
-    y = MakeToggleRow(content, y, w, "Hide Default Blizzard Quest Tracker", function()
-        return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.replaceBlizzTracker
-    end, function()
-        if TA.charDB and TA.charDB.tracker then
-            TA.charDB.tracker.replaceBlizzTracker = not TA.charDB.tracker.replaceBlizzTracker
-            local QT = TA:GetModule("QuestTracker")
-            if QT then QT:UpdateBlizzardTrackerVisibility() end
-        end
-    end)
+        y = MakeToggleRow(content, y, w, "Hide Default Blizzard Quest Tracker", function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.replaceBlizzTracker
+        end, function()
+            if TA.charDB and TA.charDB.tracker then
+                TA.charDB.tracker.replaceBlizzTracker = not TA.charDB.tracker.replaceBlizzTracker
+                local QT = TA:GetModule("QuestTracker")
+                if QT then QT:UpdateBlizzardTrackerVisibility() end
+            end
+        end)
 
-    y = y - 8
+        y = y - 8
+    end
 
-    -- ═══════════════════════════════════════════════════════════════════
-    -- NEW CHARACTERS (account-wide — governs alts you have not rolled yet)
-    -- ═══════════════════════════════════════════════════════════════════
-    y = MakeSection(content, y, w, "NEW CHARACTERS (account-wide)")
 
-    y = MakeChoiceRow(content, y, w, "On first login", {
-        { value = "wizard",  text = "|cFFFFD100SETUP WIZARD|r" },
-        { value = "inherit", text = "|cFF4AFF7AINHERIT SILENTLY|r" },
-        { value = "off",     text = "|cFF888780DO NOTHING|r" },
-    }, function()
-        return (TA.db and TA.db.newCharBehavior) or "wizard"
-    end, function(v)
-        if TA.db then TA.db.newCharBehavior = v end
-    end)
+    -- Every row in this section drives the Onboarding module: the first-login
+    -- behaviour, the preset it applies, and a button whose whole job is to run
+    -- /ta onboard. On a build that does not ship Onboarding the choices save a
+    -- setting nothing reads, and the button answers "Unknown command: onboard"
+    -- in chat -- which is what it did on Forever.
+    if Has("Onboarding") then
+        -- ═══════════════════════════════════════════════════════════════════
+        -- NEW CHARACTERS (account-wide — governs alts you have not rolled yet)
+        -- ═══════════════════════════════════════════════════════════════════
+        y = MakeSection(content, y, w, "NEW CHARACTERS (account-wide)")
 
-    y = MakeChoiceRow(content, y, w, "Preset new characters inherit", {
-        { value = "auto",   text = "|cFF4AFF7AFULL AUTO|r" },
-        { value = "manual", text = "|cFFFFD100MANUAL|r" },
-    }, function()
-        return (TA.db and TA.db.defaultPreset) or "auto"
-    end, function(v)
-        if TA.db then TA.db.defaultPreset = v end
-    end)
+        y = MakeChoiceRow(content, y, w, "On first login", {
+            { value = "wizard",  text = "|cFFFFD100SETUP WIZARD|r" },
+            { value = "inherit", text = "|cFF4AFF7AINHERIT SILENTLY|r" },
+            { value = "off",     text = "|cFF888780DO NOTHING|r" },
+        }, function()
+            return (TA.db and TA.db.newCharBehavior) or "wizard"
+        end, function(v)
+            if TA.db then TA.db.newCharBehavior = v end
+        end)
 
-    y = y - 4
-    local ncNote = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    ncNote:SetFont(STANDARD_TEXT_FONT, 9, "")
-    ncNote:SetText("|cFF888780Inherit applies the preset above with no popup — automation, "
-                 .. "prediction bar and arrow only. Window positions and per-character tuning "
-                 .. "are not copied. The button runs the setup wizard on this character now.|r")
-    ncNote:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
-    ncNote:SetWidth(w - 28)
-    ncNote:SetJustifyH("LEFT")
-    table.insert(self.frames, ncNote)
-    y = y - 34
+        y = MakeChoiceRow(content, y, w, "Preset new characters inherit", {
+            { value = "auto",   text = "|cFF4AFF7AFULL AUTO|r" },
+            { value = "manual", text = "|cFFFFD100MANUAL|r" },
+        }, function()
+            return (TA.db and TA.db.defaultPreset) or "auto"
+        end, function(v)
+            if TA.db then TA.db.defaultPreset = v end
+        end)
 
-    local wizBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    wizBtn:SetSize(150, 22)
-    wizBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
-    wizBtn:SetText("Run setup wizard")
-    wizBtn:SetScript("OnClick", function() TA:SlashCommand("onboard") end)
-    table.insert(self.frames, wizBtn)
-    y = y - 28
+        y = y - 4
+        local ncNote = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        ncNote:SetFont(STANDARD_TEXT_FONT, 9, "")
+        ncNote:SetText("|cFF888780Inherit applies the preset above with no popup — automation, "
+                     .. "prediction bar and arrow only. Window positions and per-character tuning "
+                     .. "are not copied. The button runs the setup wizard on this character now.|r")
+        ncNote:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
+        ncNote:SetWidth(w - 28)
+        ncNote:SetJustifyH("LEFT")
+        table.insert(self.frames, ncNote)
+        y = y - 34
 
-    y = y - 8
+        local wizBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+        wizBtn:SetSize(150, 22)
+        wizBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
+        wizBtn:SetText("Run setup wizard")
+        wizBtn:SetScript("OnClick", function() TA:SlashCommand("onboard") end)
+        table.insert(self.frames, wizBtn)
+        y = y - 28
+
+        y = y - 8
+    end
 
     -- ═══════════════════════════════════════════════════════════════════
     -- MODULES (advanced — disable features you don't use)
     -- ═══════════════════════════════════════════════════════════════════
-    y = MakeSection(content, y, w, "MODULES (toggle features — reload to apply)")
-
-    local moduleList = { "NavHud", "MapPins", "CombatState", "DungeonGear", "TravelRouter", "Onboarding", "CutsceneSkip", "AutoEquip", "GearSets", "NameplateObjectives", "TooltipScorer" }
-    for _, modName in ipairs(moduleList) do
-        y = MakeToggleRow(content, y, w, modName, function()
-            return TA.db and TA.db.modules and TA.db.modules[modName] ~= false
-        end, function()
-            if TA.db and TA.db.modules then
-                TA.db.modules[modName] = not (TA.db.modules[modName] ~= false)
-            end
-        end)
+    -- Filtered to what this build registered. The full list is every module
+    -- that has ever been toggleable; a toggle for a module the client never
+    -- loaded is a switch wired to nothing. The HEADER is drawn only if at least
+    -- one survives -- a section title over empty space, which is what Forever
+    -- showed, reads as a feature that failed to load.
+    local moduleList = {}
+    for _, name in ipairs({ "NavHud", "MapPins", "CombatState", "DungeonGear",
+                            "TravelRouter", "Onboarding", "GearSets",
+                            "NameplateObjectives", "TooltipScorer" }) do
+        if Has(name) then moduleList[#moduleList + 1] = name end
     end
 
-    y = y - 16
+    if #moduleList > 0 then
+        y = MakeSection(content, y, w, "MODULES (toggle features — reload to apply)")
+        for _, modName in ipairs(moduleList) do
+            y = MakeToggleRow(content, y, w, modName, function()
+                return TA.db and TA.db.modules and TA.db.modules[modName] ~= false
+            end, function()
+                if TA.db and TA.db.modules then
+                    TA.db.modules[modName] = not (TA.db.modules[modName] ~= false)
+                end
+            end)
+        end
+        y = y - 16
+    end
 
     -- ═══════════════════════════════════════════════════════════════════
     -- INFO / ABOUT
@@ -606,7 +636,12 @@ function Settings:Render(content, sidebar)
     y = y - 8
     y = MakeSection(content, y, w, "ABOUT")
     y = MakeInfoRow(content, y, w, "Version", TA.version or "1.0.0")
-    y = MakeInfoRow(content, y, w, "Author", "Chris")
+    -- From the TOC, which is the one place the author is actually declared
+    -- (## Author: SIRC). A second copy in here is a second thing to get wrong,
+    -- and it was wrong -- it said "Chris".
+    local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+    local author = getMeta and getMeta("ToonAge", "Author")
+    y = MakeInfoRow(content, y, w, "Author", (author ~= nil and author ~= "") and author or "SIRC")
     y = MakeInfoRow(content, y, w, "Modules", string.format("%d total (%d active)", loaded + disabled + errored, loaded))
     y = MakeInfoRow(content, y, w, "Guides loaded", tostring(U.TableLength(TA.Guides or {})))
 
@@ -735,12 +770,9 @@ function Settings:Init() end
 
 --- Keys exported in a profile (subset of charDB that constitutes "preferences")
 local PROFILE_KEYS = {
-    "tracker.autoQuest",
-    "tracker.cutsceneSkip",
-    "tracker.autoEquip",
+
     "tracker.deferToZygor",
     "tracker.replaceBlizzTracker",
-    "tracker.autoQuestGuideOnly",
     "tracker.showAvailableQuests",
     "tracker.smallMapPins",
     "tracker.spoilerFree",

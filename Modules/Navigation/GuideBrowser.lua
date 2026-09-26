@@ -295,7 +295,7 @@ end
 function GB:Init()
     -- Register for super-tracking changes (when player clicks a quest in log)
     if C_SuperTrack then
-        TA.eventFrame:RegisterEvent("SUPER_TRACKING_CHANGED")
+        TA:RegisterEvent("SUPER_TRACKING_CHANGED")
     end
 end
 

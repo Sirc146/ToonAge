@@ -132,6 +132,20 @@ function C.NoDebuff(spellID)
 end
 
 --- Buff stacks at or above N (e.g. combo-point-like or ramping procs).
+--- Is a buff up, matched by the NAME of `spellID` rather than its id?
+--- For talents whose granted buff has an id of its own that is not published
+--- anywhere reliable (Darkest Night is the standing example: 457058 is the
+--- passive, and the buff it grants carries a different id), matching on the
+--- talent's own localized name is correct where a guessed id is not.
+function C.HasBuffNamed(spellID)
+    return Tag(function(s)
+        local CS = ToonAge.CombatState
+        local nm = CS and CS._SpellName and CS._SpellName(spellID)
+        if not nm then return false end
+        return (s.buffNames and s.buffNames[nm]) ~= nil
+    end, { kind = "HasBuffNamed", id = spellID })
+end
+
 function C.BuffStacks(spellID, n)
     return Tag(function(s)
         local a = s.buffs and s.buffs[spellID]

@@ -1,4 +1,4 @@
-## Interface: 120100, 120105, 120001, 16001
+## Interface: 120100, 120105, 120001
 ## Title: |cFFFFD100ToonAge|r
 ## Notes: All-in-one leveling, gear, rotation, and endgame companion.
 ## Author: SIRC
@@ -32,6 +32,10 @@ Core\Utils.lua
 Core\State.lua
 Core\UI.lua
 Core\UIModern.lua
+# The component factory every Forever tab draws through. Listed here
+# because Modules/Forever/Character.lua needs TA.Layout, and Forever loads
+# through the Mainline TOC. Retail modules do not use it; it is inert there.
+Core\Layout.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
@@ -108,6 +112,8 @@ Modules\Infrastructure\CoordHarvester.lua
 # ── Modules: Combat (helpers before consumers) ────────────────────────
 Modules\Combat\TalentsHelpers.lua
 Modules\Combat\CombatState.lua
+Modules\Combat\CombatRecorder.lua
+Modules\Combat\CombatReport.lua
 Modules\Combat\Rotation.lua
 Modules\Combat\PullPlanner.lua
 Modules\Combat\SpecAdaptive.lua
@@ -160,6 +166,8 @@ Modules\Farming\ProfQuesting.lua
 
 # ── Modules: Automation ───────────────────────────────────────────────
 Modules\Automation\CutsceneSkip.lua
+Modules\Automation\AutoQuest.lua
+Modules\Automation\VendorAssist.lua
 Modules\Automation\AutoMount.lua
 Modules\Automation\DeathRecovery.lua
 Modules\Automation\RestOptimizer.lua

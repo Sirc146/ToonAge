@@ -295,12 +295,13 @@ EL.SlashCommands = {
                 e.time, e.source, shortMsg))
         end
         TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
-        TA:Raw(TA.LOG.OUTPUT, "|cFF888780/ta errors copy = copyable window  |  /ta errors clear = wipe log|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFF888780/ta errors clear = wipe log|r")
 
-        -- Auto-open the copy window if there are many errors
-        if #log > 10 then
-            self:ShowCopyFrame()
-        end
+        -- No auto-open here any more. TA:SlashCommand captures everything this
+        -- handler prints and, past two lines, puts it in the selectable copy
+        -- window itself -- so opening ShowCopyFrame as well produced two
+        -- stacked windows holding the same log. The footer no longer advertises
+        -- `copy` for the same reason: the plain command already lands there.
     end,
 
 }

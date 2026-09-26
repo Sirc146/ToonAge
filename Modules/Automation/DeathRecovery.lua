@@ -146,9 +146,9 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function DR:Init()
-    TA.eventFrame:RegisterEvent("PLAYER_DEAD")
-    TA.eventFrame:RegisterEvent("PLAYER_ALIVE")
-    TA.eventFrame:RegisterEvent("PLAYER_UNGHOST")
+    TA:RegisterEvent("PLAYER_DEAD")
+    TA:RegisterEvent("PLAYER_ALIVE")
+    TA:RegisterEvent("PLAYER_UNGHOST")
 end
 
 DR.SlashCommands = {}

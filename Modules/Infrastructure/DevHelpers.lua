@@ -818,6 +818,24 @@ local function SpellAudit()
         p("Run /ta spellaudit out of combat.")
         return
     end
+
+    -- This audits Data/Retail against the running client. On any other flavor
+    -- almost every ID is legitimately absent — a Vanilla-era client has no
+    -- Eternity Surge — and the result is several hundred lines of noise that
+    -- look like failures. Worse, the few genuine findings drown in it.
+    --
+    -- So: say what the report will and will not mean, rather than printing it
+    -- as though it were a verdict. Running it anyway is allowed, because the
+    -- name mismatches ARE useful on a classic-family client: an ID that exists
+    -- under a different name is an ID that survived into this game.
+    local flavor = TA.flavor or "unknown"
+    if flavor ~= "retail" then
+        p(("|cFFFF9A1ANote:|r this audits Retail data, and you are on %s."):format(flavor))
+        p("  Nearly every 'missing' line below is correct and expected.")
+        p("  The useful section is |cFFFFD100name mismatches|r — IDs that exist here")
+        p("  under a different name, which is how Data/" .. tostring(
+            (TA.DataNamespace and TA:DataNamespace()) or "?") .. " gets built.")
+    end
     local getName = (C_Spell and C_Spell.GetSpellName) or GetSpellInfo
     if not getName then p("No spell-name API on this client."); return end
 
@@ -1038,7 +1056,8 @@ local function SpellAudit()
     table.sort(missing); table.sort(mismatch)
     local out = {
         string.format("ToonAge spell audit — %s  build %s  flavor %s",
-            date("%Y-%m-%d %H:%M"), select(2, GetBuildInfo()) or "?", tostring(TA.flavor)),
+            date("%Y-%m-%d %H:%M"), select(2, GetBuildInfo()) or "?", tostring(TA.flavor))
+            .. ("  addon %s"):format(tostring(TA.version or "?")),
         string.format("%d IDs checked · %d missing on this client · %d name mismatches · %d condition auras missing · %d currency issues",
             checked, #missing, #mismatch, #auraMissing, #currencyLines),
         "",

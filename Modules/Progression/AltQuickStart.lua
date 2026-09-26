@@ -30,6 +30,14 @@ AQS.shown = false
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
 local function GetSpecDisplayInfo()
+    -- Guarded: GetSpecialization is absent on clients with no spec system (WoW
+    -- Forever), and calling a nil global throws. The profile normally keeps
+    -- this module off such clients, but a stale install reached it once, and a
+    -- crash in a setup wizard is a bad way to find that out.
+    if type(GetSpecialization) ~= "function"
+       or type(GetSpecializationInfo) ~= "function" then
+        return nil
+    end
     local specIndex = GetSpecialization()
     if not specIndex then return nil end
     local specID, specName, _, specIcon, role = GetSpecializationInfo(specIndex)

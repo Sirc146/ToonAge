@@ -86,7 +86,6 @@ local PROFILES = {
             Spells            = true,
             PetCare           = true,
             Gear              = true,
-            AutoEquip         = true,
             PvPAdvisor        = true,
         },
         -- Advisory-only product: no Guide (player uses Zygor), no Delves or
@@ -122,7 +121,6 @@ local PROFILES = {
             Character    = true,
             PetCare      = true,
             Gear         = true,
-            AutoEquip    = true,
             GuideParser  = true,
             GuideImporter = true,
             GuideBrowser = true,
@@ -136,18 +134,16 @@ local PROFILES = {
             XPTracker    = true,
             RestOptimizer = true,
             GatherTracker = true,
-            CutsceneSkip = true,
-            AutoMount    = true,
             DeathRecovery = true,
             Settings     = true,
             ChatCopy     = true,
         },
         -- Leveling companion: no Delves/Weekly/Talents/Rotation/Professions.
         tabs      = {
-            { id = "character", label = "Character", module = "Character"    },
-            { id = "guide",     label = "Guide",     module = "QuestTracker" },
-            { id = "gear",      label = "Gear",      module = "Gear"         },
-            { id = "pets",      label = "Pet Care",  module = "PetCare"      },
+            { id = "character",  label = "Character",  module = "Character"    },
+            { id = "guide",      label = "Guide",      module = "QuestTracker" },
+            { id = "gear",       label = "Gear",       module = "Gear"         },
+            { id = "pets",       label = "Pet Care",   module = "PetCare"      },
         },
         data      = "Mists",
         statRules = "mists-trees",
@@ -173,22 +169,88 @@ local PROFILES = {
         statRules = "vanilla-trees",
         scaffold  = true,
     },
-    -- WoW Forever. REACHABLE as of the 2026-09 beta (Mainline project id with
-    -- a 1.60.x interface code — see Core/Environment.lua). Content is
-    -- Vanilla-era, so none of the Retail data applies; the API surface is
-    -- Mainline's, so none of the TBC/MoP tree code applies either. Until
-    -- Data/Forever exists this profile ships only shared infrastructure, which
-    -- carries no game-rule content: the addon loads, captures errors and can
-    -- report its own state without giving a single line of wrong advice.
+    -- WoW Forever. Detected since the 2026-09 beta (Mainline project id with a
+    -- 1.60.x interface). The client picks ToonAge_Mainline.toc, so every retail
+    -- file is loaded and this profile is the only thing deciding what runs.
+    --
+    -- The split is by DEPENDENCY, not by caution. Modules listed here read the
+    -- world through APIs this client has and carry no expansion numbers of
+    -- their own: waypoints, coordinates, XP, gathering, rest, guide parsing and
+    -- tracking. Everything left out — gear scoring, rotations, talents,
+    -- professions, pets, Delves, Weekly, world quests, travel routing — is
+    -- driven by Data/Retail values that are wrong for Vanilla-era content, and
+    -- stays out until Data/Forever exists.
+    --
+    -- partial (not scaffold): the addon does real work here, but only part of
+    -- the product. ApiGuard stays quiet about the missing manifest, and the UI
+    -- explains itself when no guide has been imported yet.
     forever = {
         label     = "WoW Forever (beta)",
         allowAll  = false,
         modules   = {
-            ErrorLog = true,   -- shared Modules/Infrastructure/ErrorLog.lua
+            -- A readout, not advice: Modules/Forever/Character.lua reports what
+            -- the client says about this character and ranks nothing. It
+            -- registers as ForeverCharacter so it cannot collide with the
+            -- retail Character module, which ships in the same TOC.
+            ForeverCharacter = true,
+            -- Infrastructure — no game-rule content at all
+            ErrorLog         = true,
+            Settings         = true,
+            ChatCopy         = true,
+            CoordHarvester   = true,
+            -- No guide stack here. Forever ships no guides, none of the
+            -- existing ones describe this game's quests, and the tracker is
+            -- what dragged SpecAdaptive and the rest of the retail chain in
+            -- behind it. A guide tab with nothing to guide you through is
+            -- worse than no tab.
+            -- No HUD either, as of 2026-09-22. It was the last piece of the
+            -- guide-era overlay stack left here: it drew waypoints that no
+            -- longer exist, and gather dots for a recorder whose loot-API path
+            -- is unverified on this client. The arrow, the tracker drawer, the
+            -- map pins, the ant trail and the coordinate resolver went for the
+            -- same reason — they point at guide steps, and there are none.
+            -- Still shipped on retail and Mists; this is a Forever-only cut.
+            -- Leveling quality of life
+            XPTracker        = true,
+            RestOptimizer    = true,
+            GatherTracker    = true,
+            DeathRecovery    = true,
+            -- The recorder. No outside source has numbers for this client, so
+            -- the client itself is the only one, and playing is how it gets
+            -- read. Everything Data/Forever eventually contains starts here.
+            DataHarvester    = true,
+            -- Gear: a Vanilla-correct readout of what is equipped (per-slot
+            -- item + item level) and the combined stats those items carry.
+            -- Reports facts only; no scoring until Data/Forever weights exist.
+            ForeverGear      = true,
+            -- Talents: a readout of the three Vanilla trees and the points in
+            -- each. Guards the classic talent globals heavily and says so
+            -- plainly when the client will not answer them.
+            ForeverTalents   = true,
+            -- Spellbook: what the character actually knows, grouped by skill
+            -- line. Not a rotation — Vanilla exposes none — a readout of known
+            -- spells and their ranks, guarded against both spellbook APIs.
+            ForeverRotation  = true,
+            -- Pets: only shown for classes that actually command a pet
+            -- (Hunter/Warlock), gated by the tab's condition below.
+            ForeverPets      = true,
+            -- PvP: honor/rank standing. Forever runs the full Vanilla 14-rank
+            -- ladder at the current cap (confirmed against the live PvP pane),
+            -- so this is a real readout, not a placeholder.
+            ForeverPvP       = true,
+        },
+        tabs      = {
+            { id = "character",  label = "Character",  module = "ForeverCharacter" },
+            { id = "gear",       label = "Gear",       module = "ForeverGear"      },
+            { id = "talents",    label = "Talents",    module = "ForeverTalents"   },
+            { id = "spells",     label = "Spells",     module = "ForeverRotation"  },
+            { id = "pets",       label = "Pets",       module = "ForeverPets", condition = "hasPetClass" },
+            { id = "pvp",        label = "PvP",        module = "ForeverPvP"    },
+            { id = "harvest",    label = "Harvest",    module = "DataHarvester" },
         },
         data      = "Forever",
         statRules = "vanilla-trees",
-        scaffold  = true,
+        partial   = true,
     },
 }
 

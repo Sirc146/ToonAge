@@ -844,17 +844,9 @@ R[255] = {
                 when = C.TargetLives(4),
             },
             {
-                spellID = 320976,
-                name = "Kill Shot",
-                priority = 7,
-                why = "Execute under 20% HP. Pack Leader procs allow use at any HP in burst.",
-                tags = { "active" },
-                when = C.ExecuteOrProc(20),
-            },
-            {
                 spellID = 187650,
                 name = "Freezing Trap",
-                priority = 8,
+                priority = 7,
                 why = "CC — freeze a mob 60s. Pull around it or use on dangerous adds.",
                 tags = { "active" },
                 -- CC is for live packs, never for something already dying.
@@ -934,14 +926,6 @@ R[255] = {
                 tags = { "active" },
             },
             {
-                spellID = 320976,
-                name = "Kill Shot",
-                priority = 9,
-                why = "Execute under 20% — always priority on low-HP targets.",
-                tags = { "active" },
-                when = C.ExecuteOrProc(20),
-            },
-            {
                 spellID = 1261193,
                 name = "Boomstick",
                 priority = nil,
@@ -1010,17 +994,9 @@ R[255] = {
                 tags = { "core" },
             },
             {
-                spellID = 320976,
-                name = "Kill Shot",
-                priority = 6,
-                why = "Execute under 20% — highest priority during execute phase.",
-                tags = { "active" },
-                when = C.ExecuteOrProc(20),
-            },
-            {
                 spellID = 190925,
                 name = "Harpoon",
-                priority = 7,
+                priority = 6,
                 why = "If needed for positioning — does not break Tip stacks.",
                 tags = { "active" },
                 when = C.TargetLives(4),
@@ -2557,7 +2533,10 @@ R[66] = { -- Protection Paladin
                 talentAlt = "Hammer of the Righteous",
             },
             {
-                spellID = 88263,
+                -- 53595 is the castable Protection Paladin ability (Wowhead);
+                -- 88263 is an internal damage component, not something the
+                -- player presses.
+                spellID = 53595,
                 name = "Hammer of the Righteous",
                 priority = 4,
                 why = "Melee HP filler if you didn't take Blessed Hammer — still benefits from the 4pc bonus damage.",
@@ -2657,7 +2636,10 @@ R[66] = { -- Protection Paladin
                 talentAlt = "Hammer of the Righteous",
             },
             {
-                spellID = 88263,
+                -- 53595 is the castable Protection Paladin ability (Wowhead);
+                -- 88263 is an internal damage component, not something the
+                -- player presses.
+                spellID = 53595,
                 name = "Hammer of the Righteous",
                 priority = 6,
                 why = "Filler if Blessed Hammer isn't talented — still boosted by 4pc.",
@@ -7261,7 +7243,7 @@ R[261] = { -- Subtlety
                 priority = 3,
                 why = "At 6+ CP when Darkest Night is active — always take priority over Black Powder while the buff is up.",
                 tags = { "active" },
-                when = C.And(C.ComboAtLeast(6), C.HasBuff(457058)),
+                when = C.And(C.ComboAtLeast(6), C.HasBuffNamed(457058)),
             },
             {
                 spellID = 319175,
@@ -7314,7 +7296,7 @@ R[261] = { -- Subtlety
                 priority = 3,
                 why = "At 6+ CP while Darkest Night is active — guaranteed crit and +50% damage takes priority over everything else.",
                 tags = { "active" },
-                when = C.And(C.ComboAtLeast(6), C.HasBuff(457058)),
+                when = C.And(C.ComboAtLeast(6), C.HasBuffNamed(457058)),
             },
             {
                 spellID = 280719,

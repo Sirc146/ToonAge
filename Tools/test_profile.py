@@ -127,13 +127,52 @@ def test_scaffolds_inert():
     _, ta = load_profile(1, 16001)
     check("forever flavor detected",     ta.flavor, "forever")
     fp = ta.GetProfile(ta)
-    check("forever profile is scaffold", fp.scaffold, True)
+    check("forever profile is partial",  fp.partial, True)
+    check("forever is not a scaffold",   fp.scaffold or False, False)
     check("forever data namespace",      fp.data, "Forever")
     check("forever label",               fp.label, "WoW Forever (beta)")
-    check("forever allows ErrorLog",     ta.ModuleInProfile(ta, "ErrorLog"), True)
-    for mod in ("Gear", "Rotation", "QuestTracker", "Delves", "StatCaps", "Talents", "AutoEquip"):
+    # What runs: engine-only modules that read the world through APIs this
+    # client has, and carry no expansion numbers of their own.
+    for mod in ("ErrorLog", "Settings", "XPTracker", "GatherTracker",
+                "AutoMount", "NavHud", "RestOptimizer", "DeathRecovery"):
+        check(f"forever allows {mod}",   ta.ModuleInProfile(ta, mod), True)
+    # What does not: anything driven by Data/Retail values that are wrong for
+    # Vanilla-era content.
+    # The guide stack is out too: Forever ships no guides, and the tracker is
+    # what pulled the retail chain (SpecAdaptive and friends) in behind it.
+    for mod in ("Gear", "Rotation", "Talents", "AutoEquip", "Delves", "Weekly",
+                "Professions", "Pets", "StatCaps", "TravelRouter", "RoleMorph",
+                "QuestTracker", "GuideParser", "GuideImporter", "GuideBrowser",
+                "GuideContextMenu", "SpecAdaptive",
+                # Guide machinery: all of it points at guide steps.
+                "Arrow", "MapPins", "AntTrail", "CoordResolver"):
         check(f"forever denies {mod}",   ta.ModuleInProfile(ta, mod), False)
     check("forever no retail data",      ta.DataNamespace(ta), "Forever")
+    # Character (a readout) and Automation (chores). Both are flavor-safe;
+    # everything that needs Data/Forever stays denied above.
+    tabs = list(ta.ProfileTabs(ta).values())
+    check("forever ships four tabs",     len(tabs), 4)
+    check("the first tab is Character",  tabs[0].id, "character")
+    check("the second is Automation",    tabs[1].id, "automation")
+    check("the third is Combat",         tabs[2].id, "combat")
+    check("the fourth is Harvest",       tabs[3].id, "harvest")
+    # The readout registers as ForeverCharacter, not Character: Retail ships
+    # both files in one TOC and RegisterModule is a flat overwrite, so sharing
+    # the name let TOC order decide which Character tab Retail got.
+    check("forever allows ForeverCharacter",
+          ta.ModuleInProfile(ta, "ForeverCharacter"), True)
+    check("forever does NOT allow the retail Character",
+          ta.ModuleInProfile(ta, "Character"), False)
+    # Auto-accept lived in QuestTracker until the guide cut took the tracker
+    # out and the feature with it. It is its own module now precisely so a
+    # flavour can have the chores without the guide stack.
+    check("forever allows AutoQuest",    ta.ModuleInProfile(ta, "AutoQuest"), True)
+    check("forever allows VendorAssist", ta.ModuleInProfile(ta, "VendorAssist"), True)
+    # The recorder: no outside source has numbers for this client, so the
+    # client is the only one and this is what reads it.
+    check("forever allows DataHarvester", ta.ModuleInProfile(ta, "DataHarvester"), True)
+    check("forever still denies QuestTracker",
+          ta.ModuleInProfile(ta, "QuestTracker"), False)
 
 
 def test_unknown_fallback():

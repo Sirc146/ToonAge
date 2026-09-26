@@ -329,7 +329,7 @@ end
 
 function RM:Init()
     -- Register events
-    TA.eventFrame:RegisterEvent("READY_CHECK")
+    TA:RegisterEvent("READY_CHECK")
 
     -- Apply camera on login (in case they logged in as a different spec)
     C_Timer.After(2, function() RM:ApplyCameraProfile() end)

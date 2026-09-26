@@ -50,6 +50,9 @@ Data\Mists\PetFoods.lua
 Data\Mists\Guides\TAG_Exiles_Reach.lua
 
 # ── Modules: Infrastructure (SHARED ErrorLog first) ────────────────────
+# ── Modules: Automation (shared, flavour-neutral chores) ──────────
+Modules\Automation\VendorAssist.lua
+
 Modules\Mists\DevHelpers.lua
 Modules\Infrastructure\ErrorLog.lua
 

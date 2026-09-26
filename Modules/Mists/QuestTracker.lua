@@ -576,13 +576,13 @@ end
 -- ══════════════════════════════════════════════════════════════════════════════
 
 function QT:Init()
-    TA.eventFrame:RegisterEvent("QUEST_TURNED_IN")
-    TA.eventFrame:RegisterEvent("QUEST_LOG_UPDATE")
-    TA.eventFrame:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
-    TA.eventFrame:RegisterEvent("QUEST_DETAIL")
-    TA.eventFrame:RegisterEvent("QUEST_PROGRESS")
-    TA.eventFrame:RegisterEvent("QUEST_COMPLETE")
-    TA.eventFrame:RegisterEvent("QUEST_GREETING")
+    TA:RegisterEvent("QUEST_TURNED_IN")
+    TA:RegisterEvent("QUEST_LOG_UPDATE")
+    TA:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
+    TA:RegisterEvent("QUEST_DETAIL")
+    TA:RegisterEvent("QUEST_PROGRESS")
+    TA:RegisterEvent("QUEST_COMPLETE")
+    TA:RegisterEvent("QUEST_GREETING")
 
     -- Init saved settings
     TA.charDB.tracker = TA.charDB.tracker or {}

@@ -23,12 +23,18 @@ local MAX_SAMPLES   = 60
 
 -- ── Core XP functions ─────────────────────────────────────────────────────────
 
+-- Through U.SafeNum, which tests for a secret before converting.
+--
+-- These feed RecordSample's arithmetic on a timer, so an unguarded secret here
+-- would not be one error -- it would be one per tick, for as long as the value
+-- stays secret. Whether XP is secret in combat on this client is not yet
+-- measured; the guard costs nothing if it never is.
 local function GetTotalXP()
-    return UnitXP("player") or 0
+    return U.SafeNum(UnitXP and UnitXP("player"), 0)
 end
 
 local function GetMaxXP()
-    return UnitXPMax("player") or 1
+    return U.SafeNum(UnitXPMax and UnitXPMax("player"), 1)
 end
 
 local function GetLevel()
@@ -138,7 +144,7 @@ end
 -- ── Rested XP tracking ────────────────────────────────────────────────────────
 
 function XP:GetRestedInfo()
-    local rested = GetXPExhaustion() or 0
+    local rested = U.SafeNum(GetXPExhaustion and GetXPExhaustion(), 0)
     local isResting = IsResting()
     local maxRested = self.lastKnownMax * 1.5  -- rested cap is 150% of current level
     local restedPct = maxRested > 0 and (rested / maxRested * 100) or 0
@@ -201,7 +207,7 @@ end
 function XP:Init()
     if IsMaxLevel() then return end  -- no point tracking at max level
 
-    TA.eventFrame:RegisterEvent("PLAYER_XP_UPDATE")
+    TA:RegisterEvent("PLAYER_XP_UPDATE")
 
     self.sessionStart  = GetTime()
     self.lastKnownXP   = GetTotalXP()

@@ -214,7 +214,7 @@ function GatherTracker:Init()
         TA.charDB.gatherHistory = TA.charDB.gatherHistory or {}
     end
 
-    TA.eventFrame:RegisterEvent("LOOT_OPENED")
+    TA:RegisterEvent("LOOT_OPENED")
 
     -- Install NavHud hook (may need to defer if NavHud not yet init)
     local NavHud = TA:GetModule("NavHud")

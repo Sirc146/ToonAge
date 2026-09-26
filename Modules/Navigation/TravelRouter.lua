@@ -422,7 +422,7 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function TR:Init()
-    TA.eventFrame:RegisterEvent("HEARTHSTONE_BOUND")
+    TA:RegisterEvent("HEARTHSTONE_BOUND")
 
     -- Try to discover flight paths (works best after taxi map has been opened)
     C_Timer.After(5, function()

@@ -25,6 +25,18 @@ local U = TA.Utils
 --
 -- tostring(v) alone survives and renders the true number on screen, which is
 -- why a chat dump shows an ID a human can read while Lua cannot touch it.
+--
+-- ⚠ BUT DO NOT PUT THAT STRING IN THE UI. Measured on Forever 2026-09-23:
+-- tostring(secret) is itself a SECRET STRING. A FontString holding one makes
+-- the frame's measured height secret, the scroll child's height secret, and
+-- Blizzard's own SecureScrollTemplates then raises on its own arithmetic:
+--
+--   SecureScrollTemplates.lua:140: attempt to perform arithmetic on a secret
+--   number value (execution tainted by 'ToonAge')
+--
+-- The error lands in Blizzard code, names ToonAge as the taint source, and
+-- kills the whole tab render. Chat is safe; frames are not. Display a literal
+-- placeholder instead.
 -- tonumber(tostring(v)) therefore returns nil, and SafeNum falls through to
 -- its fallback -- 0. That is not a conversion failure to be fixed; it is the
 -- designed behaviour of the value.
@@ -118,8 +130,26 @@ end
 --- @param val any — the potentially tainted value
 --- @param fallback number|nil — value to return on failure (default 0)
 --- @return number
+--- Is this value one of 12.0's "secret" values?
+---
+--- The only reliable test. Everything else about a secret -- comparing it,
+--- converting it, its length -- raises, so the check has to come FIRST, before
+--- any other operation touches the value.
+--- @param v any
+--- @return boolean
+function U.IsSecret(v)
+    if not issecretvalue then return false end
+    local ok, res = pcall(issecretvalue, v)
+    return ok and res == true
+end
+
 function U.SafeNum(val, fallback)
     if val == nil then return fallback or 0 end
+    -- Ask before converting. This used to rely on tonumber(tostring(secret))
+    -- happening to return nil; that is an assumption about undefined behaviour
+    -- on a value whose whole point is that operations on it raise. One explicit
+    -- test is cheaper than trusting it.
+    if U.IsSecret(val) then return fallback or 0 end
     local n = tonumber(tostring(val))
     return n or (fallback or 0)
 end
@@ -229,9 +259,17 @@ function U.GetPlayerClass()
 end
 
 function U.GetPlayerSpec()
-    local specIndex = GetSpecialization()
-    if not specIndex then return nil, nil, nil end
-    local id, name, _, icon = GetSpecializationInfo(specIndex)
+    -- Specializations do not exist on every client this addon loads on. WoW
+    -- Forever reports itself as Mainline and carries Midnight's API set, but it
+    -- is Vanilla-era content with no spec system, so GetSpecialization is
+    -- simply absent there — and calling a nil global throws rather than
+    -- returning nil. Guard both calls: callers already handle "no spec".
+    if type(GetSpecialization) ~= "function" then return nil, nil, nil end
+    local ok, specIndex = pcall(GetSpecialization)
+    if not ok or not specIndex then return nil, nil, nil end
+    if type(GetSpecializationInfo) ~= "function" then return nil, nil, nil end
+    local ok2, id, name, _, icon = pcall(GetSpecializationInfo, specIndex)
+    if not ok2 then return nil, nil, nil end
     return id, name, icon
 end
 
@@ -243,9 +281,16 @@ function U.GetPlayerSpecID()
 end
 
 function U.GetPlayerRole()
-    local specIndex = GetSpecialization()
-    if not specIndex then return "NONE" end
-    local _, _, _, _, role = GetSpecializationInfo(specIndex)
+    -- Same guard as U.GetPlayerSpec: Forever has no spec system, and
+    -- /ta apiprobe on the 1.60.1 beta (2026-09-26) confirmed both globals are
+    -- absent there. Nothing in the Forever build calls this today; the guard
+    -- keeps the first module that does from throwing on every call.
+    if type(GetSpecialization) ~= "function" then return "NONE" end
+    local ok, specIndex = pcall(GetSpecialization)
+    if not ok or not specIndex then return "NONE" end
+    if type(GetSpecializationInfo) ~= "function" then return "NONE" end
+    local ok2, _, _, _, _, role = pcall(GetSpecializationInfo, specIndex)
+    if not ok2 then return "NONE" end
     return role or "NONE"
 end
 

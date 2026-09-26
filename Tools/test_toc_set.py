@@ -29,8 +29,13 @@ ROOT = Path(__file__).resolve().parent.parent
 VERBOSE = "-v" in sys.argv
 
 # Valid client suffixes per Warcraft Wiki .toc (subset we ship / scaffold).
-VALID_SUFFIXES = {"Standard", "Mainline", "Mists", "Cata", "Wrath",
-                  "TBC", "Vanilla", "WoWLabs", "Classic", "Forever"}
+# Per warcraft.wiki.gg/wiki/TOC_format, these are the suffixes WoW's addon
+# loader knows. The odd one out is the Forever client's: the loader still uses
+# Blizzard's pre-announcement codename for it, so ToonAge_Forever.toc is a
+# name nothing reads. That filename is the one place this project spells the
+# client any way but "Forever".
+VALID_SUFFIXES = {"Standard", "Mainline", "Mists", "Cata", "Wrath", "TBC",
+                  "Vanilla", "WoWLabs", "Classic", "Camelot", "Plunderstorm"}
 
 # Expected primary interface number per flavor (current values from Warcraft
 # Wiki's interface table; Mainline additionally carries PTR/Beta builds).
@@ -41,14 +46,41 @@ EXPECTED_INTERFACE = {
     "ToonAge_Cata.toc":     {"40402"},
     "ToonAge_Vanilla.toc":  {"11509"},
     "ToonAge_Wrath.toc":    {"30405"},
-    "ToonAge_Forever.toc":  {"16001"},
+    "ToonAge_Camelot.toc":  {"16001"},
 }
 
 # Flavors with no researched Data/<Flavor> yet: their TOC must list the shared
 # Core engine and ErrorLog only, so a client that matches one cannot load
 # another expansion's numbers.
-SCAFFOLD_TOCS = ("ToonAge_Vanilla.toc", "ToonAge_Cata.toc",
-                 "ToonAge_Wrath.toc", "ToonAge_Forever.toc")
+SCAFFOLD_TOCS = ("ToonAge_Vanilla.toc", "ToonAge_Cata.toc", "ToonAge_Wrath.toc")
+
+# Forever is past scaffold: it ships a Character readout (no scoring, no
+# advice), so it gets its own expectation rather than the core-only one.
+# Forever is past scaffold: its TOC ships a readout, the chores and the data
+# recorder -- and no Data/** at all, because no verified Forever data exists
+# yet. This list is the contract.
+FOREVER_TOC = "ToonAge_Camelot.toc"     # filename fixed by the loader; see the TOC header
+FOREVER_MODULES = [
+    "Modules/Infrastructure/ErrorLog.lua",
+    "Modules/Infrastructure/Settings.lua",
+    "Modules/Infrastructure/ChatCopy.lua",
+    "Modules/Infrastructure/CoordHarvester.lua",
+    "Modules/Progression/XPTracker.lua",
+    "Modules/Automation/RestOptimizer.lua",
+    "Modules/Automation/CutsceneSkip.lua",
+    "Modules/Automation/AutoMount.lua",
+    "Modules/Automation/DeathRecovery.lua",
+    "Modules/Automation/AutoQuest.lua",
+    "Modules/Automation/VendorAssist.lua",
+    "Modules/Farming/GatherTracker.lua",
+    # Measured play. Carries no game data of its own, which is why it belongs
+    # on the one client where measured numbers are the only numbers there are.
+    "Modules/Combat/CombatRecorder.lua",
+    "Modules/Combat/CombatReport.lua",
+    "Modules/Navigation/NavHud.lua",
+    "Modules/Forever/Character.lua",
+    "Modules/Forever/DataHarvester.lua",
+]
 
 _results = []
 
@@ -184,6 +216,113 @@ def test_scaffold_tocs_are_core_only():
               any(f.endswith("Core/Profile.lua") for f in files), True)
 
 
+def test_retail_tocs_ship_no_forever_modules():
+    """Forever's modules must not ride along in the retail TOCs.
+
+    They were listed there while Mainline still claimed 16001 and Forever
+    could fall through to it. Mainline no longer claims that build and Forever
+    has its own TOC, so those files can never run on a retail client -- they
+    would just register a module nothing shows and ship dead weight to every
+    player.
+    """
+    for name in ("ToonAge_Mainline.toc", "ToonAge.toc"):
+        files = listed_files(ROOT / name)
+        check(f"{name}: no Modules/Forever",
+              [f for f in files if f.startswith("Modules/Forever/")], [])
+
+
+def test_no_toc_claims_another_flavors_build():
+    """A TOC must declare only the clients it actually supports.
+
+    ToonAge_Mainline.toc used to list Forever's 16001 as a safety net. That is
+    not a net -- it is the failure path kept alive: any client matching it
+    loads the full retail product, which on Forever means 45 guide files and
+    433 KB of retail rotations it can never use. With the suffixed Forever TOC
+    shipping, the overlap only reintroduces the bug it was meant to cover.
+
+    Questie, shipping on this same client, keeps them disjoint the same way:
+    Questie.toc at 11508/11509, Questie_Camelot.toc at 16001.
+    """
+    owner = {}
+    for toc in all_tocs():
+        for num in interface_numbers(toc):
+            owner.setdefault(num, []).append(toc.name)
+    shared = {n: sorted(f) for n, f in owner.items() if len(f) > 1}
+    # ToonAge.toc is the generic fallback and legitimately mirrors Mainline.
+    shared = {n: f for n, f in shared.items()
+              if set(f) != {"ToonAge.toc", "ToonAge_Mainline.toc"}}
+    check("no interface number is claimed by two flavors", shared, {})
+
+
+def test_no_duplicate_module_names():
+    """Two files registering the same module name is decided by TOC order.
+
+    TA:RegisterModule is a flat overwrite and runs at file load, before the
+    profile gate has any say. Retail shipped both Character modules in one TOC
+    and the Forever readout -- listed later -- silently replaced Retail's own
+    Character tab. Nobody chose that; the line order did.
+    """
+    import re
+    for toc in all_tocs():
+        seen = {}
+        for f in listed_files(toc):
+            path = ROOT / f
+            if not path.exists() or not f.endswith(".lua"):
+                continue
+            for m in re.finditer(r'TA:RegisterModule\("(\w+)"', path.read_text(encoding="utf-8")):
+                seen.setdefault(m.group(1), []).append(f)
+        dupes = {n: fs for n, fs in seen.items() if len(fs) > 1}
+        check(f"{toc.name}: no module name registered twice", dupes, {})
+
+
+def test_forever_toc_carries_no_retail_content():
+    """Forever's own TOC must carry no retail content.
+
+    Its filename is the one thing here the loader dictates rather than us --
+    see FOREVER_TOC and the header of that file. A TOC named for the client the
+    way we name it everywhere else is a name nothing reads, and Forever then
+    falls through to ToonAge_Mainline.toc and loads the entire retail product:
+    45 guide files, 433 KB of retail rotations, on a Vanilla-era client that
+    can use none of it.
+    """
+    p = ROOT / FOREVER_TOC
+    check("Forever TOC exists", p.exists(), True)
+    if not p.exists():
+        return
+    files = listed_files(p)
+    # No game data -- no rotations, weights, talents, guides, item levels.
+    # ApiManifest is allowed because it is not game data: it is measured from
+    # this TOC's own file list and says which client functions those files
+    # call, which is the one thing about this client nobody has written down.
+    data = [f for f in files if f.startswith("Data/")]
+    check("Forever: ships no game data",
+          [f for f in data if not f.endswith("ApiManifest.lua")], [])
+    check("Forever: ships its measured API manifest",
+          "Data/Forever/ApiManifest.lua" in data, True)
+    check("Forever: no retail DR engine",
+          any("StatEngine" in f for f in files), False)
+    # The guide stack is the thing that dragged the retail chain in behind it.
+    for guide_mod in ("QuestTracker", "Arrow", "MapPins", "AntTrail",
+                      "CoordResolver", "GuideParser", "GuideBrowser"):
+        check(f"Forever: no {guide_mod}",
+              any(guide_mod in f for f in files), False)
+    check("Forever: ships exactly its module set",
+          sorted(f for f in files if f.startswith("Modules/")),
+          sorted(FOREVER_MODULES))
+    check("Forever: includes Core/Layout (it draws tabs)",
+          any(f.endswith("Core/Layout.lua") for f in files), True)
+    check("Forever: includes Core/Profile",
+          any(f.endswith("Core/Profile.lua") for f in files), True)
+    # Mainline must NOT claim Forever's build. It did once, as a safety net,
+    # and the net was the bug: any client matching it loads the full retail
+    # product. See test_no_toc_claims_another_flavors_build.
+    check("Mainline does not claim Forever's build",
+          "16001" in interface_numbers(ROOT / "ToonAge_Mainline.toc"), False)
+    # The dead name must not come back.
+    # The name that reads naturally is the one nothing loads. Keep it gone.
+    check("no unread ToonAge_Forever.toc",
+          (ROOT / "ToonAge_Forever.toc").exists(), False)
+
 def test_titles_name_the_flavor():
     """Every flavor TOC names its game version in the addon list, so the client
     itself tells you which build loaded."""
@@ -199,6 +338,21 @@ def test_titles_name_the_flavor():
     check("flavor titles are unique", len(set(flavored.values())), len(flavored))
 
 
+def test_layout_ships_where_it_is_used():
+    """Modules/Forever/Character.lua draws through TA.Layout, and Forever loads
+    via the Mainline TOC — so Layout has to be listed in every TOC that lists
+    that module, and BEFORE it. Missing it renders an empty tab with no error,
+    which is the worst kind of bug to chase."""
+    for toc in all_tocs():
+        files = listed_files(toc)
+        uses_layout = any(f.endswith("Modules/Forever/Character.lua") for f in files)
+        has_layout  = any(f.endswith("Core/Layout.lua") for f in files)
+        if uses_layout:
+            check(f"{toc.name}: ships Core/Layout.lua", has_layout, True)
+            check(f"{toc.name}: Layout loads before the module that uses it",
+                  files.index("Core/Layout.lua") < files.index("Modules/Forever/Character.lua"), True)
+
+
 def main():
     test_suffixes_valid()
     test_interface_present_and_correct()
@@ -208,6 +362,11 @@ def main():
     test_tbc_excludes_retail()
     test_mainline_matches_generic_body()
     test_scaffold_tocs_are_core_only()
+    test_layout_ships_where_it_is_used()
+    test_retail_tocs_ship_no_forever_modules()
+    test_no_toc_claims_another_flavors_build()
+    test_no_duplicate_module_names()
+    test_forever_toc_carries_no_retail_content()
     test_titles_name_the_flavor()
 
     passed = sum(1 for ok, *_ in _results if ok)

@@ -64,6 +64,10 @@ Data\TBC\TBCPvP.lua
 Data\TBC\PetFoods.lua
 
 # ── Modules: Infrastructure (SHARED — load first) ──────────────────────
+# ── Modules: Automation (shared, flavour-neutral chores) ──────────
+Modules\Automation\AutoQuest.lua
+Modules\Automation\VendorAssist.lua
+
 Modules\Infrastructure\ErrorLog.lua
 
 # ── Modules: TBC (Character first — dependents follow) ─────────────────

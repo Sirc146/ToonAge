@@ -78,7 +78,7 @@ function QT:IsStepApplicable(step)
         if pClass ~= step.class then return false end
     end
     if step.spec then
-        local specID = GetSpecializationInfo(GetSpecialization())
+        local specID = U.GetPlayerSpec()   -- guarded; nil on specless clients
         if specID ~= step.spec then return false end
     end
     if step.minLevel then
@@ -668,7 +668,14 @@ end
 -- loaded guides, and how many active quest log entries each guide matches.
 -- Run /ta diagnose or /ta diag when the tracker shows "No Active Guide".
 function QT:Diagnose()
-    local p = function(msg) TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Tracker]|r " .. msg) end
+    -- Diagnostics are long and meant to be pasted into a bug report, so they
+    -- go to the copy window rather than scrolling out of chat.
+    local report = TA.BeginReport and TA:BeginReport("ToonAge Tracker Diagnostics")
+    local p = function(msg)
+        if report then report:Add(tostring(msg))
+        else TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Tracker]|r " .. msg) end
+    end
+
 
     local level      = UnitLevel("player") or 1
     local currentMap = C_Map.GetBestMapForUnit("player")
@@ -694,7 +701,8 @@ function QT:Diagnose()
     local count  = 0
     for _ in pairs(guides) do count = count + 1 end
     if count == 0 then
-        p("|cFFFF4444No guides loaded. Check GuideParser output at login for errors.|r")
+        p("No guides loaded. Check GuideParser output at login for errors.")
+        if report then report:Finish() end
         return
     end
     p(string.format("%d guide(s) loaded:", count))
@@ -726,8 +734,10 @@ function QT:Diagnose()
     if self.guideID then
         p("Active guide: '" .. (TA.Guides[self.guideID] and TA.Guides[self.guideID].title or self.guideID) .. "'  step " .. self.stepIdx)
     else
-        p("|cFFFF8800No guide selected. Use /ta autoselect or < > arrows in the tracker.|r")
+        p("No guide selected. Use /ta autoselect or the < > arrows in the tracker.")
     end
+
+    if report then report:Finish() end
 end
 
 function QT:CycleGuide(dir)
@@ -894,8 +904,21 @@ function QT:HandleAutoQuest(event)
             end
         end
 
-        -- Multiple choices, no guide preference: pick highest ilvl/score upgrade
-        -- This is the Zygor-like "smart reward" — always picks the biggest upgrade.
+        -- Multiple choices, no guide preference.
+        --
+        -- This USED to click the highest-scoring reward for you. It should not:
+        -- a reward choice is one of the few decisions in levelling that is
+        -- permanent and personal — a weapon you want for the skin, a piece for
+        -- an offspec, a trinket to sell. Automation that answers it for you is
+        -- the kind that makes people turn automation off.
+        --
+        -- So the default is to STOP here. The quest window stays open on the
+        -- choice screen, ToonAge says what it would have picked and why, and you
+        -- click. Turning "Auto-pick quest rewards" on in Settings restores the
+        -- old behaviour for anyone who wants it.
+        local autoPick = TA.charDB and TA.charDB.tracker
+                         and TA.charDB.tracker.autoRewardPick == true
+
         local bestIdx, bestScore = 1, -1
         local GearMod = TA:GetModule("Gear")
         for i = 1, numChoices do
@@ -918,8 +941,20 @@ function QT:HandleAutoQuest(event)
                 end
             end
         end
-        GetQuestReward(bestIdx)
-        -- (don't auto-complete — this is the correct behavior)
+        if autoPick then
+            GetQuestReward(bestIdx)
+            return
+        end
+
+        -- Paused. Say which one scored highest, once, so the advice is there
+        -- without the click being taken away. Name it rather than saying
+        -- "choice 3", because the window's order is not obvious mid-sentence.
+        local bestLink = GetQuestItemLink("choice", bestIdx)
+        local name = bestLink and (GetItemInfo(bestLink)) or ("choice " .. bestIdx)
+        TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100[ToonAge]|r %d rewards to choose from — paused for you. "):format(numChoices)
+              .. ("Best for your spec looks like |cFF4AFF7A%s|r."):format(tostring(name)))
+        TA:Raw(TA.LOG.OUTPUT, "  |cFF888780Pick one to finish the turn-in. "
+              .. "Settings -> Auto-pick quest rewards makes ToonAge choose instead.|r")
 
     elseif event == "GOSSIP_SHOW" then
         if not C_GossipInfo then return end
@@ -1029,15 +1064,15 @@ end
 
 function QT:Init()
     -- QUEST_ACCEPTED is in Core/Init.lua PERSISTENT_EVENTS — no re-registration needed.
-    TA.eventFrame:RegisterEvent("QUEST_TURNED_IN")
-    TA.eventFrame:RegisterEvent("QUEST_LOG_UPDATE")
-    TA.eventFrame:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
-    TA.eventFrame:RegisterEvent("QUEST_WATCH_LIST_CHANGED")
-    TA.eventFrame:RegisterEvent("QUEST_DETAIL")
-    TA.eventFrame:RegisterEvent("QUEST_PROGRESS")
-    TA.eventFrame:RegisterEvent("QUEST_COMPLETE")
-    TA.eventFrame:RegisterEvent("GOSSIP_SHOW")
-    TA.eventFrame:RegisterEvent("QUEST_GREETING")
+    TA:RegisterEvent("QUEST_TURNED_IN")
+    TA:RegisterEvent("QUEST_LOG_UPDATE")
+    TA:RegisterEvent("UNIT_QUEST_LOG_CHANGED")
+    TA:RegisterEvent("QUEST_WATCH_LIST_CHANGED")
+    TA:RegisterEvent("QUEST_DETAIL")
+    TA:RegisterEvent("QUEST_PROGRESS")
+    TA:RegisterEvent("QUEST_COMPLETE")
+    TA:RegisterEvent("GOSSIP_SHOW")
+    TA:RegisterEvent("QUEST_GREETING")
 
     -- Preserve existing saved settings; only apply defaults for missing keys
     TA.charDB.tracker = TA.charDB.tracker or {}
@@ -1303,22 +1338,24 @@ function QT:InitWindow()
     local nextBtn = MakeBtn(win, 24, 20, ">", function() self:CycleGuide(1) end)
     nextBtn:SetPoint("TOPRIGHT", win, "TOPRIGHT", -PAD, -34)
 
-    -- Browse button (opens guide shelf/picker)
-    local browseBtn = MakeBtn(win, 20, 20, "☰", function()
+    -- Shelf button (opens the guide picker). Named apart from the title
+    -- bar's "Guides" button above: both used to be browseBtn, and the
+    -- second binding quietly took the name over mid-function.
+    local shelfBtn = MakeBtn(win, 20, 20, "☰", function()
         if TA.UI then
             if not TA.UI:IsVisible() then TA.UI:Show() end
             TA.UI:SetTab("guide")
         end
     end)
-    browseBtn:SetPoint("RIGHT", nextBtn, "LEFT", -2, 0)
-    browseBtn:SetScript("OnEnter", function(f)
+    shelfBtn:SetPoint("RIGHT", nextBtn, "LEFT", -2, 0)
+    shelfBtn:SetScript("OnEnter", function(f)
         f:SetBackdropColor(0.30, 0.22, 0.03, 0.95)
         GameTooltip:SetOwner(f, "ANCHOR_TOP")
         GameTooltip:SetText("Browse All Guides")
         GameTooltip:AddLine("Organized by expansion & zone", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
-    browseBtn:SetScript("OnLeave", function(f)
+    shelfBtn:SetScript("OnLeave", function(f)
         f:SetBackdropColor(0.18, 0.13, 0.01, 0.90)
         GameTooltip:Hide()
     end)
@@ -1327,7 +1364,7 @@ function QT:InitWindow()
     win.guideTitleF:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
     win.guideTitleF:SetTextColor(1.00, 0.95, 0.75, 1)
     win.guideTitleF:SetPoint("LEFT",  prevBtn, "RIGHT", 4, 0)
-    win.guideTitleF:SetPoint("RIGHT", browseBtn, "LEFT", -4, 0)
+    win.guideTitleF:SetPoint("RIGHT", shelfBtn, "LEFT", -4, 0)
     win.guideTitleF:SetJustifyH("CENTER")
 
     -- ── Step area ────────────────────────────────────────────────────────────

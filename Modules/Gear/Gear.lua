@@ -476,8 +476,8 @@ end
 function Gear:Init()
     -- Resolve class-dependent armor type now that the player unit is ready
     PRIMARY_ARMOR_TYPE = ResolveArmorType()
-    TA.eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-    TA.eventFrame:RegisterEvent("INSPECT_READY")
+    TA:RegisterEvent("PLAYER_TARGET_CHANGED")
+    TA:RegisterEvent("INSPECT_READY")
     -- SKILL_LINES_CHANGED is already registered globally in Core/Init.lua's
     -- PERSISTENT_EVENTS list; no need to register it again here.
     if TA.charDB then

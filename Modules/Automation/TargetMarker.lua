@@ -243,8 +243,8 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function TM:Init()
-    TA.eventFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
-    TA.eventFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+    TA:RegisterEvent("NAME_PLATE_UNIT_ADDED")
+    TA:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
 
     -- Initial scan after a short delay (let QuestTracker init first)
     C_Timer.After(2, function()

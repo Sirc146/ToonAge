@@ -214,6 +214,28 @@ function Settings:Render(content, sidebar)
         end
     end)
 
+    -- ═══════════════════════════════════════════════════════════════════
+    -- VENDOR
+    -- ═══════════════════════════════════════════════════════════════════
+    -- Both off by default: repairing spends gold and a sale cannot be undone
+    -- once buyback scrolls away. Modules/Automation/VendorAssist.lua reads
+    -- these same keys on every flavour.
+    y = MakeSection(content, y, w, "VENDOR")
+
+    local function VendorToggle(label, key)
+        y = MakeToggleRow(content, y, w, label, function()
+            return TA.charDB and TA.charDB.tracker and TA.charDB.tracker[key]
+        end, function()
+            if not TA.charDB then return end
+            TA.charDB.tracker = TA.charDB.tracker or {}
+            TA.charDB.tracker[key] = not TA.charDB.tracker[key]
+        end)
+    end
+
+    VendorToggle("Sell Grey Items (poor quality only)",        "autoSellJunk")
+    VendorToggle("Repair All On Opening A Vendor",             "autoRepair")
+    VendorToggle("  \226\148\148 Use guild funds when your rank allows", "repairFromGuild")
+
     y = MakeToggleRow(content, y, w, "Auto-Equip Looted Upgrades (hold Shift to pause)", function()
         return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoEquip
     end, function()

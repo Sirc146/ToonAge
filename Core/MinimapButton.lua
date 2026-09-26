@@ -19,6 +19,10 @@ function TA:InitMinimap()
     icon:SetPoint("CENTER", btn, "CENTER", -1, 1)
     -- Use a character/advisor relevant icon; falls back gracefully
     icon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")
+    -- Every other minimap button crops its icon square into the circle. Without
+    -- this the corners of the art stick out past the border ring and ToonAge's
+    -- button reads as a different shape from its neighbours.
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
     -- ── Blizzard circular border overlay ─────────────────────────────
     local border = btn:CreateTexture(nil, "OVERLAY")
@@ -27,14 +31,26 @@ function TA:InitMinimap()
     border:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
 
     -- ── Radial orbit geometry ─────────────────────────────────────────
-    -- Saved angle persists across sessions via SavedVariables
-    local ORBIT_RADIUS = 78
+    -- Saved angle persists across sessions via SavedVariables.
+    --
+    -- The radius is MEASURED, not fixed. A hardcoded 78 assumes a 140-wide
+    -- minimap; this client's is larger, so the button sat INSIDE the map next
+    -- to the terrain instead of out on the ring with every other addon's.
+    -- Half the minimap's real width plus a small offset puts it exactly where
+    -- the neighbours sit, whatever size the minimap is or becomes.
+    local function OrbitRadius()
+        local w = (Minimap and Minimap.GetWidth and Minimap:GetWidth()) or 140
+        if not w or w <= 0 then w = 140 end
+        return (w / 2) + 10
+    end
+
     local angle = (TA.db and TA.db.minimap and TA.db.minimap.position) or 45
 
     local function UpdatePosition()
+        local r = OrbitRadius()
         btn:SetPoint("CENTER", Minimap, "CENTER",
-            ORBIT_RADIUS * math.cos(math.rad(angle)),
-            ORBIT_RADIUS * math.sin(math.rad(angle)))
+            r * math.cos(math.rad(angle)),
+            r * math.sin(math.rad(angle)))
     end
 
     -- ── Drag: OnUpdate only active during drag (guide pattern) ────────
@@ -45,7 +61,8 @@ function TA:InitMinimap()
         mx = mx / scale
         my = my / scale
         angle = math.deg(math.atan2(my - cy, mx - cx))
-        UpdatePosition()
+        UpdatePosition()   -- radius re-measured every frame, so a resized
+                           -- minimap never strands the button mid-drag
     end
 
     btn:SetScript("OnDragStart", function(self)
@@ -109,8 +126,22 @@ function TA:InitMinimap()
         GameTooltip:Hide()
     end)
 
-    -- Place on minimap at saved position
+    -- Place on minimap at saved position.
+    --
+    -- Re-placed on the events that change the minimap's size: at login the
+    -- frame may not have its final width yet, and a UI-scale or resolution
+    -- change moves the ring out from under the button.
+    btn:RegisterEvent("PLAYER_ENTERING_WORLD")
+    btn:RegisterEvent("DISPLAY_SIZE_CHANGED")
+    btn:RegisterEvent("UI_SCALE_CHANGED")
+    btn:SetScript("OnEvent", function() UpdatePosition() end)
+
     UpdatePosition()
+    if C_Timer and C_Timer.After then
+        -- One late pass: some clients finish sizing the minimap a frame or two
+        -- after login, and the first placement would keep a stale radius.
+        C_Timer.After(1, UpdatePosition)
+    end
 
     -- Restore minimized state from SavedVariables
     if TA.db.minimap.minimized then

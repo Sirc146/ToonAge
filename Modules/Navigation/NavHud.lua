@@ -514,10 +514,10 @@ function NavHud:Init()
     end
 
     -- Register vehicle/pet-battle events to auto-hide HUD
-    TA.eventFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
-    TA.eventFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
-    TA.eventFrame:RegisterEvent("PET_BATTLE_OPENING_START")
-    TA.eventFrame:RegisterEvent("PET_BATTLE_OVER")
+    TA:RegisterEvent("UNIT_ENTERED_VEHICLE")
+    TA:RegisterEvent("UNIT_EXITED_VEHICLE")
+    TA:RegisterEvent("PET_BATTLE_OPENING_START")
+    TA:RegisterEvent("PET_BATTLE_OVER")
 
     -- Restore visibility from saved state
     if GetSetting("visible") then

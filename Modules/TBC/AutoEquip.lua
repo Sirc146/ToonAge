@@ -276,8 +276,8 @@ end
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function AE:Init()
-    TA.eventFrame:RegisterEvent("LOOT_OPENED")
-    TA.eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
+    TA:RegisterEvent("LOOT_OPENED")
+    TA:RegisterEvent("BAG_UPDATE_DELAYED")
 
     -- Default opt-in flag
     if TA.charDB and TA.charDB.tracker then

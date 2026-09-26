@@ -1,0 +1,124 @@
+## Interface: 16001
+## Title: |cFFFFD100ToonAge|r |cFF888780Forever|r
+## Notes: WoW Forever edition — readout, chores and a data recorder. No retail data.
+## Author: SIRC
+## Version: 2.0.0-dev.1
+## DefaultState: enabled
+## SavedVariables: ToonAgeDB
+## X-Flavor: Forever
+## X-Curse-Project-ID:
+## X-Wago-ID: 56ndnjG9
+## OptionalDependencies: WagoAnalytics
+
+# ══════════════════════════════════════════════════════════════════════════
+# ToonAge for WoW Forever — the client reads THIS file, not _Mainline.
+# ══════════════════════════════════════════════════════════════════════════
+#
+# THE FILENAME IS THE ONLY THING HERE THAT IS NOT OURS. DO NOT "FIX" IT.
+#
+# Everywhere else in this project the client is called Forever, because that is
+# its name and ours is the vocabulary that should stick. The filename cannot
+# be: WoW's addon loader picks a TOC by matching a fixed suffix it already
+# knows, and the suffix it maps to this client is the one below. "Camelot" was
+# Blizzard's internal codename for the project; it leaked before the game was
+# announced as Forever and never got cleaned out of the loader.
+#
+# So a file named ToonAge_Forever.toc is a name the loader has never heard of.
+# It is not read at all. That is not hypothetical -- it is what this project
+# shipped, and the cost was that Forever fell through to ToonAge_Mainline.toc
+# and loaded the ENTIRE retail product: 45 guide files, 433 KB of retail
+# rotations, every retail module, on a Vanilla-era client that can use none of
+# it. Nearly every "Forever inherited retail's problems" bug traces to here.
+#
+# Verified against a shipping addon on this same client rather than assumed:
+# Questie ships Questie_Camelot.toc at ## Interface: 16001 beside a Questie.toc
+# at 11508/11509, and the suffixed file is the only one listing its three
+# Forever modules (ForeverCompat, ForeverObjectiveTracker, ForeverQuestData).
+# Those modules work in game, so the loader is reading the suffix.
+#
+# WHAT IS DELIBERATELY ABSENT
+#
+#   Data/**            No verified Forever GAME data exists yet. Retail numbers
+#                      are wrong for this content, and wrong numbers that look
+#                      researched are worse than no numbers at all.
+#
+#                      The one exception is Data/Forever/ApiManifest.lua, and
+#                      it is an exception because it is not game data at all:
+#                      it is measured from THIS TOC's own files by
+#                      Tools/gen_api_manifest.py, and it lists which client
+#                      functions those files call. ApiGuard probes it at login
+#                      and reports what this client does not have. That is the
+#                      one thing about Forever nobody has written down, and
+#                      every crash it has produced -- GetSpecialization,
+#                      GetLootSlotLink, GetItemInfoInstant -- was this list
+#                      being discovered one error at a time instead.
+#   Core/StatEngine    Retail diminishing-returns math. Meaningless here.
+#   The guide stack    Forever ships no guides. QuestTracker, Arrow, MapPins,
+#                      AntTrail, CoordResolver and the Guide* modules all point
+#                      at guide steps that do not exist.
+#   Every advisor      Gear, Rotation, Talents, Professions, Pets, Delves,
+#                      Weekly: all of them rank things using Data/Retail.
+#
+# ToonAge_Mainline.toc still carries 16001 as a fallback. If this file is ever
+# not read, the addon still loads there, and Core/Profile.lua's allow-list is
+# the second gate that keeps the retail modules from initializing.
+
+# ── Libraries ─────────────────────────────────────────────────────────
+Libs\LibStub.lua
+Libs\WagoAnalytics\Shim.lua
+
+# ── Core engine (flavour-neutral) ─────────────────────────────────────
+Core\Init.lua
+Core\Environment.lua
+Core\Compat\API.lua
+Core\Utils.lua
+Core\State.lua
+Core\UI.lua
+Core\UIModern.lua
+Core\Layout.lua
+# Reads tooltip lines GetItemStats cannot see (Equip:/Use:/proc text).
+# Shared with the TBC build; the gear tab shows those lines per item.
+Core\TooltipScan.lua
+Core\MinimapButton.lua
+Core\ApiGuard.lua
+Core\Profile.lua
+Core\Analytics.lua
+
+# ── Measured API surface ──────────────────────────────────────────────
+# Not game data: generated from the file list below. See the note above.
+Data\Forever\ApiManifest.lua
+
+# ── Infrastructure ────────────────────────────────────────────────────
+Modules\Infrastructure\ErrorLog.lua
+Modules\Infrastructure\Settings.lua
+Modules\Infrastructure\ChatCopy.lua
+Modules\Infrastructure\CoordHarvester.lua
+
+# ── Quality of life ───────────────────────────────────────────────────
+# Each reads the world through APIs this client has and carries no expansion
+# numbers of its own. Cross-module calls all go through TA:GetModule, which
+# returns nil for anything absent, and every call site nil-guards -- verified,
+# not assumed, before this list was trimmed.
+Modules\Progression\XPTracker.lua
+Modules\Automation\RestOptimizer.lua
+Modules\Automation\DeathRecovery.lua
+
+# ── Farming ───────────────────────────────────────────────────────────
+# GatherTracker records node positions on LOOT_OPENED. Its dot renderer drew
+# on the HUD, which this build no longer ships -- that render path is
+# nil-guarded and now does nothing, so the module is record-only until it has
+# a tab of its own.
+Modules\Farming\GatherTracker.lua
+
+# ── Measured play ─────────────────────────────────────────────────────
+# Records what you cast and what came of it. No game data of its own.
+
+
+# ── Forever's own ─────────────────────────────────────────────────────
+Modules\Forever\Character.lua
+Modules\Forever\Gear.lua
+Modules\Forever\Talents.lua
+Modules\Forever\Rotation.lua
+Modules\Forever\Pets.lua
+Modules\Forever\PvP.lua
+Modules\Forever\DataHarvester.lua

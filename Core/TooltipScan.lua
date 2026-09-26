@@ -64,6 +64,13 @@ end
 
 local ON_USE   = Trigger("ITEM_SPELL_TRIGGER_ONUSE",  "Use:")
 local ON_PROC  = Trigger("ITEM_SPELL_TRIGGER_ONPROC", "Chance on hit:")
+-- Added 2026-09-23 for the Forever gear tab. An "Equip:" line is not always
+-- unscoreable the way a Use: or a proc is -- modern clients fold some of them
+-- into ITEM_MOD_SPELL_POWER and friends -- so it is captured as TEXT and
+-- reported separately, and HasHiddenValue below deliberately does not treat it
+-- as hidden value. Displaying it twice is a cosmetic bug; counting it twice
+-- would be a wrong number.
+local ON_EQUIP = Trigger("ITEM_SPELL_TRIGGER_ONEQUIP", "Equip:")
 local UNIQUE   = Trigger("ITEM_UNIQUE",               "Unique")
 local UNIQUE_EQ= Trigger("ITEM_UNIQUE_EQUIPPABLE",    "Unique-Equipped")
 
@@ -107,7 +114,7 @@ end
 --- @return table {hasUse, hasProc, unique, uniqueEquipped, cached, effectLines}
 function T:GetItemFlags(link)
     local result = {
-        hasUse = false, hasProc = false,
+        hasUse = false, hasProc = false, hasEquip = false,
         unique = false, uniqueEquipped = false,
         cached = false, effectLines = {},
     }
@@ -123,6 +130,9 @@ function T:GetItemFlags(link)
             result.effectLines[#result.effectLines + 1] = text
         elseif ON_PROC ~= "" and text:find(ON_PROC, 1, true) then
             result.hasProc = true
+            result.effectLines[#result.effectLines + 1] = text
+        elseif ON_EQUIP ~= "" and text:find(ON_EQUIP, 1, true) then
+            result.hasEquip = true
             result.effectLines[#result.effectLines + 1] = text
         end
 

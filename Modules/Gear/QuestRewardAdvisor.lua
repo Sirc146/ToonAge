@@ -362,6 +362,6 @@ function QuestRewardAdvisor:Init()
     end
 
     -- Register events via the shared ToonAge event frame
-    TA.eventFrame:RegisterEvent("QUEST_COMPLETE")
-    TA.eventFrame:RegisterEvent("QUEST_FINISHED")
+    TA:RegisterEvent("QUEST_COMPLETE")
+    TA:RegisterEvent("QUEST_FINISHED")
 end

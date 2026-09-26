@@ -39,6 +39,17 @@ L.STATUS = {
     dim     = L.C_SECONDARY,
 }
 
+-- Stat bars. ONE hue for every attribute: the split between what your level
+-- gives you and what gear adds is tonal, not chromatic, so bar LENGTH stays the
+-- only thing the eye compares across five rows. Green/orange/red stay reserved
+-- for cap states (armour at 75%, a skill below its cap), so colour means one
+-- thing everywhere in the addon. Class colour belongs on identity -- the name
+-- in the sidebar -- not on data.
+L.C_STAT_BASE = { 0.24, 0.44, 0.60 }   -- from level and race
+L.C_STAT_GEAR = { 0.40, 0.75, 1.00 }   -- added by gear and buffs (C_ACCENT)
+
+L.STATUS.stat = L.C_STAT_BASE
+
 L.PAD  = 14   -- side padding
 L.RPAD = 8    -- between rows
 
@@ -52,12 +63,29 @@ local function Colour(key)
     return L.STATUS[key or "neutral"] or L.C_PRIMARY
 end
 
+-- The last line of defence against a secret reaching a frame.
+--
+-- A FontString holding tostring(secret) makes its frame's height secret, which
+-- makes the scroll child's height secret, which makes Blizzard's own scroll
+-- arithmetic raise and take the entire tab down with it (Forever, 2026-09-23 --
+-- the full account is in Core/Utils.lua). Every row in the addon is built here,
+-- so one test here covers every caller, including ones not written yet.
+local SECRET_PLACEHOLDER = "|cFF6E6A62hidden|r"
+
+local function IsSecretText(v)
+    if not issecretvalue then return false end
+    local ok, res = pcall(issecretvalue, v)
+    return ok and res == true
+end
+
 local function Text(parent, opts)
     local fs = parent:CreateFontString(nil, "OVERLAY")
     fs:SetFont(opts.font or FONT, opts.size or 10, opts.flags or "")
     local c = Colour(opts.color)
     fs:SetTextColor(c[1], c[2], c[3], opts.alpha or 1)
-    if opts.text then fs:SetText(opts.text) end
+    if opts.text ~= nil then
+        fs:SetText(IsSecretText(opts.text) and SECRET_PLACEHOLDER or opts.text)
+    end
     fs:SetJustifyH(opts.justify or "LEFT")
     return fs
 end
@@ -209,6 +237,253 @@ function L:CapBar(parent, y, opts)
     end
 
     return y - ROW_H - L.RPAD
+end
+
+--- The shared maximum a group of stat bars is drawn against.
+---
+--- ONE denominator for the whole group, not one per row: per-row rounding makes
+--- 49 and 51 draw at 98% and 51%, which the eye reads as "twice the stat".
+--- Rounded UP to the next 50 so the axis is a round number, floored at 50 so a
+--- level-1 character does not get a 20-wide axis, and never shrinks within a
+--- session -- a buff falling off must not resize every bar on the sheet.
+---
+--- The scale is a DRAWING decision. It is never printed as a value and never
+--- described as a cap: primary attributes have no cap in this game, and the
+--- number beside each bar is always the real one.
+--- @param values table list of numbers (nils are skipped)
+--- @param previous number|nil the scale used last render, to keep it sticky
+--- @return number
+function L:StatScale(values, previous)
+    local top = 0
+    for _, v in pairs(values or {}) do
+        local n = tonumber(v)
+        if n and n > top then top = n end
+    end
+    local scale = math.max(50, math.ceil(top / 50) * 50)
+    if previous and previous > scale then scale = previous end
+    return scale
+end
+
+--- A stat as a bar against a shared, rounded scale.
+---
+--- The FILL is the real value. The faded remainder is headroom to the group's
+--- scale and means nothing on its own -- it exists so the rows are comparable.
+---
+--- opts.base: the portion from level and race. When present the fill is drawn
+--- in two tones, solid for base and lighter for what gear and buffs add, which
+--- answers "how much of this is my gear?" without a second row of text.
+---
+--- Every anchor is TOPLEFT plus a computed offset. Nothing anchors to a right
+--- edge: right-anchored text is what currently renders blank on the Character
+--- tab, and a new component is the wrong place to inherit that.
+--- @return number nextY, table row
+function L:StatBar(parent, y, opts)
+    y = math.floor(y)
+    local w = self:Width(parent)
+
+    local ROW_H   = 22
+    local BAR_H   = 12
+    local LABEL_W = math.min(110, math.floor(w * 0.28))
+    local VALUE_W = 64
+    local GAP     = 8
+    local barW    = math.max(w - LABEL_W - VALUE_W - GAP * 2, 40)
+
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(w, ROW_H)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
+
+    local label = Text(row, { text = opts.label, size = 10, color = L.C_SECONDARY })
+    label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3)
+    label:SetWidth(LABEL_W)
+    label:SetHeight(0)
+
+    local track = CreateFrame("Frame", nil, row)
+    track:SetSize(barW, BAR_H)
+    track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, -2)
+    if TA._ApplyBackdrop then
+        TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
+    end
+
+    local value = tonumber(opts.value)
+    local scale = tonumber(opts.scale)
+
+    if value and scale and scale > 0 then
+        local inner = barW - 2
+        local total = math.min(math.max(value / scale, 0), 1)
+        local base  = tonumber(opts.base)
+        local basePct = (base and base >= 0 and base <= value) and (base / scale) or total
+
+        local cBase = Colour(opts.color or "stat")
+        local fill = track:CreateTexture(nil, "ARTWORK")
+        fill:SetPoint("TOPLEFT",    track, "TOPLEFT",    1, -1)
+        fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1,  1)
+        fill:SetWidth(math.max(math.floor(inner * basePct), 1))
+        fill:SetColorTexture(cBase[1], cBase[2], cBase[3], 0.90)
+
+        if base and value > base and total > basePct then
+            local g = L.C_STAT_GEAR
+            local extra = track:CreateTexture(nil, "ARTWORK")
+            extra:SetPoint("TOPLEFT",    fill, "TOPRIGHT",    0, 0)
+            extra:SetPoint("BOTTOMLEFT", fill, "BOTTOMRIGHT", 0, 0)
+            extra:SetWidth(math.max(math.floor(inner * (total - basePct)), 1))
+            extra:SetColorTexture(g[1], g[2], g[3], 0.90)
+        end
+    end
+
+    -- The real number, right-justified inside a fixed-width box whose LEFT edge
+    -- is computed -- same look as a right anchor, without depending on the
+    -- parent's right edge being where we think it is.
+    local text = Text(row, {
+        text = opts.text or (value and tostring(value)) or "|cFF6E6A62n/a|r",
+        size = 11, flags = "OUTLINE", color = opts.status, justify = "RIGHT",
+    })
+    text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
+    text:SetWidth(VALUE_W)
+    text:SetHeight(0)
+
+    if opts.tooltip then
+        row:EnableMouse(true)
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(opts.tooltipTitle or opts.label, 1, 0.82, 0)
+            for _, line in ipairs(opts.tooltip) do
+                GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
+            end
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+
+    return y - ROW_H - 2, row
+end
+
+-- Profession colours.
+--
+-- The game defines none, so these are OUR convention -- and they are the same
+-- one GatherTracker already draws with (herb green, ore brown, skinning red),
+-- so a node on the map and a bar on this tab agree. Keyed on the ENGLISH skill
+-- name because that is what a lookup can be written against; the client hands
+-- back a LOCALISED name, so a non-English client falls through to the neutral
+-- stat colour rather than mis-colouring a row. Localised keys can be added per
+-- locale when someone runs one and reports the strings.
+L.PROFESSION_COLORS = {
+    herbalism      = { 0.30, 0.90, 0.35 },
+    mining         = { 0.85, 0.55, 0.20 },
+    skinning       = { 0.80, 0.30, 0.30 },
+    alchemy        = { 0.62, 0.36, 0.86 },
+    blacksmithing  = { 0.58, 0.60, 0.65 },
+    enchanting     = { 0.55, 0.45, 0.92 },
+    engineering    = { 0.95, 0.60, 0.22 },
+    leatherworking = { 0.65, 0.45, 0.28 },
+    tailoring      = { 0.40, 0.60, 0.92 },
+    cooking        = { 0.95, 0.75, 0.30 },
+    fishing        = { 0.35, 0.65, 0.85 },
+    ["first aid"]  = { 0.92, 0.92, 0.92 },
+}
+
+--- Colour for a profession by the name the client reported, or nil when the
+--- name is not one we have a colour for (any localised client, or a profession
+--- this game added). nil means "use the default" -- never a wrong colour.
+function L:ProfessionColor(name)
+    if type(name) ~= "string" then return nil end
+    return L.PROFESSION_COLORS[name:lower()]
+end
+
+--- A stat bar split into the pieces that make it up.
+---
+--- Same rules as StatBar -- fill is the real total, the faded remainder is
+--- headroom to the group's scale -- but the fill is drawn as consecutive
+--- segments, one per contributor, in alternating tones of the ONE stat hue.
+--- Alternating tone rather than hue keeps bar LENGTH the thing being compared;
+--- five multi-coloured rows would turn a stat sheet into a colour chart.
+---
+--- Built for the gear tab: "Stamina 12" is a fact, and "9 of it is your chest"
+--- is the fact worth having. Every segment is a number the client reported for
+--- that item, so the breakdown assumes nothing the total does not.
+---
+--- opts.segments = { { value = n, label = "Chest" }, ... }
+function L:StackBar(parent, y, opts)
+    y = math.floor(y)
+    local w = self:Width(parent)
+
+    local ROW_H   = 22
+    local BAR_H   = 12
+    local LABEL_W = math.min(110, math.floor(w * 0.28))
+    local VALUE_W = 64
+    local GAP     = 8
+    local barW    = math.max(w - LABEL_W - VALUE_W - GAP * 2, 40)
+
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(w, ROW_H)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
+
+    local label = Text(row, { text = opts.label, size = 10, color = L.C_SECONDARY })
+    label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3)
+    label:SetWidth(LABEL_W)
+    label:SetHeight(0)
+
+    local track = CreateFrame("Frame", nil, row)
+    track:SetSize(barW, BAR_H)
+    track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, -2)
+    if TA._ApplyBackdrop then
+        TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
+    end
+
+    local scale = tonumber(opts.scale)
+    local segs  = type(opts.segments) == "table" and opts.segments or {}
+    local total = 0
+    for _, s in ipairs(segs) do total = total + (tonumber(s.value) or 0) end
+
+    if scale and scale > 0 and total > 0 then
+        local inner = barW - 2
+        local c = Colour(opts.color or "stat")
+        local prev = nil
+        for i, s in ipairs(segs) do
+            local v = tonumber(s.value) or 0
+            if v > 0 then
+                local shade = (i % 2 == 1) and 1.00 or 0.70
+                local tex = track:CreateTexture(nil, "ARTWORK")
+                if prev then
+                    tex:SetPoint("TOPLEFT",    prev, "TOPRIGHT",    0, 0)
+                    tex:SetPoint("BOTTOMLEFT", prev, "BOTTOMRIGHT", 0, 0)
+                else
+                    tex:SetPoint("TOPLEFT",    track, "TOPLEFT",    1, -1)
+                    tex:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1,  1)
+                end
+                tex:SetWidth(math.max(math.floor(inner * (v / scale)), 1))
+                tex:SetColorTexture(c[1] * shade, c[2] * shade, c[3] * shade, 0.90)
+                prev = tex
+            end
+        end
+    end
+
+    local text = Text(row, {
+        text = opts.text or tostring(total), size = 11, flags = "OUTLINE",
+        color = opts.status, justify = "RIGHT",
+    })
+    text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
+    text:SetWidth(VALUE_W)
+    text:SetHeight(0)
+
+    -- The breakdown lives in the tooltip: a bar on screen, a list of which
+    -- slots contributed what on hover.
+    if #segs > 0 then
+        row:EnableMouse(true)
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(tostring(opts.label), 1, 0.82, 0)
+            for _, s in ipairs(segs) do
+                local v = tonumber(s.value) or 0
+                if v > 0 then
+                    GameTooltip:AddDoubleLine(tostring(s.label), tostring(v), 0.9, 0.9, 0.9, 1, 1, 1)
+                end
+            end
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+
+    return y - ROW_H - 2, row
 end
 
 -- ── Text builders ─────────────────────────────────────────────────────

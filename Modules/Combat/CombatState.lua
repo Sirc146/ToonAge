@@ -37,6 +37,10 @@ CS.state = {
     targetTTD = 999, -- Time-To-Die estimate (seconds); 999 = unknown/long-lived
     buffs = {}, -- [spellID] = { stacks=N, expires=T }
     debuffs = {}, -- [spellID] = { stacks=N, expires=T } (on target)
+    -- Same records, keyed by lowercased aura name, for the cast-id-is-not-
+    -- aura-id case. See the note in UpdateBuffs.
+    buffNames = {},   -- ["shield block"] = { stacks=N, expires=T }
+    debuffNames = {}, -- ["moonfire"]     = { stacks=N, expires=T } (on target)
     cooldowns = {}, -- [spellID] = { start=T, duration=D, charges=N }
     gcd = 0, -- remaining GCD in seconds
     aoeCount = 1, -- estimated enemies nearby (from nameplates)
@@ -184,6 +188,7 @@ end
 local function UpdateBuffs()
     local s = CS.state
     wipe(s.buffs)
+    wipe(s.buffNames)
     for i = 1, 40 do
         local ok, auraData = pcall(C_UnitAuras.GetBuffDataByIndex, "player", i)
         -- nil auraData means we ran past the last aura: a real end-of-list.
@@ -192,10 +197,20 @@ local function UpdateBuffs()
         end
         local id = U.SafeNum(auraData.spellId)
         if id > 0 then
-            s.buffs[id] = {
+            local rec = {
                 stacks = U.SafeNum(auraData.applications),
                 expires = U.SafeNum(auraData.expirationTime),
             }
+            s.buffs[id] = rec
+            -- Also index by name. A spell's CAST id is routinely not its AURA
+            -- id -- Shield Block is cast as 2565 but lands as buff 132404,
+            -- Moonfire as 8921 but 164812 -- so an id-only lookup silently
+            -- reports "not active" for those and the rotation keeps
+            -- recommending something already up. The name is the same on both
+            -- sides and is localized by the client, which is why it is read
+            -- from the aura rather than compared against English data labels.
+            local nm = auraData.name and tostring(auraData.name)
+            if nm and nm ~= "" then s.buffNames[nm:lower()] = rec end
         end
     end
 end
@@ -203,6 +218,7 @@ end
 local function UpdateDebuffsOnTarget()
     local s = CS.state
     wipe(s.debuffs)
+    wipe(s.debuffNames)
     if not s.targetExists then
         return
     end
@@ -216,10 +232,13 @@ local function UpdateDebuffsOnTarget()
         end
         local id = U.SafeNum(auraData.spellId)
         if id > 0 then
-            s.debuffs[id] = {
+            local rec = {
                 stacks = U.SafeNum(auraData.applications),
                 expires = U.SafeNum(auraData.expirationTime),
             }
+            s.debuffs[id] = rec
+            local nm = auraData.name and tostring(auraData.name)
+            if nm and nm ~= "" then s.debuffNames[nm:lower()] = rec end
         end
     end
 end
@@ -500,6 +519,27 @@ end
 --- a condition has said what they mean, and this should not second-guess it.
 local AURA_REFRESH_WINDOW = 4 -- seconds; refresh inside this is fine (pandemic-ish)
 
+-- Lowercased spell name for an id, resolved once per id. Used to match an
+-- aura whose id differs from the id that cast it.
+local nameCache = {}
+local function SpellName(spellID)
+    if not spellID then return nil end
+    local cached = nameCache[spellID]
+    if cached ~= nil then return cached or nil end
+    local nm
+    if C_Spell and C_Spell.GetSpellInfo then
+        local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
+        if ok and type(info) == "table" and info.name then nm = tostring(info.name) end
+    end
+    if not nm and _G.GetSpellInfo then
+        local ok, n = pcall(_G.GetSpellInfo, spellID)
+        if ok and n then nm = tostring(n) end
+    end
+    nameCache[spellID] = nm and nm:lower() or false
+    return nameCache[spellID] or nil
+end
+CS._SpellName = SpellName
+
 local function AlreadyActive(entry, state)
     if entry.when then
         return false
@@ -519,6 +559,20 @@ local function AlreadyActive(entry, state)
     local b = state.buffs and state.buffs[id]
     if b and b.expires and b.expires > 0 then
         if (b.expires - GetTime()) > AURA_REFRESH_WINDOW then
+            return true
+        end
+    end
+
+    -- Nothing matched by id. Try the spell's own name: for every ability whose
+    -- aura carries a different id from the cast (Shield Block, Moonfire,
+    -- Ignore Pain and friends), this is the check that actually works. The
+    -- name comes from the client, so it matches the localized aura name.
+    local nm = SpellName(id)
+    if nm then
+        local rec = (state.debuffNames and state.debuffNames[nm])
+                 or (state.buffNames and state.buffNames[nm])
+        if rec and rec.expires and rec.expires > 0
+           and (rec.expires - GetTime()) > AURA_REFRESH_WINDOW then
             return true
         end
     end

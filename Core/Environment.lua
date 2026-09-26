@@ -93,6 +93,7 @@ TA.IsForever    = (projectId == PROJECT_IDS.MAINLINE and interfaceCode ~= nil
 TA.IsRetail     = (projectId == PROJECT_IDS.MAINLINE) and not TA.IsForever
 TA.IsClassicEra = (projectId == PROJECT_IDS.CLASSIC_ERA and interfaceCode and interfaceCode < 20000)
 TA.IsTBC        = (projectId == PROJECT_IDS.TBC)
+
     -- Historical gotcha: the original 2021 TBC Classic client shipped before
     -- WOW_PROJECT_BURNING_CRUSADE_CLASSIC existed and reported the Classic Era
     -- project ID (2) with a TBC-range interface number. Current Anniversary
@@ -111,6 +112,38 @@ TA.IsMists      = (projectId == PROJECT_IDS.MISTS)
 -- code written against GetTalentTabInfo and friends would break on it.
 TA.IsClassicFamily = TA.IsClassicEra or TA.IsTBC or TA.IsWrath or TA.IsCata or TA.IsMists
 
+-- ── Forever launch-day fallback ───────────────────────────────────────
+--
+-- Forever detection above assumes the beta's shape: Mainline project id with a
+-- 1.60.x interface. If Blizzard gives the live client a WOW_PROJECT_* constant
+-- of its own, nothing above matches and the flavor resolves to "unknown" --
+-- the profile gate then initializes nothing, and the addon opens empty with no
+-- error on launch day.
+--
+-- The TOC that loaded settles it. "## X-Flavor: Forever" ships only in the
+-- Forever build, and that build is only ever installed into the Forever
+-- client (Tools/build_flavors.ps1), so reading it is proof of which client
+-- this is. It fires ONLY when every id-based check has already failed: a
+-- client this file recognizes is never overridden by metadata.
+--
+-- Read directly, not through Core/Compat/API.lua, which loads after this
+-- file. Metadata for the loading addon is available at file-load time.
+local ADDON_NAME = ... or "ToonAge"
+TA.flavorSource = "project-id"
+if not (TA.IsForever or TA.IsRetail or TA.IsClassicEra or TA.IsTBC
+        or TA.IsWrath or TA.IsCata or TA.IsMists) then
+    local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+    local tocFlavor
+    if getMeta then
+        local ok, value = pcall(getMeta, ADDON_NAME, "X-Flavor")
+        if ok then tocFlavor = value end
+    end
+    if tocFlavor == "Forever" then
+        TA.IsForever    = true
+        TA.flavorSource = "toc-fallback"
+    end
+end
+
 -- Single canonical flavor string. Core/Profile.lua keys off this to pick the
 -- module allow-list and Data namespace. Kept in sync with the booleans above.
 TA.flavor = (TA.IsForever     and "forever")
@@ -121,6 +154,44 @@ TA.flavor = (TA.IsForever     and "forever")
          or (TA.IsCata        and "cata")
          or (TA.IsMists       and "mists")
          or "unknown"
+
+-- ── Which TOC actually loaded ─────────────────────────────────────────
+--
+-- WoW picks a TOC by matching a filename suffix it already knows, and if it
+-- finds none it silently falls back. Silently is the problem: a flavour whose
+-- suffix the client stops recognizing loads the WRONG product with no error,
+-- which is exactly how Forever ended up parsing the entire retail addon.
+--
+-- Every TOC declares "## X-Flavor". Comparing what this client IS against
+-- what the loaded TOC SAYS turns that silent fallback into something
+-- /ta health can state out loud. This matters most for Forever, whose suffix
+-- is a pre-release codename Blizzard may well retire at launch -- the day it
+-- changes, this check is what reports it instead of a week of odd bugs.
+--
+-- Deferred, not computed here: the metadata API lives in Core/Compat/API.lua,
+-- which loads after this file.
+
+--- What "## X-Flavor" the TOC for this client is expected to declare.
+local EXPECTED_TOC_FLAVOR = {
+    retail = "Mainline", forever = "Forever", tbc = "TBC",
+    mists  = "Mists",    cata    = "Cata",    vanilla = "Vanilla",
+    wrath  = "Wrath",
+}
+
+--- nil when the right TOC loaded (or we cannot tell); otherwise
+--- expected, actual -- meaning the client fell back to another product's TOC.
+function TA:TocFlavorMismatch()
+    local want = EXPECTED_TOC_FLAVOR[self.flavor]
+    if not want then return nil end
+    local C = self.Compat
+    local read = C and C.GetAddOnMetadata and C.GetAddOnMetadata("ToonAge", "X-Flavor")
+    if not read or read == "" then return nil end   -- cannot tell; say nothing
+    if read == want then return nil end
+    -- ToonAge.toc declares "fallback" on purpose: it is the file for a client
+    -- no suffix matched, so loading it is expected, not a fault.
+    if read == "fallback" then return nil end
+    return want, read
+end
 
 TA.interfaceCode = interfaceCode
 TA.projectId     = projectId

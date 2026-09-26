@@ -261,3 +261,55 @@ _xptr_`). These are authoritative working examples of the pattern.
 ### Also installed (multi-TOC corpus to study)
 Angleur, BetterBags, BtWTodo, DataStore_* suite, HandyNotes_* — all ship the
 `_TBC/_Vanilla/_Cata/_Mists/_Wrath` + generic pattern.
+
+---
+
+## Per-Flavor Source Index
+
+Checked 2026-09-22. "fetched" = the page itself was read; "search" = confirmed
+present and covering the stated version from search results without reading the
+page; "assumed" = long-established source already covered above, not re-checked
+this pass. Re-check before trusting an entry older than a content patch.
+
+These are HAND cross-checks. None of the Forever sites publishes an API or a
+data dump, and the licensing note at the top of this file plus `.rules.md`
+(`crawl_wowdb_quests.py`, deleted 2026-07-26) rule out bulk-downloading a
+third-party database. `Modules/Forever/DataHarvester.lua` and Blizzard's
+licensed API stay the only things that put values into `Data/`.
+
+| Flavor | Source | Covers | Checked |
+|---|---|---|---|
+| forever | wowdata.app | items, spells, talents, professions, Legacy, racials. Build 1.60.1.69913 — same build the client reports | fetched |
+| forever | wowhead.com/forever | talent calculator (`/forever/talent-calc`), guides (`/forever/guides`), database | search |
+| forever | zockify.com/forever | talent + Legacy calculators, gear planner, guides. No version stated on the landing page | fetched |
+| forever | aotc.gg | Forever armory: characters, gear, population | search |
+| forever | warcrafttavern.com/forever | guides, news | search |
+| forever | classicwow.gg/forever/tools | tools hub | search |
+| tbc | wowhead.com/tbc | database, talent calculator, BiS | search |
+| tbc | warcrafttavern.com/tbc | guides, BiS, tools | search |
+| tbc | classic.bisbeard.com | build planner, talent calculator | search |
+| tbc | classicwowarmory.com | character gear/stats | search |
+| tbc | parseforge.gg | Classic/TBC log analyzer | search |
+| mists | wowhead.com/mop-classic | database, talent calculator, BiS | search |
+| vanilla | wowhead.com/classic | database, BiS | search |
+| vanilla | classicwow.gg | guides, BiS, tools | search |
+| vanilla | atlasforge.gg | SoD armory | search |
+| cata | wowhead.com/cata | database, talent calculator | search |
+| retail | wowhead, icy-veins, raider.io, warcraftlogs, raidbots, archon.gg, murlok.io | see the source-by-source section above | assumed |
+| retail (PvP) | arenamaster.io, check-pvp.fr, seramate.com | ratings, profiles, season stats | search |
+
+### Corrections to the circulating list
+
+Recorded because these were wrong in a source list that looked authoritative,
+and a wrong URL costs an evening the first time someone chases it.
+
+- `wowforevertalent.com` is `.app`. Project: github.com/coolbat-vibe/wowforevertalent.
+- Wowhead has a first-class Forever section; it is not merely "synced from beta".
+- aotc.gg is no longer SoD-only — it covers Forever.
+- NOT FOUND, treat as nonexistent until someone produces a working link:
+  `pvplog.com` (searches return only an addon of that name), `check-pvp-classic.fr`,
+  `wowauctions.net`, `azerothbase`, `wowforever.tools`.
+- The Forever talent-calculator space is crowded with near-identical SEO sites
+  (wowforevertalents.com, classicwowforever.com, wowtbc.gg/warcraftforever,
+  wowforeverguides.com). Prefer Wowhead and wowdata.app; treat the rest as
+  unverified.

@@ -223,8 +223,8 @@ AutoMount.SlashCommands = {
 -- ── Init ──────────────────────────────────────────────────────────────────────
 
 function AutoMount:Init()
-    TA.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    TA.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    TA:RegisterEvent("PLAYER_REGEN_ENABLED")
+    TA:RegisterEvent("PLAYER_REGEN_DISABLED")
 
     GetSettings()
 

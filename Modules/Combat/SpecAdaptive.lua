@@ -26,8 +26,17 @@ local DUNGEON_EFFICIENT_RANGES = {
 
 --- Get the player's current role and spec info.
 function SA:GetRoleInfo()
-    local specIndex = GetSpecialization()
-    if not specIndex then
+    -- Guarded rather than raw: GetSpecialization does not exist on every client
+    -- ToonAge loads on, and calling a nil global throws instead of returning
+    -- nil. This module is not shipped on specless flavors, but a cross-module
+    -- call reached it there once, and "no spec" is a sane answer anyway.
+    if type(GetSpecialization) ~= "function"
+       or type(GetSpecializationInfo) ~= "function" then
+        return "DAMAGER", "Unknown", "melee"
+    end
+
+    local ok, specIndex = pcall(GetSpecialization)
+    if not ok or not specIndex then
         return "DAMAGER", "Unknown", "melee"
     end
 

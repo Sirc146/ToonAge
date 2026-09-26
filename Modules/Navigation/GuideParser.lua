@@ -341,11 +341,11 @@ function GP:IsStepApplicable(step)
 
     -- Spec filter
     if step.spec then
-        local specIndex = GetSpecialization()
-        if specIndex then
-            local _, specName = GetSpecializationInfo(specIndex)
-            if step.spec ~= specName then return false end
-        end
+        -- Through Utils, not the raw API: GetSpecialization does not exist on
+        -- every client this runs on (WoW Forever has no spec system), and
+        -- calling a nil global throws rather than returning nil.
+        local _, specName = TA.Utils.GetPlayerSpec()
+        if specName and step.spec ~= specName then return false end
     end
 
     -- Level filter
