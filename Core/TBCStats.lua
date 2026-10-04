@@ -739,7 +739,9 @@ function S:GetArmorInfo(opts)
     -- never populated and armor/reduction% always read as 0 regardless of the
     -- player's actual armor. Guarded call instead, matching the pattern
     -- GetDefenseSkill() already uses correctly elsewhere in this file.
-    local effArmor
+    -- `_` declared local here: the bare `_` assignment wrote the global `_`,
+    -- which Blizzard code also reads, a taint risk (G10, 2026-10-04).
+    local _, effArmor
     if UnitArmor then _, effArmor = UnitArmor("player") end
     effArmor = U.SafeNum(effArmor)
 

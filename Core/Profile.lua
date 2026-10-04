@@ -87,6 +87,15 @@ local PROFILES = {
             PetCare           = true,
             Gear              = true,
             PvPAdvisor        = true,
+            -- Shipped by ToonAge_TBC.toc all along but never listed here, so
+            -- they loaded and never initialized. AutoEquip scores with the
+            -- cap-aware Gear score (TBC audit fix 6).
+            AutoEquip         = true,
+            AutoQuest         = true,
+            VendorAssist      = true,
+            -- Shared drawer, self-gating per section (G9, 2026-10-04). Shipped
+            -- by ToonAge_TBC.toc; without it the gear button opened nothing.
+            Settings          = true,
         },
         -- Advisory-only product: no Guide (player uses Zygor), no Delves or
         -- Weekly (retail-only systems). Talents/Professions/Pets reuse the
@@ -101,7 +110,9 @@ local PROFILES = {
             { id = "weapons",     label = "Weapons",     module = "WeaponSkill"       },
             { id = "racials",     label = "Racials",     module = "RaceAdvisor"       },
             { id = "professions", label = "Professions", module = "ProfessionAdvisor" },
-            { id = "pets",        label = "Pets",        module = "PetCare"           },
+            -- Hidden for classes with no pet (N5): Hunter/Warlock, or a pet out.
+            { id = "pets",        label = "Pets",        module = "PetCare",
+              condition = "hasPetClass" },
             { id = "pvp",         label = "PvP",         module = "PvPAdvisor"        },
         },
         data      = "TBC",
@@ -137,13 +148,21 @@ local PROFILES = {
             DeathRecovery = true,
             Settings     = true,
             ChatCopy     = true,
+            -- Shipped by ToonAge_Mists.toc but previously denied here.
+            AutoEquip    = true,
+            AutoMount    = true,
+            CutsceneSkip = true,
+            VendorAssist = true,
         },
         -- Leveling companion: no Delves/Weekly/Talents/Rotation/Professions.
         tabs      = {
             { id = "character",  label = "Character",  module = "Character"    },
             { id = "guide",      label = "Guide",      module = "QuestTracker" },
             { id = "gear",       label = "Gear",       module = "Gear"         },
-            { id = "pets",       label = "Pet Care",   module = "PetCare"      },
+            -- Hidden for classes with no pet (N5): Hunter/Warlock, Frost Mage,
+            -- Unholy DK, or any pet out. See TabConditions in Core/UI.lua.
+            { id = "pets",       label = "Pet Care",   module = "PetCare",
+              condition = "hasPetClass" },
         },
         data      = "Mists",
         statRules = "mists-trees",
@@ -167,6 +186,19 @@ local PROFILES = {
         modules   = {},
         data      = "Vanilla",
         statRules = "vanilla-trees",
+        scaffold  = true,
+    },
+    -- G12 (2026-10-04). ToonAge_Wrath.toc shipped with no profile, so a Wrath
+    -- client resolved to UNKNOWN_PROFILE and /ta health and the no-content panel
+    -- called it "Unknown client" -- a launch-checklist NO-GO. Same inert
+    -- scaffold as cata/vanilla. No Wrath Classic client exists to test on as of
+    -- this date; whether to keep the TOC at all is the open checklist decision.
+    wrath = {
+        label     = "Wrath of the Lich King Classic (scaffold)",
+        allowAll  = false,
+        modules   = {},
+        data      = "Wrath",
+        statRules = "wrath-trees",
         scaffold  = true,
     },
     -- WoW Forever. Detected since the 2026-09 beta (Mainline project id with a
@@ -234,10 +266,32 @@ local PROFILES = {
             -- Pets: only shown for classes that actually command a pet
             -- (Hunter/Warlock), gated by the tab's condition below.
             ForeverPets      = true,
-            -- PvP: honor/rank standing. Forever runs the full Vanilla 14-rank
-            -- ladder at the current cap (confirmed against the live PvP pane),
-            -- so this is a real readout, not a placeholder.
+            -- PvP: what actually draws on build 70124 (measured 2026-09-28/30):
+            --   * racial matchups -- yours, your target's, the enemy faction's
+            --     (Data/Forever/Racials.lua, harvested from all 9 races)
+            --   * session + lifetime honorable kills / honor
+            --     (GetPVPSessionStats / GetPVPLifetimeStats are present)
+            -- NOT drawn: rank name/number/progress and this/last-week stats.
+            -- The game's own PvP pane shows the 14-rank ladder, but
+            -- UnitPVPRank, GetPVPRankInfo, GetPVPRankProgress and
+            -- GetPVPThisWeekStats/LastWeekStats are absent to addons, so the
+            -- "Standing" section is omitted. Class matchups wait on spell data.
             ForeverPvP       = true,
+            -- Scrolls: which class each scroll in your bags is for, read from
+            -- the item's own Classes:/Requires tooltip lines (no item list), plus
+            -- a matching line on every item tooltip. Mage Comprehension gates
+            -- are shown against the player's skill when the client reports it.
+            ForeverScrolls   = true,
+            -- Cast order per fight. Replaces the banned Combat tab on Forever:
+            -- own frame, player spell-cast event only, no combat log.
+            ForeverCastLog   = true,
+            -- "Since last session" at login: compares the snapshot saved at
+            -- logout with the live character (ranks to train, low ranks on
+            -- bars, unspent talents, skills behind the cap, new gear). No tab.
+            ForeverSessionCheck = true,
+            -- Beta "world will refresh in N minutes" notice: countdown bar,
+            -- 60s/10s warnings, and a log (/ta refreshlog). No tab.
+            ForeverWorldRefresh = true,
         },
         tabs      = {
             { id = "character",  label = "Character",  module = "ForeverCharacter" },
@@ -246,6 +300,9 @@ local PROFILES = {
             { id = "spells",     label = "Spells",     module = "ForeverRotation"  },
             { id = "pets",       label = "Pets",       module = "ForeverPets", condition = "hasPetClass" },
             { id = "pvp",        label = "PvP",        module = "ForeverPvP"    },
+            { id = "scrolls",    label = "Scrolls",    module = "ForeverScrolls",
+              events = { "BAG_UPDATE" } },   -- bag contents ARE this tab
+            { id = "casts",      label = "Casts",      module = "ForeverCastLog" },
             { id = "harvest",    label = "Harvest",    module = "DataHarvester" },
         },
         data      = "Forever",

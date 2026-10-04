@@ -180,6 +180,68 @@ end
 --- @param func function
 --- @param ... any — args to func (last numeric arg is NOT the fallback)
 --- @return number
+-- ── Equipping from bags (2026-10-03) ─────────────────────────────────────
+-- One guarded path for every equip ToonAge performs, so a rule added once
+-- holds everywhere (AutoEquip, Gear's Equip / Equip All buttons).
+
+--- Is the bag item a Bind-on-Equip / Bind-on-Use item that is NOT bound yet?
+--- @return boolean|nil true = unbound and would bind; false = bound or never
+---   binds on equip; nil = cannot tell on this client
+function U.IsUnboundBindable(bag, slot)
+    local link = C_Container and C_Container.GetContainerItemLink
+        and C_Container.GetContainerItemLink(bag, slot)
+    if not link then return nil end
+    local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local info = getInfo and { pcall(getInfo, link) }
+    local bindType = info and info[1] and info[15]   -- GetItemInfo's 14th return
+    if bindType == nil then return nil end
+    if bindType ~= 2 and bindType ~= 3 then return false end   -- 2 BoE, 3 BoU
+    -- Bound already? ItemLocation + C_Item.IsBound where present, then the
+    -- container record's isBound field.
+    if ItemLocation and ItemLocation.CreateFromBagAndSlot and C_Item and C_Item.IsBound then
+        local ok, loc = pcall(ItemLocation.CreateFromBagAndSlot, ItemLocation, bag, slot)
+        if ok and loc then
+            local ok2, bound = pcall(C_Item.IsBound, loc)
+            if ok2 and type(bound) == "boolean" then return not bound end
+        end
+    end
+    if C_Container and C_Container.GetContainerItemInfo then
+        local ok, ci = pcall(C_Container.GetContainerItemInfo, bag, slot)
+        if ok and type(ci) == "table" and type(ci.isBound) == "boolean" then return not ci.isBound end
+    end
+    return nil
+end
+
+--- Equip the item at bag/slot into targetSlot, or say why not.
+--- opts.skipUnbound: refuse unbound BoE/BoU (and unknown bind state) -- for
+---   anything ToonAge does in bulk or on its own.
+--- opts.allowPrompt: a single user click; the game's own "will bind" confirm
+---   may be pending, so the cursor is NOT cleared afterwards.
+--- @return boolean ok, string|nil reason
+function U.SafeEquip(bag, slot, targetSlot, opts)
+    opts = opts or {}
+    if InCombatLockdown and InCombatLockdown() then return false, "in combat" end
+    if CursorHasItem and CursorHasItem() then return false, "cursor is holding an item" end
+    if opts.skipUnbound then
+        local unbound = U.IsUnboundBindable(bag, slot)
+        if unbound == true then return false, "binds when equipped" end
+        if unbound == nil then return false, "bind state unknown" end
+    end
+    if C_Container and C_Container.PickupContainerItem then
+        C_Container.PickupContainerItem(bag, slot)
+    elseif PickupContainerItem then
+        PickupContainerItem(bag, slot)
+    else
+        return false, "no pickup API"
+    end
+    EquipCursorItem(targetSlot)
+    if not opts.allowPrompt and CursorHasItem and CursorHasItem() then
+        ClearCursor()
+        return false, "did not equip"
+    end
+    return true
+end
+
 function U.SafeGetNum(func, ...)
     local ok, val = pcall(func, ...)
     if ok and val ~= nil then

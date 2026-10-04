@@ -136,12 +136,13 @@ TA.logLevel = TA.LOG.WARN
 --    a 40-line module list cannot live in a chat frame you can't select.
 TA.SINK = { CHAT = "chat", REPORT = "report", PANEL = "panel" }
 
--- Output this short is an acknowledgement, not a report. Three, not one: the
--- short status replies are two or three lines ("Chat verbosity is warn." plus
--- its usage hint), and putting a usage hint in a window the user has to close
--- is worse than the chat line it replaced. Anything genuinely worth reading in
--- one place -- a module list, a diagnostic, an error dump -- is well past this.
-local ACK_MAX = 3
+-- Output this short is an acknowledgement, not a report. ONE line: a status
+-- reply ("Debug mode: ON", "Chat verbosity set to info.") stays in chat; any
+-- command that produces two lines or more opens the copy window, so real
+-- output is always selectable and never scrolls away in the chat frame
+-- (2026-09-30: "anything that has output ... to a window for a copyable
+-- version"). This was 3, which let usage hints and short lists print to chat.
+local ACK_MAX = 1
 
 -- Active capture, or nil when output goes straight to chat.
 TA._sink = nil
@@ -222,7 +223,16 @@ function TA:WithSink(sink, title, fn, ...)
         return ok
     end
 
-    if ok and #cap.lines <= ACK_MAX then
+    -- Count display lines, not print calls: one TA:Raw carrying a whole
+    -- export joined with "\n" is many lines (/ta coordexport printed its
+    -- entire export to chat as a single "line", 2026-09-30).
+    local shown = 0
+    for _, line in ipairs(cap.lines) do
+        local _, nl = tostring(line):gsub("\n", "")
+        shown = shown + 1 + nl
+    end
+
+    if ok and shown <= ACK_MAX then
         for _, line in ipairs(cap.lines) do print(line) end
         return ok
     end
@@ -745,6 +755,45 @@ function TA:InitModules()
             end
         end
     end
+
+    -- Second pass, after EVERY Init has run: register the events each running
+    -- module declares in M.Events. Six Forever modules declared lists that no
+    -- code ever read, so UNIT_STATS, UNIT_RESISTANCES, ACTIONBAR_SLOT_CHANGED,
+    -- the pet-happiness events and all five PvP events were never registered
+    -- and those tabs went stale (confirmed by /ta test, 2026-09-28). Done after
+    -- the loop so a module's own unfiltered RegisterEvent always wins over the
+    -- player-only registration below.
+    for _, mod in pairs(self.modules) do
+        if not mod._disabled and not mod._initError then
+            self:RegisterModuleEvents(mod)
+        end
+    end
+end
+
+--- Registers the events a module lists in `mod.Events`.
+---
+--- UNIT_* events are registered for "player" only (RegisterUnitEvent), and only
+--- when nothing has already registered them for all units: UNIT_FACTION or
+--- UNIT_STATS for every nameplate would rebuild the open tab constantly for
+--- data about somebody else. Anything else goes through TA:RegisterEvent, so a
+--- name this client does not define is recorded for /ta health, not thrown.
+function TA:RegisterModuleEvents(mod)
+    if type(mod) ~= "table" or type(mod.Events) ~= "table" then return end
+    local f = self.eventFrame
+    for _, event in ipairs(mod.Events) do
+        if type(event) == "string" and event ~= "" then
+            local okQ, already = pcall(f.IsEventRegistered, f, event)
+            if not (okQ and already) then
+                if event:find("^UNIT_") and f.RegisterUnitEvent then
+                    if not pcall(f.RegisterUnitEvent, f, event, "player") then
+                        self.unknownEvents[event] = true
+                    end
+                else
+                    self:RegisterEvent(event)
+                end
+            end
+        end
+    end
 end
 
 -- High-frequency events go only to the modules that mention them; everything
@@ -753,22 +802,23 @@ end
 -- BEGIN GENERATED EVENT_ROUTES (Tools/gen_event_routes.py)
 local EVENT_ROUTES = {
     BAG_UPDATE = { "Gear" },
-    UNIT_INVENTORY_CHANGED = { "Character", "Gear" },
-    GET_ITEM_INFO_RECEIVED = { "Gear" },
+    UNIT_INVENTORY_CHANGED = { "Character", "ForeverGear", "Gear" },
+    GET_ITEM_INFO_RECEIVED = { "ForeverGear", "Gear" },
     QUEST_LOG_UPDATE = { "CoordHarvester", "NameplateObjectives", "PullPlanner", "QuestTracker", "TargetMarker" },
     UNIT_AURA = { "CombatState" },
-    UNIT_STATS = { "ForeverCharacter" },
+    UNIT_STATS = { "ForeverCharacter", "ForeverScrolls" },
     COMBAT_RATING_UPDATE = {  },
     UNIT_POWER_UPDATE = { "CombatState" },
     UNIT_HEALTH = { "CombatState", "RoleMorph" },
-    CHAT_MSG_SYSTEM = {  },
+    CHAT_MSG_SYSTEM = { "ForeverWorldRefresh" },
     PLAYER_XP_UPDATE = { "ForeverCharacter", "XPTracker" },
-    ACTIONBAR_SLOT_CHANGED = {  },
+    ACTIONBAR_SLOT_CHANGED = { "CombatRecorder", "ForeverRotation" },
     SPELL_UPDATE_COOLDOWN = {  },
-    PLAYER_TARGET_CHANGED = { "CombatState", "Gear" },
+    PLAYER_TARGET_CHANGED = { "CombatState", "ForeverPvP", "Gear" },
     UNIT_ATTACK_POWER = {  },
-    BAG_UPDATE_DELAYED = { "DataHarvester" },
+    BAG_UPDATE_DELAYED = { "AutoEquip", "DataHarvester", "ForeverGear" },
     ZONE_CHANGED = { "CoordResolver", "TravelRouter" },
+    UNIT_SPELLCAST_SUCCEEDED = { "CombatRecorder", "ForeverCastLog" },
 }
 -- END GENERATED EVENT_ROUTES
 
@@ -858,6 +908,7 @@ local PERSISTENT_EVENTS = {
 -- Register one-shot boot events
 TA:RegisterEvent("ADDON_LOADED")
 TA:RegisterEvent("PLAYER_ENTERING_WORLD")
+TA:RegisterEvent("PLAYER_LOGOUT")   -- reset tripwire: last counts before SavedVariables are written
 
 -- Register persistent events
 for _, event in ipairs(PERSISTENT_EVENTS) do
@@ -868,6 +919,11 @@ TA.eventFrame:SetScript("OnEvent", function(self, event, ...)
     local TA  = ToonAge
     local arg1 = ...
 
+    if event == "PLAYER_LOGOUT" then
+        -- Only after a login that loaded the DB; a failed login must not
+        -- overwrite the last good counts with zeros.
+        if TA.db then pcall(TA.GuardSnapshot, TA) end
+    end
     if event == "ADDON_LOADED" then
         -- Only act on our own addon load; unregister immediately
         if arg1 == "ToonAge" then
@@ -993,10 +1049,123 @@ function TA:QueueUIRefresh(event)
 end
 
 -- ── Login sequence ────────────────────────────────────────────────────
+--- One login step, isolated. A throw in any step used to abort the rest of
+--- OnLogin -- including the /ta registration at its end -- leaving a half-
+--- loaded addon with no slash command to diagnose it (G4, 2026-09-28).
+--- Each step now runs in xpcall: the error goes to the normal error handler
+--- (ErrorLog / BugSack see it with a stack), the step is recorded in
+--- TA._loginFailures, and the next step still runs.
+local function LoginStep(name, fn)
+    local ok, err = xpcall(fn, function(e)
+        return tostring(e) .. "\n" .. (debugstack and debugstack(2) or "")
+    end)
+    if not ok then
+        TA._loginFailures = TA._loginFailures or {}
+        TA._loginFailures[#TA._loginFailures + 1] = name
+        -- Kept for ErrorLog: it isn't installed yet when InitDB fails, so the
+        -- error would otherwise reach only the default handler.
+        TA._loginErrors = TA._loginErrors or {}
+        TA._loginErrors[#TA._loginErrors + 1] = { step = name, err = tostring(err) }
+        local handler = geterrorhandler and geterrorhandler()
+        if handler then pcall(handler, "ToonAge login step '" .. name .. "' failed: " .. tostring(err)) end
+    end
+    return ok
+end
+
+TA._LoginStep = LoginStep   -- exposed for the self-test (login suite)
+local RECOVERED_DAYS = 7
+
+-- ── Reset tripwire (2026-10-03) ──────────────────────────────────────────
+-- ToonAgeDB was reset on 2026-10-03 between 08:46 and 09:57 with nothing
+-- recording why, and WoW's own .bak was already post-reset. ToonAgeGuard is a
+-- second, tiny SavedVariable (TOC: "## SavedVariables: ToonAgeDB, ToonAgeGuard")
+-- holding only last session's counts. A loss of ToonAgeDB does not take it
+-- along, so the next login can tell:
+--   * "missing"  -- ToonAgeDB arrived nil: WoW did not load ToonAge.lua
+--                   (file deleted, unreadable, or the addon was not saved)
+--   * "emptied"  -- arrived as an empty table
+--   * "shrank"   -- harvest records dropped by more than half
+--   * "reset"    -- a reset ran in ToonAge itself (lastReset says which)
+-- Each incident is kept in ToonAgeGuard.incidents and announced once.
+local function GuardCounts(db)
+    local c = { keys = 0, chars = 0, harvest = 0 }
+    if type(db) ~= "table" then return c end
+    for _ in pairs(db) do c.keys = c.keys + 1 end
+    if type(db.char) == "table" then for _ in pairs(db.char) do c.chars = c.chars + 1 end end
+    local h = type(db.foreverHarvest) == "table" and db.foreverHarvest or nil
+    for _, k in ipairs({ "items", "spells", "talents", "chars", "racials" }) do
+        if h and type(h[k]) == "table" then for _ in pairs(h[k]) do c.harvest = c.harvest + 1 end end
+    end
+    return c
+end
+
+local function Tripwire()
+    ToonAgeGuard = type(ToonAgeGuard) == "table" and ToonAgeGuard or {}
+    local g = ToonAgeGuard
+    g.incidents = g.incidents or {}
+    local last = g.last
+    local now = GuardCounts(ToonAgeDB)
+    local build = select(2, GetBuildInfo())
+    local kind
+    if last and (last.keys or 0) > 0 then
+        if ToonAgeDB == nil then kind = "missing"
+        elseif now.keys == 0 then kind = "emptied"
+        elseif (last.harvest or 0) >= 20 and now.harvest < (last.harvest / 2) then kind = "shrank" end
+    end
+    if kind then
+        local inc = {
+            at = time and time() or nil, kind = kind, build = build,
+            before = { keys = last.keys, chars = last.chars, harvest = last.harvest, at = last.at, build = last.build },
+            after = now, lastReset = g.lastReset,
+        }
+        table.insert(g.incidents, 1, inc)
+        while #g.incidents > 10 do table.remove(g.incidents) end
+        TA._resetIncident = inc
+    end
+    g.lastReset = nil   -- consumed: it explains this login or none
+end
+TA._GuardCounts = GuardCounts
+
+--- Called at logout and by every reset path. `how` names a reset.
+function TA:GuardSnapshot(how)
+    ToonAgeGuard = type(ToonAgeGuard) == "table" and ToonAgeGuard or {}
+    if how then
+        ToonAgeGuard.lastReset = { at = time and time() or nil, how = how }
+        return
+    end
+    local c = GuardCounts(ToonAgeDB)
+    c.at = time and time() or nil
+    c.build = select(2, GetBuildInfo())
+    ToonAgeGuard.last = c
+end
+
 function TA:OnLogin()
-    self:InitDB()
+    -- DB first: every later step and every command reads it. If it fails there
+    -- is nothing safe to run, but /ta is still registered below so the failure
+    -- can be seen (/ta errors works off the global error handler's log).
+    -- Before InitDB touches anything: compare what arrived with last session.
+    LoginStep("Tripwire", Tripwire)
+    local dbOK = LoginStep("InitDB", function() self:InitDB() end)
+    if not dbOK then
+        -- Unreadable SavedVariables (wrong type after a crash, a hand-edit, a
+        -- schema the migrations can't handle). Start from an empty table so
+        -- the addon runs, and keep the old data under _recovered -- attached
+        -- AFTER the fresh InitDB, so migrations never see it. Nothing is
+        -- deleted; the next logout writes it back out with the new table.
+        local old = ToonAgeDB
+        ToonAgeDB = {}
+        dbOK = LoginStep("InitDB (fresh)", function() self:InitDB() end)
+        if dbOK then
+            TA:GuardSnapshot("unreadable-settings recovery")
+            ToonAgeDB._recovered = { at = time and time() or nil, data = old }
+            self._dbRecovered = true
+        else
+            ToonAgeDB = old    -- both failed: leave the original untouched
+        end
+    end
 
     -- ── Dev Build Tester Lock ─────────────────────────────────────────────
+    -- Before /ta is registered: an unauthorized dev build stays fully inert.
     if IS_DEV_BUILD then
         local name   = UnitName("player") or "Unknown"
         local server = GetRealmName() or "Unknown"
@@ -1007,39 +1176,103 @@ function TA:OnLogin()
         end
     end
 
+    -- Slash commands FIRST (G4): diagnosability before functionality. A later
+    -- step that throws no longer takes /ta errors, /ta health or /ta safemode
+    -- down with it.
+    SLASH_TOONAGE1 = "/ta"
+    SLASH_TOONAGE2 = "/toonage"
+    if not dbOK then
+        -- Nothing below can run without a DB, and the normal /ta handler and
+        -- ErrorLog both need one. This handler needs nothing: it says what
+        -- failed and offers the one fix that doesn't need the addon running.
+        SlashCmdList["TOONAGE"] = function(msg)
+            msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+            if msg == "resetdb confirm" then
+                TA:GuardSnapshot("/ta resetdb confirm")
+                ToonAgeDB = nil
+                print("|cFFFFD100[ToonAge]|r Saved settings cleared. Type /reload.")
+                return
+            elseif msg == "resetdb" then
+                print("|cFFFFD100[ToonAge]|r This clears ALL ToonAge settings. Type /ta resetdb confirm")
+                return
+            end
+            print("|cFFFF4444[ToonAge]|r Not running: saved settings failed to load twice ("
+                .. tostring(TA._loginFailures and table.concat(TA._loginFailures, ", ")) .. ").")
+            print("|cFFFF4444[ToonAge]|r /ta resetdb confirm clears them (all ToonAge settings), then /reload.")
+        end
+        SlashCmdList["TOONAGE"]("")
+        return
+    end
+    SlashCmdList["TOONAGE"] = function(msg)
+        TA:SlashCommand(msg)
+    end
+    -- _recovered is a quarantine, not an archive: it is written back to the
+    -- SavedVariables file every logout while it exists, so it expires after
+    -- RECOVERED_DAYS. /ta recovered shows it and can discard it sooner.
+    local rec = ToonAgeDB and ToonAgeDB._recovered
+    if type(rec) == "table" and rec.at and time and (time() - rec.at) > RECOVERED_DAYS * 86400 then
+        ToonAgeDB._recovered = nil
+    end
+    if TA._resetIncident then
+        local i = TA._resetIncident
+        local WHY = {
+            missing = "WoW did not load ToonAge's saved file (missing or unreadable)",
+            emptied = "the saved data arrived empty",
+            shrank  = "harvested records dropped by more than half",
+        }
+        TA:Raw(TA.LOG.WARN, ("|cFFFF4444[ToonAge]|r Saved data changed since last session: %s "
+            .. "(%d -> %d harvest records%s). Details kept in ToonAgeGuard.incidents.")
+            :format(WHY[i.kind] or i.kind, i.before.harvest or 0, i.after.harvest or 0,
+                i.lastReset and (", after " .. tostring(i.lastReset.how)) or ""))
+    end
+    if self._dbRecovered then
+        TA:Raw(TA.LOG.WARN, "|cFFFF4444[ToonAge]|r Saved settings were unreadable and were reset. "
+            .. "The old data is kept in ToonAgeDB._recovered; /ta errors shows the cause.")
+    end
+
     -- Snapshot this character's professions (+ class/level) on every login,
     -- so profession data can be gathered across the whole account just by
     -- logging into each character — read back from SavedVariables afterward.
-    self.charDB.professionSnapshot = {
-        class       = TA.Utils.GetPlayerClass(),
-        level       = TA.Utils.GetPlayerLevel(),
-        professions = TA.Utils.GetProfessions(),
-    }
+    LoginStep("ProfessionSnapshot", function()
+        self.charDB.professionSnapshot = {
+            class       = TA.Utils.GetPlayerClass(),
+            level       = TA.Utils.GetPlayerLevel(),
+            professions = TA.Utils.GetProfessions(),
+        }
+    end)
 
-    self:InitModules()
-    self:InitUI()       -- defined in Core/UI.lua
-    self:InitMinimap()  -- defined in Core/MinimapButton.lua
+    LoginStep("InitModules", function() self:InitModules() end)
+    if TA._loginErrors and TA.ErrorLog and TA.ErrorLog.Log then
+        for _, e in ipairs(TA._loginErrors) do
+            pcall(TA.ErrorLog.Log, TA.ErrorLog, "Login: " .. e.step, e.err, "")
+        end
+    end
+    LoginStep("InitUI",      function() self:InitUI() end)       -- Core/UI.lua
+    LoginStep("InitMinimap", function() self:InitMinimap() end)  -- Core/MinimapButton.lua
 
     -- Apply the saved layout choice (Unified HUD vs Fragmented Windows).
     -- Called after both InitUI and InitMinimap so all frames exist, and after
     -- InitModules so Arrow.frame and QuestTracker.window are initialised.
-    self:ApplyLayout()
-
-    -- Slash commands
-    SLASH_TOONAGE1 = "/ta"
-    SLASH_TOONAGE2 = "/toonage"
-    SlashCmdList["TOONAGE"] = function(msg)
-        TA:SlashCommand(msg)
-    end
+    LoginStep("ApplyLayout", function() self:ApplyLayout() end)
 
     -- Install clickable hyperlink system for interactive /ta commands
-    self:InstallSlashLinkHook()
+    LoginStep("SlashLinks", function() self:InstallSlashLinkHook() end)
 
     -- Usage reporting, after modules are up so the session snapshot is real.
     -- Three gates inside decide whether anything is recorded at all.
     if TA.Analytics then
-        TA.Analytics:Init()
-        TA.Analytics:RecordSession()
+        LoginStep("Analytics", function()
+            TA.Analytics:Init()
+            TA.Analytics:RecordSession()
+        end)
+    end
+
+    if TA._loginFailures then
+        -- WARN, not INFO: a partial load is exactly what the quiet-login promise
+        -- must not hide.
+        TA:Raw(TA.LOG.WARN, "|cFFFF4444[ToonAge]|r Loaded with errors in: "
+            .. table.concat(TA._loginFailures, ", ") .. ". /ta errors shows why.")
+        return
     end
 
     -- INFO, not OUTPUT: nobody typed a command to get this. At the WARN default
@@ -1065,6 +1298,36 @@ local SYSTEM_COMMANDS = {
     { name = "debug",    label = "Debug Mode"      },
     { name = "help",     label = "This List"       },
 }
+
+-- /ta help groups. Keyed by command name; anything unlisted is "In game".
+local GROUP_ORDER = {
+    { id = "ingame",  title = "IN GAME" },
+    { id = "options", title = "OPTIONS" },
+    { id = "debug",   title = "DEBUG" },
+    { id = "dev",     title = "DEV (data collection, API mapping)" },
+}
+local COMMAND_GROUP = {
+    -- options
+    options = "options", toggle = "options", layout = "options", verbose = "options",
+    profile = "options", safemode = "options", reset = "options",
+    -- debug
+    health = "debug", errors = "debug", test = "debug", debug = "debug", state = "debug",
+    -- dev
+    report = "dev", catalog = "dev", probe = "dev", apiprobe = "dev",
+    coordstats = "dev", coordexport = "dev", coordclear = "dev",
+    -- help is its own line at the bottom of in-game
+    help = "ingame",
+}
+-- Readable labels for commands whose name alone says little.
+local COMMAND_LABELS = {
+    since = "Since last session", refreshlog = "World refresh log", xp = "XP rate",
+    gather = "Gathering", copy = "Copy chat", errors = "Error log", state = "State keys",
+    report = "Full report", catalog = "Spell catalog scan", probe = "Client probes",
+    apiprobe = "Missing APIs", coordstats = "Coord stats", coordexport = "Coord export",
+    coordclear = "Coord clear", profile = "Profile export/import",
+}
+-- Second names for the same command: still work when typed, not listed twice.
+local COMMAND_ALIAS = { copychat = true }
 
 --- Tab ids that are real on THIS client, in profile order, minus `character`
 --- (that one is the anchor tab -- /ta with no argument already opens it).
@@ -1121,6 +1384,14 @@ local function Dispatch(self, msg)
             TA:Print(TA.LOG.OUTPUT, nil, "Debug mode: " .. (TA.debug and "ON" or "OFF"))
         end,
         reset    = function()
+            -- Typed confirmation (2026-10-03): the Settings button already asks
+            -- through a popup; the slash command wiped on a single typo-able word.
+            if args ~= "confirm" then
+                TA:Print(TA.LOG.OUTPUT, nil, "This clears ALL ToonAge settings and data for every "
+                    .. "character. To do it, type |cFFFFD100/ta reset confirm|r")
+                return
+            end
+            TA:GuardSnapshot("/ta reset confirm")
             -- Rebuild immediately. Clearing the global alone left TA.db and
             -- TA.charDB pointing at the orphaned table, so every write between
             -- the reset and the reload went into a table nothing would save.
@@ -1133,6 +1404,27 @@ local function Dispatch(self, msg)
             -- Modules that cached a sub-table of the old db still hold the
             -- orphan, which is why the reload is still required.
             TA:Print(TA.LOG.OUTPUT, nil, "Settings reset. Please reload UI (/reload).")
+        end,
+        recovered = function()
+            local rec = ToonAgeDB and ToonAgeDB._recovered
+            if type(rec) ~= "table" then
+                TA:Print(TA.LOG.OUTPUT, nil, "No recovered settings are being kept.")
+                return
+            end
+            if args == "discard" then
+                ToonAgeDB._recovered = nil
+                TA:Print(TA.LOG.OUTPUT, nil, "Recovered settings discarded.")
+                return
+            end
+            local n = 0
+            if type(rec.data) == "table" then for _ in pairs(rec.data) do n = n + 1 end end
+            local days = rec.at and time and math.floor((time() - rec.at) / 86400) or "?"
+            TA:Print(TA.LOG.OUTPUT, nil, ("Saved settings were reset %s day(s) ago because they "
+                .. "could not be loaded. The old data (%s, %d top-level keys) is kept for %d days "
+                .. "in WTF\\...\\SavedVariables\\ToonAge.lua under ToonAgeDB._recovered, "
+                .. "for copying values back by hand. There is no automatic restore: loading it is "
+                .. "what failed. |cFFFFD100/ta recovered discard|r drops it now.")
+                :format(tostring(days), type(rec.data), n, RECOVERED_DAYS))
         end,
         layout   = function()
             self.db.useUnifiedUI = not self.db.useUnifiedUI
@@ -1543,7 +1835,9 @@ function TA:PrintInteractiveHelp()
 
     R:Add("|cFFFFD100ToonAge|r v" .. tostring(self.version or "?")
         .. "  |cFF888780" .. tostring((self.GetProfile and self:GetProfile() or {}).label or "?") .. "|r")
-    R:Add("Click any command to run it.")
+    -- This list opens in the copy window, which shows plain text: the [links]
+    -- are labels there, not buttons. Every command also has a real button.
+    R:Add("Type /ta <command>. Buttons: title bar (? Copy), Character, Spells, Harvest, and the gear drawer.")
     R:Add("")
     R:Add("  " .. self:MakeSlashLink("", "Open/Close ToonAge"))
     R:Add("")
@@ -1568,45 +1862,49 @@ function TA:PrintInteractiveHelp()
         R:Add("")
     end
 
-    -- ── Module commands ───────────────────────────────────────────────
-    local modCmds = {}
+    -- ── Everything else, grouped by who it is for ─────────────────────
+    -- In game: things a player uses while playing. Options: settings.
+    -- Debug: when something looks wrong. Dev: data collection and API
+    -- mapping for building ToonAge itself. A command not named in
+    -- COMMAND_GROUP (a module added later, or another flavor's) lands in
+    -- In game, so nothing ever drops off the list.
+    local all = {}
     for name, mod in pairs(self.modules or {}) do
         if mod.SlashCommands and not mod._disabled and not mod._profileSkipped then
             for cmd, fn in pairs(mod.SlashCommands) do
-                if type(fn) == "function" then
-                    modCmds[#modCmds + 1] = { cmd = cmd, module = name }
+                if type(fn) == "function" and not COMMAND_ALIAS[cmd] then
+                    all[#all + 1] = { name = cmd, label = COMMAND_LABELS[cmd] or cmd }
                 end
             end
         end
     end
-    table.sort(modCmds, function(a, b) return a.cmd < b.cmd end)
-    if #modCmds > 0 then
-        R:Add("  |cFF888780COMMANDS:|r")
-        local row = {}
-        for _, e in ipairs(modCmds) do
-            row[#row + 1] = self:MakeSlashLink(e.cmd, e.cmd)
-            if #row == 4 then
-                R:Add("    " .. table.concat(row, "  "))
-                row = {}
+    for _, c in ipairs(SYSTEM_COMMANDS) do all[#all + 1] = { name = c.name, label = c.label } end
+    for _, c in ipairs(self.extraSystemCommands or {}) do all[#all + 1] = { name = c.name, label = c.label } end
+
+    local groups = {}
+    for _, c in ipairs(all) do
+        local g = COMMAND_GROUP[c.name] or "ingame"
+        groups[g] = groups[g] or {}
+        table.insert(groups[g], c)
+    end
+    for _, g in ipairs(GROUP_ORDER) do
+        local list = groups[g.id]
+        if list and #list > 0 then
+            table.sort(list, function(x, y) return x.label < y.label end)
+            R:Add("  |cFF888780" .. g.title .. ":|r")
+            local row = {}
+            for _, c in ipairs(list) do
+                row[#row + 1] = self:MakeSlashLink(c.name, c.label)
+                if #row == 3 then
+                    R:Add("    " .. table.concat(row, "  "))
+                    row = {}
+                end
             end
-        end
-        if #row > 0 then R:Add("    " .. table.concat(row, "  ")) end
-        R:Add("")
-    end
-
-    -- ── System ────────────────────────────────────────────────────────
-    R:Add("  |cFF888780SYSTEM:|r")
-    local row = {}
-    for _, c in ipairs(SYSTEM_COMMANDS) do
-        row[#row + 1] = self:MakeSlashLink(c.name, c.label)
-        if #row == 2 then
-            R:Add("    " .. table.concat(row, "  "))
-            row = {}
+            if #row > 0 then R:Add("    " .. table.concat(row, "  ")) end
+            R:Add("")
         end
     end
-    if #row > 0 then R:Add("    " .. table.concat(row, "  ")) end
 
-    R:Add("")
     R:Add("|cFF555555Partial commands work: /ta heal -> health.|r")
     R:Add("|cFF555555Long output opens in a window you can select and copy.|r")
     R:Finish()

@@ -55,7 +55,14 @@ check("the log is read once per event", h.count("CombatLogGetCurrentEventInfo()"
 
 # ── Aggregated: no raw event list anywhere ──────────────────────────────
 check("no raw event log is appended", "table.insert" not in r)
-check("casts are counted", "row.casts   = (row.casts or 0) + 1" in r)
+check("casts are counted", "row.casts    = (row.casts or 0) + 1" in r)
+check("combat-log casts use the shared counter", 'kind == "cast" then\n        self:RecordCast(' in r)
+check("combat log is never attempted on Mainline clients",
+      "if TA.IsRetail or TA.IsForever then" in r)
+check("spell-cast events count casts there",
+      'TA:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")' in r and 'event == "UNIT_SPELLCAST_SUCCEEDED"' in r)
+check("the log's availability is remembered",
+      'self._hasCombatLog = TA:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")' in r)
 check("damage is summed", "row.damage  = (row.damage or 0) + (tonumber(amount) or 0)" in r)
 check("healing is summed", "row.healing = (row.healing or 0) + (tonumber(amount) or 0)" in r)
 
@@ -86,9 +93,10 @@ check("the code ranks nothing",
       "priority" not in code and "weight" not in code and "score" not in code)
 
 # ── Wiring ──────────────────────────────────────────────────────────────
-for toc in ("ToonAge.toc", "ToonAge_Mainline.toc", "ToonAge_Camelot.toc"):
+for toc in ("ToonAge.toc", "ToonAge_Mainline.toc"):
     check(f"{toc} ships it", "Modules\\Combat\\CombatRecorder.lua" in read(toc))
-check("forever allows it", "CombatRecorder   = true," in read("Core/Profile.lua"))
+check("forever does NOT allow it (banned 2026-09-27)", "CombatRecorder   = true," not in read("Core/Profile.lua"))
+check("Camelot TOC does not ship it", "Modules\\Combat\\CombatRecorder.lua" not in read("ToonAge_Camelot.toc"))
 
 
 rep = read("Modules/Combat/CombatReport.lua")
@@ -98,7 +106,7 @@ check("thinly-cast abilities are not judged", "if (row.casts or 0) < MIN_CASTS t
 check("dead bar slots are bars minus casts", "a.dead[#a.dead + 1]" in rep)
 check("forgotten abilities are known minus bars", "a.forgotten[#a.forgotten + 1]" in rep)
 check("reset needs two clicks", "_confirmReset" in rep)
-for toc in ("ToonAge.toc", "ToonAge_Mainline.toc", "ToonAge_Camelot.toc"):
+for toc in ("ToonAge.toc", "ToonAge_Mainline.toc"):
     t_ = read(toc)
     check(f"{toc} loads the report after the recorder",
           t_.index("CombatRecorder.lua") < t_.index("CombatReport.lua"))

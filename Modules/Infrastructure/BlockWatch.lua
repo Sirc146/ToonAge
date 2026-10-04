@@ -455,8 +455,8 @@ function BW:Init()
     -- These two events are not in Core/Init.lua's route table, so an unrouted
     -- event is broadcast to every module's OnEvent -- registering them here is
     -- enough for this module to receive them.
-    TA.eventFrame:RegisterEvent("ADDON_ACTION_BLOCKED")
-    TA.eventFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+    TA:RegisterEvent("ADDON_ACTION_BLOCKED")
+    TA:RegisterEvent("ADDON_ACTION_FORBIDDEN")
 
     if TA.debug then
         TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA]|r BlockWatch module loaded.")

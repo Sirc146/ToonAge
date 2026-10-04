@@ -193,9 +193,13 @@ end
 -- TOC, so this is a fact about the running build rather than a guess about the
 -- flavour, and it needs no maintenance when a flavour's module set changes.
 local function Has(...)
-    if not TA.GetModule then return true end   -- can't tell: show, don't hide
+    if not TA.GetRegisteredModule then return true end   -- can't tell: show, don't hide
+    -- Registered and part of this flavor's product -- NOT "currently running".
+    -- GetModule returns nil for a module the player switched off, which made its
+    -- own toggle row vanish after the reload, leaving only /ta toggle to undo it.
     for i = 1, select("#", ...) do
-        if TA:GetModule((select(i, ...))) then return true end
+        local m = TA:GetRegisteredModule((select(i, ...)))
+        if m and not m._profileSkipped then return true end
     end
     return false
 end
@@ -329,6 +333,18 @@ function Settings:Render(content, sidebar)
                 TA.charDB.tracker.deferToZygor = not on
             end
         end)
+
+        -- QuestTracker reads tracker.autoRewardPick and its paused message
+        -- tells the player to turn this on "in Settings" -- so it must be here.
+        if Has("QuestTracker") then
+            y = MakeToggleRow(content, y, w, "Auto-pick quest rewards (off = pause on the choice and show the best pick)", function()
+                return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoRewardPick == true
+            end, function()
+                if TA.charDB and TA.charDB.tracker then
+                    TA.charDB.tracker.autoRewardPick = not (TA.charDB.tracker.autoRewardPick == true)
+                end
+            end)
+        end
 
         y = y - 8
     end
@@ -633,6 +649,24 @@ function Settings:Render(content, sidebar)
         end
     end
 
+    -- Module switches, the same list /ta toggle prints. As rows here they can
+    -- be clicked; as a list in the copy window they could not (the window
+    -- shows plain text, so /ta toggle's links were dead there).
+    do
+        local names = {}
+        for name in pairs((TA.db and TA.db.modules) or {}) do names[#names + 1] = name end
+        table.sort(names)
+        if #names > 0 then
+            y = y - 8
+            y = MakeSection(content, y, w, "MODULES (reload to apply)")
+            for _, name in ipairs(names) do
+                y = MakeToggleRow(content, y, w, name,
+                    function() return TA.db.modules[name] and true or false end,
+                    function() TA.db.modules[name] = not TA.db.modules[name] end)
+            end
+        end
+    end
+
     y = y - 8
     y = MakeSection(content, y, w, "ABOUT")
     y = MakeInfoRow(content, y, w, "Version", TA.version or "1.0.0")
@@ -643,7 +677,11 @@ function Settings:Render(content, sidebar)
     local author = getMeta and getMeta("ToonAge", "Author")
     y = MakeInfoRow(content, y, w, "Author", (author ~= nil and author ~= "") and author or "SIRC")
     y = MakeInfoRow(content, y, w, "Modules", string.format("%d total (%d active)", loaded + disabled + errored, loaded))
-    y = MakeInfoRow(content, y, w, "Guides loaded", tostring(U.TableLength(TA.Guides or {})))
+    -- Only where a guide stack ships. TBC and Forever have none, and a
+    -- permanent "Guides loaded: 0" reads as something that failed to load.
+    if Has("QuestTracker", "GuideParser") then
+        y = MakeInfoRow(content, y, w, "Guides loaded", tostring(U.TableLength(TA.Guides or {})))
+    end
 
     y = y - 16
     local note = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -667,7 +705,7 @@ function Settings:RenderSidebar(parent)
 
     local function AddBtn(label, onClick)
         local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-        btn:SetHeight(26)
+        btn:SetHeight(20)
         btn:SetPoint("TOPLEFT",  parent, "TOPLEFT",  4, y)
         btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, y)
         btn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
@@ -683,57 +721,109 @@ function Settings:RenderSidebar(parent)
         btn:SetScript("OnEnter", function(f) f:SetBackdropColor(0.20, 0.15, 0.04, 1) end)
         btn:SetScript("OnLeave", function(f) f:SetBackdropColor(0.10, 0.08, 0.02, 1) end)
         table.insert(self.frames, btn)
-        y = y - 30
+        y = y - 23
     end
 
-    local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    hdr:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-    hdr:SetText("QUICK ACTIONS")
-    hdr:SetTextColor(0.55, 0.40, 0.08, 1)
-    hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, y)
-    table.insert(self.frames, hdr)
-    y = y - 18
+    local function AddHdr(text)
+        y = y - 4
+        local h = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        h:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+        h:SetText(text)
+        h:SetTextColor(0.55, 0.40, 0.08, 1)
+        h:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, y)
+        table.insert(self.frames, h)
+        y = y - 14
+    end
 
-    AddBtn("Toggle NavHud", function()
-        local NH = TA:GetModule("NavHud")
-        if NH then NH:Toggle() end
-    end)
+    -- Feature shortcuts only exist on clients that ship those features;
+    -- Forever has none, so it gets no empty heading.
+    if Has("NavHud") or Has("Arrow") or Has("QuestTracker") or Has("DungeonGear") then
+        AddHdr("QUICK ACTIONS")
+    end
 
-    AddBtn("Toggle Arrow", function()
-        local A = TA:GetModule("Arrow")
-        if A then A:Toggle() end
-    end)
+    -- Each button only when the module it drives ships on this client. On
+    -- Forever every one of these used to draw and do nothing.
+    if Has("NavHud") then
+        AddBtn("Toggle NavHud", function()
+            local NH = TA:GetModule("NavHud")
+            if NH then NH:Toggle() end
+        end)
+    end
 
-    AddBtn("Toggle Tracker", function()
-        local QT = TA:GetModule("QuestTracker")
-        if QT then QT:ToggleWindow() end
-    end)
+    if Has("Arrow") then
+        AddBtn("Toggle Arrow", function()
+            local A = TA:GetModule("Arrow")
+            if A then A:Toggle() end
+        end)
+    end
 
-    AddBtn("Re-sync Guide", function()
-        local QT = TA:GetModule("QuestTracker")
-        if QT then QT:FastForward(false) end
-    end)
+    if Has("QuestTracker") then
+        AddBtn("Toggle Tracker", function()
+            local QT = TA:GetModule("QuestTracker")
+            if QT then QT:ToggleWindow() end
+        end)
 
-    AddBtn("Auto-Select Guide", function()
-        local QT = TA:GetModule("QuestTracker")
-        if QT then QT:AutoSelectGuide() end
-    end)
+        AddBtn("Re-sync Guide", function()
+            local QT = TA:GetModule("QuestTracker")
+            if QT then QT:FastForward(false) end
+        end)
 
-    AddBtn("Dungeon Gear Check", function()
-        local DG = TA:GetModule("DungeonGear")
-        if DG and DG.SlashCommands and DG.SlashCommands.dungear then
-            DG.SlashCommands.dungear(DG)
-        end
-    end)
+        AddBtn("Auto-Select Guide", function()
+            local QT = TA:GetModule("QuestTracker")
+            if QT then QT:AutoSelectGuide() end
+        end)
+    end
 
-    AddBtn("Switch Layout", function()
-        if TA.db then
-            TA.db.useUnifiedUI = not TA.db.useUnifiedUI
-            if TA.ApplyLayout then TA:ApplyLayout() end
-            local mode = TA.db.useUnifiedUI and "Unified HUD" or "Fragmented Windows"
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Layout: " .. mode)
-        end
-    end)
+    if Has("DungeonGear") then
+        AddBtn("Dungeon Gear Check", function()
+            local DG = TA:GetModule("DungeonGear")
+            if DG and DG.SlashCommands and DG.SlashCommands.dungear then
+                DG.SlashCommands.dungear(DG)
+            end
+        end)
+    end
+
+    if Has("Arrow", "QuestTracker") then
+        AddBtn("Switch Layout", function()
+            if TA.db then
+                TA.db.useUnifiedUI = not TA.db.useUnifiedUI
+                if TA.ApplyLayout then TA:ApplyLayout() end
+                local mode = TA.db.useUnifiedUI and "Unified HUD" or "Fragmented Windows"
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Layout: " .. mode)
+            end
+        end)
+    end
+
+    -- ── Options ───────────────────────────────────────────────────
+    AddHdr("OPTIONS")
+    do
+        -- One button walks the four levels; the label shows the current one.
+        local ORDER = { "error", "warn", "info", "debug" }
+        local cur = ORDER[TA.logLevel or 2] or "warn"
+        AddBtn("Chat: " .. cur, function()
+            local i = (TA.logLevel or 2) % #ORDER + 1
+            TA:SlashCommand("verbose " .. ORDER[i])
+            if TA.ToggleOptionsPanel then TA:ToggleOptionsPanel(); TA:ToggleOptionsPanel() end
+        end)
+    end
+    AddBtn("Safe Mode", function() TA:SlashCommand("safemode") end)
+    -- Profile copy between characters: previously /ta profile only.
+    AddBtn("Export Settings", function() self:ShowExportFrame() end)
+    AddBtn("Import Settings", function() self:ShowImportFrame() end)
+
+    -- ── Debug ─────────────────────────────────────────────────────
+    AddHdr("DEBUG")
+    AddBtn("Module Health", function() TA:SlashCommand("health") end)
+    if TA.TestHarness and TA.TestHarness.Run then
+        AddBtn("Run Self-test", function() TA.TestHarness:Run() end)
+    end
+    AddBtn("Error Log", function() TA:SlashCommand("errors copy") end)
+    AddBtn("Debug Mode", function() TA:SlashCommand("debug") end)
+    AddBtn("State Keys", function() TA:SlashCommand("state") end)
+
+    -- ── System ────────────────────────────────────────────────────
+    AddHdr("SYSTEM")
+    AddBtn("Reload UI", function() ReloadUI() end)
 
     AddBtn("Reset All Settings", function()
         StaticPopup_Show("TOONAGE_RESET_CONFIRM")
@@ -746,6 +836,8 @@ function Settings:RenderSidebar(parent)
             button1 = "Reset",
             button2 = "Cancel",
             OnAccept = function()
+                -- Tell the reset tripwire this was deliberate (Core/Init.lua).
+                if ToonAge and ToonAge.GuardSnapshot then pcall(ToonAge.GuardSnapshot, ToonAge, "Settings: Reset All Settings") end
                 ToonAgeDB = nil
                 ReloadUI()
             end,
@@ -772,6 +864,7 @@ function Settings:Init() end
 local PROFILE_KEYS = {
 
     "tracker.deferToZygor",
+    "tracker.autoRewardPick",
     "tracker.replaceBlizzTracker",
     "tracker.showAvailableQuests",
     "tracker.smallMapPins",

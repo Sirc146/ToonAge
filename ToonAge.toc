@@ -4,7 +4,7 @@
 ## Author: SIRC
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
-## SavedVariables: ToonAgeDB
+## SavedVariables: ToonAgeDB, ToonAgeGuard
 ## AddonCompartmentFunc: ToonAge_OnAddonCompartmentClick
 ## AddonCompartmentFuncOnEnter: ToonAge_OnAddonCompartmentEnter
 ## AddonCompartmentFuncOnLeave: ToonAge_OnAddonCompartmentLeave
@@ -193,3 +193,8 @@ Modules\Infrastructure\ChatCopy.lua
 # 51 of them use category= and load fine, and ToonAge was the only addon in
 # any client that listed Bindings.xml in its TOC. That listing was the one
 # variable unique to ToonAge.
+
+# In-game self-test: /ta test, /tatest, or the Self-test title-bar button. Loads last.
+# Not a registered module (not profile-gated): it only runs when invoked, so
+# every client can run the launch checklist's self-test step.
+Modules\Infrastructure\TestHarness.lua

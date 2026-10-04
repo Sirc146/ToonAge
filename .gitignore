@@ -13,3 +13,9 @@ Thumbs.db
 # Release artifacts (built by CI, not committed)
 *.zip
 release/
+
+# Not part of the addon. deepseek-tui is a separately cloned tool (its own
+# .git, ~270 MB of Rust sources). Committed here it would become a broken
+# embedded-repo pointer on GitHub, and release.yml packs the repo root into the
+# zip players install. Keep it out of the trunk entirely if you can.
+deepseek-tui/

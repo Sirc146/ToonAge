@@ -342,6 +342,21 @@ function Pets:Render(content, sidebar)
     elseif self.view == "finder"     then self:RenderFinderView(content, P, isBM, w, padL, yBase)
     elseif self.view == "companions" then self:RenderCompanionView(content, P, class, w, padL, yBase)
     end
+
+    -- Size the scroll child to what was drawn. Nothing here ever set it, so the
+    -- pane stayed 1 px tall: /ta test read the tab as empty (2026-09-28, on a
+    -- Hunter whose tab did draw) and anything below the fold could not be
+    -- scrolled to. The views place frames by offset without returning a y, so
+    -- measure the lowest thing drawn instead. GetTop/GetBottom share the pane's
+    -- scale, so the difference is in the pane's own units.
+    local top, lowest = content:GetTop(), nil
+    if top then
+        for _, f in ipairs(self.frames) do
+            local b = f.GetBottom and f:GetBottom()
+            if b and (not lowest or b < lowest) then lowest = b end
+        end
+    end
+    content:SetHeight((top and lowest) and math.max(math.floor(top - lowest + 20), 60) or 600)
 end
 
 -- ── View: Active Pet ──────────────────────────────────────────────────

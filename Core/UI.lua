@@ -55,6 +55,11 @@ local function RebuildChild(scrollFrame, width)
     -- Pool is defined at file scope (persists across calls).
     local old = scrollFrame:GetScrollChild()
     if old then
+        -- Hand Core/Layout.lua's pooled rows and regions back first, so the
+        -- orphaning below only touches frames nobody can reuse.
+        if TA.Layout and TA.Layout.ReleasePane then
+            pcall(TA.Layout.ReleasePane, TA.Layout, old)
+        end
         old:Hide()
         -- Purge child regions (FontStrings, Textures) to prevent bleed-through
         for _, region in ipairs({ old:GetRegions() }) do
@@ -93,6 +98,7 @@ local function RebuildChild(scrollFrame, width)
         child:SetSize(width, 1)
     end
 
+    child._laPane = true          -- Core/Layout.lua recycles what it draws here
     scrollFrame:SetScrollChild(child)
     scrollFrame:SetVerticalScroll(0)
     return child
@@ -134,19 +140,66 @@ local TabConditions = {
     -- Pets: only classes that actually command a persistent pet. On Vanilla-era
     -- Forever that is Hunter and Warlock; every other class would see an empty
     -- tab, so it is hidden for them entirely.
+    --
+    -- Used by Forever, TBC and Mists (N5, 2026-10-04: the rule decided
+    -- 2026-09-28 -- show Pets when a pet is out or the class keeps one -- now
+    -- applies on every client; Retail has its own data-driven rule below).
     hasPetClass = function()
         -- UnitClass returns (localizedName, ENGLISH_TOKEN); the token is stable
         -- across locales, so gate on it.
+        if UnitExists("pet") then return true end
         local _, token = UnitClass("player")
-        return token == "HUNTER" or token == "WARLOCK"
+        if token == "HUNTER" or token == "WARLOCK" then return true end
+        -- Mists of Pandaria Classic only: two specs keep a PERMANENT pet.
+        --   Frost Mage  (spec 64)  -- Water Elemental has no duration since 4.0.1
+        --   Unholy DK   (spec 252) -- Raise Dead summons a permanent ghoul
+        --                            (Master of Ghouls, Unholy passive)
+        -- GetSpecialization/GetSpecializationInfo exist from 5.0.4, so this is
+        -- MoP-correct and guarded anyway. TBC/Vanilla-era Forever have neither
+        -- class/spec pet (no DKs; the TBC Water Elemental lasts 45 s), so the
+        -- check is skipped there rather than trusted to fail.
+        if TA.flavor == "mists" and (token == "MAGE" or token == "DEATHKNIGHT")
+           and type(GetSpecialization) == "function"
+           and type(GetSpecializationInfo) == "function" then
+            local idx = GetSpecialization()
+            local specID = idx and GetSpecializationInfo(idx)
+            return specID == 64 or specID == 252
+        end
+        return false
     end,
 }
 TA.TabConditions = TabConditions
+
+-- Pets tab rule, Retail (2026-09-28 -- the rule Forever already follows): show
+-- the tab when a pet is out, or when this class/spec keeps a PERMANENT pet
+-- according to Data/Retail/Pets.lua's ClassPetDB (Hunter always); otherwise
+-- hide it rather than show an empty tab. Spec names in ClassPetDB are English,
+-- so on a non-English client only the "All"-spec entries and Hunter match.
+local function RetailPetTabWanted()
+    if UnitExists("pet") then return true end
+    local _, token = UnitClass("player")
+    if token == "HUNTER" then return true end
+    local db = TA.Data and TA.Data.Pets and TA.Data.Pets.ClassPetDB
+    local list = db and db[token]
+    if type(list) ~= "table" then return false end
+    local specName
+    if GetSpecialization and GetSpecializationInfo then
+        local idx = GetSpecialization()
+        if idx then specName = select(2, GetSpecializationInfo(idx)) end
+    end
+    for _, p in ipairs(list) do
+        if p.summonType == "Permanent" and (p.spec == "All" or p.spec == specName) then
+            return true
+        end
+    end
+    return false
+end
 
 local function TabAvailable(tabDef)
     if not TA:GetModule(tabDef.module) then return false end
     if TA.ModuleAllowed and not TA:ModuleAllowed(tabDef.module) then return false end
     if tabDef.id == "guide" and not HasGuideContent() then return false end
+    if tabDef.id == "pets" and TA.flavor == "retail" and not RetailPetTabWanted() then return false end
     if tabDef.condition then
         local cond = TabConditions[tabDef.condition]
         if type(cond) == "function" then
@@ -165,6 +218,20 @@ local function GetTabs()
     end
     return list
 end
+
+--- The enabled tab ids, in order. When a spec change, a pet appearing or a
+--- level-up changes this, the tab bar is rebuilt (see Refresh and Show).
+local function TabSignature()
+    local ids = {}
+    for _, t in ipairs(GetTabs()) do ids[#ids + 1] = t.id end
+    return table.concat(ids, ",")
+end
+
+-- Events that can add or remove a tab (a conditional tab like Pets).
+local TAB_SET_EVENTS = {
+    UNIT_PET = true, PLAYER_SPECIALIZATION_CHANGED = true, ACTIVE_TALENT_GROUP_CHANGED = true,
+    TRAIT_CONFIG_UPDATED = true, PLAYER_LEVEL_UP = true,
+}
 
 local function FindTab(tabID)
     for _, t in ipairs(GetTabs()) do
@@ -207,6 +274,9 @@ function TA:InitUI()
     ApplyBackdrop(frame, 0.05, 0.05, 0.06, 0.94)
     frame:SetBackdropBorderColor(0.30, 0.30, 0.35, 1.00)
     frame:Hide()
+    -- Esc closes the window (UISpecialFrames is how every Blizzard panel does it).
+    -- The frame's Hide override below also closes the settings drawer.
+    tinsert(UISpecialFrames, "ToonAgeFrame")
 
     -- ── Title bar ─────────────────────────────────────────────────────
     local titleBar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
@@ -234,12 +304,13 @@ function TA:InitUI()
     local FLAVOR_NAME = {
         retail = "Midnight", tbc = "TBC Anniversary", mists = "Mists Classic",
         vanilla = "Classic Era", wrath = "Wrath Classic", cata = "Cataclysm Classic",
+        forever = "Forever",
     }
     local build = (GetBuildInfo and select(1, GetBuildInfo())) or ""
     versionLabel:SetText("v" .. TA.version .. "  ·  "
         .. (FLAVOR_NAME[TA.flavor] or "WoW") .. (build ~= "" and (" " .. build) or ""))
     versionLabel:SetTextColor(0.55, 0.52, 0.45, 1.00)
-    -- Right-to-left anchor chain: Close → Options → Version
+    -- Right-to-left anchor chain: Close → Options → Help → Copy → Version
     local closeBtn = CreateFrame("Button", nil, titleBar, "UIPanelCloseButton")
     closeBtn:SetSize(24, 24)
     closeBtn:SetPoint("TOPRIGHT", titleBar, "TOPRIGHT", -5, -5)
@@ -249,7 +320,33 @@ function TA:InitUI()
     optionsBtn:SetSize(20, 20)
     optionsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
 
-    versionLabel:SetPoint("RIGHT", optionsBtn, "LEFT", -10, 0)
+    -- Help (?) and Copy chat: useful from every tab, so they live here rather
+    -- than on one tab. Each runs the /ta command of the same name.
+    local function TitleButton(anchor, text, width, tip, cmd)
+        local b = CreateFrame("Button", nil, titleBar, "BackdropTemplate")
+        b:SetSize(width, 20)
+        b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
+        local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        fs:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        fs:SetText(text)
+        fs:SetTextColor(0.62, 0.59, 0.55, 1)
+        fs:SetAllPoints(b)
+        fs:SetJustifyH("CENTER")
+        b:SetScript("OnEnter", function(self)
+            fs:SetTextColor(0.92, 0.90, 0.87, 1)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(tip, 1, 0.82, 0)
+            GameTooltip:AddLine("/ta " .. cmd, 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() fs:SetTextColor(0.62, 0.59, 0.55, 1); GameTooltip:Hide() end)
+        b:SetScript("OnClick", function() TA:SlashCommand(cmd) end)
+        return b
+    end
+    local helpBtn = TitleButton(optionsBtn, "?", 20, "Commands", "help")
+    local copyBtn = TitleButton(helpBtn, "Copy", 36, "Copy chat", "copy")
+
+    versionLabel:SetPoint("RIGHT", copyBtn, "LEFT", -10, 0)
     local optIcon = optionsBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     optIcon:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
     optIcon:SetText("\226\154\153")  -- gear glyph
@@ -259,6 +356,14 @@ function TA:InitUI()
     optionsBtn:SetScript("OnEnter", function() optIcon:SetTextColor(0.92, 0.90, 0.87, 1) end)
     optionsBtn:SetScript("OnLeave", function() optIcon:SetTextColor(0.62, 0.59, 0.55, 1) end)
     optionsBtn:SetScript("OnClick", function() TA:ToggleOptionsPanel() end)
+    -- G9 (2026-10-04): no Settings module, no gear. The scaffold builds (Era,
+    -- Cata, Wrath) ship none, and the gear opened an empty drawer there.
+    -- InitModules runs before InitUI (Init.lua OnLogin), so GetModule already
+    -- reflects this build. Width 1, not 0: Help/Copy still anchor to it.
+    if not self:GetModule("Settings") then
+        optionsBtn:SetWidth(1)
+        optionsBtn:Hide()
+    end
 
     -- ── Tab bar ───────────────────────────────────────────────────────
     local tabBar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
@@ -565,8 +670,28 @@ function TA:InitUI()
                 -- These events were claimed here but never registered on the
                 -- event frame, so talent, stat and action-bar changes did not
                 -- refresh the TBC tabs (and Spells' "new spell" alert never
-                -- fired). pcall: RegisterEvent errors on names a client lacks.
-                if TA.eventFrame then pcall(TA.eventFrame.RegisterEvent, TA.eventFrame, e) end
+                -- fired). TA:RegisterEvent (Core/Init.lua) pcalls the
+                -- registration AND records names this client doesn't know in
+                -- TA.unknownEvents, so they show up in /ta health and the
+                -- self-test instead of failing silently (G16, 2026-10-04).
+                if TA.eventFrame and TA.RegisterEvent then TA:RegisterEvent(e) end
+            end
+        end
+    end
+
+    -- Tab refresh events declared by the active profile, on every flavor: the
+    -- tab def's own `events` list plus whatever its module lists in M.Events.
+    -- A tab missing from TAB_EVENTS never saw an event that another tab claimed
+    -- (BAG_UPDATE belongs to "gear"), so Forever's Scrolls tab never rebuilt on
+    -- a bag change -- /ta test, 2026-09-28. Claiming here also stops the other
+    -- tabs rebuilding on events that only this one displays.
+    for _, def in ipairs((TA.ProfileTabs and TA:ProfileTabs()) or {}) do
+        local mod = TA:GetModule(def.module)
+        local lists = { def.events, (mod and type(mod.Events) == "table") and mod.Events or nil }
+        for i = 1, 2 do
+            if type(lists[i]) == "table" then
+                TAB_EVENTS[def.id] = TAB_EVENTS[def.id] or {}
+                for _, e in ipairs(lists[i]) do TAB_EVENTS[def.id][e] = true end
             end
         end
     end
@@ -613,6 +738,20 @@ function TA:InitUI()
     function frame:Refresh(events)
         if not self.activeTab then return end
 
+        -- A spec change or a pet coming out can show or hide a tab.
+        if events then
+            local evs = (type(events) == "table") and events or { [events] = true }
+            for ev in pairs(evs) do
+                if TAB_SET_EVENTS[ev] then
+                    if self._tabSig ~= TabSignature() then
+                        self:RebuildTabs()
+                        return
+                    end
+                    break
+                end
+            end
+        end
+
         if events then
             if type(events) ~= "table" then events = { [events] = true } end
             if not BatchAffectsTab(events, self.activeTab) then return end
@@ -625,6 +764,8 @@ function TA:InitUI()
     local origShow = frame.Show
     function frame:Show()
         origShow(self)
+        -- Tabs may have changed while the window was closed (respec, pet).
+        if self._tabSig ~= TabSignature() then self:RebuildTabs() end
         self:SetTab(TA.charDB.lastTab or "guide")
     end
 
@@ -648,6 +789,7 @@ function TA:InitUI()
     -- NOTE: SetTab, Refresh, and Show must be defined above this function
     -- because RebuildTabs calls self:SetTab() at the end of its run.
     function frame:RebuildTabs()
+        self._tabSig = TabSignature()
         -- Destroy existing tab buttons
         for _, btn in pairs(self.tabButtons) do
             btn:Hide()
@@ -781,6 +923,27 @@ function TA:InitUI()
         local ok, err = pcall(function()
             local blizzPanel = CreateFrame("Frame")
             blizzPanel.name  = "ToonAge"
+            -- The page used to be registered empty. Point at where the settings
+            -- actually live, with one button that opens them.
+            local bpTitle = blizzPanel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+            bpTitle:SetPoint("TOPLEFT", 16, -16)
+            bpTitle:SetText("ToonAge")
+            local bpText = blizzPanel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+            bpText:SetPoint("TOPLEFT", bpTitle, "BOTTOMLEFT", 0, -8)
+            bpText:SetWidth(560)
+            bpText:SetJustifyH("LEFT")
+            bpText:SetText("ToonAge's settings live in its own window. Open it with /ta or the "
+                .. "minimap button, then click the gear in its title bar.")
+            local bpBtn = CreateFrame("Button", nil, blizzPanel, "UIPanelButtonTemplate")
+            bpBtn:SetSize(190, 24)
+            bpBtn:SetPoint("TOPLEFT", bpText, "BOTTOMLEFT", 0, -12)
+            bpBtn:SetText("Open ToonAge settings")
+            bpBtn:SetScript("OnClick", function()
+                if TA.UI and not TA.UI:IsShown() then TA.UI:Show() end
+                if not (TA._settingsDrawer and TA._settingsDrawer:IsShown()) then
+                    TA:ToggleSettingsDrawer()
+                end
+            end)
             if Settings and Settings.RegisterCanvasLayoutCategory then
                 local cat = Settings.RegisterCanvasLayoutCategory(blizzPanel, blizzPanel.name)
                 Settings.RegisterAddOnCategory(cat)
@@ -1180,8 +1343,19 @@ end
 -- A panel that slides down from the bottom of the main ToonAge frame.
 -- Keeps settings separate from the playable tabs.
 
+-- Right-hand Quick Actions column inside the drawer.
+local DRAWER_SIDE_W    = 180
+local DRAWER_CONTENT_W = FRAME_WIDTH - 30 - DRAWER_SIDE_W - 8
+
 function TA:ToggleSettingsDrawer()
     local mainFrame = self.UI
+
+    -- G9: nothing to draw without the Settings module (scaffold builds, or the
+    -- player switched it off). Say so once instead of opening an empty drawer.
+    if not self:GetModule("Settings") then
+        self:Print(self.LOG.OUTPUT, nil, "No settings panel on this client build.")
+        return
+    end
 
     -- Create drawer on first use
     if not self._settingsDrawer then
@@ -1197,6 +1371,7 @@ function TA:ToggleSettingsDrawer()
         ApplyBackdrop(drawer, 0.04, 0.04, 0.05, 0.97)
         drawer:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.8)
         drawer:Hide()
+        tinsert(UISpecialFrames, "TASettingsDrawer")
 
         -- Title bar
         local titleLbl = drawer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1211,17 +1386,19 @@ function TA:ToggleSettingsDrawer()
         -- Scroll frame inside drawer
         local scroll = CreateFrame("ScrollFrame", "TASettingsDrawerScroll", drawer, "UIPanelScrollFrameTemplate")
         scroll:SetPoint("TOPLEFT", drawer, "TOPLEFT", 4, -26)
-        scroll:SetPoint("BOTTOMRIGHT", drawer, "BOTTOMRIGHT", -26, 4)
+        scroll:SetPoint("BOTTOMRIGHT", drawer, "BOTTOMRIGHT", -(26 + DRAWER_SIDE_W + 8), 4)
 
         local content = CreateFrame("Frame", nil, scroll)
-        content:SetWidth(FRAME_WIDTH - 30)
+        content:SetWidth(DRAWER_CONTENT_W)
         content:SetHeight(1)
         scroll:SetScrollChild(content)
 
-        -- Dummy sidebar (Settings module expects one)
+        -- Quick Actions column. This used to be a hidden 1x1 frame, so every
+        -- button Settings:RenderSidebar drew (Reset All Settings among them)
+        -- existed but could never be clicked -- /ta test, 2026-09-28.
         local sidebar = CreateFrame("Frame", nil, drawer)
-        sidebar:SetSize(1, 1)
-        sidebar:Hide()
+        sidebar:SetPoint("TOPRIGHT", drawer, "TOPRIGHT", -8, -28)
+        sidebar:SetSize(DRAWER_SIDE_W, 1)
 
         drawer.scroll  = scroll
         drawer.content = content
@@ -1249,7 +1426,7 @@ function TA:ToggleSettingsDrawer()
     if old then old:Hide(); old:SetParent(nil) end
 
     local content = CreateFrame("Frame", nil, drawer.scroll)
-    content:SetWidth(FRAME_WIDTH - 30)
+    content:SetWidth(DRAWER_CONTENT_W)
     content:SetHeight(1)
     drawer.scroll:SetScrollChild(content)
     drawer.scroll:SetVerticalScroll(0)

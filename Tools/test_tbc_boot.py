@@ -34,6 +34,7 @@ VERBOSE = "-v" in sys.argv
 
 # A stubbed TBC client: classic globals + old talent-tab API, no retail C_*.
 TBC_PRELUDE = r"""
+debugstack = function() return "" end
 WOW_PROJECT_ID = 5
 GetBuildInfo = function() return "2.5.6", "00000", "date", 20506 end
 
@@ -48,6 +49,11 @@ end
 function MockFrame(name)
     local f = { _name = name, _shown = false, _scripts = {}, _children = {} }
     setmetatable(f, { __index = function(s, k)
+        -- Underscore keys are addon-private DATA fields on a frame (Layout's
+        -- _laPane/_laFree pool markers, etc.), never widget methods. A real
+        -- frame returns nil for an unset one; returning a function here made
+        -- Core/Layout.lua treat every mock as a pooled pane and index into it.
+        if type(k) == "string" and k:sub(1, 1) == "_" then return nil end
         local fn = function(...) return s end
         rawset(s, k, fn); return fn
     end })

@@ -285,6 +285,13 @@ licensed API stay the only things that put values into `Data/`.
 | forever | aotc.gg | Forever armory: characters, gear, population | search |
 | forever | warcrafttavern.com/forever | guides, news | search |
 | forever | classicwow.gg/forever/tools | tools hub | search |
+| forever | foreverdb.net | items, spells, talents, class guides, calculators, raid planning | fetched 2026-09-27 |
+| forever | foreverchanges.pro | 1.12-vs-Forever diffs, map, items, library-book guide | fetched 2026-09-27 |
+| forever | thewowdb.com | player-scanned auction-house prices, Forever included | fetched 2026-09-27 |
+| forever | icy-veins.com/wow-forever | class guides, race guide, transmog | fetched 2026-09-27 |
+| forever | wow4ever.quest/en/addons | addon compatibility list (Forever builds 1.60.1+, built-ins, broken) | fetched 2026-09-27 |
+| forever | mythicsim.com/wow-forever/tier-list | SIMULATED DPS ranks (wowsims Forever engine, fixed reference gear/talents, 2-min fight). Not parses, not your gear | fetched 2026-09-27 |
+| forever | github.com/wowsims/forever | open-source sim engine behind MythicSim. Cross-check only for future stat weights; nothing copied into Data/ | search 2026-09-27 |
 | tbc | wowhead.com/tbc | database, talent calculator, BiS | search |
 | tbc | warcrafttavern.com/tbc | guides, BiS, tools | search |
 | tbc | classic.bisbeard.com | build planner, talent calculator | search |
@@ -298,6 +305,20 @@ licensed API stay the only things that put values into `Data/`.
 | retail | wowhead, icy-veins, raider.io, warcraftlogs, raidbots, archon.gg, murlok.io | see the source-by-source section above | assumed |
 | retail (PvP) | arenamaster.io, check-pvp.fr, seramate.com | ratings, profiles, season stats | search |
 
+### Client constants (checked 2026-09-27)
+
+| Client | Interface | Folder | TOC the client reads |
+|---|---|---|---|
+| Retail (Midnight) | `120100` | `_retail_` | `_Mainline` / `_Standard` |
+| Classic Era | `11509` | `_classic_era_` | `_Vanilla` / `_Classic` |
+| TBC Anniversary | `20506` | `_anniversary_` | `_TBC` / `_Classic` |
+| MoP Classic | `50504` | `_classic_` | `_Mists` / `_Classic` |
+| Forever | `16001` | `_classic_beta_` | `_Camelot`, falls back to `_Mainline` |
+
+Source: warcraft.wiki.gg/wiki/TOC_format (Forever row from our own in-game
+observation; the wiki table has no Forever number yet). Retail `120001` /
+`120005` in circulating lists are 12.0.x and out of date.
+
 ### Corrections to the circulating list
 
 Recorded because these were wrong in a source list that looked authoritative,
@@ -305,6 +326,14 @@ and a wrong URL costs an evening the first time someone chases it.
 
 - `wowforevertalent.com` is `.app`. Project: github.com/coolbat-vibe/wowforevertalent.
 - Wowhead has a first-class Forever section; it is not merely "synced from beta".
+- "Forever: no sims" is wrong. Several open-source Forever sims exist
+  (wowsims/forever and forks); MythicSim publishes from one. They rank specs on
+  fixed reference gear, which is still not a measurement of any real character.
+- "Do not reuse Retail TOC on Forever" is backwards for loading: Forever falls
+  back to `_Mainline.toc` when no `_Camelot.toc` exists. The real rule is ship a
+  `_Camelot.toc` so it never has to.
+- WeakAuras on Forever: confirmed not working (wow4ever.quest: no release since
+  January 2026; combat restrictions remove most of what it did).
 - aotc.gg is no longer SoD-only — it covers Forever.
 - NOT FOUND, treat as nonexistent until someone produces a working link:
   `pvplog.com` (searches return only an addon of that name), `check-pvp-classic.fr`,

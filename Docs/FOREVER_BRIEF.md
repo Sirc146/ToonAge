@@ -94,6 +94,27 @@ lines look like on a geared caster, and whether `C_Item.GetItemStats` returns
 the Vanilla `ITEM_MOD_*` keys — Spirit especially, since Retail dropped it.
 All three need a `/dump` from a character with gear on.
 
+**Answered by harvest, 2026-09-26** (level 15 Undead Mage, spells seen at 14, + level 1 Warrior;
+raw exports in `Docs/harvest/2026-09-26/`):
+
+* **Spell power is a real item stat.** `C_Item.GetItemStats` returns
+  `ITEM_MOD_SPELL_POWER_SHORT` on leveling greens: Reinforced Linen Cape (+1),
+  Heavy Linen Gloves (+1), Darkwood Staff (+6 with +3 Stamina),
+  Disciple's Pants of the Elder (+1 Int, +1 SP, +1 Spirit). This is NOT
+  Vanilla itemization, so Forever gear scoring must weight spell power.
+* **Spirit comes through as `ITEM_MOD_SPIRIT_SHORT`** (Blue Linen Vest +2).
+* **Armor is `RESISTANCE0_NAME`, weapon DPS is
+  `ITEM_MOD_DAMAGE_PER_SECOND_SHORT`.** No mp5 seen yet.
+* **Spell ranks exist.** The spellbook holds each rank as its own spell ID
+  (Fireball 133/143/145, Frostbolt 116/205, Conjure Water 5504/5505).
+* **Talents are three trees per class through one `C_Traits` tree** (Mage
+  1112, Warrior 1117), 1 point per level from 10 (5/5 Improved Fireball at
+  14). The trees are NOT Vanilla's: they add Fingers of Frost, Hot Streak,
+  Missile Barrage, Arcane Blast (`400xxx` IDs), Ice Lance (`1312002`), and new
+  Warrior talents (Precision, Weaponmaster, Spearing Strike, Boundless Rage,
+  Vanguard, Master of Defense, Raging Blows, Bloodthrill). Classic Era talent
+  builds cannot be reused.
+
 ## Profession slots do NOT match Retail's order (observed 2026-09-19)
 
 Retail's `GetProfessions()` returns six slots in a fixed order: primary 1,
@@ -185,6 +206,88 @@ ToonAge is already good at:
 
 Open question: how much of this the client exposes to addons. Camp buffs will
 read as auras. Camp contents and object cooldowns may not be visible at all.
+
+## Transmog (from published guides, NOT yet verified)
+
+Two guides agree on the NPCs; coordinates come from Icy Veins only.
+
+| Faction | NPC | Where | Coords |
+|---|---|---|---|
+| Alliance | Fyrenz Vishonar | Stormwind, Mage Quarter, behind the Mage Tower | 48.0, 84.5 |
+| Horde | Mon'ye | Orgrimmar, Cleft of Shadow, upper level beside the Barber Shop | 46.1, 53.9 |
+
+Map IDs if a waypoint is ever built: Stormwind 84, Orgrimmar 85 are the
+Retail `uiMapID`s -- confirm with `C_Map.GetBestMapForUnit("player")` at each
+NPC before shipping them.
+
+System as described:
+
+* Opt-in. Off on a new character until the player talks to the NPC.
+* Slot-based, not item-based: a slot keeps its appearance when the item in it
+  is replaced.
+* Armor-type locked (no cloth appearance on a plate chest).
+* Appearances learned on loot, account-wide for classes of the same armor
+  type. Dungeon drops teach every eligible group member; raid drops teach only
+  the winner.
+* Small gold cost per change. Outfit slots: 2 free, up to 50, 10s to 100g
+  each. "Situations" swap outfits by zone, mount, spec, weather, time of day.
+
+Open questions: whether Retail's `C_TransmogCollection` / `C_Transmog` exist
+here (add to the ApiManifest probe), and whether "enabled" is readable per
+character. Until then ToonAge has nothing to say about transmog beyond where
+the NPC stands.
+
+Sources: https://www.icy-veins.com/wow-forever/transmog-system ,
+https://www.gamepur.com/guides/how-to-transmog-in-wow-forever
+
+## Capital-city NPCs new to Forever (from Wowhead Forever DB, NOT yet verified in-game)
+
+Only NPCs with new-range IDs or a Forever-only role. Vanilla NPCs that merely
+appear in the Forever DB (Tawny Grisette 4554, Theodore Griffs 11835,
+Rahauro 11833, Wilder Thistlenettle 656, General Marcus Jonathan) are left out:
+being listed there does not mean they changed.
+
+| NPC | ID | Where | Role |
+|---|---|---|---|
+| Garion Wendell <Librarian> | 211033 | Stormwind, Mage Quarter 37.6, 80.8 | Library books turn-in (Alliance) |
+| Owen Thadd <Librarian> | 211022 | Undercity, Magic Quarter 73.4, 33.0 | Library books turn-in (Horde) |
+| Afadra Dunwall <Lorekeeper of Ironforge> | 264943 | Ironforge, new passage left of the High Seat | Hall of Thanes dungeon gateway / quest turn-in |
+| Thom Filch | 265003 | Ironforge | Linked to Hall of Thanes; role not yet documented |
+| Morbin Lightbane | 266484 | Undercity | New ID; role not yet documented |
+
+Library books: books are world objects; the librarian offers the quest only
+while you carry one. Each turn-in gives a Comprehension Charm. 10 books:
+Scholarly Pendant or Erudite's Amulet (ilvl 25). 20 books: Philanthropist's
+Ring or Field Researcher's Loop (rogue, ilvl 40). The first 10 count toward 20.
+A collection tracker is a candidate Forever-own module once book objects are
+confirmed readable (quest log + item count, no world-object API assumed).
+
+Maur Grimtotem (11834) is inside Ragefire Chasm, not Orgrimmar -- excluded.
+
+Sources: https://foreverchanges.pro/library-books ,
+https://www.wowhead.com/forever/npc=264943/afadra-dunwall
+
+## Mage Comprehension scrolls (from published guides, NOT yet verified)
+
+* Mages learn **Comprehend Scroll** from their trainer and use it on
+  undeciphered scrolls found in the world. Reading scrolls levels a separate
+  Mage skill, **Comprehension**.
+* Undeciphered scroll tooltips name the requirement. Datamined examples:
+  CWAL 1, VOCE WELL 15, THAW WORDS 50, DOST OREM 175.
+* Same shape as Season of Discovery's Spell Notes, which deciphered into
+  on-use items. In SoD that took a Comprehension Charm; the library books
+  here also pay out Comprehension Charms. Whether Forever's deciphering
+  still uses them is unknown.
+* No one has a full list of what the scrolls turn into.
+
+ToonAge angle (needs no game data table): tag scroll tooltips with
+"Mage: Comprehension N -- you have X / can't read yet" or "Mage-only
+decipher -- send to a mage", plus a bag list of held scrolls. Blocked on:
+the exact tooltip line, and which API reports the Comprehension skill
+(`GetProfessions` / `GetSkillLineInfo` / neither). Capture both first.
+
+Sources: https://www.foreverwisp.com/guides/wow-forever-mage-comprehension-scrolls ,
+https://www.zockify.com/forever/mage/
 
 ## What ToonAge does on Forever today
 

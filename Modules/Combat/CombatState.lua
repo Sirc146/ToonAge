@@ -26,6 +26,12 @@ CS.state = {
     health = 100,
     healthMax = 100,
     healthPct = 100,
+    -- *Known flags (G11, 2026-10-03): false when the client returned a secret
+    -- value on the last read. The previous number is kept, but it is stale,
+    -- and consumers can see that -- same convention as group.known below.
+    healthKnown = true,
+    powerKnown = true,
+    targetKnown = true,
     power = 0, -- primary resource (mana, rage, energy, etc.)
     powerMax = 100,
     powerPct = 0,
@@ -57,47 +63,56 @@ local dirty = true -- set true on any event, cleared after snapshot
 
 -- ── Snapshot functions ────────────────────────────────────────────────────────
 
+--- A readable number, or nil. Secret values are asked about first (U.IsSecret,
+--- the same test U.SafeNum uses) instead of relying on tonumber(tostring(x))
+--- happening to return nil for them (G11). nil -- not 0 -- so a hidden value
+--- is never mistaken for "health 0" or "no rage".
+local function Num(v)
+    if v == nil or U.IsSecret(v) then return nil end
+    return tonumber(v)
+end
+
+local function Read(fn, ...)
+    local ok, v = pcall(fn, ...)
+    if not ok then return nil end
+    return Num(v)
+end
+
 local function UpdateHealth()
     local s = CS.state
-    -- 12.0 PTR: UnitHealth/UnitHealthMax can return "secret number" values
-    -- when execution is tainted. We must catch ALL errors including arithmetic
-    -- on the result. Use a full pcall around the entire calculation.
-    local ok, health, healthMax = pcall(function()
-        local h = UnitHealth("player")
-        local hm = UnitHealthMax("player")
-        -- Force through tonumber to strip secret flag (may still fail)
-        h = tonumber(tostring(h)) or 0
-        hm = tonumber(tostring(hm)) or 1
-        return h, hm
-    end)
-    if ok and health then
-        s.health = health
-        s.healthMax = healthMax or 1
-        s.healthPct = (s.healthMax > 0) and (s.health / s.healthMax * 100) or 100
+    local h, hm = Read(UnitHealth, "player"), Read(UnitHealthMax, "player")
+    if not (h and hm) then
+        s.healthKnown = false          -- keep the last numbers; flag them stale
+        return
     end
-    -- On failure: leave previous values intact (don't zero them out)
+    s.healthKnown = true
+    s.health = h
+    s.healthMax = (hm > 0) and hm or 1
+    s.healthPct = s.health / s.healthMax * 100
 end
 
 local function UpdatePower()
     local s = CS.state
-    -- 12.0 PTR: Same taint issue as health. Full pcall around all arithmetic.
-    local ok, pType, power, powerMax, cp = pcall(function()
-        local pt = UnitPowerType("player") or 0
-        local p = tonumber(tostring(UnitPower("player"))) or 0
-        local pm = tonumber(tostring(UnitPowerMax("player"))) or 1
-        local cpts = 0
-        local cpMax2 = tonumber(tostring(UnitPowerMax("player", Enum.PowerType.ComboPoints))) or 0
-        if pt == Enum.PowerType.ComboPoints or cpMax2 > 0 then
-            cpts = tonumber(tostring(UnitPower("player", Enum.PowerType.ComboPoints))) or 0
+    local pt = Read(UnitPowerType, "player") or s.powerType or 0
+    local p, pm = Read(UnitPower, "player"), Read(UnitPowerMax, "player")
+    s.powerType = pt
+    if not (p and pm) then
+        s.powerKnown = false
+    else
+        s.powerKnown = true
+        s.power = p
+        s.powerMax = (pm > 0) and pm or 1
+        s.powerPct = s.power / s.powerMax * 100
+    end
+    local cpEnum = Enum and Enum.PowerType and Enum.PowerType.ComboPoints
+    if cpEnum then
+        local cpMax = Read(UnitPowerMax, "player", cpEnum) or 0
+        if pt == cpEnum or cpMax > 0 then
+            local cp = Read(UnitPower, "player", cpEnum)
+            if cp then s.comboPoints = cp end
+        else
+            s.comboPoints = 0
         end
-        return pt, p, pm, cpts
-    end)
-    if ok and power then
-        s.powerType = pType or 0
-        s.power = power
-        s.powerMax = powerMax or 1
-        s.powerPct = (s.powerMax > 0) and (s.power / s.powerMax * 100) or 0
-        s.comboPoints = cp or 0
     end
 end
 
@@ -105,16 +120,16 @@ local function UpdateTarget()
     local s = CS.state
     s.targetExists = UnitExists("target") and not UnitIsDead("target") and UnitCanAttack("player", "target")
     if s.targetExists then
-        local ok, h, hm = pcall(function()
-            local th = tonumber(tostring(UnitHealth("target"))) or 0
-            local thm = tonumber(tostring(UnitHealthMax("target"))) or 1
-            return th, thm
-        end)
-        if ok and h then
+        local h, hm = Read(UnitHealth, "target"), Read(UnitHealthMax, "target")
+        if h and hm then
+            s.targetKnown = true
             s.targetHealth = h
-            s.targetPct = (hm and hm > 0) and (h / hm * 100) or 100
+            s.targetPct = (hm > 0) and (h / hm * 100) or 100
+        else
+            s.targetKnown = false
         end
     else
+        s.targetKnown = true
         s.targetHealth = 0
         s.targetPct = 100
     end
@@ -131,6 +146,12 @@ local function UpdateTTD()
     if not s.targetExists then
         s.targetTTD = 999
         wipe(ttdSamples)
+        return
+    end
+    -- A stale (secret) reading is not a sample: it would look like the target
+    -- stopped losing health and push TTD to "long-lived".
+    if s.targetKnown == false then
+        s.targetTTD = 999
         return
     end
 
@@ -311,8 +332,8 @@ end
 -- ── Group health (healers) ────────────────────────────────────────────────────
 local function ReadHealthPct(unit)
     local ok, pct = pcall(function()
-        local h = tonumber(tostring(UnitHealth(unit)))
-        local m = tonumber(tostring(UnitHealthMax(unit)))
+        local h = Read(UnitHealth, unit)
+        local m = Read(UnitHealthMax, unit)
         if not h or not m or m <= 0 then return nil end
         return h / m * 100
     end)
@@ -698,9 +719,9 @@ function CS:GetNextAbility(priorities, playerLevel)
                 local cdOk = pcall(function()
                     local cdInfo = C_Spell.GetSpellCooldown(entry.spellID)
                     if cdInfo then
-                        local dur = tonumber(tostring(cdInfo.duration)) or 0
+                        local dur = (Num(cdInfo.duration) or 0)
                         if dur > 1.5 then
-                            local st = tonumber(tostring(cdInfo.startTime)) or 0
+                            local st = (Num(cdInfo.startTime) or 0)
                             local remaining = (st + dur) - GetTime()
                             if remaining > 0.1 then
                                 local charges = C_Spell.GetSpellCharges(entry.spellID)
@@ -763,7 +784,7 @@ function CS:GetNextN(priorities, playerLevel, count)
     -- Get current haste for more accurate GCD estimate
     -- 12.0 PTR: GetHaste() can return a tainted "secret number"
     local ok, hasteVal = pcall(function()
-        return tonumber(tostring(GetHaste and GetHaste() or 0)) or 0
+        return (Num(GetHaste and GetHaste() or 0) or 0)
     end)
     local hastePercent = (ok and hasteVal) or 0
     if hastePercent > 0 then
@@ -844,9 +865,9 @@ function CS:GetNextN(priorities, playerLevel, count)
                     local cdBlocked = pcall(function()
                         local cdInfo = C_Spell.GetSpellCooldown(entry.spellID)
                         if cdInfo then
-                            local dur = tonumber(tostring(cdInfo.duration)) or 0
+                            local dur = (Num(cdInfo.duration) or 0)
                             if dur > 1.5 then
-                                local cdStart = tonumber(tostring(cdInfo.startTime)) or 0
+                                local cdStart = (Num(cdInfo.startTime) or 0)
                                 local cdEnd = cdStart + dur
                                 if cdEnd > simTime + 0.1 then
                                     local charges = C_Spell.GetSpellCharges(entry.spellID)

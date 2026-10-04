@@ -51,7 +51,8 @@ ToonAge = TA
 --   WOW_PROJECT_CATACLYSM_CLASSIC       = 14  Cataclysm Classic
 --   WOW_PROJECT_MISTS_CLASSIC           = 19  Mists of Pandaria Classic
 --
--- "WoW Forever" has NO project ID of its own. Its beta client (folder
+-- "WoW Forever" had no project ID of its own until build 70205, which reports
+-- 18 (see FOREVER below). Before that, its beta client (folder
 -- _classic_beta_, WowB.exe) reports WOW_PROJECT_MAINLINE (1) with a 1.60.x
 -- interface code (16001) — Blizzard built it on Mainline's UI architecture
 -- with Midnight's API set, but with Vanilla-era content and version numbers.
@@ -67,6 +68,10 @@ local PROJECT_IDS = {
     WRATH       = 11,
     CATA        = 14,
     MISTS       = 19,
+    -- Forever's own id. MEASURED 2026-10-03 on build 70205 (1.60.1, interface
+    -- 16001): WOW_PROJECT_ID = 18. Builds up to 70124 reported 1 (Mainline);
+    -- the interface-code rule below still catches those.
+    FOREVER     = 18,
 }
 TA.ProjectIDs = PROJECT_IDS
 
@@ -88,8 +93,9 @@ interfaceCode = tonumber(interfaceCode)
 
 -- Forever first: it claims the Mainline project id, so IsRetail must exclude
 -- it or retail spec/talent/gear data would be applied to Vanilla-era content.
-TA.IsForever    = (projectId == PROJECT_IDS.MAINLINE and interfaceCode ~= nil
-                   and interfaceCode < MAINLINE_MIN_INTERFACE)
+TA.IsForever    = (projectId == PROJECT_IDS.FOREVER)
+                  or (projectId == PROJECT_IDS.MAINLINE and interfaceCode ~= nil
+                      and interfaceCode < MAINLINE_MIN_INTERFACE)
 TA.IsRetail     = (projectId == PROJECT_IDS.MAINLINE) and not TA.IsForever
 TA.IsClassicEra = (projectId == PROJECT_IDS.CLASSIC_ERA and interfaceCode and interfaceCode < 20000)
 TA.IsTBC        = (projectId == PROJECT_IDS.TBC)
@@ -110,7 +116,14 @@ TA.IsMists      = (projectId == PROJECT_IDS.MISTS)
 -- actual numbers differ per expansion. Forever is deliberately NOT in this
 -- family: its content is Vanilla-era but its API surface is Mainline's, so
 -- code written against GetTalentTabInfo and friends would break on it.
-TA.IsClassicFamily = TA.IsClassicEra or TA.IsTBC or TA.IsWrath or TA.IsCata or TA.IsMists
+--
+-- Mists is NOT in this family either (G13, 2026-10-04). Patch 5.0 replaced
+-- the three point-spend trees with six tiers of three choices (one pick per
+-- tier, every 15 levels), so neither the tree shape nor the tab/points data
+-- schema applies to it. Mists is still classic-ERA content; it is just not
+-- tree-shaped. The self-test's env suite cross-checks this flag against the
+-- client's talent-tab API on every run.
+TA.IsClassicFamily = TA.IsClassicEra or TA.IsTBC or TA.IsWrath or TA.IsCata
 
 -- ── Forever launch-day fallback ───────────────────────────────────────
 --
@@ -188,8 +201,17 @@ function TA:TocFlavorMismatch()
     if not read or read == "" then return nil end   -- cannot tell; say nothing
     if read == want then return nil end
     -- ToonAge.toc declares "fallback" on purpose: it is the file for a client
-    -- no suffix matched, so loading it is expected, not a fault.
-    if read == "fallback" then return nil end
+    -- no suffix matched. In the repository (and therefore in the GitHub/Wago
+    -- release zip, which packs the repo root) that file carries the RETAIL
+    -- file list, so it is only correct on Retail. On any other client it is
+    -- the wrong product: report it, so the wrong-build guard stops the modules
+    -- and says why, instead of silently running retail files (2026-10-04).
+    -- Per-client builds from build_flavors.ps1 never hit this: their
+    -- ToonAge.toc is a copy of that client's own TOC, X-Flavor included.
+    if read == "fallback" then
+        if want == "Mainline" then return nil end
+        return want, "fallback (retail list)"
+    end
     return want, read
 end
 

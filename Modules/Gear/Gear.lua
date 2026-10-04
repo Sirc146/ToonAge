@@ -996,12 +996,9 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
             eqLbl:SetJustifyH("CENTER")
             equipBtn:SetScript("OnClick", function(_, btn2)
                 if btn2 == "LeftButton" or btn2 == nil then
-                    if C_Container and C_Container.PickupContainerItem then
-                        C_Container.PickupContainerItem(eqBag, eqSlot)
-                    else
-                        PickupContainerItem(eqBag, eqSlot)
-                    end
-                    EquipCursorItem(eqTargetSlot)
+                    -- One click on one item: the game's own bind confirm stays.
+                    local ok, why = U.SafeEquip(eqBag, eqSlot, eqTargetSlot, { allowPrompt = true })
+                    if not ok then TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Not equipped: " .. why .. ".") end
                 end
             end)
             equipBtn:SetScript("OnEnter", function(f)
@@ -1038,13 +1035,21 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
         eaLbl:SetJustifyH("CENTER")
 
         equipAllBtn:SetScript("OnClick", function()
+            -- Bulk: unbound BoE/BoU items are left in the bags (each one would
+            -- raise its own bind confirm mid-loop and the next pickup would
+            -- replace the cursor under it), and the cursor is cleared after
+            -- any equip that did not take.
+            local left = {}
             for _, up in ipairs(pendingUpgrades) do
-                if C_Container and C_Container.PickupContainerItem then
-                    C_Container.PickupContainerItem(up.bag, up.slot)
-                else
-                    PickupContainerItem(up.bag, up.slot)
+                local ok, why = U.SafeEquip(up.bag, up.slot, up.target, { skipUnbound = true })
+                if not ok then
+                    left[#left + 1] = (up.name or "?") .. " (" .. why .. ")"
+                    if why == "in combat" then break end
                 end
-                EquipCursorItem(up.target)
+            end
+            if #left > 0 then
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Not equipped: " .. table.concat(left, ", ")
+                    .. ". Use each slot's Equip button for bind-on-equip items.")
             end
             -- Brief delay then re-render to reflect changes
             C_Timer.After(0.5, function()
@@ -1292,16 +1297,16 @@ function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, up
         SLabel(GetItemInfo(upLink) or "Upgrade Item", 10, 1, 1, 1)
         SLabel("Score: " .. upScore .. "  |cFF1EFF00(+" .. math.floor(upScore - curScore) .. ")|r", 9, 0.12, 1.0, 0.0)
         SButton("Equip Now", function()
-            C_Container.PickupContainerItem(bag, slot)
-            EquipCursorItem(slotID)
+            local ok, why = U.SafeEquip(bag, slot, slotID, { allowPrompt = true })
+            if not ok then TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Not equipped: " .. why .. ".") end
         end)
     elseif claimedBy then
         SLabel("|cFFAAAAAA[!] Best upgrade claimed by " .. claimedBy .. "|r", 10)
         if claimedLink and claimedBag and claimedSlot then
             SLabel(GetItemInfo(claimedLink) or "Claimed Item", 9, 0.8, 0.8, 0.8)
             SButton("Force Override", function()
-                C_Container.PickupContainerItem(claimedBag, claimedSlot)
-                EquipCursorItem(slotID)
+                local ok, why = U.SafeEquip(claimedBag, claimedSlot, slotID, { allowPrompt = true })
+                if not ok then TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Not equipped: " .. why .. ".") end
             end)
         end
     else

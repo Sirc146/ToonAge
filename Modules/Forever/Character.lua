@@ -129,6 +129,95 @@ local RESIST_ORDER = {
     { index = 6, name = "Shadow" },
 }
 
+-- ─── SKILL LINES ─────────────────────────────────────────────────────────
+--
+-- MEASURED on Forever 2026-09-29 (Warlock, Paladin, Druid, Warrior probes):
+--   GetNumSkillLines / GetSkillLineInfo / UnitAttackBothHands / UnitDefense
+--     -> all MISSING.
+--   C_SkillInfo.GetNumSkillLines() -> 12..20
+--   C_SkillInfo.GetSkillLineInfo(i) -> { name, isHeader, rank, maxRank,
+--     modifier, skillID, skillLineCategoryID, ... }
+--     category 6 = Weapon Skills (Defense, skillID 95, lives here too),
+--     7 = class lines, 8 = armour, 10 = languages.
+--   UnitDefenseSkill("player") -> base, modifier   (1, 0 at level 1)
+-- The legacy globals are kept as a fallback for any client that has them.
+
+local CAT_WEAPON = 6
+local SKILL_DEFENSE = 95
+
+--- Every skill line as { name, rank, max, mod, id, cat, header }.
+local function ReadSkillLines()
+    local out = {}
+    if C_SkillInfo and C_SkillInfo.GetNumSkillLines and C_SkillInfo.GetSkillLineInfo then
+        local n = Num(Try(C_SkillInfo.GetNumSkillLines)) or 0
+        for i = 1, n do
+            local info = Try(C_SkillInfo.GetSkillLineInfo, i)
+            if type(info) == "table" and info.name then
+                out[#out + 1] = {
+                    name = tostring(info.name), rank = Num(info.rank), max = Num(info.maxRank),
+                    mod = Num(info.modifier) or 0, id = Num(info.skillID),
+                    cat = Num(info.skillLineCategoryID), header = info.isHeader and true or false,
+                }
+            end
+        end
+        if #out > 0 then return out end
+    end
+    if type(GetNumSkillLines) == "function" and type(GetSkillLineInfo) == "function" then
+        local n = Num(Try(GetNumSkillLines)) or 0
+        local cat
+        for i = 1, n do
+            local name, isHeader, _, rank, _, mod, maxRank = Try(GetSkillLineInfo, i)
+            if name then
+                -- Legacy has no category IDs; the header name stands in.
+                if isHeader then cat = (tostring(name):find("Weapon") and CAT_WEAPON) or 0 end
+                out[#out + 1] = { name = tostring(name), rank = Num(rank), max = Num(maxRank),
+                    mod = Num(mod) or 0, cat = cat, header = isHeader and true or false }
+            end
+        end
+    end
+    return out
+end
+M._ReadSkillLines = ReadSkillLines
+
+-- Weapon item subclass (Enum.ItemWeaponSubclass) -> the weapon SKILL it uses.
+-- These pairings are the game's own and have not changed since Vanilla.
+local WEAPON_SKILL_BY_SUBCLASS = {
+    [0]  = 44,   -- One-Handed Axes
+    [1]  = 172,  -- Two-Handed Axes
+    [2]  = 45,   -- Bows
+    [3]  = 46,   -- Guns
+    [4]  = 54,   -- One-Handed Maces
+    [5]  = 160,  -- Two-Handed Maces
+    [6]  = 229,  -- Polearms
+    [7]  = 43,   -- One-Handed Swords
+    [8]  = 55,   -- Two-Handed Swords
+    [10] = 136,  -- Staves
+    [13] = 473,  -- Fist Weapons
+    [15] = 173,  -- Daggers
+    [16] = 176,  -- Thrown
+    [18] = 226,  -- Crossbows
+    [19] = 228,  -- Wands
+}
+local SKILL_UNARMED = 162
+local WEAPON_CLASS_ID = 2
+
+--- Skill ID for the weapon in an inventory slot, or Unarmed for an empty main
+--- hand. nil when the slot holds no weapon we can map (a shield, a held-in-hand).
+local function WeaponSkillFor(slot)
+    local link = Try(GetInventoryItemLink, "player", slot)
+    if not link then return (slot == 16) and SKILL_UNARMED or nil end
+    local getInfo = C_Item and C_Item.GetItemInfoInstant
+    if type(getInfo) ~= "function" then return nil end
+    local _, _, _, _, _, classID, subClassID = Try(getInfo, link)
+    if Num(classID) ~= WEAPON_CLASS_ID then return nil end
+    return WEAPON_SKILL_BY_SUBCLASS[Num(subClassID) or -1]
+end
+M._WeaponSkillFor = WeaponSkillFor
+
+local function FindSkill(lines, id)
+    for _, l in ipairs(lines) do if l.id == id then return l end end
+end
+
 -- ─── SECTIONS ────────────────────────────────────────────────────────────
 
 local function RenderHeadline(content, y)
@@ -296,9 +385,36 @@ local function RenderOffense(content, y)
         })
     end
 
-    -- Weapon skill is a Vanilla/TBC concept. If this client kept it, show it;
-    -- if the API is gone, say nothing rather than implying it does not matter.
-    if skill and skill > 0 then
+    -- Weapon skill for what you are actually holding. Forever keeps Vanilla's
+    -- capped weapon skills (5 x level), one per weapon type, and has no
+    -- UnitAttackBothHands -- so the equipped weapon's type picks its skill line
+    -- out of C_SkillInfo. Below the cap means more misses and more glancing
+    -- blows; it rises only by hitting things with THAT weapon type.
+    local lines = ReadSkillLines()
+    local shown = {}
+    for _, hand in ipairs({ { 16, "Main hand" }, { 17, "Off hand" }, { 18, "Ranged" } }) do
+        local id = WeaponSkillFor(hand[1])
+        local line = id and FindSkill(lines, id)
+        if line and line.rank and line.max and line.max > 0 and not shown[id] then
+            shown[id] = true
+            local eff = line.rank + (line.mod or 0)
+            local short = line.max - line.rank
+            y = L:CapBar(content, y, {
+                label   = string.format("%s: %s", hand[2], line.name),
+                value   = (line.mod or 0) ~= 0
+                    and string.format("%d (+%d) / %d", line.rank, line.mod, line.max)
+                    or  string.format("%d / %d", line.rank, line.max),
+                current = math.min(eff, line.max),
+                cap     = line.max,
+                capped  = short <= 0,
+                urgent  = short > 0 and (line.rank / line.max) < 0.75 or nil,
+                note    = short > 0 and string.format(
+                    "%d below the cap for your level -- fight with this weapon type to raise it",
+                    short) or nil,
+            })
+        end
+    end
+    if not next(shown) and skill and skill > 0 then
         y = L:StatBar(content, y, {
             label = "Weapon Skill", value = skill, scale = offenseScale, text = Show(skill),
         })
@@ -324,9 +440,14 @@ local function RenderDefense(content, y)
     local armorBase, armorEff = Try(UnitArmor, "player")
     local armor = Num(armorEff) or Num(armorBase)
 
+    -- UnitDefense is missing on Forever; UnitDefenseSkill answers (measured
+    -- 2026-09-29), and C_SkillInfo's Defense line (95) carries the cap.
     local defBase, defMod = Try(UnitDefense, "player")
+    if defBase == nil then defBase, defMod = Try(UnitDefenseSkill, "player") end
     local defTotal
-    if defBase then defTotal = (Num(defBase) or 0) + (Num(defMod) or 0) end
+    if Num(defBase) then defTotal = (Num(defBase) or 0) + (Num(defMod) or 0) end
+    local defLine = FindSkill(ReadSkillLines(), SKILL_DEFENSE)
+    local defCap = defLine and defLine.max
 
     defenseScale = L:StatScale({ armor, defTotal }, defenseScale)
 
@@ -339,7 +460,22 @@ local function RenderDefense(content, y)
         label = "Armor", value = armor, scale = defenseScale, text = Show(armor),
     })
 
-    if defTotal then
+    if defTotal and defCap and defCap > 0 then
+        local base = Num(defBase) or defTotal
+        local short = defCap - base
+        y = L:CapBar(content, y, {
+            label   = "Defense Skill",
+            value   = (Num(defMod) or 0) ~= 0
+                and string.format("%d (+%d) / %d", base, Num(defMod), defCap)
+                or  string.format("%d / %d", base, defCap),
+            current = math.min(defTotal, defCap),
+            cap     = defCap,
+            capped  = short <= 0,
+            urgent  = short > 0 and (base / defCap) < 0.75 or nil,
+            note    = short > 0 and string.format(
+                "%d below the cap for your level -- it rises by being hit", short) or nil,
+        })
+    elseif defTotal then
         y = L:StatBar(content, y, {
             label = "Defense Skill", value = defTotal, scale = defenseScale,
             text  = Show(defTotal),
@@ -453,23 +589,20 @@ end
 --- Professions are skill lines too, so they are filtered out — they have their
 --- own section above, with ranks.
 local function RenderSkills(content, y, professionNames)
-    if type(GetNumSkillLines) ~= "function" or type(GetSkillLineInfo) ~= "function" then
-        return y
-    end
-
     local rows = {}
-    local count = Num(Try(GetNumSkillLines)) or 0
-    for i = 1, count do
-        local name, isHeader, _, rank, _, _, maxRank = Try(GetSkillLineInfo, i)
-        rank, maxRank = Num(rank), Num(maxRank)
-        if name and not isHeader and rank and maxRank and maxRank > 0
-           and not professionNames[tostring(name)] then
-            rows[#rows + 1] = { name = tostring(name), rank = rank, max = maxRank }
+    for _, l in ipairs(ReadSkillLines()) do
+        -- Weapon skills only: armour and languages are 1/1 or 300/300 and say
+        -- nothing, class lines are spellbook tabs, and Defense has its own row.
+        if not l.header and l.cat == CAT_WEAPON and l.id ~= SKILL_DEFENSE
+           and l.rank and l.max and l.max > 0 and not professionNames[l.name] then
+            rows[#rows + 1] = l
         end
     end
     if #rows == 0 then return y end
+    table.sort(rows, function(a, b) return a.name < b.name end)
 
-    y = L:SectionHeader(content, y, "Skills")
+    y = L:SectionHeader(content, y, "Weapon Skills",
+        "Every weapon type you can train. Each rises only by fighting with it.")
     for _, row in ipairs(rows) do
         -- A skill sitting below its cap for your level is the one thing on this
         -- tab worth acting on, and it needs no researched data to say: the cap
@@ -531,79 +664,78 @@ M._sideFrames = M._sideFrames or {}
 --- Core/TBCUtils.lua which only the TBC TOC ships. On this client they are nil
 --- and the component throws, so the text is read here through Try() as before —
 --- only now it is drawn over the model.
-local function RenderSidebar(side)
-    if not side then return end
+local MODEL_H = 210   -- portrait height; caption sits under it
+local CAPTION_LINES = 5
 
-    -- Tear down any model from a previous open before building a new one.
-    for _, f in ipairs(M._sideFrames) do
-        if f then f:Hide(); f:SetParent(nil) end
-    end
-    M._sideFrames = {}
+--- Built ONCE and reused on every render (2026-10-03). The old version created
+--- a PlayerModel, a fade texture, five caption FontStrings and an OnHide hook
+--- on every redraw of seven tabs: the model was orphaned by RebuildChild
+--- (the self-test's "1.0 frames discarded per re-render"), and the strings and
+--- hooks piled up on the pooled scroll child, which the self-test can't see.
+--- One holder frame now owns all of it and is re-parented to whichever
+--- sidebar child is current. _laKind marks it as reused for the self-test's
+--- leak counter; Layout never pools it (it is not in any pane's _laUsed).
+local function SidebarHolder()
+    if M._sideHolder then return M._sideHolder end
+    local h = CreateFrame("Frame")
+    h._laKind = "ForeverSidebar"
 
-    local w = math.max((side:GetWidth() or 202) - 20, 40)
-
-    -- ── 3D portrait ───────────────────────────────────────────────────
-    -- Parented to the sidebar scroll child (side) and pinned to the top so it
-    -- fills the visible column. Guarded: if PlayerModel is unavailable the tab
-    -- falls back to text-only rather than erroring.
-    local model
-    if type(CreateFrame) == "function" then
-        local ok, m = pcall(CreateFrame, "PlayerModel", nil, side)
-        if ok and m then model = m end
-    end
-
-    -- Layout: the model occupies the TOP of the sidebar, and the identity text
-    -- is a centered caption block anchored at the BOTTOM, below the model —
-    -- not overlaid on it. Overlaying crowded the model's legs; keeping them in
-    -- separate vertical zones reads cleanly.
-    local MODEL_H = 210   -- portrait height; text sits under it
-
-    if model then
-        model:SetPoint("TOPLEFT",  side, "TOPLEFT",  0, 0)
-        model:SetPoint("TOPRIGHT", side, "TOPRIGHT", 0, 0)
-        model:SetHeight(MODEL_H)
-        pcall(model.SetUnit, model, "player")
-        pcall(model.SetAnimation, model, 0)
-        pcall(model.SetCamDistanceScale, model, 1.10)
-        pcall(model.SetFacing, model, math.pi / 8)
-        table.insert(M._sideFrames, model)
-
+    -- Guarded: if PlayerModel is unavailable the sidebar is text-only.
+    local ok, m = pcall(CreateFrame, "PlayerModel", nil, h)
+    if ok and m then
+        m:SetPoint("TOPLEFT",  h, "TOPLEFT",  0, 0)
+        m:SetPoint("TOPRIGHT", h, "TOPRIGHT", 0, 0)
+        m:SetHeight(MODEL_H)
         -- Soft fade at the very bottom of the model so it blends into the
         -- caption area rather than cutting off hard at the feet.
-        if model.CreateTexture and CreateColor then
-            local fade = model:CreateTexture(nil, "OVERLAY")
-            fade:SetPoint("BOTTOMLEFT",  model, "BOTTOMLEFT",  0, 0)
-            fade:SetPoint("BOTTOMRIGHT", model, "BOTTOMRIGHT", 0, 0)
+        if m.CreateTexture and CreateColor then
+            local fade = m:CreateTexture(nil, "OVERLAY")
+            fade:SetPoint("BOTTOMLEFT",  m, "BOTTOMLEFT",  0, 0)
+            fade:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", 0, 0)
             fade:SetHeight(60)
             pcall(fade.SetGradient, fade, "VERTICAL",
                 CreateColor(0.05, 0.05, 0.06, 0),
                 CreateColor(0.05, 0.05, 0.06, 0.95))
         end
+        h.model = m
+    end
 
-        -- Hide the model when the sidebar child is replaced (tab switch).
-        if side.HookScript then
-            side:HookScript("OnHide", function() if model then model:Hide() end end)
-        end
+    h.lines = {}
+    for i = 1, CAPTION_LINES do
+        local fs = h:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        fs:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+        fs:SetJustifyH("CENTER")
+        h.lines[i] = fs
+    end
+    M._sideHolder = h
+    return h
+end
+
+--- The holder is re-parented, not re-created; the PlayerModel's unit and
+--- camera are re-applied each time because a model that was hidden or moved
+--- can come back blank.
+local function RenderSidebar(side)
+    if not side then return end
+    local h = SidebarHolder()
+    local w = math.max((side:GetWidth() or 202) - 20, 40)
+
+    h:SetParent(side)
+    h:ClearAllPoints()
+    h:SetPoint("TOPLEFT", side, "TOPLEFT", 0, 0)
+    h:SetPoint("TOPRIGHT", side, "TOPRIGHT", 0, 0)
+    h:Show()
+
+    local model = h.model
+    if model then
+        model:Show()
+        pcall(model.SetUnit, model, "player")
+        pcall(model.SetAnimation, model, 0)
+        pcall(model.SetCamDistanceScale, model, 1.10)
+        pcall(model.SetFacing, model, math.pi / 8)
     end
 
     -- ── Identity caption, centered, below the model ───────────────────
-    -- Drawn on `side` and anchored TOP-relative (just under the model) so the
-    -- lines flow downward in reading order: name, level/class, race, item
-    -- level, gold. Centered horizontally across the full sidebar width.
-    local textTop = model and MODEL_H or 8
-    local ty = -(textTop + 6)
-    local function Line(text, size, r, g, b)
-        local fs = side:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        fs:SetFont(STANDARD_TEXT_FONT, size, "OUTLINE")
-        fs:SetText(text)
-        fs:SetTextColor(r, g, b, 1)
-        fs:SetPoint("TOP", side, "TOP", 0, ty)
-        fs:SetWidth(w)
-        fs:SetJustifyH("CENTER")
-        ty = ty - (size + 8)
-        return fs
-    end
-
+    -- Name, level/class, race, item level, gold, in reading order.
     -- First return of UnitClass/UnitRace is the localized display name; the
     -- second is the token, which printed "Scourge MAGE" when read by mistake.
     local class = Try(UnitClass, "player")
@@ -612,23 +744,40 @@ local function RenderSidebar(side)
     local ilvl  = Try(GetAverageItemLevel)
     local gold  = Try(GetMoney)
 
-    Line(Try(UnitName, "player") or "?", 15, 1, 0.82, 0)
-    Line(string.format("Level %s %s", Show(level, "%d"), tostring(class or "")),
-         11, 0.72, 0.67, 0.52)
-    if race then
-        Line(tostring(race), 10, 0.53, 0.53, 0.50)
-    end
+    local rows = {
+        { Try(UnitName, "player") or "?", 15, 1, 0.82, 0 },
+        { string.format("Level %s %s", Show(level, "%d"), tostring(class or "")), 11, 0.72, 0.67, 0.52 },
+    }
+    if race then rows[#rows + 1] = { tostring(race), 10, 0.53, 0.53, 0.50 } end
     if ilvl and ilvl > 0 then
-        Line(string.format("Item level %d", math.floor(ilvl)), 10, 0.55, 0.45, 0.75)
+        rows[#rows + 1] = { string.format("Item level %d", math.floor(ilvl)), 10, 0.55, 0.45, 0.75 }
     end
     if gold then
-        Line(Try(GetMoneyString, gold) or string.format("%dg", math.floor(gold / 10000)),
-             10, 0.53, 0.53, 0.50)
+        rows[#rows + 1] = { Try(GetMoneyString, gold) or string.format("%dg", math.floor(gold / 10000)),
+            10, 0.53, 0.53, 0.50 }
     end
 
-    -- Reserve room in the scroll child for portrait + caption so the sidebar
-    -- sizes correctly; content sections draw into `content`, not here.
-    if side.SetHeight then side:SetHeight(math.abs(ty) + 12) end
+    local ty = -((model and MODEL_H or 8) + 6)
+    for i, fs in ipairs(h.lines) do
+        local r = rows[i]
+        if r then
+            fs:SetFont(STANDARD_TEXT_FONT, r[2], "OUTLINE")
+            fs:SetText(r[1])
+            fs:SetTextColor(r[3], r[4], r[5], 1)
+            fs:ClearAllPoints()
+            fs:SetPoint("TOP", h, "TOP", 0, ty)
+            fs:SetWidth(w)
+            fs:Show()
+            ty = ty - (r[2] + 8)
+        else
+            fs:Hide()
+        end
+    end
+
+    -- Reserve room for portrait + caption so the sidebar scroll sizes right.
+    local height = math.abs(ty) + 12
+    h:SetHeight(height)
+    if side.SetHeight then side:SetHeight(height) end
 end
 
 --- Public wrapper so other Forever tabs (Gear, etc.) can draw the same
@@ -661,6 +810,21 @@ function M:Render(content, side)
 
     local y = -8
     y = RenderHeadline(content, y)
+    -- In-game quick actions. Each runs the same /ta command, so the button and
+    -- the typed command can never drift apart; a command whose module is not
+    -- loaded on this client simply has no button.
+    do
+        local buttons = {}
+        local function Add(cmd, label, module)
+            if TA:GetModule(module) then
+                buttons[#buttons + 1] = { label = label, onClick = function() TA:SlashCommand(cmd) end }
+            end
+        end
+        Add("since",  "Since last session", "ForeverSessionCheck")
+        Add("xp",     "XP rate",            "XPTracker")
+        Add("gather", "Gathering",          "GatherTracker")
+        if #buttons > 0 then y = L:ButtonRow(content, y, buttons) end
+    end
     y = L:Divider(content, y)
     y = RenderAttributes(content, y)
     y = L:Divider(content, y)
@@ -683,6 +847,7 @@ end
 
 M.Events = {
     "PLAYER_LEVEL_UP",
+    "PLAYER_EQUIPMENT_CHANGED",
     "UNIT_STATS",
     "UNIT_RESISTANCES",
     "SKILL_LINES_CHANGED",

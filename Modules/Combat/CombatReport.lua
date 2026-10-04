@@ -142,6 +142,10 @@ function M:Render(content, side)
 
     local a = Analyse(s)
     local mins = (s.seconds or 0) / 60
+    -- Without the combat log there is no per-spell damage or healing, and every
+    -- output-based judgement below would read as "contributes nothing".
+    local rec = TA:GetModule("CombatRecorder")
+    local hasOutput = rec and rec.HasOutput and rec:HasOutput() or false
 
     y = L:SectionHeader(content, y, "Recorded so far")
     y = L:DataRow(content, y, { label = "Fights",  value = tostring(s.fights or 0) })
@@ -149,7 +153,28 @@ function M:Render(content, side)
         value = string.format("%d min %d sec", math.floor(mins), (s.seconds or 0) % 60) })
     y = L:DataRow(content, y, { label = "Casts", value = tostring(a.casts),
         note = mins > 0 and string.format("%.1f per minute", a.casts / mins) or nil })
-    y = L:DataRow(content, y, { label = "Total output", value = Big(a.total) })
+    if hasOutput then
+        y = L:DataRow(content, y, { label = "Total output", value = Big(a.total) })
+    else
+        y = L:Paragraph(content, y,
+            "This client does not give addons damage or healing per spell, so the "
+            .. "report counts casts only. \"On your bars, never pressed\" and \"Known, "
+            .. "but not on a bar\" are exact; output rankings are left out rather "
+            .. "than guessed.", { color = L.C_DIM })
+    end
+
+    -- Fights but no casts means this client gave the recorder no cast source
+    -- at all. Every bar button would otherwise read "never pressed".
+    if (a.casts or 0) == 0 then
+        y = L:Divider(content, y)
+        y = L:Paragraph(content, y,
+            "|cFFFFD100No casts could be recorded on this client.|r Fights are "
+            .. "being counted, but neither the combat log nor spell-cast events "
+            .. "reached ToonAge, so nothing below would be accurate. Report this "
+            .. "with /ta health.")
+        L:Finish(content, y)
+        return
+    end
 
     -- The honesty gate. Under this, describe; never conclude.
     if (s.fights or 0) < MIN_FIGHTS then
@@ -164,6 +189,7 @@ function M:Render(content, side)
     end
 
     -- ── What is actually carrying you ────────────────────────────────────
+    if hasOutput then
     y = L:Divider(content, y)
     y = L:SectionHeader(content, y, "Where your output comes from")
     local shown = 0
@@ -180,6 +206,8 @@ function M:Render(content, side)
         end
     end
 
+    end
+
     -- ── The three gaps ───────────────────────────────────────────────────
     if #a.dead > 0 then
         y = L:Divider(content, y)
@@ -189,7 +217,7 @@ function M:Render(content, side)
         for _, name in ipairs(a.dead) do y = L:Bullet(content, y, name) end
     end
 
-    if #a.lowValue > 0 then
+    if hasOutput and #a.lowValue > 0 then
         y = L:Divider(content, y)
         y = L:SectionHeader(content, y, "Pressed often, contributes almost nothing",
             string.format("Cast at least %d times and still under %s of your "

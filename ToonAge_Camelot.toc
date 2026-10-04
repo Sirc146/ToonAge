@@ -4,7 +4,7 @@
 ## Author: SIRC
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
-## SavedVariables: ToonAgeDB
+## SavedVariables: ToonAgeDB, ToonAgeGuard
 ## X-Flavor: Forever
 ## X-Curse-Project-ID:
 ## X-Wago-ID: 56ndnjG9
@@ -38,12 +38,12 @@
 #
 # WHAT IS DELIBERATELY ABSENT
 #
-#   Data/**            No verified Forever GAME data exists yet. Retail numbers
+#   Data/Retail etc.   Only Data/Forever ships here, and only what the Forever
+#                      client itself reported (see the harvest section below). Retail numbers
 #                      are wrong for this content, and wrong numbers that look
 #                      researched are worse than no numbers at all.
 #
-#                      The one exception is Data/Forever/ApiManifest.lua, and
-#                      it is an exception because it is not game data at all:
+#                      Data/Forever/ApiManifest.lua is not game data at all:
 #                      it is measured from THIS TOC's own files by
 #                      Tools/gen_api_manifest.py, and it lists which client
 #                      functions those files call. ApiGuard probes it at login
@@ -84,6 +84,20 @@ Core\ApiGuard.lua
 Core\Profile.lua
 Core\Analytics.lua
 
+# ── Sourced reference (names and roles only, each spec cites its guide) ──
+# Icy Veins WoW Forever spec guides, read 2026-09-27. Not game numbers.
+Data\Forever\Coach.lua
+
+# ── Measured game data (generated from the Forever harvest) ──────────
+# Tools/gen_forever_data.lua turns the harvest in the saved file into these.
+# Every value is what this client reported -- tooltips verbatim, trained
+# levels, stat blocks -- so every player gets what one account measured.
+Data\Forever\Racials.lua
+Data\Forever\Spells.lua
+Data\Forever\Talents.lua
+Data\Forever\Items.lua
+Data\Forever\SpellRanks.lua
+
 # ── Measured API surface ──────────────────────────────────────────────
 # Not game data: generated from the file list below. See the note above.
 Data\Forever\ApiManifest.lua
@@ -111,7 +125,9 @@ Modules\Automation\DeathRecovery.lua
 Modules\Farming\GatherTracker.lua
 
 # ── Measured play ─────────────────────────────────────────────────────
-# Records what you cast and what came of it. No game data of its own.
+# BANNED on Forever (2026-09-27): loading CombatRecorder/CombatReport raised
+# "ToonAge has been blocked from an action only available to the Blizzard UI".
+# Confirmed by elimination in game. Do not re-add without a taint log.
 
 
 # ── Forever's own ─────────────────────────────────────────────────────
@@ -121,4 +137,13 @@ Modules\Forever\Talents.lua
 Modules\Forever\Rotation.lua
 Modules\Forever\Pets.lua
 Modules\Forever\PvP.lua
+Modules\Forever\Scrolls.lua
+# Cast order per fight, own frame, player spell-cast event only (see file header).
+Modules\Forever\CastLog.lua
 Modules\Forever\DataHarvester.lua
+# "Since last session" at login, from the snapshot saved at logout. No tab.
+Modules\Forever\SessionCheck.lua
+# Beta "world will refresh" notice: countdown, warnings, log. No tab.
+Modules\Forever\WorldRefresh.lua
+# In-game self-test: /ta test, /tatest, or the Self-test title-bar button. Loads last.
+Modules\Infrastructure\TestHarness.lua

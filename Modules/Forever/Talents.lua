@@ -82,6 +82,17 @@ end
 --- unlabelled one.
 local function TreeNames(count)
     local names = {}
+    -- Forever ships ONE combined tree per class (measured 2026-09-29/30:
+    -- configInfo.treeIDs has a single entry for all 9 classes, 50-54 nodes).
+    -- The spec list is absent here (GetNumSpecializations/GetSpecializationInfo),
+    -- so the honest label for a single tree is the class itself.
+    if count == 1 then
+        local className = Try(UnitClass, "player")
+        if className and not (issecretvalue and issecretvalue(className)) then
+            names[1] = tostring(className) .. " talents"
+        end
+        return names
+    end
     local n = Num(Try(GetNumSpecializations))
     if n and n == count then
         for i = 1, n do

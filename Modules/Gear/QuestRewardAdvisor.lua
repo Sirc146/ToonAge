@@ -53,6 +53,10 @@ local EQUIP_LOC_TO_SLOT = {
 local overlayFrames = {}   -- { [index] = frame }
 local retryTimer    = nil
 local retryCount    = 0
+-- Forward declaration: ScoreRewards (below) calls RetryScoring before its
+-- definition. Without this local, `function RetryScoring()` created a global
+-- that any other addon could overwrite or collide with (G10, 2026-10-04).
+local RetryScoring
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -283,7 +287,7 @@ local function ScoreRewards()
 end
 
 --- Retry scoring for items that haven't loaded yet.
-function RetryScoring()
+function RetryScoring()   -- assigns the forward-declared local above
     retryCount = retryCount + 1
     if retryCount > MAX_RETRIES then
         retryCount = 0

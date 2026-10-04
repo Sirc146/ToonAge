@@ -74,27 +74,51 @@ local function InPvPInstance()
     return iType == "pvp" or iType == "arena"
 end
 
--- Return the equipped ilvl for a specific slot (0 if empty).
-local function EquippedIlvl(slotID)
-    local link = GetInventoryItemLink("player", slotID)
-    if not link then return 0 end
+-- Effective item level: GetItemInfo's 4th return is the BASE level, which is
+-- wrong for scaled/upgraded/timewalking items on Retail. GetDetailedItemLevelInfo
+-- reads the link's bonus IDs; used when the client has it, base level otherwise.
+local function EffectiveIlvl(link)
+    local detailed = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
+    if detailed then
+        local ok, eff = pcall(detailed, link)
+        if ok and type(eff) == "number" and eff > 0 then return eff end
+    end
+    -- TBC has no item upgrades or scaling: the base level IS the level.
     local _, _, _, ilvl = GetItemInfo(link)
     return ilvl or 0
 end
 
--- Find which bag slot (bag, slot) holds an item with the given itemID.
+local function EquippedIlvl(slotID)
+    local link = GetInventoryItemLink("player", slotID)
+    if not link then return 0 end
+    return EffectiveIlvl(link) or 0
+end
+
+-- Find the bag slot holding THIS item (2026-10-03). Exact link first: two
+-- copies of one item ID can differ in bonus IDs (upgrade track, crafted rank,
+-- scaling), and matching on ID alone could equip the other copy. Falls back
+-- to item ID only when exactly one copy of that ID is in the bags.
 local function FindItemInBags(itemLink)
     if not itemLink then return nil end
-    -- Extract itemID from the link
     local targetID = tonumber(itemLink:match("item:(%d+)"))
     if not targetID then return nil end
+    local idBag, idSlot, idCount = nil, nil, 0
     for bag = 0, 4 do
-        local slots = U.GetContainerNumSlots(bag)
+        local slots = (C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerNumSlots(bag))
+                   or (GetContainerNumSlots and GetContainerNumSlots(bag)) or 0
         for slot = 1, slots do
-            local id = U.GetContainerItemID(bag, slot)
-            if id == targetID then return bag, slot end
+            local link = (C_Container and C_Container.GetContainerItemLink and C_Container.GetContainerItemLink(bag, slot))
+                      or (GetContainerItemLink and GetContainerItemLink(bag, slot))
+            if link then
+                if link == itemLink then return bag, slot end
+                if tonumber(link:match("item:(%d+)")) == targetID then
+                    idCount = idCount + 1
+                    idBag, idSlot = bag, slot
+                end
+            end
         end
     end
+    if idCount == 1 then return idBag, idSlot end
     return nil
 end
 
@@ -190,12 +214,37 @@ end
 
 -- ── Item evaluation ───────────────────────────────────────────────────────────
 
+-- ── Safety rules (G5, 2026-10-03) ─────────────────────────────────────────────
+-- 1. Never in combat. Armour can't be equipped in combat at all (the item would
+--    sit on the cursor); weapons can, but a mid-fight swap is never wanted.
+--    The link is queued and retried on PLAYER_REGEN_ENABLED.
+-- 2. Never a Bind-on-Equip / Bind-on-Use item. Everything evaluated here was
+--    just looted, so a BoE item is still unbound and sellable: equipping it
+--    would bind it (behind the game's own confirm, which is one reflex click
+--    away). bindType is GetItemInfo's 14th return (0 none, 1 BoP, 2 BoE,
+--    3 BoU, 4 quest). If it can't be read, the item is skipped -- the
+--    gold-costing mistake is worse than a missed upgrade.
+-- 3. Never over something the player is holding, and never leave the cursor
+--    loaded: if the equip didn't take, the cursor is cleared.
+local BIND_ON_EQUIP, BIND_ON_USE = 2, 3
+AE._combatQueue = AE._combatQueue or {}
+
+local function BindType(itemLink)
+    local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    if not getInfo then return nil end
+    local info = { pcall(getInfo, itemLink) }
+    if not info[1] then return nil end
+    return info[15]   -- pcall's ok flag shifts GetItemInfo's 14th return to 15
+end
+
 local function EvaluateItem(itemLink)
     if not itemLink then return end
     if IsShiftKeyDown() then return end
     if InPvPInstance() then return end
 
     local _, _, _, ilvl, _, _, _, _, equipLoc = GetItemInfo(itemLink)
+    if ilvl then ilvl = EffectiveIlvl(itemLink) end
+    if not ilvl then return end   -- level unknown on this client: skip, don't guess
     if not ilvl or ilvl == 0 then return end
     if not equipLoc or equipLoc == "" or equipLoc == "INVTYPE_NON_EQUIP" then return end
 
@@ -210,9 +259,35 @@ local function EvaluateItem(itemLink)
     local bag, slot = FindItemInBags(itemLink)
     if not bag then return end
 
-    -- Equip it via PickupContainerItem + EquipCursorItem
-    PickupContainerItem(bag, slot)
+    if InCombatLockdown() then
+        AE._combatQueue[#AE._combatQueue + 1] = itemLink
+        return
+    end
+    local bind = BindType(itemLink)
+    if bind == nil or bind == BIND_ON_EQUIP or bind == BIND_ON_USE then
+        if bind ~= nil then
+            TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r %s is an upgrade but binds when equipped -- "
+                .. "left in your bags so it can still be sold. Equip it yourself to keep it.",
+                itemLink))
+        end
+        return
+    end
+    if CursorHasItem and CursorHasItem() then return end
+
+    -- Equip: C_Container first (the container globals are gone on the modern
+    -- Classic clients), global as the fallback for clients that still have it.
+    if C_Container and C_Container.PickupContainerItem then
+        C_Container.PickupContainerItem(bag, slot)
+    elseif PickupContainerItem then
+        PickupContainerItem(bag, slot)
+    else
+        return
+    end
     EquipCursorItem(targetSlot)
+    if CursorHasItem and CursorHasItem() then
+        ClearCursor()
+        return
+    end
 
     local itemName = GetItemInfo(itemLink) or itemLink
     TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r Auto-equipped |cFF1EFF00%s|r (ilvl %d → slot %d).",
@@ -239,6 +314,14 @@ end
 
 function AE:OnEvent(event, ...)
     if not ShouldAutoEquip() then return end
+
+    if event == "PLAYER_REGEN_ENABLED" then
+        local q = self._combatQueue
+        if #q == 0 then return end
+        self._combatQueue = {}
+        for _, link in ipairs(q) do EvaluateItem(link) end
+        return
+    end
 
     if event == "LOOT_OPENED" then
         -- Capture bag state before loot lands
@@ -278,6 +361,7 @@ end
 function AE:Init()
     TA:RegisterEvent("LOOT_OPENED")
     TA:RegisterEvent("BAG_UPDATE_DELAYED")
+    TA:RegisterEvent("PLAYER_REGEN_ENABLED")   -- retry upgrades looted in combat
 
     -- Default opt-in flag
     if TA.charDB and TA.charDB.tracker then

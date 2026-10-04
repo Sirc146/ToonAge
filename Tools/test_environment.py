@@ -100,7 +100,8 @@ CASES = [
     ("TBC Anniv",     5, 20506,  "tbc",     False, True),
     ("Wrath",        11, 30403,  "wrath",   False, True),
     ("Cata",         14, 40402,  "cata",    False, True),
-    ("Mists (MoP)",  19, 50504,  "mists",   False, True),
+    # MoP uses tier-row talents, not trees: not in the tree-shaped family (G13).
+    ("Mists (MoP)",  19, 50504,  "mists",   False, False),
 ]
 
 
@@ -199,6 +200,29 @@ def test_forever_toc_fallback():
     check("erroring metadata -> unknown, no crash", lua.globals().ToonAge.flavor, "unknown")
 
 
+def test_release_zip_toc_pick():
+    section("wrong-build check vs. the release zip's TOCs (2026-10-04)")
+    # The GitHub/Wago zip packs the repo root: ToonAge.toc there is the RETAIL
+    # list with X-Flavor "fallback". Only Retail may load it without complaint.
+    def mismatch(pid, ic, read):
+        lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+        lua.execute(f"""
+        WOW_PROJECT_ID = {pid}
+        GetBuildInfo = function() return "x", "0", "", {ic} end
+        ToonAge = {{}}
+        """)
+        lua.execute(_read("Core/Environment.lua"))
+        lua.execute(f'ToonAge.Compat = {{ GetAddOnMetadata = function(n, f) if f == "X-Flavor" then return "{read}" end end }}')
+        r = lua.eval("{ ToonAge:TocFlavorMismatch() }")
+        return (r[1], r[2])
+    check("retail + fallback TOC is fine",        mismatch(1, 120100, "fallback"), (None, None))
+    check("forever + fallback TOC is reported",   mismatch(18, 16001, "fallback")[0], "Forever")
+    check("tbc + fallback TOC is reported",       mismatch(5, 20506, "fallback")[0], "TBC")
+    check("forever + Mainline TOC is reported",   mismatch(18, 16001, "Mainline"), ("Forever", "Mainline"))
+    check("forever + Forever TOC is fine",        mismatch(18, 16001, "Forever"), (None, None))
+    check("mists + Mists TOC is fine",            mismatch(19, 50504, "Mists"), (None, None))
+
+
 def test_isflavor_helper():
     section("TA:IsFlavor helper")
     ta = detect(1, 120007)
@@ -214,6 +238,7 @@ def main():
     test_unknown_client()
     test_forever()
     test_forever_toc_fallback()
+    test_release_zip_toc_pick()
     test_isflavor_helper()
 
     passed = sum(1 for ok, *_ in _results if ok)

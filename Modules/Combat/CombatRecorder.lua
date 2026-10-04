@@ -157,10 +157,7 @@ function R:OnCombatLog()
     if not row then return end
 
     if kind == "cast" then
-        row.casts   = (row.casts or 0) + 1
-        row.lastSeen = time()
-        s.gcds = (s.gcds or 0) + 1
-        self._lastCast = spellID
+        self:RecordCast(spellID, spellName)
     elseif kind == "damage" then
         row.damage  = (row.damage or 0) + (tonumber(amount) or 0)
     elseif kind == "healing" then
@@ -172,6 +169,27 @@ function R:OnCombatLog()
     elseif kind == "auragone" then
         row.auraLost = (row.auraLost or 0) + 1
     end
+end
+
+--- Count one cast of a spell. Shared by both sources: the combat log where
+--- the client still delivers it, UNIT_SPELLCAST_SUCCEEDED where it does not.
+function R:RecordCast(spellID, spellName)
+    local s = Store()
+    if not s or not spellID then return end
+    local row = SpellRow(s, spellID, spellName)
+    if not row then return end
+    row.casts    = (row.casts or 0) + 1
+    row.lastSeen = time()
+    s.gcds = (s.gcds or 0) + 1
+    self._lastCast = spellID
+end
+
+--- Can this client report damage and healing per spell?
+--- Midnight (and Forever, which runs its API) refuse COMBAT_LOG_EVENT_UNFILTERED
+--- outright: registering it raises, TA:RegisterEvent swallows that and returns
+--- false. Casts still arrive via UNIT_SPELLCAST_SUCCEEDED; output does not.
+function R:HasOutput()
+    return self._hasCombatLog == true
 end
 
 -- ── Bars and spellbook ────────────────────────────────────────────────────
@@ -254,9 +272,18 @@ end
 
 -- ── Events ────────────────────────────────────────────────────────────────
 
-function R:OnEvent(event)
+local isSecret = _G.issecretvalue or function() return false end
+
+function R:OnEvent(event, ...)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
         self:OnCombatLog()
+    elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+        -- Only where the combat log is unavailable; on Classic clients the log
+        -- already counts SPELL_CAST_SUCCESS and this would count every cast twice.
+        if self._hasCombatLog then return end
+        local unit, _, spellID = ...
+        if unit ~= "player" or spellID == nil or isSecret(spellID) then return end
+        self:RecordCast(spellID, nil)
     elseif event == "PLAYER_REGEN_DISABLED" then
         self:OnCombatStart()
     elseif event == "PLAYER_REGEN_ENABLED" then
@@ -280,7 +307,18 @@ end
 function R:Init()
     playerGUID = Try(UnitGUID, "player")
 
-    TA:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    -- Mainline clients (Retail 12.x and Forever) forbid addons the combat log.
+    -- Even ATTEMPTING the registration is a forbidden action there: pcall
+    -- swallows the Lua error, but the client still raises the "blocked from
+    -- an action only available to the Blizzard UI" popup. Suspected cause of
+    -- the 2026-09-27 popup on Forever -- this build tests that. Never try it
+    -- on those clients; count casts from UNIT_SPELLCAST_SUCCEEDED instead.
+    if TA.IsRetail or TA.IsForever then
+        self._hasCombatLog = false
+        TA:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+    else
+        self._hasCombatLog = TA:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    end
     TA:RegisterEvent("PLAYER_REGEN_DISABLED")
     TA:RegisterEvent("PLAYER_REGEN_ENABLED")
     TA:RegisterEvent("ACTIONBAR_SLOT_CHANGED")

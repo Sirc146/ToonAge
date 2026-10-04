@@ -27,6 +27,13 @@
 -- GetPVPSessionStats / GetPVPLifetimeStats. Forever is custom, so every call is
 -- guarded; a section whose calls return nothing is simply omitted rather than
 -- shown as zero.
+--
+-- MEASURED 2026-09-28/30 (build 70124): UnitPVPRank, GetPVPRankInfo,
+-- GetPVPRankProgress, GetPVPThisWeekStats and GetPVPLastWeekStats are ABSENT
+-- to addons, so the rank and weekly blocks never draw. Present and drawn:
+-- GetPVPSessionStats, GetPVPLifetimeStats, plus the racial matchup sections.
+-- The paragraphs above describe the pane this tab was modelled on, not what
+-- the API lets it show.
 -- ══════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
@@ -35,6 +42,22 @@ local L                       -- resolved at render; see M:Render
 
 local M = {}
 TA:RegisterModule("ForeverPvP", M)
+
+-- When this login started: the clock for the session honor rate. Session
+-- stats count from LOGIN, not from a /reload, so the time is taken only on
+-- PLAYER_ENTERING_WORLD with isInitialLogin and kept in charDB across reloads.
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function(self, _, isInitialLogin)
+        self:UnregisterAllEvents()
+        if not TA.charDB then return end
+        if isInitialLogin or not TA.charDB.pvpLoginAt then
+            TA.charDB.pvpLoginAt = time and time() or nil
+        end
+        M._sessionStart = TA.charDB.pvpLoginAt
+    end)
+end
 
 -- ─── READS ─────────────────────────────────────────────────────────────────
 
@@ -74,6 +97,222 @@ local function ReadRank()
         -- GetPVPRankProgress is a 0..1 fraction toward the next rank.
         progress = Num(Try(GetPVPRankProgress)),
     }
+end
+
+-- ─── RACIAL MATCHUPS ─────────────────────────────────────────────────────
+--
+-- Source: Data/Forever/Racials.lua, generated from the harvest -- every racial
+-- measured on this client, per race and faction, tooltip verbatim, with the
+-- removes / inflicts / detects / burst tags read from that tooltip text.
+-- Measured 2026-09-29, all nine races on build 70124.
+--
+-- What this section can say from that data alone:
+--   * what YOUR racials break, and on what cooldown
+--   * what each enemy race brings: what it breaks, what it inflicts, whether
+--     it sees stealth, and its burst window
+--   * where the two meet: your racial answers their racial CC (Will to
+--     Survive vs War Stomp), or theirs answers yours
+-- What it does NOT say yet: which CLASS abilities each racial counters. That
+-- needs every class's spell kit with its CC type, which comes from the spell
+-- catalog scan, not from racials. No class matchups are guessed until then.
+
+local RACE_NAMES = {
+    Scourge = "Undead", NightElf = "Night Elf",
+}
+local function RaceName(key) return RACE_NAMES[key] or key end
+
+local TAG_TEXT = {
+    stun = "stuns", fear = "fear", charm = "charm", sleep = "sleep",
+    snare = "roots and slows", bleed = "bleeds", poison = "poisons",
+    disease = "diseases", curse = "curses",
+}
+local function TagText(list)
+    local out = {}
+    for i, t in ipairs(list or {}) do out[i] = TAG_TEXT[t] or t end
+    return table.concat(out, ", ")
+end
+
+local function Cooldown(sec)
+    if not sec then return nil end
+    if sec >= 60 then return string.format("%d min", math.floor(sec / 60)) end
+    return string.format("%d sec", sec)
+end
+
+--- The racials of one race and faction, one per name. A racial with class
+--- variants (Gnome Eureka!, Undead Touch of the Grave) keeps the variant for
+--- `class` when given, else the first -- the PvP tags are the same across
+--- variants, only resource wording and proc chance differ.
+local function RacialsFor(race, faction, class)
+    local data = TA.Data and TA.Data.ForeverRacials
+    local list = data and data[race] and data[race][faction]
+    if not list then return nil end
+    local byName, order = {}, {}
+    for _, r in ipairs(list) do
+        local mine = r.classes == nil
+        if not mine and class then
+            for _, c in ipairs(r.classes) do if c == class then mine = true end end
+        end
+        local cur = byName[r.name]
+        if not cur then
+            byName[r.name] = r; order[#order + 1] = r.name
+        elseif mine and cur.classes then
+            byName[r.name] = r
+        end
+    end
+    local out = {}
+    for _, n in ipairs(order) do out[#out + 1] = byName[n] end
+    return out
+end
+M._RacialsFor = RacialsFor
+
+--- PvP-relevant racials only: anything that removes, inflicts, detects or bursts.
+local function PvPOnly(list)
+    local out = {}
+    for _, r in ipairs(list or {}) do
+        if r.removes or r.inflicts or r.detects or r.burst then out[#out + 1] = r end
+    end
+    return out
+end
+
+--- One line per racial: what it does in a fight.
+local function Describe(r)
+    local bits = {}
+    if r.removes then bits[#bits + 1] = "breaks " .. TagText(r.removes) end
+    if r.inflicts then bits[#bits + 1] = "inflicts " .. TagText(r.inflicts) end
+    if r.detects == "stealth" then bits[#bits + 1] = "reveals stealth" end
+    if r.burst then bits[#bits + 1] = "burst" end
+    local cd = Cooldown(r.cooldown)
+    return table.concat(bits, "; ") .. (cd and ("  ·  " .. cd) or "")
+end
+
+--- Where an enemy race's racials meet yours.
+--- @return table notes list of strings
+local function Clashes(mine, theirs, myClass)
+    local notes = {}
+    local myRemoves, theirRemoves = {}, {}
+    for _, r in ipairs(mine) do for _, t in ipairs(r.removes or {}) do myRemoves[t] = r end end
+    for _, r in ipairs(theirs) do for _, t in ipairs(r.removes or {}) do theirRemoves[t] = r end end
+    for _, r in ipairs(theirs) do
+        for _, t in ipairs(r.inflicts or {}) do
+            if myRemoves[t] then
+                notes[#notes + 1] = { good = true, text = string.format(
+                    "Your %s breaks their %s.", myRemoves[t].name, r.name) }
+            else
+                notes[#notes + 1] = { good = false, text = string.format(
+                    "Their %s (%s) -- you have no racial that breaks it.", r.name, TagText(r.inflicts)) }
+            end
+        end
+        if r.detects == "stealth" and (myClass == "ROGUE" or myClass == "DRUID") then
+            notes[#notes + 1] = { good = false, text = string.format(
+                "Their %s reveals stealth -- open from further out.", r.name) }
+        end
+    end
+    for _, r in ipairs(mine) do
+        for _, t in ipairs(r.inflicts or {}) do
+            if theirRemoves[t] then
+                notes[#notes + 1] = { good = false, text = string.format(
+                    "Their %s breaks your %s.", theirRemoves[t].name, r.name) }
+            end
+        end
+    end
+    return notes
+end
+M._Clashes = Clashes
+
+local function RenderYourRacials(content, y, race, faction, class)
+    local mine = RacialsFor(race, faction, class)
+    if not mine then return y, nil end
+    local pvp = PvPOnly(mine)
+    y = L:SectionHeader(content, y, "Your racials in PvP",
+        string.format("%s · %s", RaceName(race), faction))
+    if #pvp == 0 then
+        y = L:Paragraph(content, y, "None of your racials break, inflict or reveal "
+            .. "anything; their value is passive.", { color = L.C_DIM })
+    end
+    for _, r in ipairs(pvp) do
+        y = L:DataRow(content, y, {
+            label = r.name, value = Describe(r),
+            status = r.removes and "good" or (r.burst and "warn" or "neutral"),
+            tooltipTitle = r.name, tooltip = { r.tooltip },
+        })
+    end
+    return y, mine
+end
+
+local function RenderMatchups(content, y, race, faction, class, mine)
+    local data = TA.Data and TA.Data.ForeverRacials
+    if not data then return y end
+    local enemy = (faction == "Alliance") and "Horde" or "Alliance"
+    local races = {}
+    for r, byFaction in pairs(data) do
+        if byFaction[enemy] then races[#races + 1] = r end
+    end
+    table.sort(races, function(a, b) return RaceName(a) < RaceName(b) end)
+    if #races == 0 then return y end
+
+    y = L:SectionHeader(content, y, "Enemy races (" .. enemy .. ")",
+        "What each brings to a fight, and where it meets your racials.")
+    for _, r in ipairs(races) do
+        local theirs = PvPOnly(RacialsFor(r, enemy, nil))
+        local parts = {}
+        for _, x in ipairs(theirs) do parts[#parts + 1] = x.name end
+        local notes = Clashes(PvPOnly(mine or {}), theirs, class)
+        local bad, good = 0, 0
+        for _, n in ipairs(notes) do if n.good then good = good + 1 else bad = bad + 1 end end
+        local tip = {}
+        for _, x in ipairs(theirs) do tip[#tip + 1] = x.name .. ": " .. Describe(x) end
+        for _, n in ipairs(notes) do tip[#tip + 1] = (n.good and "+ " or "- ") .. n.text end
+        local noteText
+        if #notes > 0 then
+            local lines = {}
+            for i, n in ipairs(notes) do
+                if i > 2 then lines[#lines + 1] = "..." break end
+                lines[#lines + 1] = n.text
+            end
+            noteText = table.concat(lines, "  ")
+        end
+        y = L:DataRow(content, y, {
+            label = RaceName(r),
+            value = #parts > 0 and table.concat(parts, ", ") or "nothing active",
+            status = (bad > good) and "warn" or ((good > 0) and "good" or "neutral"),
+            note = noteText,
+            noteColor = (bad > good) and "warn" or nil,
+            tooltipTitle = RaceName(r) .. " (" .. enemy .. ")",
+            tooltip = tip,
+        })
+    end
+    y = L:Paragraph(content, y,
+        "Racials only, measured on this client. Class matchups -- which of your "
+        .. "abilities their racials break, and theirs yours -- arrive with the "
+        .. "spell catalog.", { color = L.C_DIM })
+    return y
+end
+
+--- Your current target, when it is an enemy player: its race's racials first,
+--- since that is the fight in front of you.
+local function RenderTarget(content, y, faction, class, mine)
+    if not (Try(UnitExists, "target") and Try(UnitIsPlayer, "target")) then return y end
+    if not Try(UnitIsEnemy, "player", "target") then return y end
+    local _, tRace = Try(UnitRace, "target")
+    local tFaction = Try(UnitFactionGroup, "target")
+    local tName = Try(UnitName, "target")
+    local isSecret = _G.issecretvalue
+    if not tRace or not tFaction or (isSecret and (isSecret(tRace) or isSecret(tFaction))) then
+        return y
+    end
+    local _, tClass = Try(UnitClass, "target")
+    if tClass and isSecret and isSecret(tClass) then tClass = nil end
+    local theirs = PvPOnly(RacialsFor(tRace, tFaction, tClass) or {})
+    y = L:SectionHeader(content, y, "Your target",
+        string.format("%s · %s", RaceName(tRace), tFaction))
+    for _, x in ipairs(theirs) do
+        y = L:DataRow(content, y, { label = x.name, value = Describe(x),
+            tooltipTitle = x.name, tooltip = { x.tooltip } })
+    end
+    for _, n in ipairs(Clashes(PvPOnly(mine or {}), theirs, class)) do
+        y = L:Paragraph(content, y, n.text, { color = n.good and L.C_SUCCESS or L.C_WARNING })
+    end
+    return y
 end
 
 -- ─── SECTIONS ────────────────────────────────────────────────────────────
@@ -125,6 +364,20 @@ local function RenderTally(content, y, title, fn)
     if honor ~= nil then
         y = L:DataRow(content, y, { label = "Honor", value = Show(honor) })
     end
+    -- Your rate, measured (2026-10-03). The server's honor rules are unknown;
+    -- what you earned over the time you have been logged in is not. Session
+    -- stats count from login, so the clock is this UI session's: a /reload
+    -- restarts it, and the line is withheld until 10 minutes have passed.
+    if fn == GetPVPSessionStats and M._sessionStart and time then
+        local minutes = (time() - M._sessionStart) / 60
+        if minutes >= 10 and ((honor or 0) > 0 or (hk or 0) > 0) then
+            local perHour = 60 / minutes
+            y = L:DataRow(content, y, { label = "Per hour (this session)",
+                value = string.format("%s honor, %s kills  (%d min)",
+                    honor and string.format("%.0f", honor * perHour) or "?",
+                    hk and string.format("%.1f", hk * perHour) or "?", math.floor(minutes)) })
+        end
+    end
     return y, true
 end
 
@@ -175,6 +428,20 @@ function M:Render(content, side)
     local y = -8
     local anyStat = false
 
+    -- Racial matchups first: they are the part of this tab that helps in a
+    -- fight. The honor standing below is a readout.
+    local _, race = Try(UnitRace, "player")
+    local faction = Try(UnitFactionGroup, "player")
+    local _, class = Try(UnitClass, "player")
+    if race and faction and TA.Data and TA.Data.ForeverRacials then
+        local mine
+        y, mine = RenderYourRacials(content, y, race, faction, class)
+        y = RenderTarget(content, y, faction, class, mine)
+        y = L:Divider(content, y)
+        y = RenderMatchups(content, y, race, faction, class, mine)
+        y = L:Divider(content, y)
+    end
+
     if rank then
         y = RenderStanding(content, y, rank)
         y = L:Divider(content, y)
@@ -206,6 +473,7 @@ function M:OnEvent(event)
 end
 
 M.Events = {
+    "PLAYER_TARGET_CHANGED",
     "PLAYER_PVP_RANK_CHANGED",
     "PLAYER_PVP_KILLS_CHANGED",
     "HONOR_CURRENCY_UPDATE",

@@ -78,16 +78,149 @@ local function IsSecretText(v)
     return ok and res == true
 end
 
-local function Text(parent, opts)
-    local fs = parent:CreateFontString(nil, "OVERLAY")
+-- ─── RECYCLING ──────────────────────────────────────────────────────────────
+--
+-- WoW never frees a frame, a FontString or a Texture. Every builder here used to
+-- create new ones on every render, and Core/UI.lua's RebuildChild orphaned the
+-- old ones -- so each tab refresh leaked everything it drew. Measured by
+-- /ta test on 2026-09-28: 10-47 frames per Forever re-render, 307 per Retail
+-- Guide re-render, plus the text and textures inside them.
+--
+-- Now each pane (the content and sidebar scroll children, marked _laPane by
+-- RebuildChild) records what the builders handed out, and L:ReleasePane gives
+-- it all back before the pane is rebuilt:
+--   * row-type frames go to a per-kind pool on a hidden holder and are
+--     re-parented and re-styled on the next Acquire. Their inner FontStrings
+--     and Textures are built once with the frame and restyled, never recreated.
+--   * FontStrings/Textures drawn straight onto a pane stay on that pane and go
+--     back on its own free list (the pane itself is reused by UI.lua's pool).
+-- Anything not drawn through this file is untouched and behaves as before.
+
+local HOLDER = CreateFrame("Frame")
+HOLDER:Hide()
+local framePools = {}           -- kind -> array of free frames
+
+--- The pane a builder is drawing into, or nil when `parent` is not inside one.
+local function PaneOf(parent)
+    local p, guard = parent, 0
+    while p and guard < 8 do
+        if p._laPane then return p end
+        p = p.GetParent and p:GetParent()
+        guard = guard + 1
+    end
+    return nil
+end
+
+local function Track(pane, obj)
+    if not pane then return end
+    local used = pane._laUsed
+    if not used then used = {}; pane._laUsed = used end
+    used[#used + 1] = obj
+end
+
+--- A FontString for a pooled frame's build(), with a font set immediately.
+--- A pooled row can clear a string it never styled (DataRow's note on a row
+--- that has never had one), and SetText on a FontString with no font raises
+--- "Font not set" -- which took the Forever Talents and Spells tabs down on
+--- 2026-09-28 until every built-in string got a font at creation.
+local function NewFS(frame)
+    local fs = frame:CreateFontString(nil, "OVERLAY")
+    fs:SetFont(FONT, 10, "")
+    return fs
+end
+
+--- A pooled frame of `kind`, built by build() the first time only.
+local function AcquireFrame(kind, parent, build)
+    local free = framePools[kind]
+    local f = free and table.remove(free)
+    if not f then
+        f = build()
+        f._laKind = kind
+    end
+    f:SetParent(parent)
+    f:ClearAllPoints()
+    f:Show()
+    f:SetScript("OnEnter", nil)
+    f:SetScript("OnLeave", nil)
+    Track(PaneOf(parent), f)
+    return f
+end
+
+--- A FontString or Texture drawn directly on `parent`. Reused from the pane's
+--- free list when `parent` IS a pane; created fresh (old behaviour) otherwise.
+local function TakeRegion(parent, kind, layer)
+    local r
+    if parent._laPane then
+        local free = parent._laFree and parent._laFree[kind]
+        r = free and table.remove(free)
+    end
+    if not r then
+        if kind == "FontString" then
+            r = parent:CreateFontString(nil, layer or "OVERLAY")
+            r:SetFont(FONT, 10, "")
+        else
+            r = parent:CreateTexture(nil, layer or "ARTWORK")
+        end
+        r._laRegion = kind
+    else
+        r:SetDrawLayer(layer or (kind == "FontString" and "OVERLAY" or "ARTWORK"))
+    end
+    r:ClearAllPoints()
+    r:SetWidth(0)
+    r:SetHeight(0)
+    r:Show()
+    if parent._laPane then Track(parent, r) end
+    return r
+end
+
+--- Give back everything the builders put on `pane`. Called by Core/UI.lua's
+--- RebuildChild before it clears the pane.
+function L:ReleasePane(pane)
+    local used = pane and pane._laUsed
+    if not used then return end
+    for i = #used, 1, -1 do
+        local o = used[i]
+        used[i] = nil
+        o:Hide()
+        o:ClearAllPoints()
+        if o._laKind then
+            o:SetParent(HOLDER)
+            local free = framePools[o._laKind]
+            if not free then free = {}; framePools[o._laKind] = free end
+            free[#free + 1] = o
+        elseif o._laRegion then
+            if o.SetText then o:SetText("") end
+            pane._laFree = pane._laFree or {}
+            local free = pane._laFree[o._laRegion]
+            if not free then free = {}; pane._laFree[o._laRegion] = free end
+            free[#free + 1] = o
+        end
+    end
+end
+
+--- Pool sizes, for /ta test and debugging.
+function L:PoolStats()
+    local out = {}
+    for kind, free in pairs(framePools) do out[kind] = #free end
+    return out
+end
+
+--- Apply text options to an existing FontString (shared by Text and the
+--- pooled rows, whose inner strings are built once and restyled).
+local function StyleText(fs, opts)
     fs:SetFont(opts.font or FONT, opts.size or 10, opts.flags or "")
     local c = Colour(opts.color)
     fs:SetTextColor(c[1], c[2], c[3], opts.alpha or 1)
     if opts.text ~= nil then
         fs:SetText(IsSecretText(opts.text) and SECRET_PLACEHOLDER or opts.text)
     end
+    if opts.text == nil then fs:SetText("") end
     fs:SetJustifyH(opts.justify or "LEFT")
     return fs
+end
+
+local function Text(parent, opts)
+    return StyleText(TakeRegion(parent, "FontString"), opts)
 end
 
 --- Usable width for a row inside a scroll child.
@@ -101,6 +234,26 @@ function L:Width(parent)
     local w = parent and parent:GetWidth()
     if not w or w <= 0 then w = DEFAULT_CONTENT_WIDTH end
     return math.floor(math.max(w - L.PAD * 2, 40))
+end
+
+
+--- Hover tooltip on a pooled row, or none. Pooled frames keep their mouse
+--- state between uses, so this always sets it explicitly.
+local function RowTooltip(frame, title, lines)
+    if lines then
+        frame:EnableMouse(true)
+        frame:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(title, 1, 0.82, 0)
+            for _, line in ipairs(lines) do
+                GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
+            end
+            GameTooltip:Show()
+        end)
+        frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    else
+        frame:EnableMouse(false)
+    end
 end
 
 -- ─── BUILDERS ───────────────────────────────────────────────────────────────
@@ -122,7 +275,7 @@ function L:SectionHeader(parent, y, title, subtitle)
         y = y - math.max(12, math.floor(sub:GetStringHeight() + 2))
     end
 
-    local line = parent:CreateTexture(nil, "ARTWORK")
+    local line = TakeRegion(parent, "Texture", "ARTWORK")
     line:SetHeight(1)
     line:SetPoint("TOPLEFT",  parent, "TOPLEFT",  L.PAD, y)
     line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -L.PAD, y)
@@ -138,40 +291,41 @@ function L:DataRow(parent, y, opts)
     local hasNote = opts.note and opts.note ~= ""
     local height = hasNote and 32 or 20
 
-    local row = CreateFrame("Frame", nil, parent)
+    local row = AcquireFrame("DataRow", parent, function()
+        local f = CreateFrame("Frame", nil, HOLDER)
+        f.label = NewFS(f)
+        f.value = NewFS(f)
+        f.note  = NewFS(f)
+        return f
+    end)
     row:SetSize(w, height)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
 
-    local label = Text(row, { text = opts.label, size = 10, color = L.C_SECONDARY })
-    label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2)
+    StyleText(row.label, { text = opts.label, size = 10, color = L.C_SECONDARY })
+    row.label:ClearAllPoints()
+    row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2)
 
-    local value = Text(row, {
+    StyleText(row.value, {
         text = opts.value, size = opts.valueSize or 11,
         flags = opts.bold and "OUTLINE" or "",
         color = opts.status, justify = "RIGHT",
     })
-    value:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, -2)
+    row.value:ClearAllPoints()
+    row.value:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, -2)
 
     if hasNote then
-        local note = Text(row, { text = opts.note, size = 9, color = L.C_DIM })
-        note:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -16)
-        note:SetWidth(w)
-        note:SetHeight(0)
+        StyleText(row.note, { text = opts.note, size = 9, color = opts.noteColor or L.C_DIM })
+        row.note:ClearAllPoints()
+        row.note:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -16)
+        row.note:SetWidth(w)
+        row.note:SetHeight(0)
+        row.note:Show()
+    else
+        row.note:SetText("")
+        row.note:Hide()
     end
 
-    if opts.tooltip then
-        row:EnableMouse(true)
-        row:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(opts.tooltipTitle or opts.label, 1, 0.82, 0)
-            for _, line in ipairs(opts.tooltip) do
-                GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
-            end
-            GameTooltip:Show()
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end
-
+    RowTooltip(row, opts.tooltipTitle or opts.label, opts.tooltip)
     return y - height - 2, row
 end
 
@@ -184,20 +338,31 @@ function L:CapBar(parent, y, opts)
     local BAR_H  = 14
     local ROW_H  = 46
 
-    local card = CreateFrame("Frame", nil, parent)
+    local card = AcquireFrame("CapBar", parent, function()
+        local f = CreateFrame("Frame", nil, HOLDER)
+        f.title = NewFS(f)
+        f.right = NewFS(f)
+        f.track = CreateFrame("Frame", nil, f)
+        f.fill  = f.track:CreateTexture(nil, "ARTWORK")
+        f.note  = NewFS(f)
+        return f
+    end)
     card:SetSize(w, ROW_H)
     card:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
 
-    local title = Text(card, { text = opts.label, size = 11, flags = "OUTLINE", color = L.C_PRIMARY })
-    title:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
+    StyleText(card.title, { text = opts.label, size = 11, flags = "OUTLINE", color = L.C_PRIMARY })
+    card.title:ClearAllPoints()
+    card.title:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
 
     local status = opts.capped and "good" or (opts.urgent and "bad" or "warn")
-    local right = Text(card, { text = opts.value, size = 11, flags = "OUTLINE",
-                               color = status, justify = "RIGHT" })
-    right:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, 0)
+    StyleText(card.right, { text = opts.value, size = 11, flags = "OUTLINE",
+                            color = status, justify = "RIGHT" })
+    card.right:ClearAllPoints()
+    card.right:SetPoint("TOPRIGHT", card, "TOPRIGHT", 0, 0)
 
     -- Track
-    local track = CreateFrame("Frame", nil, card)
+    local track = card.track
+    track:ClearAllPoints()
     track:SetSize(w, BAR_H)
     track:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -16)
     if TA._ApplyBackdrop then
@@ -211,31 +376,22 @@ function L:CapBar(parent, y, opts)
         pct = 1
     end
 
-    local fill = track:CreateTexture(nil, "ARTWORK")
+    local fill = card.fill
+    fill:ClearAllPoints()
     fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
     fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
     fill:SetWidth(math.max(math.floor((w - 2) * pct), 1))
     local c = Colour(status)
     fill:SetColorTexture(c[1] * 0.55, c[2] * 0.55, c[3] * 0.55, 0.85)
+    fill:Show()
 
-    local note = Text(card, { text = opts.note or "", size = 9, color = opts.capped and "good" or "dim" })
-    note:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -33)
-    note:SetWidth(w)
-    note:SetHeight(0)
+    StyleText(card.note, { text = opts.note or "", size = 9, color = opts.capped and "good" or "dim" })
+    card.note:ClearAllPoints()
+    card.note:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -33)
+    card.note:SetWidth(w)
+    card.note:SetHeight(0)
 
-    if opts.tooltip then
-        card:EnableMouse(true)
-        card:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(opts.label, 1, 0.82, 0)
-            for _, line in ipairs(opts.tooltip) do
-                GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
-            end
-            GameTooltip:Show()
-        end)
-        card:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end
-
+    RowTooltip(card, opts.label, opts.tooltip)
     return y - ROW_H - L.RPAD
 end
 
@@ -288,16 +444,26 @@ function L:StatBar(parent, y, opts)
     local GAP     = 8
     local barW    = math.max(w - LABEL_W - VALUE_W - GAP * 2, 40)
 
-    local row = CreateFrame("Frame", nil, parent)
+    local row = AcquireFrame("StatBar", parent, function()
+        local f = CreateFrame("Frame", nil, HOLDER)
+        f.label = NewFS(f)
+        f.track = CreateFrame("Frame", nil, f)
+        f.fill  = f.track:CreateTexture(nil, "ARTWORK")
+        f.extra = f.track:CreateTexture(nil, "ARTWORK")
+        f.text  = NewFS(f)
+        return f
+    end)
     row:SetSize(w, ROW_H)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
 
-    local label = Text(row, { text = opts.label, size = 10, color = L.C_SECONDARY })
-    label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3)
-    label:SetWidth(LABEL_W)
-    label:SetHeight(0)
+    StyleText(row.label, { text = opts.label, size = 10, color = L.C_SECONDARY })
+    row.label:ClearAllPoints()
+    row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3)
+    row.label:SetWidth(LABEL_W)
+    row.label:SetHeight(0)
 
-    local track = CreateFrame("Frame", nil, row)
+    local track = row.track
+    track:ClearAllPoints()
     track:SetSize(barW, BAR_H)
     track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, -2)
     if TA._ApplyBackdrop then
@@ -306,6 +472,8 @@ function L:StatBar(parent, y, opts)
 
     local value = tonumber(opts.value)
     local scale = tonumber(opts.scale)
+    row.fill:Hide()
+    row.extra:Hide()
 
     if value and scale and scale > 0 then
         local inner = barW - 2
@@ -314,46 +482,39 @@ function L:StatBar(parent, y, opts)
         local basePct = (base and base >= 0 and base <= value) and (base / scale) or total
 
         local cBase = Colour(opts.color or "stat")
-        local fill = track:CreateTexture(nil, "ARTWORK")
+        local fill = row.fill
+        fill:ClearAllPoints()
         fill:SetPoint("TOPLEFT",    track, "TOPLEFT",    1, -1)
         fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1,  1)
         fill:SetWidth(math.max(math.floor(inner * basePct), 1))
         fill:SetColorTexture(cBase[1], cBase[2], cBase[3], 0.90)
+        fill:Show()
 
         if base and value > base and total > basePct then
             local g = L.C_STAT_GEAR
-            local extra = track:CreateTexture(nil, "ARTWORK")
+            local extra = row.extra
+            extra:ClearAllPoints()
             extra:SetPoint("TOPLEFT",    fill, "TOPRIGHT",    0, 0)
             extra:SetPoint("BOTTOMLEFT", fill, "BOTTOMRIGHT", 0, 0)
             extra:SetWidth(math.max(math.floor(inner * (total - basePct)), 1))
             extra:SetColorTexture(g[1], g[2], g[3], 0.90)
+            extra:Show()
         end
     end
 
     -- The real number, right-justified inside a fixed-width box whose LEFT edge
     -- is computed -- same look as a right anchor, without depending on the
     -- parent's right edge being where we think it is.
-    local text = Text(row, {
+    StyleText(row.text, {
         text = opts.text or (value and tostring(value)) or "|cFF6E6A62n/a|r",
         size = 11, flags = "OUTLINE", color = opts.status, justify = "RIGHT",
     })
-    text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
-    text:SetWidth(VALUE_W)
-    text:SetHeight(0)
+    row.text:ClearAllPoints()
+    row.text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
+    row.text:SetWidth(VALUE_W)
+    row.text:SetHeight(0)
 
-    if opts.tooltip then
-        row:EnableMouse(true)
-        row:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(opts.tooltipTitle or opts.label, 1, 0.82, 0)
-            for _, line in ipairs(opts.tooltip) do
-                GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
-            end
-            GameTooltip:Show()
-        end)
-        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end
-
+    RowTooltip(row, opts.tooltipTitle or opts.label, opts.tooltip)
     return y - ROW_H - 2, row
 end
 
@@ -413,21 +574,31 @@ function L:StackBar(parent, y, opts)
     local GAP     = 8
     local barW    = math.max(w - LABEL_W - VALUE_W - GAP * 2, 40)
 
-    local row = CreateFrame("Frame", nil, parent)
+    local row = AcquireFrame("StackBar", parent, function()
+        local f = CreateFrame("Frame", nil, HOLDER)
+        f.label = NewFS(f)
+        f.track = CreateFrame("Frame", nil, f)
+        f.segs  = {}                 -- grows to the most segments ever drawn
+        f.text  = NewFS(f)
+        return f
+    end)
     row:SetSize(w, ROW_H)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
 
-    local label = Text(row, { text = opts.label, size = 10, color = L.C_SECONDARY })
-    label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3)
-    label:SetWidth(LABEL_W)
-    label:SetHeight(0)
+    StyleText(row.label, { text = opts.label, size = 10, color = L.C_SECONDARY })
+    row.label:ClearAllPoints()
+    row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3)
+    row.label:SetWidth(LABEL_W)
+    row.label:SetHeight(0)
 
-    local track = CreateFrame("Frame", nil, row)
+    local track = row.track
+    track:ClearAllPoints()
     track:SetSize(barW, BAR_H)
     track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, -2)
     if TA._ApplyBackdrop then
         TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
     end
+    for _, tex in ipairs(row.segs) do tex:Hide() end
 
     local scale = tonumber(opts.scale)
     local segs  = type(opts.segments) == "table" and opts.segments or {}
@@ -437,12 +608,18 @@ function L:StackBar(parent, y, opts)
     if scale and scale > 0 and total > 0 then
         local inner = barW - 2
         local c = Colour(opts.color or "stat")
-        local prev = nil
+        local prev, used = nil, 0
         for i, s in ipairs(segs) do
             local v = tonumber(s.value) or 0
             if v > 0 then
+                used = used + 1
+                local tex = row.segs[used]
+                if not tex then
+                    tex = track:CreateTexture(nil, "ARTWORK")
+                    row.segs[used] = tex
+                end
+                tex:ClearAllPoints()
                 local shade = (i % 2 == 1) and 1.00 or 0.70
-                local tex = track:CreateTexture(nil, "ARTWORK")
                 if prev then
                     tex:SetPoint("TOPLEFT",    prev, "TOPRIGHT",    0, 0)
                     tex:SetPoint("BOTTOMLEFT", prev, "BOTTOMRIGHT", 0, 0)
@@ -452,18 +629,20 @@ function L:StackBar(parent, y, opts)
                 end
                 tex:SetWidth(math.max(math.floor(inner * (v / scale)), 1))
                 tex:SetColorTexture(c[1] * shade, c[2] * shade, c[3] * shade, 0.90)
+                tex:Show()
                 prev = tex
             end
         end
     end
 
-    local text = Text(row, {
+    StyleText(row.text, {
         text = opts.text or tostring(total), size = 11, flags = "OUTLINE",
         color = opts.status, justify = "RIGHT",
     })
-    text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
-    text:SetWidth(VALUE_W)
-    text:SetHeight(0)
+    row.text:ClearAllPoints()
+    row.text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
+    row.text:SetWidth(VALUE_W)
+    row.text:SetHeight(0)
 
     -- The breakdown lives in the tooltip: a bar on screen, a list of which
     -- slots contributed what on hover.
@@ -481,6 +660,8 @@ function L:StackBar(parent, y, opts)
             GameTooltip:Show()
         end)
         row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    else
+        row:EnableMouse(false)
     end
 
     return y - ROW_H - 2, row
@@ -522,7 +703,7 @@ end
 -- ── Layout primitives ────────────────────────────────────────────────
 function L:Divider(parent, y)
     y = math.floor(y) - 4
-    local line = parent:CreateTexture(nil, "ARTWORK")
+    local line = TakeRegion(parent, "Texture", "ARTWORK")
     line:SetHeight(1)
     line:SetPoint("TOPLEFT",  parent, "TOPLEFT",  L.PAD, y)
     line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -L.PAD, y)
@@ -676,10 +857,15 @@ function L:ButtonRow(parent, y, buttons, opts)
     end
 
     for _, def in ipairs(buttons) do
-        local btn = CreateFrame("Button", nil, parent)
-        local lbl = btn:CreateFontString(nil, "OVERLAY")
+        local btn = AcquireFrame("Button", parent, function()
+            local f = CreateFrame("Button", nil, HOLDER)
+            f.lbl = NewFS(f)
+            return f
+        end)
+        local lbl = btn.lbl
         lbl:SetFont(FONT, opts.size or 9, "")
         lbl:SetText(def.label)
+        lbl:ClearAllPoints()
         lbl:SetPoint("CENTER")
         local bw = math.floor(math.max(opts.minWidth or 54, lbl:GetStringWidth() + 18))
         if x > 0 and x + bw > w then
@@ -688,6 +874,7 @@ function L:ButtonRow(parent, y, buttons, opts)
         end
         btn:SetSize(bw, h)
         btn:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD + x, y)
+        btn:EnableMouse(true)
         StyleButton(btn, lbl, def.active, false)
 
         btn:SetScript("OnClick", function()

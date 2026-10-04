@@ -56,10 +56,17 @@ check("no hardcoded Archaeology slot", "Archaeology" not in prof)
 
 # Skills: the beta sheet shows "Defense 13 / 15" but UnitDefense answered
 # nothing, so the skill-lines API is the way in.
+# 2026-09-28: the legacy globals are ABSENT on Forever (measured), so the read
+# moved into ReadSkillLines: C_SkillInfo first, legacy globals as a guarded
+# fallback for the classic clients. RenderSkills only filters what it returns.
 skills = code[code.index("local function RenderSkills"):code.index("local function RenderFooter")]
-check("skills read the skill book", "GetSkillLineInfo" in skills)
-check("skills guard the API's absence", 'type(GetNumSkillLines) ~= "function"' in skills)
-check("professions are not listed twice", "professionNames[tostring(name)]" in skills)
+reader = code[code.index("local function ReadSkillLines"):code.index("local function RenderSkills")]
+check("skills read the skill book (C_SkillInfo first)",
+      "C_SkillInfo.GetSkillLineInfo" in reader and "ReadSkillLines()" in skills)
+check("skills guard the API's absence",
+      "C_SkillInfo and C_SkillInfo.GetNumSkillLines" in reader
+      and 'type(GetNumSkillLines) == "function"' in reader)
+check("professions are not listed twice", "professionNames[l.name]" in skills)
 check("a capped-short skill is called out", "below the cap for your level" in skills)
 
 # The whole point: no advice.

@@ -240,6 +240,11 @@ CH.SlashCommands = {
         if DH and DH.ShowExport then
             local total = select(1, self:GetStats())
             DH:ShowExport("Coord Harvest (" .. total .. " entries)", { text })
+        elseif TA.ShowCopyWindow then
+            -- DevHelpers is not shipped on every client (Forever has none);
+            -- the export still belongs in a window you can copy, not in chat.
+            local total = select(1, self:GetStats())
+            TA:ShowCopyWindow("Coord Harvest (" .. tostring(total) .. " entries)", text)
         else
             TA:Raw(TA.LOG.OUTPUT, text)
         end

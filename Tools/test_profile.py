@@ -116,8 +116,8 @@ def test_nonretail_explicit_list():
 
 
 def test_scaffolds_inert():
-    section("cata/vanilla/forever scaffolds are inert")
-    for pid, ic, dataname in [(14, 40402, "Cata"), (2, 11507, "Vanilla")]:
+    section("cata/vanilla/wrath/forever scaffolds are inert")
+    for pid, ic, dataname in [(14, 40402, "Cata"), (2, 11507, "Vanilla"), (11, 30405, "Wrath")]:
         _, ta = load_profile(pid, ic)
         check(f"{dataname}: scaffold flag", ta.GetProfile(ta).scaffold, True)
         check(f"{dataname}: no modules allowed", ta.ModuleInProfile(ta, "Gear"), False)
@@ -134,7 +134,8 @@ def test_scaffolds_inert():
     # What runs: engine-only modules that read the world through APIs this
     # client has, and carry no expansion numbers of their own.
     for mod in ("ErrorLog", "Settings", "XPTracker", "GatherTracker",
-                "AutoMount", "NavHud", "RestOptimizer", "DeathRecovery"):
+                "RestOptimizer", "DeathRecovery",
+                "ForeverScrolls", "ForeverCastLog"):
         check(f"forever allows {mod}",   ta.ModuleInProfile(ta, mod), True)
     # What does not: anything driven by Data/Retail values that are wrong for
     # Vanilla-era content.
@@ -145,17 +146,20 @@ def test_scaffolds_inert():
                 "QuestTracker", "GuideParser", "GuideImporter", "GuideBrowser",
                 "GuideContextMenu", "SpecAdaptive",
                 # Guide machinery: all of it points at guide steps.
-                "Arrow", "MapPins", "AntTrail", "CoordResolver"):
+                "Arrow", "MapPins", "AntTrail", "CoordResolver",
+                # Cut 2026-09-22: the HUD and the quest chores went with the
+                # guide stack; Forever is a readout plus the recorders.
+                "NavHud", "AutoMount", "AutoQuest", "VendorAssist",
+                # Banned 2026-09-27: blocked-action popup on Forever.
+                "CombatRecorder", "CombatReport"):
         check(f"forever denies {mod}",   ta.ModuleInProfile(ta, mod), False)
     check("forever no retail data",      ta.DataNamespace(ta), "Forever")
     # Character (a readout) and Automation (chores). Both are flavor-safe;
     # everything that needs Data/Forever stays denied above.
     tabs = list(ta.ProfileTabs(ta).values())
-    check("forever ships four tabs",     len(tabs), 4)
-    check("the first tab is Character",  tabs[0].id, "character")
-    check("the second is Automation",    tabs[1].id, "automation")
-    check("the third is Combat",         tabs[2].id, "combat")
-    check("the fourth is Harvest",       tabs[3].id, "harvest")
+    check("forever tab order", [t.id for t in tabs],
+          ["character", "gear", "talents", "spells", "pets", "pvp",
+           "scrolls", "casts", "harvest"])
     # The readout registers as ForeverCharacter, not Character: Retail ships
     # both files in one TOC and RegisterModule is a flat overwrite, so sharing
     # the name let TOC order decide which Character tab Retail got.
@@ -166,8 +170,6 @@ def test_scaffolds_inert():
     # Auto-accept lived in QuestTracker until the guide cut took the tracker
     # out and the feature with it. It is its own module now precisely so a
     # flavour can have the chores without the guide stack.
-    check("forever allows AutoQuest",    ta.ModuleInProfile(ta, "AutoQuest"), True)
-    check("forever allows VendorAssist", ta.ModuleInProfile(ta, "VendorAssist"), True)
     # The recorder: no outside source has numbers for this client, so the
     # client is the only one and this is what reads it.
     check("forever allows DataHarvester", ta.ModuleInProfile(ta, "DataHarvester"), True)

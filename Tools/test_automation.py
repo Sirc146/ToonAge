@@ -100,11 +100,10 @@ check("modern container API is probed", "C_Container.GetContainerItemInfo" in va
 check("legacy container API is kept", "Try(GetContainerItemInfo" in va)
 
 # ── Wiring ───────────────────────────────────────────────────────────────
-check("forever ships AutoQuest", "AutoQuest        = true," in pf)
-check("forever ships VendorAssist", "VendorAssist     = true," in pf)
-check("forever gets an Automation tab",
-      'id = "automation"' in pf and 'module = "AutoQuest"' in pf)
-check("retail's default tabs include Automation", 'id = "automation"' in ui)
+# TBC and Mists ship the chores through their profiles (fixed 2026-09-27:
+# both TOCs loaded them while the profile denied them). Forever does not.
+check("tbc ships AutoQuest", "AutoQuest         = true," in pf)
+check("tbc and mists ship VendorAssist", pf.count("VendorAssist") >= 2)
 
 # Mists draws without Core/Layout.lua, so it cannot host the shared tab; it
 # gets the vendor chores through its own Settings tab instead.

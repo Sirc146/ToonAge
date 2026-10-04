@@ -111,6 +111,11 @@ PickupAction = function(slot) CURSOR = BAR[slot]; BAR[slot] = nil end
 PlaceAction = function(slot) BAR[slot] = CURSOR; CURSOR = nil end
 ClearCursor = function() CURSOR = nil end
 HasPetUI = function() return false end
+-- WoW global (every client): empties a table in place. Settings:Render uses it.
+wipe = wipe or function(t) for k in pairs(t) do t[k] = nil end return t end
+-- FrameXML globals present on every client; Settings registers its reset popup.
+StaticPopupDialogs = StaticPopupDialogs or {}
+StaticPopup_Show = function() end
 """
 
 
@@ -179,6 +184,26 @@ def main():
         if t == "StatCaps":
             check("StatCaps: shows current level", "You are level" in joined)
             check("StatCaps: no red absent-globals alarm", "Combat rating globals absent" not in joined)
+
+    # Settings drawer (G9, 2026-10-04): TBC now ships the shared Settings. It
+    # must render, show what TBC has, and draw no retail-only section.
+    st = ta.modules.Settings
+    check("Settings module ships on TBC", st is not None)
+    if st is not None:
+        lua.execute("_texts = {} _buttons = {}")
+        err = None
+        try:
+            st.Render(st, lua.eval("MockFrame('drawer')"), lua.eval("MockFrame('drawerside')"))
+        except Exception as e:
+            err = str(e).splitlines()[0]
+        check("Settings renders on TBC", err is None, err)
+        joined = "\n".join(lua.eval("_texts").values())
+        check("Settings: Quest Automation shown (AutoQuest/AutoEquip/VendorAssist)",
+              "QUEST AUTOMATION" in joined)
+        check("Settings: Module Health shown", "MODULE HEALTH" in joined)
+        for retail_only in ("NAVIGATION & HUD", "GUIDE DISPLAY", "COMBAT & ROTATION",
+                            "GEAR & DUNGEONS", "Guides loaded"):
+            check(f"Settings: no {retail_only} on TBC", retail_only not in joined)
 
     # Spells: drag/place helpers
     def missing_list():

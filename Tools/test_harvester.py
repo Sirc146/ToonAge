@@ -68,8 +68,15 @@ check("vanilla talent API is used", "Try(GetTalentInfo, tab, i)" in h)
 # is a stutter the player feels.
 check("bag scans are debounced", "_scanQueued" in h)
 check("the debounce has a delay", "local SCAN_DELAY" in h)
-# The only chat writes allowed are the debug line and the clear confirmation.
-check("it does not chatter", h.count("TA:Raw(") <= 2)
+# Background recording never writes to chat. Allowed: LOG.OUTPUT replies to a
+# button the player just clicked (clear store, run spell catalog, run all), and
+# the one debug-gated "recording" line. Anything at INFO/WARN would be the
+# harvester talking on its own -- the chatter this guards against.
+import re as _re
+_raw_levels = _re.findall(r"TA:Raw\(\s*TA\.LOG\.([A-Z]+)", h)
+check("it does not chatter",
+      len([lv for lv in _raw_levels if lv != "OUTPUT"]) <= 1
+      and h.count("TA:Raw(") == len(_raw_levels))
 
 # ── Store survives a schema bump ─────────────────────────────────────────
 store = h[h.index("local function Store()"):h.index("local function Count(")]
