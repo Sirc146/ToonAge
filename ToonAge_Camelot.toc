@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: |cFFFFD100ToonAge|r |cFF888780Forever|r
 ## Notes: WoW Forever edition — readout, chores and a data recorder. No retail data.
-## Author: SIRC
+## Author: Sirc
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB, ToonAgeGuard
@@ -71,6 +71,9 @@ Libs\WagoAnalytics\Shim.lua
 Core\Init.lua
 Core\Environment.lua
 Core\Compat\API.lua
+# Harvest capability layer (Docs/SPEC_HARVEST_SENSOR_ARRAY.md, T1): the one place
+# the harvester asks what this client exposes. G3's resolver replaces it later.
+Core\Caps.lua
 Core\Utils.lua
 Core\State.lua
 Core\UI.lua

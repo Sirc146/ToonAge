@@ -135,12 +135,17 @@ local API_CHECKS = {
     { "UISpecialFrames",                        "all" },
     { "GetProfessions",                         "all",          "Init.lua OnLogin calls it unguarded, before InitModules/InitUI/slash" },
     { "GetProfessionInfo",                      "all" },
-    { "PickupContainerItem",                    "tbc mists",    "TBC/Mists AutoEquip call the GLOBAL unguarded" },
+    -- Informational: AutoEquip tries C_Container.PickupContainerItem first and the
+    -- global only as a guarded fallback. The real requirement ("some pickup API")
+    -- is the AutoEquip check in SuiteApi.
+    { "PickupContainerItem" },
     { "EquipCursorItem",                        "tbc mists" },
     { "GetNumTalentTabs",                       "tbc",          "TBC talent trees (TBCUtils)" },
     { "GetTalentTabInfo",                       "tbc" },
-    { "GetSpecialization",                      "mists",        "Mists Character/GuideParser" },
-    { "GetSpecializationInfo",                  "mists" },
+    -- Informational: every call site is guarded. Whether Mists can read the spec
+    -- at all is a functional check in SuiteApi.
+    { "GetSpecialization" },
+    { "GetSpecializationInfo" },
     { "C_ClassTalents.GetActiveConfigID",       "forever",      "Forever Talents tab (C_Traits path)" },
     { "C_Traits.GetConfigInfo",                 "forever" },
     { "C_TooltipInfo.GetHyperlink",             "forever",      "Forever Scrolls tab" },
@@ -549,6 +554,35 @@ local function SuiteApi(S)
         S(pick and PASS or FAIL, "AutoEquip running; container pickup API " .. (pick and "available" or "MISSING"))
     end
 
+    -- Mists: Character stats and gear scoring are keyed on the spec, read through
+    -- U.GetPlayerSpec. It returns nil (no error) when the spec API is absent.
+    if flavor == "mists" then
+        local U = TA.Utils
+        local id = U and U.GetPlayerSpec and U.GetPlayerSpec()
+        if id then S(PASS, "spec readable (id " .. tostring(id) .. ")")
+        else S(WARN, "spec unreadable (API absent, or no spec chosen) -- Character stats and gear scores run without one") end
+    end
+
+    -- Harvest capability layer (Core/Caps.lua, harvest spec T1). Loaded only by
+    -- the TOCs that ship a harvest pack, so elsewhere this is just a note.
+    -- The probe paths are generic on purpose: no namespaced client API here.
+    local Caps = TA.Caps
+    if type(Caps) ~= "table" or type(Caps.State) ~= "function" then
+        S(INFO, "harvest capability layer not loaded on this client (Core/Caps.lua)")
+    else
+        local fails = {}
+        if Caps.State("CreateFrame") ~= "present" then fails[#fails + 1] = "plain present" end
+        if Caps.State("string.format") ~= "present" then fails[#fails + 1] = "dotted present" end
+        if Caps.State("ToonAgeCapsSelfTest.Missing") ~= "missing" then fails[#fails + 1] = "missing" end
+        local okCall, out = Caps.Call("string.format", "%d", 7)
+        if not (okCall and out == "7") then fails[#fails + 1] = "call" end
+        if #fails == 0 then
+            S(PASS, "harvest capability layer answers (provider " .. tostring(Caps.Provider) .. ")")
+        else
+            S(FAIL, "harvest capability layer wrong on: " .. concat(fails, ", "))
+        end
+    end
+
     -- Event-registration guard (TA:RegisterEvent arrived after the 2026-09-21
     -- builds; older installs skip this check instead of crashing the suite).
     local probe = "TOONAGE_SELFTEST_NOT_AN_EVENT"
@@ -692,7 +726,16 @@ local function SuiteSettings(S)
     if InCombatLockdown() then S(SKIP, "in combat -- UI tests skipped") return end
     local Set = TA:GetModule("Settings")
     if not Set then
-        S(FAIL, "no Settings module on this client -- the title-bar gear opens an empty drawer")
+        -- G9: no Settings module -> the title-bar gear is hidden and the drawer
+        -- refuses to open, so there is no drawer to test on this build.
+        local gear = TA.UI and TA.UI.optionsBtn
+        if not gear then
+            S(WARN, "no Settings module, and this build predates the G9 gear check -- the gear may open an empty drawer")
+        elseif gear:IsShown() then
+            S(FAIL, "no Settings module on this client, but the title-bar gear is still shown")
+        else
+            S(SKIP, "no Settings module on this client -- gear hidden, no drawer to test")
+        end
     end
 
     local UI = TA.UI
@@ -701,7 +744,7 @@ local function SuiteSettings(S)
 
     local d = TA._settingsDrawer
     local wasOpen = d and d:IsShown()
-    if not wasOpen and TA.ToggleSettingsDrawer then
+    if Set and not wasOpen and TA.ToggleSettingsDrawer then
         local ok, err = pcall(TA.ToggleSettingsDrawer, TA)
         if not ok then S(FAIL, "ToggleSettingsDrawer threw: " .. tostring(err)) end
     end
@@ -725,7 +768,7 @@ local function SuiteSettings(S)
                 S(PASS, "settings drawer sits below the main window")
             end
         end
-    else
+    elseif Set then
         S(FAIL, "settings drawer did not open")
     end
 
@@ -1035,6 +1078,85 @@ function H:Run(arg)
     C_Timer.After(0, Step)
 end
 
+-- ── Report window ────────────────────────────────────────────────────────
+-- S7 (2026-10-04). The report always ends in a selectable window, never in chat.
+-- TA:ShowCopyWindow (Core/UI.lua) is used when it exists and works. A build
+-- older than 2026-09-22 has none -- the harness is sometimes dropped onto such
+-- an install -- and the report used to fall back to chat line by line, where
+-- it cannot be selected. So the harness carries its own copy of that window:
+-- same templates and layout as Core/UI.lua's (BackdropTemplate,
+-- UIPanelScrollFrameTemplate, a multi-line EditBox), which already run on every
+-- client this addon ships to. Returns where the report went, for the chat line.
+local reportWindow
+local function ShowReport(title, text)
+    if type(TA.ShowCopyWindow) == "function"
+       and pcall(TA.ShowCopyWindow, TA, title, text) then
+        return "full report in the copy window"
+    end
+
+    local f = reportWindow
+    if not f then
+        f = CreateFrame("Frame", "ToonAgeSelfTestWindow", UIParent, "BackdropTemplate")
+        f:SetSize(620, 460)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:SetClampedToScreen(true)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f:SetBackdrop({
+            bgFile   = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+        })
+        f:SetBackdropColor(0.05, 0.05, 0.06, 0.96)
+        f:SetBackdropBorderColor(0.85, 0.65, 0.13, 0.85)
+
+        local hdr = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        hdr:SetPoint("TOPLEFT", 12, -10)
+        f.header = hdr
+
+        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        close:SetSize(24, 24)
+        close:SetPoint("TOPRIGHT", -4, -4)
+
+        local scroll = CreateFrame("ScrollFrame", "ToonAgeSelfTestWindowScroll", f, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 12, -32)
+        scroll:SetPoint("BOTTOMRIGHT", -30, 40)
+
+        local edit = CreateFrame("EditBox", nil, scroll)
+        edit:SetMultiLine(true)
+        edit:SetFontObject(ChatFontNormal)
+        edit:SetWidth(560)
+        edit:SetAutoFocus(false)
+        edit:SetScript("OnEscapePressed", function() f:Hide() end)
+        scroll:SetScrollChild(edit)
+        f.editBox = edit
+
+        local sel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        sel:SetSize(90, 22)
+        sel:SetPoint("BOTTOMLEFT", 12, 10)
+        sel:SetText("Select All")
+        sel:SetScript("OnClick", function()
+            edit:SetFocus()
+            edit:HighlightText()
+        end)
+
+        if type(UISpecialFrames) == "table" then
+            UISpecialFrames[#UISpecialFrames + 1] = "ToonAgeSelfTestWindow"   -- Esc closes it
+        end
+        reportWindow = f
+    end
+
+    f.header:SetText("|cFFFFD100" .. tostring(title) .. "|r  (Ctrl+A to select, Ctrl+C to copy)")
+    f.editBox:SetText(Plain(text))
+    f.editBox:SetCursorPosition(0)
+    f:Show()
+    return "full report in the copy window (the harness's own: this build has no working TA:ShowCopyWindow)"
+end
+
 function H:_Finish(stamp, build)
     local c = run.counts
     local summary = format("%d pass · %d fail · %d warn · %d skip · %d info",
@@ -1056,14 +1178,11 @@ function H:_Finish(stamp, build)
     local lines = run.lines
     run = nil
 
-    if TA.ShowCopyWindow then
-        TA:ShowCopyWindow("ToonAge Self-Test", concat(lines, "\n"))
-    else
-        for _, l in ipairs(lines) do print(l) end
-    end
+    -- Always a selectable window (S7); the chat line only says where it went.
+    local where = ShowReport("ToonAge Self-Test", concat(lines, "\n"))
     local colour = ((c.FAIL or 0) > 0 and "FFFF4444") or ((c.WARN or 0) > 0 and "FFFF9A1A") or "FF4AFF7A"
-    print(format("|cFFFFD100[ToonAge]|r Self-test: |c%s%s|r -- full report in the copy window; also saved to ToonAgeDB.selfTest.",
-        colour, summary))
+    print(format("|cFFFFD100[ToonAge]|r Self-test: |c%s%s|r -- %s; also saved to ToonAgeDB.selfTest.",
+        colour, summary, where))
 end
 
 -- ══════════════════════════════════════════════════════════════════════════
