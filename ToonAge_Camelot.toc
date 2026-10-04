@@ -110,6 +110,9 @@ Modules\Infrastructure\ErrorLog.lua
 Modules\Infrastructure\Settings.lua
 Modules\Infrastructure\ChatCopy.lua
 Modules\Infrastructure\CoordHarvester.lua
+# Harvest export formatter (harvest spec T2): the one formatter for the in-game
+# copy buttons and Tools/export_harvest.lua. Pure Lua, no client calls.
+Modules\Infrastructure\HarvestFormat.lua
 
 # ── Quality of life ───────────────────────────────────────────────────
 # Each reads the world through APIs this client has and carries no expansion

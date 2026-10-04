@@ -583,6 +583,48 @@ local function SuiteApi(S)
         end
     end
 
+    -- Harvest export formatter (Modules/Infrastructure/HarvestFormat.lua, harvest
+    -- spec T2). Stamps a header from what this client reports, then exports every
+    -- section of the live store and checks each export holds exactly the records
+    -- the store holds (counted here independently, nested tables included).
+    local HF = TA.HarvestFormat
+    if type(HF) ~= "table" or type(HF.Lines) ~= "function" then
+        S(INFO, "harvest formatter not loaded on this client (Modules/Infrastructure/HarvestFormat.lua)")
+    else
+        local store = TA.db and (TA.db.harvest or TA.db.foreverHarvest)
+        local _, build, _, iface = GetBuildInfo()
+        local meta = { build = build, interface = iface }
+        local hdr = HF.Header(meta, "items", 0, 1, 0, 0, 0)
+        local bad = {}
+        local line2 = tostring(hdr and hdr[2] or "")
+        if not (line2:find("build " .. tostring(build), 1, true)
+                and line2:find("interface " .. tostring(iface), 1, true)
+                and line2:find("channel unknown", 1, true)) then
+            bad[#bad + 1] = "header stamps"
+        end
+        local sections, records = 0, 0
+        if type(store) == "table" then
+            for _, sec in ipairs(HF.Sections(store)) do
+                local n = 0
+                local function CountLeaves(t)
+                    for _, v in pairs(t) do
+                        if type(v) == "table" then CountLeaves(v) else n = n + 1 end
+                    end
+                end
+                CountLeaves(store[sec])
+                local lines = HF.Lines(store, sec, 0, meta)
+                if not lines or (#lines - 4) ~= n then bad[#bad + 1] = tostring(sec) end
+                sections, records = sections + 1, records + n
+            end
+        end
+        if #bad == 0 then
+            S(PASS, format("harvest formatter stamps build %s / interface %s and exports %d records in %d sections",
+                tostring(build), tostring(iface), records, sections))
+        else
+            S(FAIL, "harvest formatter wrong on: " .. concat(bad, ", "))
+        end
+    end
+
     -- Event-registration guard (TA:RegisterEvent arrived after the 2026-09-21
     -- builds; older installs skip this check instead of crashing the suite).
     local probe = "TOONAGE_SELFTEST_NOT_AN_EVENT"
