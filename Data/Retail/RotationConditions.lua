@@ -344,11 +344,85 @@ function C.SingleTarget(maxN)
     end
 end
 
+--- At least `n` enemies engaged near the player.
+---
+--- Reads the SAME engaged-enemy count the AoE/SingleTarget predicates use:
+--- CombatState.state.aoeCount, which UpdateAoeCount() in CombatState.lua fills
+--- from hostile nameplates filtered to those actually in combat with you or
+--- your group (unpulled packs are deliberately excluded). There is no separate
+--- radius scan in the trunk, so "in range" here means "engaged and on a
+--- nameplate" -- the only enemy count the engine measures.
+---
+--- NOTE for review: against the current state this is functionally identical to
+--- C.AoE(n). It is added as the blueprint's named reaction predicate; a true
+--- distance-based count would need a new per-frame scan in CombatState, which
+--- the combat-UI performance rules (blueprint section 9) rule out. If a
+--- distinct range metric is ever wanted, add the field in CombatState and point
+--- this predicate at it -- the authored rules do not change.
+function C.EnemiesInRange(n)
+    n = n or 1
+    return function(s)
+        return (s.aoeCount or 1) >= n
+    end
+end
+
 -- ── Misc ──────────────────────────────────────────────────────────────────────
 
 function C.InCombat()
     return function(s)
         return s.inCombat == true
+    end
+end
+
+--- True while the player is moving -- for suggesting instants over hard casts.
+---
+--- Movement is read from GetUnitSpeed("player"): return value > 0 means moving.
+--- Two things in the trunk shape how this is read, and both are deliberate:
+---
+---   1. Secret values. Modules/Navigation/TravelModes.lua documents that
+---      GetUnitSpeed returns a SECRET number in a tainted/combat context, and
+---      comparing a secret number throws. A rotation predicate runs in exactly
+---      that context, so the speed is checked with issecretvalue first and the
+---      predicate degrades to false (not moving / unknown) rather than risking a
+---      throw -- consistent with the blueprint's "secrets read stale/unknown,
+---      never zero" and "false skips the slot, never disables."
+---
+---   2. Caps. The task asks to read a possibly-absent hook through TA.Caps.
+---      REVIEW FLAG: Core/Caps.lua is NOT in the retail (Mainline) TOC -- it
+---      ships only on the Camelot/TBC TOCs -- while THIS file ships only on
+---      Mainline/fallback. So on the one client that loads RotationConditions,
+---      TA.Caps is currently absent. This predicate therefore uses TA.Caps.Call
+---      WHEN it exists (future-proof for when G3 wires Caps everywhere) and
+---      falls back to a guarded direct GetUnitSpeed otherwise. Either path
+---      degrades to false, never crashes. Flagging the choice per instructions
+---      rather than assuming Caps is present.
+local function IsSecretValue(v)
+    local f = _G and _G.issecretvalue
+    if type(f) ~= "function" then return false end
+    local ok, r = pcall(f, v)
+    return ok and r == true
+end
+
+function C.PlayerMoving()
+    return function()
+        local Caps = ToonAge and ToonAge.Caps
+        if Caps and Caps.Call then
+            -- Caps.Call never throws; it packs a secret return as the literal
+            -- "secret". A number > 0 means moving; anything else is not-moving
+            -- or unknown.
+            local ok, speed = Caps.Call("GetUnitSpeed", "player")
+            if ok and type(speed) == "number" then
+                return speed > 0
+            end
+            return false
+        end
+        -- Fallback: no Caps on this client. Call the global directly, guarded
+        -- against both absence and secret-value comparison.
+        local fn = _G and _G.GetUnitSpeed
+        if type(fn) ~= "function" then return false end
+        local ok, speed = pcall(fn, "player")
+        if not ok or speed == nil or IsSecretValue(speed) then return false end
+        return type(speed) == "number" and speed > 0
     end
 end
 
