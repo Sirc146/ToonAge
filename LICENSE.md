@@ -1,7 +1,7 @@
 # License
 
 **Addon:** ToonAge
-**Author:** SIRC
+**Author:** Sirc
 **Repository:** https://github.com/Sirc146/ToonAge
 **Scope:** World of Warcraft Retail (Midnight) and Burning Crusade Classic
 Anniversary. A Mists of Pandaria Classic build is included but untested.

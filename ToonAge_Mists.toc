@@ -1,7 +1,7 @@
 ## Interface: 50504
 ## Title: |cFFFFD100ToonAge|r |cFF888780Mists|r
 ## Notes: Leveling companion — navigation, gear scoring, and quest guidance. Mists of Pandaria Classic edition.
-## Author: SIRC
+## Author: Sirc
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB, ToonAgeGuard

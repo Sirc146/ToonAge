@@ -5,7 +5,7 @@ rotation, professions, pets and PvP in one panel, with the game-rule content
 researched separately for each expansion instead of borrowed from another one.
 
 **Version:** see [Releases](https://github.com/Sirc146/ToonAge/releases). A
-release stamps its tag into the `.toc`. · **Author:** SIRC
+release stamps its tag into the `.toc`. · **Author:** Sirc
 
 > Unofficial fan project. Not affiliated with, endorsed by, or sponsored by
 > Blizzard Entertainment.

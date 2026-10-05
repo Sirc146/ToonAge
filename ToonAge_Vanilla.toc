@@ -1,7 +1,7 @@
 ## Interface: 11509
 ## Title: |cFFFFD100ToonAge|r |cFF888780Classic Era|r
 ## Notes: Classic Era / Vanilla edition — core engine only while Vanilla content is built.
-## Author: SIRC
+## Author: Sirc
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB, ToonAgeGuard

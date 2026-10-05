@@ -1,7 +1,7 @@
 ## Interface: 120100, 120105, 120001
 ## Title: |cFFFFD100ToonAge|r |cFF888780Retail|r
 ## Notes: All-in-one leveling, gear, rotation, and endgame companion.
-## Author: SIRC
+## Author: Sirc
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB, ToonAgeGuard

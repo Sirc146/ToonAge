@@ -671,11 +671,11 @@ function Settings:Render(content, sidebar)
     y = MakeSection(content, y, w, "ABOUT")
     y = MakeInfoRow(content, y, w, "Version", TA.version or "1.0.0")
     -- From the TOC, which is the one place the author is actually declared
-    -- (## Author: SIRC). A second copy in here is a second thing to get wrong,
+    -- (## Author: Sirc). A second copy in here is a second thing to get wrong,
     -- and it was wrong -- it said "Chris".
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     local author = getMeta and getMeta("ToonAge", "Author")
-    y = MakeInfoRow(content, y, w, "Author", (author ~= nil and author ~= "") and author or "SIRC")
+    y = MakeInfoRow(content, y, w, "Author", (author ~= nil and author ~= "") and author or "Sirc")
     y = MakeInfoRow(content, y, w, "Modules", string.format("%d total (%d active)", loaded + disabled + errored, loaded))
     -- Only where a guide stack ships. TBC and Forever have none, and a
     -- permanent "Guides loaded: 0" reads as something that failed to load.
