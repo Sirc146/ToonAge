@@ -106,4 +106,5 @@ function PetCare:Render(content, sidebar)
         lbl:SetJustifyH("CENTER")
         lbl:SetPoint("CENTER", card, "CENTER", 0, 0)
     end
+    content:SetHeight(math.abs(y) + 80)   -- last card is 60 px tall at y
 end

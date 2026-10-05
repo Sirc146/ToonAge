@@ -400,4 +400,5 @@ function Gear:Render(content, sidebar)
         empty:SetText("No gear equipped.")
         empty:SetTextColor(0.6, 0.6, 0.6)
     end
+    content:SetHeight(math.abs(yOff) + 40)   -- size the pane to what was drawn
 end
