@@ -469,6 +469,7 @@ end
 local ZYGOR_FOLDERS = {
     "ZygorGuidesViewer", "ZygorGuidesViewerClassic",
     "ZygorGuidesViewerClassicTBC", "ZygorGuidesViewerTBC",
+    "ZygorGuidesViewerClassicTBCAnniv",   -- TBC Anniversary client
 }
 
 function U.ZygorLoaded()
