@@ -317,6 +317,7 @@ function TA:InitUI()
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
     local optionsBtn = CreateFrame("Button", nil, titleBar, "BackdropTemplate")
+    frame.optionsBtn = optionsBtn   -- read by the self-test's settings suite (G9 check)
     optionsBtn:SetSize(20, 20)
     optionsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
 
