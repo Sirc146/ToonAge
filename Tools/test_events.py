@@ -53,13 +53,19 @@ for base in ("Core", "Modules"):
                 raw.append(rel)
 check("no module registers on the raw frame", sorted(raw), [])
 
-# DataHarvester must ask for both spellbook event names.
-dh = read("Modules/Forever/DataHarvester.lua")
-check("harvester asks for the classic name", 'TA:RegisterEvent("LEARNED_SPELL_IN_TAB")' in dh)
-check("harvester asks for the modern name",
-      'TA:RegisterEvent("LEARNED_SPELL_IN_SKILL_LINE")' in dh)
-check("harvester handles the modern name", "LEARNED_SPELL_IN_SKILL_LINE" in
-      dh[dh.index("function H:OnEvent"):])
+# The recorder must ask for both spellbook event names. Since harvest spec T4
+# the spellbook domain declares its events and the core (still the
+# DataHarvester module) registers every declared event through TA:RegisterEvent
+# and routes it back to the domain.
+book = read("Modules/Harvest/Domains/Spellbook.lua")
+core = read("Modules/Infrastructure/Harvester.lua")
+book_events = book[book.index("events = {"):book.index("}", book.index("events = {"))]
+check("harvester asks for the classic name", '"LEARNED_SPELL_IN_TAB"' in book_events)
+check("harvester asks for the modern name", '"LEARNED_SPELL_IN_SKILL_LINE"' in book_events)
+check("the core registers declared events through the guarded helper",
+      "TA:RegisterEvent(ev)" in core[core.index("function H:Init()"):])
+check("harvester handles the modern name (the domain scans on any of its events)",
+      "function D:OnEvent(event)" in book and "self:ScanSpellbook()" in book[book.index("function D:OnEvent(event)"):])
 
 passed, total = sum(_res), len(_res)
 print(f"[{'OK' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")

@@ -113,9 +113,22 @@ Modules\Infrastructure\CoordHarvester.lua
 # Harvest export formatter (harvest spec T2): the one formatter for the in-game
 # copy buttons and Tools/export_harvest.lua. Pure Lua, no client calls.
 Modules\Infrastructure\HarvestFormat.lua
-# Harvest core (harvest spec T3): the store (TA.db.harvest, v3), client stamp,
-# section times and stamped export. Loads before the Forever recorder.
+# Harvest core (harvest spec T3, T4): the store (TA.db.harvest, v3), client stamp,
+# section times, stamped export, catalog engine, Full report, probes and the
+# Harvest tab. Registers the DataHarvester module. Loads before the domains.
 Modules\Infrastructure\Harvester.lua
+# Harvest domains Forever records (T4). Logic only; every client API call goes
+# through Core\Caps.lua. No legacy TalentTrees domain: Forever has no
+# GetNumTalentTabs.
+Modules\Harvest\Domains\Character.lua
+Modules\Harvest\Domains\Items.lua
+Modules\Harvest\Domains\Racials.lua
+Modules\Harvest\Domains\Spellbook.lua
+Modules\Harvest\Domains\TraitTree.lua
+Modules\Harvest\Domains\Trainer.lua
+# Forever's pack: which domains run, catalog ranges, Forever-only probes and
+# rows. A client's TOC lists only its own pack.
+Modules\Harvest\Packs\Forever.lua
 
 # ── Quality of life ───────────────────────────────────────────────────
 # Each reads the world through APIs this client has and carries no expansion
@@ -149,7 +162,6 @@ Modules\Forever\PvP.lua
 Modules\Forever\Scrolls.lua
 # Cast order per fight, own frame, player spell-cast event only (see file header).
 Modules\Forever\CastLog.lua
-Modules\Forever\DataHarvester.lua
 # "Since last session" at login, from the snapshot saved at logout. No tab.
 Modules\Forever\SessionCheck.lua
 # Beta "world will refresh" notice: countdown, warnings, log. No tab.

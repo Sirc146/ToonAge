@@ -68,8 +68,18 @@ FOREVER_MODULES = [
     # Harvest sensor array (Docs/SPEC_HARVEST_SENSOR_ARRAY.md, T2, 2026-10-04): the
     # shared export formatter. Not a module; a library the harvester and Tools share.
     "Modules/Infrastructure/HarvestFormat.lua",
-    # T3: the harvest core (store v3, stamp, export). A library, not a module.
+    # T3/T4: the harvest core (store v3, stamp, export, catalog engine, report,
+    # tab). Registers the DataHarvester module since T4.
     "Modules/Infrastructure/Harvester.lua",
+    # T4: the domains Forever records and Forever's pack (they replace
+    # Modules/Forever/DataHarvester.lua).
+    "Modules/Harvest/Domains/Character.lua",
+    "Modules/Harvest/Domains/Items.lua",
+    "Modules/Harvest/Domains/Racials.lua",
+    "Modules/Harvest/Domains/Spellbook.lua",
+    "Modules/Harvest/Domains/TraitTree.lua",
+    "Modules/Harvest/Domains/Trainer.lua",
+    "Modules/Harvest/Packs/Forever.lua",
     "Modules/Progression/XPTracker.lua",
     "Modules/Automation/RestOptimizer.lua",
     "Modules/Automation/DeathRecovery.lua",
@@ -82,7 +92,6 @@ FOREVER_MODULES = [
     "Modules/Forever/PvP.lua",
     "Modules/Forever/Scrolls.lua",
     "Modules/Forever/CastLog.lua",
-    "Modules/Forever/DataHarvester.lua",
     # Added 2026-10-01..03: login "since last session" check and the beta
     # world-refresh notice (both tab-less), plus the flavor-neutral self-test.
     "Modules/Forever/SessionCheck.lua",

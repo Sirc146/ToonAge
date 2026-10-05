@@ -44,8 +44,12 @@ def read(rel):
 
 
 core_src = read("Modules/Infrastructure/Harvester.lua")
-check("core names no namespaced client API",
-      re.findall(r"\bC_[A-Za-z]+\.[A-Za-z0-9_]+", core_src), [])
+# Since T4 the core runs the catalog engine and the shared probes, so it names
+# client APIs. Each must already be in the Forever API manifest (G3 owns the
+# manifest; Tools/test_enginegate.py re-measures it from the shipped files).
+manifest = read("Data/Forever/ApiManifest.lua")
+check("every namespaced API the core names is in the Forever manifest",
+      sorted(set(n for n in re.findall(r"\bC_[A-Za-z]+\.[A-Za-z0-9_]+", core_src) if f'["{n}"]' not in manifest)), [])
 
 FOREVER_STORE = r"""{
     version = 2, catalogBuild = "70205", trainerFormat = 2, trainerProfPurged = true,
@@ -69,6 +73,8 @@ FOREVER_STORE = r"""{
 
 WORLD = r"""
 ToonAge = { flavor = "forever", version = "2.0.0-dev.1" }
+-- Since T4 the core also registers the DataHarvester module when it loads.
+function ToonAge:RegisterModule(n, m) self.modules = self.modules or {}; self.modules[n] = m end
 WOW_PROJECT_ID = 18
 function GetBuildInfo() return "1.60.1", "70205", "Sep 30 2026", 16001 end
 NOW = 1791100000

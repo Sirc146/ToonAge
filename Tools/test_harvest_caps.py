@@ -12,8 +12,8 @@ Runs the real Core/Caps.lua under Lua 5.1 against a mock _G and checks:
     change to callers; a provider that errors or answers nonsense is "missing"
   * the file names no client API (the manifest generator scans shipped files)
   * Lint: nothing under Modules/Harvest/ detects APIs by hand (_G[...],
-    type(...) == "function", `Namespace and Namespace.Fn`). Vacuous until the
-    packs exist (T4); enforced from then on.
+    type(...) == "function", `Namespace and Namespace.Fn`). Since T4 the
+    domains and packs exist, so the lint must have files to scan.
 
 Usage:  python Tools/test_harvest_caps.py [-v]
 """
@@ -170,6 +170,8 @@ if os.path.isdir(harvest_dir):
 elif VERBOSE:
     print("          (Modules/Harvest/ not present yet -- lint has nothing to scan until T4)")
 check("harvest packs detect APIs only through TA.Caps", offenders, [])
+scanned = [f for _, _, fs in os.walk(harvest_dir) for f in fs if f.endswith(".lua")] if os.path.isdir(harvest_dir) else []
+check("the lint scanned the domains and packs (not vacuous since T4)", len(scanned) >= 7)
 
 passed, total = sum(_res), len(_res)
 print(f"[{'PASS' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")

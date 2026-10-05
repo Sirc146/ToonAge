@@ -289,7 +289,7 @@ The shared header comes from `HarvestFormat.Header(meta, section, page, pages, f
 
 ### 4.6 Tab (R7)
 
-- Same rows as today, built by the core from the active pack: Harvested-so-far counts, Full report, Export row with Prev and Next, Spell catalog (ranked clients only), Client probes, Dev tools, Reset with two clicks. Client-only rows come from `pack.buttons`.
+- Same rows as today, built by the core from the active pack: Harvested-so-far counts, Full report, Export row with Prev and Next, Catalog scan (ranked clients only; renamed in T4 from "Spell catalog" so it can't be confused with the Copy button), Client probes, Dev tools, Reset with two clicks. Client-only rows come from the pack (`tabRows`; Forever: World refresh).
 - New: one **Channel** row (unknown → beta → live → ptr), if D1 is approved.
 - Every output goes to `TA:ShowCopyWindow`.
 
@@ -346,6 +346,21 @@ Order rule: T1-T4 must leave Forever's behaviour identical before any new client
 - T4 moves the rest into the core: the event fan-out, scans, probes, full report, catalog engine and tab. T4 also splits the domains out and deletes `Modules/Forever/DataHarvester.lua`.
 - Cutting it this way keeps each commit small, and keeps Forever's behaviour identical at every step.
 
+**How T4 was cut (2026-10-04).** The core (`Modules/Infrastructure/Harvester.lua`) is now the registered `DataHarvester` module: record helpers, `Try` through Caps, the event fan-out, the catalog engine, the shared probe sections, the Full report and the tab. Six domains (`Character`, `Items`, `Racials`, `Spellbook`, `TraitTree`, `Trainer`) and `Packs/Forever.lua` replace `Modules/Forever/DataHarvester.lua`, which is deleted. `Domains/TalentTrees.lua` (the legacy talent scan) exists but no TOC lists it until the Era and TBC packs; `test_harvest_packs.py` loads it.
+- **Parity, measured.** The T3 recorder and the T4 code were run side by side on the same mocked Forever client and store, through the same events (`/tmp` harness, not shipped; its checks live on in `test_harvest_packs.py`). Store, registered events, slash commands, chat, the probe report and every export window came out byte-identical. The intended differences are listed below and nothing else differs.
+- **Approved additions (Christopher, 2026-10-04):**
+  - *Additive catalog scan.* A scan writes new and changed ranks and never removes a stored one. It builds into a separate table and merges at the end, so the Spells tab reads the full catalog while the walk runs and gets a fresh table afterwards. This is the regression for 2026-10-04 17:23, when a Mage session read 8 Warrior and Priest ranks blank and the old wipe-and-rebuild scan dropped them (85 -> 77). A mutation check confirms the test fails against the old behaviour.
+  - *Scan button renamed.* The section is now "Catalog scan" and the button "Run catalog scan", so it can't be mistaken for the Copy row's "Spell catalog" button (which only opens a window).
+  - *One-time repair.* `Packs/Forever.lua` adds back the 8 lost ranks, verbatim from the saved file of 17:21:36. Each is added only if missing, only when the client or catalog build is 70205, and only once (`catalogRepair` records how many were added).
+  - *Trainer rows, option (a).* Profession trainers are recorded under `trainerProf[PROFESSION]`, never as class spells. Each visit is judged on its own rows: it is a class trainer's if any row needs a level above 1, or if `IsTradeskillTrainer()` says so. The profession is named by the visit's rank row ("Apprentice Mining" -> "Mining"). A one-time `Migrate` moves rows already misfiled, grouped by visit time; on the real store that is Blacksmith 23 + Mining 16 = 39, with none dropped (`trainerProfFiled`). The old one-time purge, which could delete such rows, is gone. The Copy row gains "Profession trainers", and the summary gains a "Profession trainers" row.
+- **Other intended differences.**
+  - The Full report's Rescan list loses the "talents ok" line. It was the legacy talent scan, a no-op on Forever (self-test: `GetNumTalentTabs` absent). A domain skipped for a missing need now prints `skipped: missing <path>` instead.
+  - A Copy button for a section with no records yet opens a stamped 0-record window instead of doing nothing.
+  - On an error, one failing domain no longer stops the domains after it for that event. The first error is still raised to the module dispatcher, so `/ta errors` logs it.
+- **Routing.** `Tools/gen_event_routes.py` routes a high-frequency event only to modules whose own file names it. The core therefore names `"BAG_UPDATE_DELAYED"` (`ROUTED_EVENTS`), and a test fails if a domain uses a routed event the core does not name. `EVENT_ROUTES` in `Core/Init.lua` is unchanged.
+- **Manifest (G3's).** The set of namespaced APIs the Forever TOC ships is unchanged (`test_enginegate.py` passes without regenerating the manifest). The manifest's per-API *file* lists still say `Modules/Forever/DataHarvester.lua`. TestHarness maps that path to the running `DataHarvester` module, so the self-test's warnings are unchanged. When G3 regenerates the manifest, the new paths (`Modules/Harvest/**`, `Modules/Infrastructure/Harvester.lua`) need `ModuleForFile` to map them to `DataHarvester`, or those warnings drop out.
+- **Not in T4 (still to do).** The core does not yet write `Seen()` into `store.api` (§4.2), and scans do not yet defer during combat lockdown (R11). Both change Forever's behaviour, so they are proposed as their own commit before T6 (not yet approved). `Stats` and `Professions` are domains no client uses yet; they arrive with the packs that use them.
+
 ---
 
 ## 7. Tests
@@ -358,7 +373,7 @@ Order rule: T1-T4 must leave Forever's behaviour identical before any new client
   - **lint:** `Modules/Harvest/**` contains no `_G[`, no `type(...) == "function"`, and no `C_%w+ and C_%w+%.` existence patterns.
 - `test_harvest_store.py`: migration from a copy of today's Forever store shape. Counts per section are equal, `foreverHarvest` is gone, and the tripwire counts the new key.
 - `test_harvest_format.py`: header fields (R9), paging, trainer flattening, and identical output between the in-game and Tools paths.
-- `test_harvest_packs.py`:
+- `test_harvest_packs.py` (T4; the mocked Forever client is `Tools/fixtures/harvest_world_forever.lua`):
   - each TOC loads the core plus exactly one pack;
   - Forever-only sections and buttons appear in no other TOC (R6);
   - each profile with a pack has a `harvest` tab.
