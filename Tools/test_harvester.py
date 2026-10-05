@@ -79,10 +79,21 @@ check("it does not chatter",
       and h.count("TA:Raw(") == len(_raw_levels))
 
 # ── Store survives a schema bump ─────────────────────────────────────────
-store = h[h.index("local function Store()"):h.index("local function Count(")]
-check("an older store is backfilled, not reset", "s.items   = s.items   or {}" in store)
-check("it does not overwrite an existing store",
-      "TA.db.foreverHarvest = s" in store and store.count("TA.db.foreverHarvest = s") == 1)
+# Since harvest spec T3 the store is the shared core's (TA.db.harvest, v3),
+# moved there from TA.db.foreverHarvest. Tools/test_harvest_store.py runs the
+# move on a real-shaped store and proves no record is lost.
+core = read("Modules/Infrastructure/Harvester.lua")
+store = core[core.index("function Hv:Store()"):core.index("function Hv:Clear()")]
+check("an older store is backfilled, not reset",
+      "for _, k in ipairs(BASE_SECTIONS) do s[k] = s[k] or {} end" in store)
+check("the Forever store is moved (same table), not copied or reset",
+      "s = old" in store and "db.foreverHarvest = nil" in store)
+check("an existing store is never overwritten",
+      store.count("db.harvest = s") == 1 and 'if type(s) ~= "table" then' in store)
+check("DataHarvester reads the store through the core", "return Hv and Hv:Store() or nil" in h)
+check("the Copy row is built from the core registry", "TA.Harvester:Exports()" in h)
+check("trainer ranks and the spell catalog have copy buttons (R8)",
+      'RegisterExport("trainer", "Trainer ranks")' in h and 'RegisterExport("catalog", "Spell catalog")' in h)
 
 # ── Clearing is deliberate ───────────────────────────────────────────────
 check("clearing takes two clicks", "_confirmClear" in h)

@@ -392,7 +392,8 @@ local function CatalogByName()
     -- This install's own scan wins over the shipped file: it is newer, and
     -- it was taken on this client build.
     local shipped = TA.Data and TA.Data.ForeverSpellRanks
-    local harvest = TA.db and TA.db.foreverHarvest
+    -- The harvest store (TA.db.harvest since harvest spec T3), via the core.
+    local harvest = TA.Harvester and TA.Harvester:Store() or nil
     local store = harvest and harvest.catalog
     -- Trainer ranks (2026-10-03): one trainer visit records every rank the
     -- class trainer teaches, with the level each needs and its spell ID --

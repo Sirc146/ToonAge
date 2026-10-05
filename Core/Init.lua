@@ -1092,7 +1092,10 @@ local function GuardCounts(db)
     if type(db) ~= "table" then return c end
     for _ in pairs(db) do c.keys = c.keys + 1 end
     if type(db.char) == "table" then for _ in pairs(db.char) do c.chars = c.chars + 1 end end
-    local h = type(db.foreverHarvest) == "table" and db.foreverHarvest or nil
+    -- The harvest store moved from foreverHarvest to harvest (harvest spec T3).
+    -- Count whichever is present, so the move itself is never read as "shrank".
+    local h = (type(db.harvest) == "table" and db.harvest)
+        or (type(db.foreverHarvest) == "table" and db.foreverHarvest) or nil
     for _, k in ipairs({ "items", "spells", "talents", "chars", "racials" }) do
         if h and type(h[k]) == "table" then for _ in pairs(h[k]) do c.harvest = c.harvest + 1 end end
     end

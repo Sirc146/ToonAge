@@ -283,6 +283,7 @@ The shared header comes from `HarvestFormat.Header(meta, section, page, pages, f
 
 - **Channel in game:** the value stored in `client.channel`, set only by the Harvest tab's channel button. **D1** decides whether that button exists. Default is `unknown`.
 - **Channel from the saved file:** `Tools/export_harvest.lua <ToonAge.lua> <outdir> [channel]`. The argument wins; if it is absent, the stored value is used; if neither exists, `unknown`. Never guessed (S3).
+- **Harvest range:** the earliest and latest write in `times`. Records moved or merged in from `foreverHarvest` (D2) were written before the store kept write times, so a moved store prints `harvested unknown .. <last>`; the start is never dated to the day of the move. Reset starts a fresh store whose range is fully dated. The core, `export_harvest.lua` and `gen_forever_data.lua` share the rule (found in T3's in-game check, 2026-10-04: the first T3 build printed `2026-10-04 .. 2026-10-04` over records stored before T3 existed).
 - **Nested tables** such as `trainer[CLASS][key]` flatten to `CLASS:key` rows, so every section exports as one sorted TSV.
 - `gen_forever_data.lua` keeps writing `Data/Forever/*.lua` and gains the S3 header: build, interface, channel, harvest date.
 
@@ -339,6 +340,11 @@ Each cell is ✓ (harvest), probe (record the API state and shape only, pending 
 | T10 | Docs: `FOREVER_BRIEF.md` pointer, `STATE.md` lines, README Harvest section | `Docs: harvest sensor array` | Read-through |
 
 Order rule: T1-T4 must leave Forever's behaviour identical before any new client gets a pack.
+
+**How T3 was cut (2026-10-04).** `Modules/Infrastructure/Harvester.lua` is the core *library*: the store (v3, the move from `foreverHarvest`), the client stamp, the section times, the stamped export and the Copy-row registry.
+- `Modules/Forever/DataHarvester.lua` stays the registered module for now, and reads and exports through the core.
+- T4 moves the rest into the core: the event fan-out, scans, probes, full report, catalog engine and tab. T4 also splits the domains out and deletes `Modules/Forever/DataHarvester.lua`.
+- Cutting it this way keeps each commit small, and keeps Forever's behaviour identical at every step.
 
 ---
 

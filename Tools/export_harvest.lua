@@ -75,6 +75,9 @@ local function harvestRange()
             if type(t.last) == "number" and (not hi or t.last > hi) then hi = t.last end
         end
     end
+    -- Same rule as the in-game core (Harvester.lua Meta): records moved or
+    -- merged in from foreverHarvest carry no write time, so the start is unknown.
+    if c.migratedFrom or c.mergedFrom then lo = nil end
     return lo and os.date("%Y-%m-%d", lo) or nil, hi and os.date("%Y-%m-%d", hi) or nil
 end
 

@@ -68,6 +68,8 @@ FOREVER_MODULES = [
     # Harvest sensor array (Docs/SPEC_HARVEST_SENSOR_ARRAY.md, T2, 2026-10-04): the
     # shared export formatter. Not a module; a library the harvester and Tools share.
     "Modules/Infrastructure/HarvestFormat.lua",
+    # T3: the harvest core (store v3, stamp, export). A library, not a module.
+    "Modules/Infrastructure/Harvester.lua",
     "Modules/Progression/XPTracker.lua",
     "Modules/Automation/RestOptimizer.lua",
     "Modules/Automation/DeathRecovery.lua",

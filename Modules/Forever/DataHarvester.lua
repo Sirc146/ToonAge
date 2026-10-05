@@ -52,7 +52,9 @@ TA:RegisterModule("DataHarvester", H)
 -- older record is upgraded in place on the next scan.
 --   spells["CLASS:spellID"] = name, first-seen level, spellbook line, rank text,
 --                             "passive" or "", trained level
-local STORE_VERSION = 2
+-- The store itself is the shared harvest core's (Modules/Infrastructure/
+-- Harvester.lua, harvest spec T3): TA.db.harvest, store version 3, moved there
+-- from TA.db.foreverHarvest on first use with every record kept.
 
 -- Caps. Chosen so the saved file stays well under a megabyte: Vanilla-era
 -- content has a few thousand distinct items in levelling range, so 20k is
@@ -82,25 +84,19 @@ local PROBE_SECRET_EARLY = _G.issecretvalue or function() return false end
 -- ── Store ─────────────────────────────────────────────────────────────────
 
 local function Store()
-    if not TA.db then return nil end
-    local s = TA.db.foreverHarvest
-    if not s then
-        s = { version = STORE_VERSION, items = {}, spells = {},
-              talents = {}, chars = {}, racials = {}, counts = {} }
-        TA.db.foreverHarvest = s
-    end
-    -- Backfill rather than reset: a store written by an older version still
-    -- holds real observations and must not be thrown away over a schema bump.
-    s.items   = s.items   or {}
-    s.spells  = s.spells  or {}
-    s.talents = s.talents or {}
-    s.chars   = s.chars   or {}
-    s.counts  = s.counts  or {}
-    s.racials = s.racials or {}
-    s.trainer = s.trainer or {}
-    s.talentGeo = s.talentGeo or {}
-    s.version = STORE_VERSION
-    return s
+    local Hv = TA.Harvester
+    return Hv and Hv:Store() or nil
+end
+
+-- A write stamps its section's first/last time (the export's harvest range).
+local function Touched(tbl)
+    local Hv = TA.Harvester
+    if Hv then Hv:TouchTable(tbl) end
+end
+
+local function Touch(section)
+    local Hv = TA.Harvester
+    if Hv then Hv:Touch(section) end
 end
 
 local function Count(t)
@@ -115,6 +111,7 @@ local function Put(tbl, key, line, cap)
     if tbl[key] ~= nil then return false end
     if cap and Count(tbl) >= cap then return false end
     tbl[key] = line
+    Touched(tbl)
     return true
 end
 
@@ -126,6 +123,7 @@ local function PutOrUpgrade(tbl, key, line, cap, minFields)
         local _, tabs = tostring(old):gsub("\t", "")
         if tabs + 1 >= minFields then return false end
         tbl[key] = line
+        Touched(tbl)
         return true
     end
     return Put(tbl, key, line, cap)
@@ -317,6 +315,7 @@ function H:RecordRacial(spellID, name, rank, passive)
     if not tip or tip == "" then tip = TooltipText(spellID) end
     s.racials[key] = table.concat({ Clean(name), Clean(rank),
         Clean(passive and "passive" or ""), Clean(classes), Clean(tip) }, "\t")
+    Touch("racials")
 end
 
 function H:ScanSpellbook()
@@ -377,6 +376,7 @@ function H:ScanSpellbook()
                         end
                         if better then
                             s.spells[key] = line
+                            Touch("spells")
                             n = n + 1
                         elseif PutOrUpgrade(s.spells, key, line, MAX_SPELLS, 6) then
                             n = n + 1
@@ -475,6 +475,7 @@ function H:ScanTraitTree()
     local n = 0
 
     local geoKeysSeen = false
+    local geoWritten = false
     for _, treeID in ipairs(cfg.treeIDs) do
         -- Tree-level gates ("spend N points to unlock this row"), and the
         -- condition records nodes point at. Recorded raw, field names included.
@@ -561,6 +562,7 @@ function H:ScanTraitTree()
                             end
                         end
                     end
+                    geoWritten = true
                     s.talentGeo[class .. ":" .. tostring(treeID) .. ":" .. tostring(nodeID)] = table.concat({
                         Clean(info.posX), Clean(info.posY), table.concat(edges, ","),
                         table.concat(conds, ","), Clean(info.type), Clean(info.subTreeID),
@@ -580,6 +582,7 @@ function H:ScanTraitTree()
             end
         end
     end
+    if geoWritten then Touch("talentGeo") end
     return n
 end
 
@@ -610,6 +613,7 @@ function H:RecordCharacter()
     }, "\t")
     -- The v1 record for this character (Name-Realm key) is superseded.
     if guid then s.chars[name .. "-" .. realm] = nil end
+    Touch("chars")
 end
 
 -- ── Scheduling ────────────────────────────────────────────────────────────
@@ -730,6 +734,7 @@ function H:ScanTrainer()
         s.trainerApi = table.concat(api, " ") .. " | every level requirement 0: profession trainer, discarded"
         return
     end
+    if rows > 0 then Touch("trainer") end
     s.trainerApi = table.concat(api, " ")
         .. (" | %s: services=%d recorded=%d unavailable=%d noSpellID=%d filter(unavailable)=%s")
         :format(class, n, rows, unavailable, noID, tostring(unavailShown))
@@ -1047,66 +1052,25 @@ H.SlashCommands.probe = function(self) self:RunProbes() end
 -- -- complete, no clicking, no page limit -- but it needs access to the WoW
 -- folder, and this works from anywhere.
 
-local EXPORT_PAGE = 400   -- records per page; a copy window past this scrolls badly
+-- T3 (harvest spec): exports go through the shared core and its one
+-- formatter, so every export -- this tab's buttons and
+-- Tools/export_harvest.lua alike -- carries the same stamp header (client,
+-- build, interface, project, channel, harvest range, export time, versions).
 
 --- One page of a section as lines. page = 0 means every record, one block.
 function H:ExportLines(section, page)
-    local s = Store()
-    if not s then return nil end
-    section = section or "items"
-    page    = page or 1
-
-    local tbl = s[section]
-    if type(tbl) ~= "table" then return nil end
-
-    local keys = {}
-    for k in pairs(tbl) do keys[#keys + 1] = k end
-    table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
-
-    local total = #keys
-    if page == 0 then
-        local out = {
-            ("-- ToonAge Forever harvest · %s · all %d records"):format(section, total),
-            ("-- build %s · store v%s")
-                :format(tostring(select(4, Try(GetBuildInfo))), tostring(s.version)),
-            "",
-        }
-        for i = 1, total do
-            out[#out + 1] = tostring(keys[i]) .. "\t" .. tostring(tbl[keys[i]])
-        end
-        return out, 1, 1
-    end
-    local pages = math.max(1, math.ceil(total / EXPORT_PAGE))
-    if page > pages then page = pages end
-    local first = (page - 1) * EXPORT_PAGE + 1
-    local last  = math.min(total, page * EXPORT_PAGE)
-
-    local out = {
-        ("-- ToonAge Forever harvest · %s · page %d/%d · records %d-%d of %d")
-            :format(section, page, pages, first, last, total),
-        ("-- build %s · store v%s")
-            :format(tostring(select(4, Try(GetBuildInfo))), tostring(s.version)),
-        "",
-    }
-    for i = first, last do
-        out[#out + 1] = tostring(keys[i]) .. "\t" .. tostring(tbl[keys[i]])
-    end
-    return out, page, pages
+    local Hv = TA.Harvester
+    if not Hv then return nil end
+    return Hv:ExportLines(section or "items", page)
 end
 
 function H:Export(section, page)
+    local Hv = TA.Harvester
+    if not Hv then return end
     section = section or "items"
-    local out, pages
-    out, page, pages = self:ExportLines(section, page)
-    if not out then return end
-
-    if TA.ShowCopyWindow then
-        TA:ShowCopyWindow(("ToonAge harvest — %s (%d/%d)"):format(section, page, pages),
-                          table.concat(out, "\n"))
-    end
-    self._page = page
-    self._pages = pages
-    self._section = section
+    local p, pages = Hv:Export(section, page)
+    if not p then return end
+    self._page, self._pages, self._section = p, pages, section
 end
 
 -- ── Spell catalog ─────────────────────────────────────────────────────────
@@ -1234,6 +1198,7 @@ function H:ScanCatalog(onDone)
 
     function Finish()
         self._catalogRunning = false
+        Touch("catalog")
         s.catalogBuild = select(2, Try(GetBuildInfo))
         -- Whatever is still blank after the retry passes is dropped: the
         -- Spells tab only reads ranked entries, and the blanks are mostly NPC
@@ -1283,10 +1248,14 @@ function H:RunAll()
         { "talents",    "ScanTalents" },
         { "trait tree", "ScanTraitTree" },
     }
+    -- The same stamp every export carries (client, build, interface, project,
+    -- channel, harvest range, report time, versions).
+    local stamp = (TA.HarvestFormat and TA.Harvester)
+        and TA.HarvestFormat.Header(TA.Harvester:Meta(), "full report", 0, 1, 0, 0, 0) or {}
     local out = {
         "ToonAge Forever -- full report",
-        ("build %s · store v%s · %s"):format(tostring(select(4, Try(GetBuildInfo))),
-            tostring(s.version), date and date("%Y-%m-%d %H:%M:%S") or ""),
+        stamp[2] or "",
+        stamp[3] or "",
         "",
         "== Rescan ==",
     }
@@ -1391,13 +1360,15 @@ function H:Render(content, side)
         .. "and is written when you log out or /reload. Use the buttons when "
         .. "that file cannot be reached.")
 
-    y = L:ButtonRow(content, y, {
-        { label = "Items",    onClick = function() H:Export("items", 1)   end },
-        { label = "Spells",   onClick = function() H:Export("spells", 1)  end },
-        { label = "Talents",  onClick = function() H:Export("talents", 1) end },
-        { label = "Characters", onClick = function() H:Export("chars", 1) end },
-        { label = "Racials",  onClick = function() H:Export("racials", 1) end },
-    }, { label = "Copy:" })
+    -- One button per registered section (harvest core registry), in order.
+    do
+        local row = {}
+        for _, e in ipairs((TA.Harvester and TA.Harvester:Exports()) or {}) do
+            local section = e.section
+            row[#row + 1] = { label = e.label, onClick = function() H:Export(section, 1) end }
+        end
+        y = L:ButtonRow(content, y, row, { label = "Copy:" })
+    end
 
     if (self._pages or 1) > 1 then
         y = L:ButtonRow(content, y, {
@@ -1468,7 +1439,7 @@ function H:Render(content, side)
         { label = self._confirmClear and "Really clear?" or "Clear store",
           onClick = function()
             if H._confirmClear then
-                TA.db.foreverHarvest = nil
+                if TA.Harvester then TA.Harvester:Clear() end
                 H._confirmClear = nil
                 TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Harvest store cleared.")
             else
@@ -1489,6 +1460,19 @@ function H:Init()
     if not TA.IsForever then
         self._disabled = true
         return
+    end
+
+    -- The Copy row (harvest core registry). Trainer ranks and the spell
+    -- catalog are two of the richest sections and had no button (R8).
+    local Hv = TA.Harvester
+    if Hv then
+        Hv:RegisterExport("items",   "Items")
+        Hv:RegisterExport("spells",  "Spells")
+        Hv:RegisterExport("talents", "Talents")
+        Hv:RegisterExport("chars",   "Characters")
+        Hv:RegisterExport("racials", "Racials")
+        Hv:RegisterExport("trainer", "Trainer ranks")
+        Hv:RegisterExport("catalog", "Spell catalog")
     end
 
     TA:RegisterEvent("LOOT_OPENED")

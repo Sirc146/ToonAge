@@ -12,6 +12,7 @@ Checks:
     section files -- only the "exported" time is allowed to differ
   * the exporter reads a pre-move save (foreverHarvest) and states only what
     its records say (catalog build, character-record interface)
+  * a store moved from foreverHarvest exports "harvested unknown .. <last>"
   * neither file names a namespaced client API (the manifest scans shipped files)
 
 Usage:  python Tools/test_harvest_format.py [-v]
@@ -194,6 +195,20 @@ with tempfile.TemporaryDirectory() as tmp:
           "-- harvested 2026-09-21 .. 2026-10-04 · exported <t> · store v3 · ToonAge 2.0.0-dev.1")
     check("v3 store: client and times are not exported as sections",
           sorted(os.listdir(outdir3)), ["items.tsv"])
+
+    # A v3 store moved from foreverHarvest: its old records carry no write
+    # time, so the range starts unknown (same rule as Harvester.lua Meta).
+    with open(sv, "w", encoding="utf-8") as fh:
+        fh.write("""ToonAgeDB = { harvest = { version = 3,
+            client = { flavor = "forever", build = "70205", interface = 16001,
+                       migratedFrom = "foreverHarvest", migratedVersion = 2 },
+            times = { items = { first = 1791100000, last = 1791100000 } },
+            items = { [1] = "x" } } }\n""")
+    outdir4 = os.path.join(tmp, "out4")
+    run_exporter(sv, outdir4)
+    h4 = open(os.path.join(outdir4, "items.tsv"), encoding="utf-8").read().splitlines()
+    check("moved store: harvest range start is unknown, end is the last write",
+          re.match(r"-- harvested unknown \.\. 2026-10-04 · exported ", h4[2]) is not None)
 
 passed, total = sum(_res), len(_res)
 print(f"[{'PASS' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")

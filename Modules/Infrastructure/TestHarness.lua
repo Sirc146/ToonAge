@@ -583,6 +583,27 @@ local function SuiteApi(S)
         end
     end
 
+    -- Harvest store (Modules/Infrastructure/Harvester.lua, harvest spec T3): the
+    -- store lives at TA.db.harvest, version 3; the old Forever key is gone.
+    local Hv = TA.Harvester
+    if type(Hv) ~= "table" or type(Hv.Store) ~= "function" then
+        S(INFO, "harvest core not loaded on this client (Modules/Infrastructure/Harvester.lua)")
+    else
+        local hs = Hv:Store()
+        if type(hs) ~= "table" then
+            S(FAIL, "harvest store unavailable")
+        elseif TA.db and TA.db.foreverHarvest ~= nil then
+            S(FAIL, "harvest store: the old foreverHarvest key is still present after the move")
+        elseif hs.version ~= 3 then
+            S(FAIL, "harvest store version " .. tostring(hs.version) .. ", expected 3")
+        else
+            local c = hs.client or {}
+            S(PASS, format("harvest store v3%s: client %s, build %s, interface %s, channel %s",
+                c.migratedFrom and (" (moved from " .. tostring(c.migratedFrom) .. ")") or "",
+                tostring(c.flavor), tostring(c.build), tostring(c.interface), tostring(c.channel)))
+        end
+    end
+
     -- Harvest export formatter (Modules/Infrastructure/HarvestFormat.lua, harvest
     -- spec T2). Stamps a header from what this client reports, then exports every
     -- section of the live store and checks each export holds exactly the records
