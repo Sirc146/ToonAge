@@ -231,6 +231,31 @@ function C.Critical()
     return C.HealthBelow(35)
 end
 
+--- Taking meaningful damage right now -- a defensive trigger BEYOND raw HP%.
+---
+--- `pctPerSec` is the threshold as a percent of max health lost per second
+--- (default 8 -- i.e. losing 8%+/s is "under pressure"). Measured in CombatState
+--- (UpdateIncomingDamage) by sampling health deltas over a ~3s window.
+---
+--- Degrades to FALSE when unknown. On modern clients the player's health reads
+--- SECRET in combat -- which is exactly when a defensive matters -- so this
+--- predicate is honestly blank there rather than guessing. A false "pop a
+--- defensive" wastes a major cooldown, so false is the conservative direction.
+--- It is a genuine extra signal where health IS readable (retail open world,
+--- clients without the secret-value model); where it isn't, compose with HP%
+--- predicates (C.Hurt/C.Critical) which carry their own stale handling.
+function C.IncomingDamage(pctPerSec)
+    pctPerSec = pctPerSec or 8
+    return Tag(function(s)
+        local id = s.incomingDps
+        if not (id and id.known) then return false end
+        local maxHP = (type(s.healthMax) == "number" and s.healthMax > 0) and s.healthMax or nil
+        if not maxHP then return false end
+        local pct = (id.perSec or 0) / maxHP * 100
+        return pct >= pctPerSec
+    end, { kind = "IncomingDamage" })
+end
+
 -- ── Target ────────────────────────────────────────────────────────────────────
 
 function C.TargetBelow(pct)
@@ -298,6 +323,23 @@ function C.GroupHurt(n, pct)
     end, { kind = "GroupHurt" })
 end
 
+--- A group member carries a debuff THIS character can dispel.
+---
+--- The scan and the per-class dispel-type map live in CombatState
+--- (UpdateGroup / DISPEL_BY_CLASS) so the capability stays measured there, not
+--- authored here. Degrades PERMISSIVE (true) when unknown -- a class with no
+--- dispel toolkit, or a reading that came back secret -- because a missed
+--- dispel prompt is the safe failure for a support action, the same direction
+--- as AllyBelow/GroupHurt (and the opposite of the offensive predicates).
+--- Compose the actual dispel spell's readiness with C.Usable() on the entry.
+function C.AllyNeedsDispel()
+    return Tag(function(s)
+        local d = s.group and s.group.dispel
+        if not (d and d.known) then return true end
+        return d.present == true
+    end, { kind = "AllyNeedsDispel" })
+end
+
 --- The spell is usable right now, per the client. For abilities that replace
 --- another only while something is active that isn't a player buff -- Void Blast
 --- during Entropic Rift (a ground effect), Blightfall during Dark Transformation
@@ -349,6 +391,23 @@ function C.TargetCastingInterruptible()
         if not (tc and tc.known) then return false end
         return tc.casting == true and tc.interruptible == true
     end, { kind = "TargetCastingInterruptible" })
+end
+
+--- The target has a stealable / purgeable (Magic) buff.
+---
+--- Pure fact only: whether YOU can purge/steal composes on the entry via
+--- C.Usable() -- one predicate, one fact, as with the interrupt kick. The scan
+--- (target's own buffs, dispelName == "Magic") lives in CombatState
+--- (UpdateTargetSteal). Degrades to FALSE when unknown (secret buffs or the
+--- aura API absent): claiming a steal target you can't actually see is the
+--- confident-wrong failure, so false is conservative here -- offense-adjacent,
+--- same direction as the interrupt predicate.
+function C.TargetHasStealable()
+    return Tag(function(s)
+        local ts = s.targetSteal
+        if not (ts and ts.known) then return false end
+        return ts.present == true
+    end, { kind = "TargetHasStealable" })
 end
 
 -- ── Target count ──────────────────────────────────────────────────────────────

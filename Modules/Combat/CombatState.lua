@@ -53,7 +53,24 @@ CS.state = {
     -- Group health for healer conditions. `known` is false when the client
     -- would not give readable health (restricted contexts), in which case heal
     -- conditions stay permissive instead of hiding heals.
-    group = { known = false, members = 1, lowestPct = 100, hurt90 = 0, hurt75 = 0, hurt50 = 0, triage = nil },
+    group = { known = false, members = 1, lowestPct = 100, hurt90 = 0, hurt75 = 0, hurt50 = 0, triage = nil,
+        -- dispel: a group member carries a debuff THIS character can remove.
+        -- Scanned inside UpdateGroup. known=false when a member's debuffs read
+        -- secret/unreadable; the predicate (C.AllyNeedsDispel) then degrades
+        -- PERMISSIVE (true), like the heal predicates -- a missed dispel prompt
+        -- is the safe failure for a support action.
+        dispel = { known = false, present = false } },
+    -- Target has a stealable/purgeable (Magic) buff, for C.TargetHasStealable.
+    -- Pure fact only; whether YOU can purge composes via C.Usable() on the
+    -- entry. known=false (secret/absent) -> predicate false (offense-adjacent,
+    -- conservative, same as the interrupt predicate).
+    targetSteal = { known = false, present = false },
+    -- Incoming damage rate on the player, for C.IncomingDamage -- a defensive
+    -- trigger beyond raw HP%. Sampled from health deltas (see UpdateIncomingDamage).
+    -- On modern clients player health reads secret in combat, so known is often
+    -- false exactly when it matters; the predicate degrades to false then
+    -- (never a false "pop a defensive" that wastes a cooldown).
+    incomingDps = { known = false, perSec = 0 },
     -- Target's current cast, for C.TargetCastingInterruptible. `known` is false
     -- when the client won't give readable cast data (secret in combat, or the
     -- UnitCastingInfo API absent) -- same convention as group.known. The
@@ -229,6 +246,122 @@ local function UpdateTargetCast()
     tc.interruptible = (info.notInterruptible == false)
     tc.name = info.name
     tc.endTime = info.endMS
+end
+
+-- ── Dispel / purge capability ──────────────────────────────────────────────────
+-- "What debuff types can THIS character remove?" There is no single API that
+-- answers it, so it is derived from the character's known dispel spell(s). The
+-- map is MECHANICAL FACT, not tuning (Cleanse clears Magic/Disease; that does
+-- not drift with balance patches the way stat weights do), and it is
+-- version-stamped per the doctrine. Keyed by class; value lists the dispel
+-- types the class's PvE dispel toolkit can clear when the relevant spell is
+-- known. Talent-gated dispels are intentionally conservative here -- a missed
+-- dispel prompt degrades permissive anyway (C.AllyNeedsDispel).
+--
+-- SOURCE: Blizzard dispel mechanics, retail 11.x/12.x; confirmed per class.
+-- Classic-era dispel sets differ and are handled when the predicate is ported
+-- (cross-version rule) -- this map is the retail set, where the predicate file
+-- currently ships.
+local DISPEL_BY_CLASS = {
+    PRIEST  = { Magic = true, Disease = true },
+    PALADIN = { Magic = true, Poison = true, Disease = true },
+    SHAMAN  = { Magic = true, Curse = true },
+    DRUID   = { Magic = true, Curse = true, Poison = true },
+    MONK    = { Magic = true, Poison = true, Disease = true },
+    MAGE    = { Curse = true },
+    EVOKER  = { Magic = true, Poison = true, Disease = true, Curse = true },
+    WARLOCK = { Magic = true },   -- via pet (Fel/Observer); Magic on the player
+    HUNTER  = { },                -- no standard ally debuff dispel
+    -- Consume Magic is an OFFENSIVE purge (strips buffs from enemies), not a
+    -- friendly dispel -- confirmed warcraft.wiki.gg Magic dispel-type page
+    -- ("only buffs from enemy targets"). DH has no ally debuff dispel, so this
+    -- is empty for AllyNeedsDispel's purposes. (Its purge is still relevant to
+    -- C.TargetHasStealable, which does not consult this map.)
+    DEMONHUNTER = { },
+    DEATHKNIGHT = { },
+    ROGUE   = { },
+    WARRIOR = { },
+}
+
+--- The dispel-type set this character can clear, or nil if none / unknown class.
+--- Read from the player's class; the actual spell-known refinement is left to
+--- the conservative-permissive degrade, so a class with the toolkit but the
+--- spell untalented still prompts (safe direction) rather than silently never.
+local function PlayerDispelTypes()
+    -- UnitClass returns (localizedName, ENGLISH_UPPER_TOKEN); pcall prepends ok.
+    local ok, _, token = pcall(UnitClass, "player")
+    if not ok or type(token) ~= "string" then return nil end
+    return DISPEL_BY_CLASS[token]
+end
+
+-- ── Target stealable (purge) tracking ──────────────────────────────────────────
+-- Walks the TARGET's BUFFS (we read target debuffs elsewhere, not its buffs) and
+-- reports whether any is Magic -- the type purge/Spellsteal operate on. Pure
+-- fact; whether the player can purge composes via C.Usable() on the entry.
+local function UpdateTargetSteal()
+    local s = CS.state
+    local ts = s.targetSteal
+    if not s.targetExists then
+        ts.known = true
+        ts.present = false
+        return
+    end
+    if not (C_UnitAuras and C_UnitAuras.GetBuffDataByIndex) then
+        ts.known = false
+        return
+    end
+    local present, sawSecret = false, false
+    for i = 1, 40 do
+        local ok, auraData = pcall(C_UnitAuras.GetBuffDataByIndex, "target", i)
+        if not ok or not auraData then break end
+        local dt = auraData.dispelName
+        if U.IsSecret(dt) then
+            sawSecret = true
+        elseif dt == "Magic" then
+            present = true
+            break
+        end
+    end
+    if sawSecret and not present then
+        ts.known = false         -- couldn't fully read -> stale, not "none"
+        return
+    end
+    ts.known = true
+    ts.present = present
+end
+
+-- ── Incoming damage sampling ────────────────────────────────────────────────────
+-- Health-delta over a short window: a defensive trigger beyond raw HP%. Reuses
+-- the TTD sampler shape. On modern clients player health reads secret in combat,
+-- so known is often false exactly when this matters -- that is reported
+-- honestly (predicate degrades to false), not papered over.
+local INCOMING_WINDOW = 3.0
+local incomingSamples = {}   -- { { time, hp }, ... } absolute health, player
+
+local function UpdateIncomingDamage()
+    local s = CS.state
+    local id = s.incomingDps
+    -- Health unreadable (secret/absent): do not sample, flag unknown, keep last.
+    if s.healthKnown == false or type(s.health) ~= "number" then
+        id.known = false
+        wipe(incomingSamples)
+        return
+    end
+    local now = GetTime()
+    incomingSamples[#incomingSamples + 1] = { time = now, hp = s.health }
+    while #incomingSamples > 0 and (now - incomingSamples[1].time) > INCOMING_WINDOW do
+        table.remove(incomingSamples, 1)
+    end
+    if #incomingSamples < 2 then
+        id.known = true
+        id.perSec = 0            -- readable, just not enough history yet
+        return
+    end
+    local first, last = incomingSamples[1], incomingSamples[#incomingSamples]
+    local dt = last.time - first.time
+    local lost = first.hp - last.hp          -- positive = net damage taken
+    id.known = true
+    id.perSec = (dt > 0 and lost > 0) and (lost / dt) or 0
 end
 
 -- ── Time-To-Die (TTD) estimation ──────────────────────────────────────────────
@@ -448,11 +581,31 @@ local function UpdateGroup()
     local seen, known = 0, 0
     local lowest, hurt90, hurt75, hurt50 = 100, 0, 0, 0
     local best, bestUrgency = nil, 0
+    -- Dispel scan state: which types we can clear, whether any member carries
+    -- one, and whether a debuff read came back secret (so we can flag unknown).
+    local dispelTypes = PlayerDispelTypes()
+    local canScanDispel = dispelTypes ~= nil
+        and C_UnitAuras ~= nil and C_UnitAuras.GetDebuffDataByIndex ~= nil
+    local dispelPresent, dispelSawSecret = false, false
     for _, unit in ipairs(units) do
         local exists = UnitExists(unit) and not UnitIsDeadOrGhost(unit)
             and (unit == "player" or UnitIsConnected(unit))
         if exists and not (unit ~= "player" and UnitIsUnit(unit, "player")) then
             seen = seen + 1
+            -- Dispel: does this member carry a debuff whose type we can clear?
+            if canScanDispel and not dispelPresent then
+                for i = 1, 40 do
+                    local okA, aura = pcall(C_UnitAuras.GetDebuffDataByIndex, unit, i)
+                    if not okA or not aura then break end
+                    local dt = aura.dispelName
+                    if U.IsSecret(dt) then
+                        dispelSawSecret = true
+                    elseif dt and dispelTypes[dt] then
+                        dispelPresent = true
+                        break
+                    end
+                end
+            end
             local pct = ReadHealthPct(unit)
             if pct then
                 known = known + 1
@@ -477,6 +630,18 @@ local function UpdateGroup()
     g.members = math.max(1, seen)
     g.lowestPct, g.hurt90, g.hurt75, g.hurt50 = lowest, hurt90, hurt75, hurt50
     g.triage = best
+    -- Dispel verdict. known=false when we can't scan (no dispel toolkit / API)
+    -- or a read came back secret without a confirmed hit -- C.AllyNeedsDispel
+    -- then degrades PERMISSIVE (true), the safe direction for a support action.
+    if not canScanDispel then
+        g.dispel.known = false
+        g.dispel.present = false
+    elseif dispelSawSecret and not dispelPresent then
+        g.dispel.known = false
+    else
+        g.dispel.known = true
+        g.dispel.present = dispelPresent
+    end
 end
 CS._UpdateGroup = UpdateGroup
 
@@ -494,6 +659,8 @@ function CS:Snapshot()
     pcall(UpdateGCD)
     pcall(UpdateAoeCount)
     pcall(UpdateGroup)
+    pcall(UpdateTargetSteal)
+    pcall(UpdateIncomingDamage)
     dirty = false
 end
 
@@ -1034,6 +1201,9 @@ function CS:OnEvent(event, ...)
         local unit = ...
         if unit == "player" then
             UpdateHealth()
+            -- Health moved: resample the incoming-damage window.
+            UpdateIncomingDamage()
+            dirty = true
         end
         if unit == "target" then
             UpdateTarget()
@@ -1052,6 +1222,7 @@ function CS:OnEvent(event, ...)
         end
         if unit == "target" then
             UpdateDebuffsOnTarget()
+            UpdateTargetSteal()
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
         UpdateTarget()
@@ -1059,6 +1230,7 @@ function CS:OnEvent(event, ...)
         -- A new target may already be mid-cast with no START event coming, so
         -- re-read rather than wait for one.
         UpdateTargetCast()
+        UpdateTargetSteal()
         dirty = true
     elseif event == "NAME_PLATE_UNIT_ADDED" or event == "NAME_PLATE_UNIT_REMOVED" then
         UpdateAoeCount()
