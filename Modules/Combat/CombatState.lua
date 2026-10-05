@@ -54,6 +54,15 @@ CS.state = {
     -- would not give readable health (restricted contexts), in which case heal
     -- conditions stay permissive instead of hiding heals.
     group = { known = false, members = 1, lowestPct = 100, hurt90 = 0, hurt75 = 0, hurt50 = 0, triage = nil },
+    -- Target's current cast, for C.TargetCastingInterruptible. `known` is false
+    -- when the client won't give readable cast data (secret in combat, or the
+    -- UnitCastingInfo API absent) -- same convention as group.known. The
+    -- predicate degrades to FALSE on known=false: a wrong "interrupt now" burns
+    -- the kick and trains the user to ignore the engine, so it is the
+    -- conservative direction (opposite of the heal predicates). `interruptible`
+    -- is the client's own notInterruptible flag inverted -- never a hardcoded
+    -- spell list. See Docs/INTERRUPT_PREDICATE.md.
+    targetCast = { known = false, casting = false, interruptible = false, name = nil, endTime = nil },
 }
 
 -- ── Internal throttle ─────────────────────────────────────────────────────────
@@ -133,6 +142,93 @@ local function UpdateTarget()
         s.targetHealth = 0
         s.targetPct = 100
     end
+end
+
+-- ── Target cast tracking ──────────────────────────────────────────────────────
+-- Event-driven only (UNIT_SPELLCAST_* on the target); no polling. Reads the
+-- client's own cast info and its notInterruptible flag -- never a hardcoded
+-- spell list, which would be per-spec theorycraft that goes stale.
+--
+-- Capability: UnitCastingInfo is read through TA.Caps when that layer is present
+-- (it ships on the Forever/TBC TOCs), else a guarded direct call. Same
+-- Caps-if-present/fallback shape as C.PlayerMoving. When G3 wires Caps on every
+-- client this collapses to one Caps path. If the API does not resolve, the cast
+-- events are never registered (see CS:Init) and known stays false forever.
+
+--- Resolve a bare-global function through Caps if present, else directly.
+--- Returns the callable or nil. Never throws.
+local function CastFn(name)
+    local Caps = TA and TA.Caps
+    if Caps and Caps.Fn then
+        return Caps.Fn(name)
+    end
+    local fn = _G and _G[name]
+    return (type(fn) == "function") and fn or nil
+end
+
+--- True if the client exposes the cast API at all (gates event registration).
+local function TargetCastReadable()
+    return CastFn("UnitCastingInfo") ~= nil or CastFn("UnitChannelInfo") ~= nil
+end
+
+--- Populate state.targetCast from UnitCastingInfo/UnitChannelInfo("target").
+--- Degrades to known=false (never a throw, never a false "casting") when the
+--- data is secret or the API is absent.
+local function UpdateTargetCast()
+    local s = CS.state
+    local tc = s.targetCast
+
+    -- No target, or target not attackable: nothing to interrupt.
+    if not s.targetExists then
+        tc.known = true          -- we DO know: there is no cast
+        tc.casting = false
+        tc.interruptible = false
+        tc.name = nil
+        tc.endTime = nil
+        return
+    end
+
+    local casting = CastFn("UnitCastingInfo")
+    local channel = CastFn("UnitChannelInfo")
+    if not (casting or channel) then
+        tc.known = false         -- API absent -- unreadable, not "no cast"
+        return
+    end
+
+    -- Try a hard cast first, then a channel. Both share the modern return
+    -- signature: name, text, texture, startMS, endMS, isTrade, castID,
+    -- notInterruptible, spellID.
+    local function readOne(fn)
+        if not fn then return nil end
+        local ok, name, _, _, _, endMS, _, _, notInterruptible = pcall(fn, "target")
+        if not ok then return false end           -- call errored -> unreadable
+        if name == nil then return nil end         -- not casting via this path
+        -- Any field we rely on reading as secret -> unreadable, not zeroed.
+        if U.IsSecret(name) or U.IsSecret(notInterruptible) then return false end
+        return { name = tostring(name), endMS = endMS, notInterruptible = notInterruptible }
+    end
+
+    local info = readOne(casting)
+    if info == nil then info = readOne(channel) end   -- nil = try channel
+
+    if info == false then
+        tc.known = false         -- secret or errored -> keep last values stale
+        return
+    end
+    if info == nil then
+        tc.known = true          -- readable, and nothing is being cast
+        tc.casting = false
+        tc.interruptible = false
+        tc.name = nil
+        tc.endTime = nil
+        return
+    end
+
+    tc.known = true
+    tc.casting = true
+    tc.interruptible = (info.notInterruptible == false)
+    tc.name = info.name
+    tc.endTime = info.endMS
 end
 
 -- ── Time-To-Die (TTD) estimation ──────────────────────────────────────────────
@@ -960,9 +1056,24 @@ function CS:OnEvent(event, ...)
     elseif event == "PLAYER_TARGET_CHANGED" then
         UpdateTarget()
         UpdateDebuffsOnTarget()
+        -- A new target may already be mid-cast with no START event coming, so
+        -- re-read rather than wait for one.
+        UpdateTargetCast()
         dirty = true
     elseif event == "NAME_PLATE_UNIT_ADDED" or event == "NAME_PLATE_UNIT_REMOVED" then
         UpdateAoeCount()
+    elseif event == "UNIT_SPELLCAST_START" or event == "UNIT_SPELLCAST_CHANNEL_START"
+        or event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_CHANNEL_STOP"
+        or event == "UNIT_SPELLCAST_INTERRUPTED" or event == "UNIT_SPELLCAST_SUCCEEDED"
+        or event == "UNIT_SPELLCAST_DELAYED" then
+        -- Registered via RegisterUnitEvent("...","target") where possible, so
+        -- the unit arg is "target"; guard anyway in case a client ignores the
+        -- unit filter and broadcasts.
+        local unit = ...
+        if unit == "target" then
+            UpdateTargetCast()
+            dirty = true
+        end
     end
 end
 
@@ -984,6 +1095,28 @@ function CS:Init()
     csFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
     csFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     csFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")
+
+    -- Target cast tracking: only arm these where the client exposes the cast
+    -- API (gates per client without a hardcoded flavor check). Filter to the
+    -- target unit via RegisterUnitEvent so only the target's cast events reach
+    -- this frame -- no broadcast, no per-frame cost (§9). Falls back to a plain
+    -- RegisterEvent (handler re-checks the unit arg) if RegisterUnitEvent is
+    -- unavailable.
+    if TargetCastReadable() then
+        local castEvents = {
+            "UNIT_SPELLCAST_START", "UNIT_SPELLCAST_STOP",
+            "UNIT_SPELLCAST_CHANNEL_START", "UNIT_SPELLCAST_CHANNEL_STOP",
+            "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_SUCCEEDED",
+            "UNIT_SPELLCAST_DELAYED",
+        }
+        for _, ev in ipairs(castEvents) do
+            local okUnit = csFrame.RegisterUnitEvent
+                and pcall(csFrame.RegisterUnitEvent, csFrame, ev, "target")
+            if not okUnit then
+                pcall(csFrame.RegisterEvent, csFrame, ev)
+            end
+        end
+    end
 
     csFrame:SetScript("OnEvent", function(_, event, ...)
         if CS.OnEvent then

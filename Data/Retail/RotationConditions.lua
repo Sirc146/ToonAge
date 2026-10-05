@@ -328,6 +328,29 @@ function C.TargetDying(seconds)
     end
 end
 
+--- The target is casting something the client says can be interrupted.
+---
+--- One fact only: "target is casting + the cast is kickable." It deliberately
+--- does NOT check whether your interrupt is off cooldown -- compose that on the
+--- entry: when = C.And(C.TargetCastingInterruptible(), C.Usable()). One
+--- predicate, one fact, the way the rest of this file composes.
+---
+--- "Interruptible" is the client's own notInterruptible flag (read in
+--- CombatState:UpdateTargetCast), never a hardcoded spell list.
+---
+--- Degrades to FALSE when cast data is unreadable (secret in combat, or the
+--- UnitCastingInfo API absent): state.targetCast.known is false then. A wrong
+--- "interrupt now" burns the kick and trains the user to ignore the engine, so
+--- false is the conservative direction here -- the opposite choice from the
+--- heal predicates, and the same as PlayerMoving. See Docs/INTERRUPT_PREDICATE.md.
+function C.TargetCastingInterruptible()
+    return Tag(function(s)
+        local tc = s.targetCast
+        if not (tc and tc.known) then return false end
+        return tc.casting == true and tc.interruptible == true
+    end, { kind = "TargetCastingInterruptible" })
+end
+
 -- ── Target count ──────────────────────────────────────────────────────────────
 
 function C.AoE(n)
