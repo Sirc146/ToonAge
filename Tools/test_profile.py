@@ -116,8 +116,8 @@ def test_nonretail_explicit_list():
 
 
 def test_scaffolds_inert():
-    section("cata/vanilla/wrath/forever scaffolds are inert")
-    for pid, ic, dataname in [(14, 40402, "Cata"), (2, 11507, "Vanilla"), (11, 30405, "Wrath")]:
+    section("vanilla/wrath/forever scaffolds are inert")
+    for pid, ic, dataname in [(2, 11507, "Vanilla"), (11, 30405, "Wrath")]:
         _, ta = load_profile(pid, ic)
         check(f"{dataname}: scaffold flag", ta.GetProfile(ta).scaffold, True)
         check(f"{dataname}: no modules allowed", ta.ModuleInProfile(ta, "Gear"), False)

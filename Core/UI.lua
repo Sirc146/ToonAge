@@ -303,7 +303,7 @@ function TA:InitUI()
     -- Anniversary window used to say "Midnight 12.0.5").
     local FLAVOR_NAME = {
         retail = "Midnight", tbc = "TBC Anniversary", mists = "Mists Classic",
-        vanilla = "Classic Era", wrath = "Wrath Classic", cata = "Cataclysm Classic",
+        vanilla = "Classic Era", wrath = "Wrath Classic",
         forever = "Forever",
     }
     local build = (GetBuildInfo and select(1, GetBuildInfo())) or ""
@@ -358,7 +358,7 @@ function TA:InitUI()
     optionsBtn:SetScript("OnLeave", function() optIcon:SetTextColor(0.62, 0.59, 0.55, 1) end)
     optionsBtn:SetScript("OnClick", function() TA:ToggleOptionsPanel() end)
     -- G9 (2026-10-04): no Settings module, no gear. The scaffold builds (Era,
-    -- Cata, Wrath) ship none, and the gear opened an empty drawer there.
+    -- Wrath) ship none, and the gear opened an empty drawer there.
     -- InitModules runs before InitUI (Init.lua OnLogin), so GetModule already
     -- reflects this build. Width 1, not 0: Help/Copy still anchor to it.
     if not self:GetModule("Settings") then

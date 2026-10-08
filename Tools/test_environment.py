@@ -92,14 +92,13 @@ def section(title):
 # Real interface codes per flavor, so the range-based disambiguation is
 # exercised with realistic values, not just the project ID.
 #   retail 120007 (Midnight PTR line) · TBC 20506 · vanilla 11507
-#   wrath 30403 · cata 40402 · mists 50504
+#   wrath 30403 · mists 50504
 CASES = [
     # label,     project_id, interface, flavor,     is_retail, is_classic_family
     ("Retail",        1, 120007, "retail",  True,  False),
     ("Classic Era",   2, 11507,  "vanilla", False, True),
     ("TBC Anniv",     5, 20506,  "tbc",     False, True),
     ("Wrath",        11, 30403,  "wrath",   False, True),
-    ("Cata",         14, 40402,  "cata",    False, True),
     # MoP uses tier-row talents, not trees: not in the tree-shaped family (G13).
     ("Mists (MoP)",  19, 50504,  "mists",   False, False),
 ]
@@ -116,11 +115,21 @@ def test_each_flavor():
 
 def test_exactly_one_flavor_true():
     section("exactly one flavor boolean true")
-    flags = ("IsRetail", "IsClassicEra", "IsTBC", "IsWrath", "IsCata", "IsMists")
+    flags = ("IsRetail", "IsClassicEra", "IsTBC", "IsWrath", "IsMists")
     for label, pid, ic, *_ in CASES:
         ta = detect(pid, ic)
         true_count = sum(1 for f in flags if getattr(ta, f) or False)
-        check(f"{label}: exactly one of six flags set", true_count, 1)
+        check(f"{label}: exactly one of five flags set", true_count, 1)
+
+
+def test_cata_dropped():
+    section("Cataclysm Classic is not a flavor (dropped 2026-10-08)")
+    # No ToonAge_Cata.toc ships, so a Cata client (project id 14) must resolve
+    # to the unknown profile -- never borrow another flavor's modules or data.
+    ta = detect(14, 40402)
+    check("project 14 -> flavor unknown", ta.flavor, "unknown")
+    check("project 14 -> not classic family", ta.IsClassicFamily or False, False)
+    check("TA.IsCata no longer defined", getattr(ta, "IsCata", None), None)
 
 
 def test_tbc_old_client_gotcha():
@@ -234,6 +243,7 @@ def test_isflavor_helper():
 def main():
     test_each_flavor()
     test_exactly_one_flavor_true()
+    test_cata_dropped()
     test_tbc_old_client_gotcha()
     test_unknown_client()
     test_forever()

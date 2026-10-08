@@ -94,7 +94,7 @@ function A:RecordSession()
     local tracker = charDB.tracker or {}
 
     -- Which client. One switch per flavor so the dashboard reads as a split.
-    for _, flavor in ipairs({ "retail", "tbc", "mists", "vanilla", "cata", "wrath", "forever" }) do
+    for _, flavor in ipairs({ "retail", "tbc", "mists", "vanilla", "wrath", "forever" }) do
         self:Switch("client:" .. flavor, TA.flavor == flavor)
     end
 

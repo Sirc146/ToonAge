@@ -55,7 +55,6 @@ jobs:
                   { "flavor": "bcc",      "interface": 20506  },
                   { "flavor": "mists",    "interface": 50504  },
                   { "flavor": "classic",  "interface": 11509  },
-                  { "flavor": "cata",     "interface": 40402  },
                   { "flavor": "wrath",    "interface": 30405  }
                 ]
               }

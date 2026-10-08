@@ -5,7 +5,7 @@ therefore should not be duplicated per flavor.
 
 ## The rule
 
-- `Data/<Flavor>/` (Retail, TBC, Mists, Cata, Vanilla, Forever) holds
+- `Data/<Flavor>/` (Retail, TBC, Mists, Vanilla, Forever) holds
   **flavor-specific game-design data**: spell IDs, talent trees, stat caps,
   item levels, rotations, guides. These differ per expansion and are NOT shared
   (a TBC spell list is not a retail spell list). See `Docs/DATA_SOURCES.md`.

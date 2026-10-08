@@ -13,7 +13,7 @@
         ToonAge.toc            retail file list  (fallback name)
         ToonAge_Mainline.toc   retail file list
         ToonAge_Camelot.toc    Forever file list
-        ToonAge_TBC.toc, ToonAge_Mists.toc, ToonAge_Vanilla.toc, _Cata, _Wrath
+        ToonAge_TBC.toc, ToonAge_Mists.toc, ToonAge_Vanilla.toc, _Wrath
 
     Each client picks one TOC by filename. For Retail, TBC, Mists and Classic
     Era the suffix is the documented one. For Forever it is NOT settled: on this

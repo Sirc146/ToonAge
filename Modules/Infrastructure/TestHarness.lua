@@ -6,7 +6,7 @@
 --   WoW Forever beta ............. ToonAge_Camelot.toc   (interface 16001, WOW_PROJECT_MAINLINE)
 --   TBC Anniversary .............. ToonAge_TBC.toc       (interface 20506)
 --   Mists of Pandaria Classic .... ToonAge_Mists.toc     (interface 50504)
---   Classic Era / Wrath / Cata ... scaffold TOCs         (11509 / 30405 / 40402)
+--   Classic Era / Wrath .......... scaffold TOCs         (11509 / 30405)
 --
 -- Usage
 --   /ta test              run every suite
@@ -370,7 +370,7 @@ local function SuiteEnv(S)
 
     local FLAGS = {
         { "IsRetail", "retail" }, { "IsForever", "forever" }, { "IsTBC", "tbc" },
-        { "IsClassicEra", "vanilla" }, { "IsWrath", "wrath" }, { "IsCata", "cata" },
+        { "IsClassicEra", "vanilla" }, { "IsWrath", "wrath" },
         { "IsMists", "mists" },
     }
     local on = {}

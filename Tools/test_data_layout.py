@@ -33,7 +33,6 @@ TOC_NAMESPACE = {
     "ToonAge_Mainline.toc": "Retail",
     "ToonAge_TBC.toc":      "TBC",
     "ToonAge_Mists.toc":    "Mists",
-    "ToonAge_Cata.toc":     "Cata",
     "ToonAge_Vanilla.toc":  "Vanilla",
     "ToonAge_Forever.toc":  "Forever",
 }
@@ -80,7 +79,7 @@ def test_toc_namespace_isolation():
 def test_no_foreign_flavor_data():
     """Explicit cross-contamination check: no TOC references a DIFFERENT
     flavor's Data folder."""
-    all_flavor_dirs = {"Retail", "TBC", "Mists", "Cata", "Vanilla", "Forever"}
+    all_flavor_dirs = {"Retail", "TBC", "Mists", "Vanilla", "Forever"}
     for toc_name, ns in TOC_NAMESPACE.items():
         toc = ROOT / toc_name
         if not toc.exists():

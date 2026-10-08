@@ -43,7 +43,6 @@ EXPECTED_INTERFACE = {
     "ToonAge_Mainline.toc": {"120100"},   # live; also lists 120105 (PTR) + 120001 (beta)
     "ToonAge_TBC.toc":      {"20506"},
     "ToonAge_Mists.toc":    {"50504"},
-    "ToonAge_Cata.toc":     {"40402"},
     "ToonAge_Vanilla.toc":  {"11509"},
     "ToonAge_Wrath.toc":    {"30405"},
     "ToonAge_Camelot.toc":  {"16001"},
@@ -52,7 +51,7 @@ EXPECTED_INTERFACE = {
 # Flavors with no researched Data/<Flavor> yet: their TOC must list the shared
 # Core engine and ErrorLog only, so a client that matches one cannot load
 # another expansion's numbers.
-SCAFFOLD_TOCS = ("ToonAge_Vanilla.toc", "ToonAge_Cata.toc", "ToonAge_Wrath.toc")
+SCAFFOLD_TOCS = ("ToonAge_Vanilla.toc", "ToonAge_Wrath.toc")
 
 # Forever is past scaffold: it ships a Character readout (no scoring, no
 # advice), so it gets its own expectation rather than the core-only one.

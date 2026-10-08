@@ -166,7 +166,7 @@ end
 
 -- ── Talent tabs (Classic family only) ──────────────────────────────────────
 -- Retail has no tree/tab talent API (it uses the C_Traits loadout system), so
--- these return nil/0 there. Classic-family flavors (Vanilla/TBC/Wrath/Cata/
+-- these return nil/0 there. Classic-family flavors (Vanilla/TBC/Wrath/
 -- Mists) use the old tab API. Providing these here lets a shared module ask
 -- "does this client have talent tabs?" without each one re-testing the globals.
 

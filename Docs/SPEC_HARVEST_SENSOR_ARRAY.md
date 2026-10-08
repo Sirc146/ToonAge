@@ -320,7 +320,7 @@ Each cell is ✓ (harvest), probe (record the API state and shape only, pending 
 | Professions | probe | ✓ | ✓ | ✓ | ✓ | P: Retail Professions tab; TBC ProfessionAdvisor |
 | World refresh log, Comprehension, scrolls, `C_SkillInfo` | ✓ | — | — | — | — | E: Forever Scrolls tab, WorldRefresh (R6) |
 
-**Out of scope:** Cata and Wrath (scaffolds with no installed client to verify on; `build_flavors` builds them but installs nothing).
+**Out of scope:** Wrath (scaffold with no installed client to verify on; `build_flavors` builds it but installs nothing). Cata was dropped as a flavor on 2026-10-08.
 
 ---
 

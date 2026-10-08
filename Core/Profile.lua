@@ -56,7 +56,7 @@ ToonAge = TA
 --                flavor as a whole assumes; logged if absent. Per-module API
 --                needs are still enforced individually via ApiGuard.
 --
--- Only flavors with REAL shipped content are fully defined here. Cata/Vanilla/
+-- Only flavors with REAL shipped content are fully defined here. Vanilla/Wrath/
 -- Forever are declared as inert scaffolds (empty module set) until their
 -- content exists — see Tasks 8/9. An unknown flavor falls back to a safe,
 -- do-little profile rather than guessing.
@@ -172,14 +172,6 @@ local PROFILES = {
     -- Declared so the flavor is a first-class citizen the engine recognizes,
     -- but with no modules and no shipped Data. Loading on one of these clients
     -- initializes nothing harmful and prints no wrong advice.
-    cata = {
-        label     = "Cataclysm Classic (scaffold)",
-        allowAll  = false,
-        modules   = {},
-        data      = "Cata",
-        statRules = "cata-trees",
-        scaffold  = true,
-    },
     vanilla = {
         label     = "Classic Era / Vanilla (scaffold)",
         allowAll  = false,

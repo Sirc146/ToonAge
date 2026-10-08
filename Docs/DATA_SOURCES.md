@@ -301,7 +301,6 @@ licensed API stay the only things that put values into `Data/`.
 | vanilla | wowhead.com/classic | database, BiS | search |
 | vanilla | classicwow.gg | guides, BiS, tools | search |
 | vanilla | atlasforge.gg | SoD armory | search |
-| cata | wowhead.com/cata | database, talent calculator | search |
 | retail | wowhead, icy-veins, raider.io, warcraftlogs, raidbots, archon.gg, murlok.io | see the source-by-source section above | assumed |
 | retail (PvP) | arenamaster.io, check-pvp.fr, seramate.com | ratings, profiles, season stats | search |
 

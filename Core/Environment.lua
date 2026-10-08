@@ -48,7 +48,7 @@ ToonAge = TA
 --   WOW_PROJECT_WOWLABS                 = 3   Plunderstorm and similar WoW Labs modes
 --   WOW_PROJECT_BURNING_CRUSADE_CLASSIC = 5   TBC Classic & TBC Anniversary
 --   WOW_PROJECT_WRATH_CLASSIC           = 11  Wrath Classic
---   WOW_PROJECT_CATACLYSM_CLASSIC       = 14  Cataclysm Classic
+--   WOW_PROJECT_CATACLYSM_CLASSIC       = 14  Cataclysm Classic (no ToonAge flavor; dropped 2026-10-08)
 --   WOW_PROJECT_MISTS_CLASSIC           = 19  Mists of Pandaria Classic
 --
 -- "WoW Forever" had no project ID of its own until build 70205, which reports
@@ -66,7 +66,6 @@ local PROJECT_IDS = {
     WOWLABS     = 3,
     TBC         = 5,
     WRATH       = 11,
-    CATA        = 14,
     MISTS       = 19,
     -- Forever's own id. MEASURED 2026-10-03 on build 70205 (1.60.1, interface
     -- 16001): WOW_PROJECT_ID = 18. Builds up to 70124 reported 1 (Mainline);
@@ -107,7 +106,6 @@ TA.IsTBC        = (projectId == PROJECT_IDS.TBC)
     -- kept for safety on old builds.
     or (projectId == PROJECT_IDS.CLASSIC_ERA and interfaceCode and interfaceCode >= 20000 and interfaceCode < 30000)
 TA.IsWrath      = (projectId == PROJECT_IDS.WRATH)
-TA.IsCata       = (projectId == PROJECT_IDS.CATA)
 TA.IsMists      = (projectId == PROJECT_IDS.MISTS)
 
 -- "Old-style talent tree" family — everything whose game design uses the
@@ -123,7 +121,7 @@ TA.IsMists      = (projectId == PROJECT_IDS.MISTS)
 -- schema applies to it. Mists is still classic-ERA content; it is just not
 -- tree-shaped. The self-test's env suite cross-checks this flag against the
 -- client's talent-tab API on every run.
-TA.IsClassicFamily = TA.IsClassicEra or TA.IsTBC or TA.IsWrath or TA.IsCata
+TA.IsClassicFamily = TA.IsClassicEra or TA.IsTBC or TA.IsWrath
 
 -- ── Forever launch-day fallback ───────────────────────────────────────
 --
@@ -144,7 +142,7 @@ TA.IsClassicFamily = TA.IsClassicEra or TA.IsTBC or TA.IsWrath or TA.IsCata
 local ADDON_NAME = ... or "ToonAge"
 TA.flavorSource = "project-id"
 if not (TA.IsForever or TA.IsRetail or TA.IsClassicEra or TA.IsTBC
-        or TA.IsWrath or TA.IsCata or TA.IsMists) then
+        or TA.IsWrath or TA.IsMists) then
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     local tocFlavor
     if getMeta then
@@ -164,7 +162,6 @@ TA.flavor = (TA.IsForever     and "forever")
          or (TA.IsTBC         and "tbc")
          or (TA.IsClassicEra  and "vanilla")
          or (TA.IsWrath       and "wrath")
-         or (TA.IsCata        and "cata")
          or (TA.IsMists       and "mists")
          or "unknown"
 
@@ -187,7 +184,7 @@ TA.flavor = (TA.IsForever     and "forever")
 --- What "## X-Flavor" the TOC for this client is expected to declare.
 local EXPECTED_TOC_FLAVOR = {
     retail = "Mainline", forever = "Forever", tbc = "TBC",
-    mists  = "Mists",    cata    = "Cata",    vanilla = "Vanilla",
+    mists  = "Mists",    vanilla = "Vanilla",
     wrath  = "Wrath",
 }
 
