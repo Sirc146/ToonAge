@@ -182,6 +182,8 @@ local NODE_GLYPH    = 28
 local GRID_GAP = 8
 
 M.LINE_PX = 2
+M.RING_PX = 3          -- hover and selection; idle frames stay 1px
+M.GLOW_OUTSET = 6      -- soft gold halo until talent_glow arrives
 M.LOCK_TEXTURE = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_lock_16.tga"
 M.LOCK_ALPHA = 0.5
 
@@ -711,7 +713,7 @@ local EDGE = {
 local EDGE_HOVER = {
     bgFile   = "Interface\\Buttons\\WHITE8X8",
     edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 2,
+    edgeSize = M.RING_PX,
 }
 
 local function PaintNode(btn)
@@ -766,14 +768,17 @@ local function DrawGrid(content, y, plan)
         end
         btn.icon = icon
 
+        -- Placeholder halo. talent_glow is not in Media/frame yet, so this is
+        -- a soft gold square set behind the node. It stays under this node
+        -- and, while the pointer is here, above the neighbours.
         local glow = CreateFrame("Frame", nil, holder)
-        glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -3, 3)
-        glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 3, -3)
-        glow:SetFrameLevel(btn._baseLevel)
+        glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -M.GLOW_OUTSET, M.GLOW_OUTSET)
+        glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", M.GLOW_OUTSET, -M.GLOW_OUTSET)
+        glow:EnableMouse(false)
         local gtex = glow:CreateTexture(nil, "BACKGROUND")
         gtex:SetAllPoints()
         local gold = M.Theme.gold
-        gtex:SetColorTexture(gold[1], gold[2], gold[3], 0.35)
+        gtex:SetColorTexture(gold[1], gold[2], gold[3], 0.22)
         if gtex.SetBlendMode then gtex:SetBlendMode("ADD") end
         glow:Hide()
         btn.glow = glow
@@ -804,14 +809,20 @@ local function DrawGrid(content, y, plan)
         lock:Hide()
         btn.lock = lock
 
+        -- The glow sits one level under its own node, so the ring and icon
+        -- stay visible. Hover lifts both above the other nodes; leave puts
+        -- them back.
+        local function levels(buttonLevel)
+            buttonLevel = math.max(buttonLevel or 1, 1)
+            btn:SetFrameLevel(buttonLevel)
+            glow:SetFrameLevel(buttonLevel - 1)
+        end
+        levels(btn._baseLevel)
         local function raise()
-            local top = (holder:GetFrameLevel() or 0) + 20
-            btn:SetFrameLevel(top)
-            glow:SetFrameLevel(top)
+            levels((holder:GetFrameLevel() or 0) + 20)
         end
         local function restore()
-            btn:SetFrameLevel(btn._baseLevel)
-            glow:SetFrameLevel(btn._baseLevel)
+            levels(btn._baseLevel)
         end
 
         btn:SetScript("OnEnter", function(self)
