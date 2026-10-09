@@ -45,6 +45,8 @@ Modules\Character\ProfessionBoard.lua
 Modules\Infrastructure\ErrorLog.lua
 # Shared spell/item button. Hidden until a feature offers a candidate.
 Modules\Infrastructure\ContextAction.lua
+Modules\Infrastructure\RotationLists.lua
+Modules\Infrastructure\RotationBoard.lua
 
 # In-game self-test: /ta test, /tatest, or the Self-test title-bar button. Loads last.
 # Not a registered module (not profile-gated): it only runs when invoked, so

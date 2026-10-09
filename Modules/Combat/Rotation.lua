@@ -145,9 +145,25 @@ function Rotation:AssistedNext()
     local fn = C_AssistedCombat and C_AssistedCombat.GetNextCastSpell
     if type(fn) ~= "function" then return nil end
     local ok, id = pcall(fn)
-    if not ok or type(id) ~= "number" or id <= 0 then return nil end
+    if not ok or id == nil then return nil end
+    -- Secret before any comparison. A secret id is not a suggestion.
     if U.IsSecret and U.IsSecret(id) then return nil end
-    return { entry = { spellID = id, name = U.GetSpellName(id) or "" } }
+    if type(id) ~= "number" or id <= 0 then return nil end
+    local name = U.GetSpellName(id)
+    if U.IsSecret and U.IsSecret(name) then name = "" end
+    return { entry = { spellID = id, name = name or "" } }
+end
+
+--- The per-version list for this spec and level. nil when that class is not
+--- in the file, so the older priority rows stay. An empty band is the card.
+function Rotation:ListedView(mode)
+    local RL = TA.RotationLists
+    if not RL or type(RL.Resolve) ~= "function" then return nil end
+    local _, specName = U.GetPlayerSpec()
+    if not mode then
+        mode = (self.currentView == "aoe") and "aoe" or "st"
+    end
+    return RL.Resolve(nil, U.GetPlayerClass(), specName, self.currentLevel or U.GetPlayerLevel(), mode)
 end
 
 function Rotation:GetPredictionPriorities(specID, view)
@@ -383,7 +399,9 @@ function Rotation:RenderSpellRow(parent, y, w, padL, entry, isCD, isNext)
     -- Spell name
     local nameLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     nameLbl:SetFont(STANDARD_TEXT_FONT, isCD and 10 or 11, "OUTLINE")
-    nameLbl:SetText(entry.name or "Unknown")
+    local shown = entry.name or "Unknown"
+    if entry.approximate then shown = shown .. " (approximate)" end
+    nameLbl:SetText(shown)
     nameLbl:SetTextColor(isCD and 0.90 or 1, isCD and 0.72 or 0.82, isCD and 0.42 or 0, 1)
     nameLbl:SetPoint("TOPLEFT", row, "TOPLEFT", textLeft, -5)
     nameLbl:SetWidth(w - textLeft - 8)
@@ -435,6 +453,31 @@ function Rotation:RenderContent(content, rotData, specID, level)
         line:SetColorTexture(0.30, 0.30, 0.35, 0.35)
         y = y - 8
         table.insert(self.frames, line)
+    end
+
+    local listed = self:ListedView()
+    if listed and (listed.empty or not listed.spells or #listed.spells == 0) then
+        local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+        f:SetText("No verified rotation yet")
+        f:SetTextColor(0.85, 0.86, 0.88, 1)
+        f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        f:SetWidth(w)
+        table.insert(self.frames, f)
+        content:SetHeight(80)
+        return
+    end
+    if listed and listed.spells then
+        for i, spell in ipairs(listed.spells) do
+            y = y - self:RenderSpellRow(content, y, w, padL, {
+                name = spell.name,
+                spellID = spell.spellID,
+                priority = i,
+                approximate = spell.approximate,
+            }, false, false)
+        end
+        content:SetHeight(math.abs(y) + 20)
+        return
     end
 
     if specID and not self:HasVerified(specID) then
@@ -850,6 +893,38 @@ function Rotation:UpdatePrediction()
 
     local specID = self.currentSpecID or U.GetPlayerSpec()
     local level = self.currentLevel or U.GetPlayerLevel()
+
+    -- The version's list sets the bar. In combat the first slot is Assisted
+    -- Combat when that value is not secret. Out of combat the list is the
+    -- whole bar. No list for this class keeps the older priority rows.
+    local listed = self:ListedView(self:LiveView(CS) == "aoe" and "aoe" or "st")
+    if listed then
+        local assisted
+        if inCombat and (TA.IsRetail or TA.IsForever) then
+            assisted = self:AssistedNext()
+        end
+        local plan = TA.RotationLists.BarPlan(listed.spells, assisted and assisted.entry,
+            inCombat and (TA.IsRetail or TA.IsForever))
+        local gold = { 0.910, 0.702, 0.353 }
+        for i = 1, PREDICTION_COUNT do
+            local iconFrame = self.predictIcons[i]
+            local spell = plan[i]
+            if spell then
+                local tex = spell.spellID and U.GetSpellTexture(spell.spellID)
+                iconFrame.icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
+                iconFrame.nameLabel:SetText(spell.name or "")
+                iconFrame:SetBackdropColor(0.06, 0.04, 0.00, 0.98)
+                iconFrame:SetBackdropBorderColor(gold[1], gold[2], gold[3], spell.suggested and 1 or 0.70)
+                iconFrame.nameLabel:SetTextColor(gold[1], gold[2], gold[3])
+                iconFrame:Show()
+            else
+                iconFrame:Hide()
+            end
+        end
+        self:UpdatePips()
+        return
+    end
+
     local priorities = self:GetPredictionPriorities(specID, self:LiveView(CS))
 
     local assisted = self:AssistedNext()

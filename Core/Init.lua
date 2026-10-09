@@ -1563,6 +1563,9 @@ local function Dispatch(self, msg)
             if TA.ContextAction and TA.ContextAction.StatusLine then
                 Say("  " .. TA.ContextAction:StatusLine())
             end
+            if TA.RotationLists and TA.RotationLists.StatusLine then
+                Say("  " .. TA.RotationLists.StatusLine())
+            end
             Say("━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
             -- "copy" opens the same report in a selectable window; without it,

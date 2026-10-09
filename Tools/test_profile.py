@@ -184,7 +184,9 @@ def test_scaffolds_inert():
     check("vanilla allows ContextAction",
           era.ModuleInProfile(era, "ContextAction"), True)
     check("vanilla professions tab",
-          [t.id for t in era.ProfileTabs(era).values()], ["professions"])
+          [t.id for t in era.ProfileTabs(era).values()], ["professions", "rotation"])
+    check("vanilla allows RotationBoard",
+          era.ModuleInProfile(era, "RotationBoard"), True)
 
 
 def test_unknown_fallback():

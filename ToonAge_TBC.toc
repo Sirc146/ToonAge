@@ -77,6 +77,7 @@ Modules\Infrastructure\ErrorLog.lua
 Modules\Infrastructure\Settings.lua
 # Shared spell/item button above the action bars. Overload is retail-only.
 Modules\Infrastructure\ContextAction.lua
+Modules\Infrastructure\RotationLists.lua
 
 # ── Modules: TBC (Character first — dependents follow) ─────────────────
 Modules\TBC\Character.lua

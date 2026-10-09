@@ -118,6 +118,7 @@ Modules\Infrastructure\DevHelpers.lua
 Modules\Infrastructure\ErrorLog.lua
 Modules\Infrastructure\CoordHarvester.lua
 Modules\Infrastructure\ContextAction.lua
+Modules\Infrastructure\RotationLists.lua
 
 # ── Modules: Combat (helpers before consumers) ────────────────────────
 Modules\Combat\TalentsHelpers.lua

@@ -812,6 +812,36 @@ local function SuiteApi(S)
         end
     end
 
+    -- Every spell id in this version's rotation list. Other versions' files
+    -- are not loaded, so they are not checked. Misses are listed here and on
+    -- /ta health.
+    do
+        local RL = TA.RotationLists
+        if not RL or type(RL.Misses) ~= "function" then
+            S(INFO, "rotation spells: checker missing")
+        elseif not (TA.Data and type(TA.Data.RotationLists) == "table") then
+            S(INFO, "rotation spells: no list for this version")
+        elseif not (C_Spell and type(C_Spell.GetSpellInfo) == "function") then
+            S(INFO, "rotation spells: GetSpellInfo absent, not checked")
+        else
+            local misses, n = RL.Misses(C_Spell.GetSpellInfo)
+            local shown = 0
+            for _, row in ipairs(misses or {}) do
+                shown = shown + 1
+                if shown <= 12 then
+                    S(WARN, format("rotation spell %d (%s): GetSpellInfo missed",
+                        row.id, row.name or "?"))
+                end
+            end
+            if shown > 12 then
+                S(WARN, format("rotation spells: %d more misses", shown - 12))
+            end
+            if shown == 0 then
+                S(PASS, format("rotation spells: %d ids resolved", n or 0))
+            end
+        end
+    end
+
     -- Event-registration guard (TA:RegisterEvent arrived after the 2026-09-21
     -- builds; older installs skip this check instead of crashing the suite).
     local probe = "TOONAGE_SELFTEST_NOT_AN_EVENT"
