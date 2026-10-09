@@ -129,7 +129,29 @@ end
 --- any 5-man group, that happened every dungeon. Fall back to the spec's solo
 --- list so the bar keeps working, rather than showing nothing.
 --- @return table|nil priorities, boolean usedFallback
+-- Retail Rogue is the verified path (Assassination, Outlaw, Subtlety).
+-- Every other spec still has legacy rows in Data/Retail/Rotations.lua; those
+-- are not shown. Assisted Combat, when the client has it and the value is
+-- not secret, is the source of truth for the next cast on Retail and Forever.
+local VERIFIED_SPEC = { [259] = true, [260] = true, [261] = true }
+local TRAY_WIDTH = { 88, 144, 200 }
+
+function Rotation:HasVerified(specID)
+    return VERIFIED_SPEC[specID] == true
+end
+
+function Rotation:AssistedNext()
+    if not (TA.IsRetail or TA.IsForever) then return nil end
+    local fn = C_AssistedCombat and C_AssistedCombat.GetNextCastSpell
+    if type(fn) ~= "function" then return nil end
+    local ok, id = pcall(fn)
+    if not ok or type(id) ~= "number" or id <= 0 then return nil end
+    if U.IsSecret and U.IsSecret(id) then return nil end
+    return { entry = { spellID = id, name = U.GetSpellName(id) or "" } }
+end
+
 function Rotation:GetPredictionPriorities(specID, view)
+    if not self:HasVerified(specID) then return nil, false end
     local rotData = R:Get(specID, view)
     if rotData and rotData.priorities then
         return rotData.priorities, false
@@ -415,6 +437,18 @@ function Rotation:RenderContent(content, rotData, specID, level)
         table.insert(self.frames, line)
     end
 
+    if specID and not self:HasVerified(specID) then
+        local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+        f:SetText("No verified rotation yet")
+        f:SetTextColor(0.85, 0.86, 0.88, 1)
+        f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        f:SetWidth(w)
+        table.insert(self.frames, f)
+        content:SetHeight(80)
+        return
+    end
+
     -- Guard: empty data
     if not rotData or not rotData.priorities then
         local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -621,8 +655,9 @@ function Rotation:InitPredictBar()
     end
 
     local bar = CreateFrame("Button", "TARotationPredictBar", UIParent, "BackdropTemplate")
-    local totalW = (ICON_SIZE * PREDICTION_COUNT) + (ICON_GAP * (PREDICTION_COUNT - 1)) + 16
-    bar:SetSize(totalW, ICON_SIZE + 16)
+    -- Three tray widths, padding included: 88, 144, 200. The live bar is the
+    -- three-spell size.
+    bar:SetSize(TRAY_WIDTH[3], ICON_SIZE + 28)
     bar:SetFrameStrata("HIGH")
     bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 180)
     bar:SetMovable(true)
@@ -742,6 +777,33 @@ function Rotation:InitPredictBar()
     end
     self.predictIcons = icons
 
+    -- Combo pips under the next-spell icon. Up to 7 (Deeper Stratagem /
+    -- Supercharger). Filled pips stay gold. Charged pips use the charged
+    -- texture and do not pulse. A secret power read hides the row.
+    local pips = {}
+    local pipRow = CreateFrame("Frame", nil, bar)
+    pipRow:SetSize(7 * 10, 10)
+    pipRow:SetPoint("BOTTOM", icons[1], "BOTTOM", 0, -12)
+    for i = 1, 7 do
+        local tex = pipRow:CreateTexture(nil, "ARTWORK")
+        tex:SetSize(8, 8)
+        tex:SetPoint("LEFT", pipRow, "LEFT", (i - 1) * 10, 0)
+        tex:Hide()
+        pips[i] = tex
+    end
+    self.pipRow = pipRow
+    self.pips = pips
+    pipRow:Hide()
+
+    local function RegUnit(ev)
+        if bar.RegisterUnitEvent then pcall(bar.RegisterUnitEvent, bar, ev, "player") end
+    end
+    RegUnit("UNIT_POWER_FREQUENT")
+    RegUnit("UNIT_POWER_POINT_CHARGE")
+    bar:SetScript("OnEvent", function()
+        self:UpdatePips()
+    end)
+
     -- Healer triage line: who needs healing most, above the icons.
     local triage = bar:CreateFontString(nil, "OVERLAY")
     triage:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
@@ -790,15 +852,29 @@ function Rotation:UpdatePrediction()
     local level = self.currentLevel or U.GetPlayerLevel()
     local priorities = self:GetPredictionPriorities(specID, self:LiveView(CS))
 
-    if not priorities then
-        -- Hide all icons
+    local assisted = self:AssistedNext()
+    if not priorities and not assisted then
         for i = 1, PREDICTION_COUNT do
             self.predictIcons[i]:Hide()
         end
+        self:UpdatePips()
         return
     end
 
-    local next3 = CS:GetNextN(priorities, level, PREDICTION_COUNT)
+    local next3 = {}
+    if priorities then
+        next3 = CS:GetNextN(priorities, level, PREDICTION_COUNT) or {}
+    end
+    if assisted then
+        local shifted = { assisted }
+        for i = 1, PREDICTION_COUNT - 1 do
+            local row = next3[i]
+            if row and row.entry and row.entry.spellID ~= assisted.entry.spellID then
+                shifted[#shifted + 1] = row
+            end
+        end
+        next3 = shifted
+    end
 
     -- Healer triage target (from CombatState's group snapshot).
     if self.triageLabel then
@@ -845,6 +921,63 @@ function Rotation:UpdatePrediction()
         else
             iconFrame:Hide()
         end
+    end
+    self:UpdatePips()
+end
+
+function Rotation:UpdatePips()
+    local row = self.pipRow
+    if not row then return end
+    local powerType = (Enum and Enum.PowerType and Enum.PowerType.ComboPoints) or 4
+    local cur = UnitPower and UnitPower("player", powerType)
+    local max = UnitPowerMax and UnitPowerMax("player", powerType)
+    local chargedList = GetUnitChargedPowerPoints and GetUnitChargedPowerPoints("player")
+    local secret = (U.IsSecret and (U.IsSecret(cur) or U.IsSecret(max) or U.IsSecret(chargedList)))
+    cur, max = tonumber(cur), tonumber(max)
+    if secret or not cur or not max or max <= 0 then
+        row:Hide()
+        if self.predictIcons and self.predictIcons[1] then
+            self.predictIcons[1]:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.95)
+        end
+        return
+    end
+    local charged = {}
+    if type(chargedList) == "table" then
+        for _, idx in ipairs(chargedList) do
+            if U.IsSecret and U.IsSecret(idx) then
+                row:Hide()
+                return
+            end
+            charged[tonumber(idx) or -1] = true
+        end
+    end
+    local n = math.min(max, 7)
+    local base = U.TEX_PIP or "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8.tga"
+    local ring = U.TEX_PIP_RING or "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8_ring.tga"
+    local glow = U.TEX_PIP_CHARGED or "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8_charged.tga"
+    row:SetWidth(n * 10)
+    for i = 1, 7 do
+        local tex = self.pips[i]
+        if i <= n then
+            if charged[i] then
+                tex:SetTexture(glow)
+                tex:SetVertexColor(1, 1, 1, 1)
+            elseif i <= cur then
+                tex:SetTexture(base)
+                tex:SetVertexColor(0.910, 0.702, 0.353, 1)
+            else
+                tex:SetTexture(ring)
+                tex:SetVertexColor(0.70, 0.68, 0.62, 0.85)
+            end
+            tex:Show()
+        else
+            tex:Hide()
+        end
+    end
+    row:Show()
+    local finisher = (cur >= max) or (cur >= 5 and max >= 5)
+    if self.predictIcons and self.predictIcons[1] and finisher then
+        self.predictIcons[1]:SetBackdropBorderColor(0.910, 0.702, 0.353, 1)
     end
 end
 

@@ -381,9 +381,28 @@ function L:CapBar(parent, y, opts)
     fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
     fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
     fill:SetWidth(math.max(math.floor((w - 2) * pct), 1))
-    local c = Colour(status)
-    fill:SetColorTexture(c[1] * 0.55, c[2] * 0.55, c[3] * 0.55, 0.85)
+    local rgb = opts.fillRGB
+    if type(rgb) == "table" then
+        fill:SetColorTexture(rgb[1], rgb[2], rgb[3], 0.90)
+    else
+        local c = Colour(status)
+        fill:SetColorTexture(c[1] * 0.55, c[2] * 0.55, c[3] * 0.55, 0.85)
+    end
     fill:Show()
+
+    if not card._tickMark then
+        card._tickMark = track:CreateTexture(nil, "OVERLAY")
+        card._tickMark:SetColorTexture(0.910, 0.702, 0.353, 1)
+    end
+    if opts.tickAt then
+        local x = math.floor((w - 2) * opts.tickAt)
+        card._tickMark:ClearAllPoints()
+        card._tickMark:SetSize(2, BAR_H - 2)
+        card._tickMark:SetPoint("TOPLEFT", track, "TOPLEFT", math.max(x, 1), -1)
+        card._tickMark:Show()
+    else
+        card._tickMark:Hide()
+    end
 
     StyleText(card.note, { text = opts.note or "", size = 9, color = opts.capped and "good" or "dim" })
     card.note:ClearAllPoints()

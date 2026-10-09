@@ -46,38 +46,55 @@ local C = {}
 TA.Compat = C
 
 -- ─── Resolve underlying implementations once ───────────────────────────────
-local _ContainerNumSlots = (C_Container and C_Container.GetContainerNumSlots) or GetContainerNumSlots
-local _ContainerItemLink = (C_Container and C_Container.GetContainerItemLink) or GetContainerItemLink
-local _ContainerItemID   = (C_Container and C_Container.GetContainerItemID)   or GetContainerItemID
-local _ContainerItemInfo = (C_Container and C_Container.GetContainerItemInfo) or GetContainerItemInfo
+-- Resolve at call time. A load-time cache kept a nil global forever, and on
+-- TBC a present C_Container namespace does not mean every method exists.
+-- `or global()` also throws when the method returns 0 (falsy) and the global
+-- is missing. Only call a value that is actually a function.
+local function FirstFn(nsFn, globalFn)
+    if type(nsFn) == "function" then return nsFn end
+    if type(globalFn) == "function" then return globalFn end
+    return nil
+end
 
 -- ── Container / bags ───────────────────────────────────────────────────────
 
 --- @param bag number
 --- @return number slot count (0 if the API is unavailable)
 function C.GetContainerNumSlots(bag)
-    if not _ContainerNumSlots then return 0 end
-    return _ContainerNumSlots(bag) or 0
+    local fn = FirstFn(C_Container and C_Container.GetContainerNumSlots, GetContainerNumSlots)
+    if not fn then return 0 end
+    return fn(bag) or 0
 end
 
 --- @return string|nil item link in the given bag slot
 function C.GetContainerItemLink(bag, slot)
-    if not _ContainerItemLink then return nil end
-    return _ContainerItemLink(bag, slot)
+    local fn = FirstFn(C_Container and C_Container.GetContainerItemLink, GetContainerItemLink)
+    if not fn then return nil end
+    return fn(bag, slot)
 end
 
 --- @return number|nil itemID in the given bag slot
 function C.GetContainerItemID(bag, slot)
-    if not _ContainerItemID then return nil end
-    return _ContainerItemID(bag, slot)
+    local fn = FirstFn(C_Container and C_Container.GetContainerItemID, GetContainerItemID)
+    if not fn then return nil end
+    return fn(bag, slot)
 end
 
 --- Retail returns a table; old Classic returns a multi-value tuple. Callers
 --- that need cross-flavor behaviour should prefer GetContainerItemLink/ID above
 --- and treat this as raw passthrough where they already branch on shape.
 function C.GetContainerItemInfo(bag, slot)
-    if not _ContainerItemInfo then return nil end
-    return _ContainerItemInfo(bag, slot)
+    local fn = FirstFn(C_Container and C_Container.GetContainerItemInfo, GetContainerItemInfo)
+    if not fn then return nil end
+    return fn(bag, slot)
+end
+
+--- Pick an item up off a bag slot. Nil-safe: a missing global is not called.
+function C.PickupContainerItem(bag, slot)
+    local fn = FirstFn(C_Container and C_Container.PickupContainerItem, PickupContainerItem)
+    if not fn then return false end
+    fn(bag, slot)
+    return true
 end
 
 -- ── Spells ───────────────────────────────────────────────────────────────
@@ -117,12 +134,12 @@ function C.GetSpellInfo(spellID)
 end
 
 function C.GetSpellCooldown(spellID)
-    if C_Spell and C_Spell.GetSpellCooldown then
+    if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
         local info = C_Spell.GetSpellCooldown(spellID)
         if info then return info.startTime, info.duration, info.isEnabled end
         return nil
     end
-    if GetSpellCooldown then
+    if type(GetSpellCooldown) == "function" then
         return GetSpellCooldown(spellID)
     end
     return nil
@@ -139,10 +156,19 @@ end
 -- ── Items ──────────────────────────────────────────────────────────────────
 
 function C.GetItemInfo(item)
-    if C_Item and C_Item.GetItemInfo then
+    if C_Item and type(C_Item.GetItemInfo) == "function" then
         return C_Item.GetItemInfo(item)
     end
-    if GetItemInfo then return GetItemInfo(item) end
+    if type(GetItemInfo) == "function" then return GetItemInfo(item) end
+    return nil
+end
+
+function C.GetItemStats(itemLink)
+    if not itemLink then return nil end
+    if C_Item and type(C_Item.GetItemStats) == "function" then
+        return C_Item.GetItemStats(itemLink)
+    end
+    if type(GetItemStats) == "function" then return GetItemStats(itemLink) end
     return nil
 end
 
@@ -171,23 +197,61 @@ end
 -- "does this client have talent tabs?" without each one re-testing the globals.
 
 --- @return boolean whether the old tab-based talent API exists on this client
+-- Forever's talents are C_ClassTalents / C_Traits. The old tab globals must
+-- not be called there even if a stub exists.
 function C.HasTalentTabs()
-    return (GetNumTalentTabs ~= nil) and (GetTalentTabInfo ~= nil)
+    if TA and TA.IsForever then return false end
+    return type(GetNumTalentTabs) == "function" and type(GetTalentTabInfo) == "function"
 end
 
 function C.GetNumTalentTabs()
-    if GetNumTalentTabs then return GetNumTalentTabs() or 0 end
-    return 0
+    if not C.HasTalentTabs() then return 0 end
+    return GetNumTalentTabs() or 0
 end
 
 function C.GetTalentTabInfo(tabIndex)
-    if GetTalentTabInfo then return GetTalentTabInfo(tabIndex) end
-    return nil
+    if not C.HasTalentTabs() then return nil end
+    return GetTalentTabInfo(tabIndex)
 end
 
 function C.GetTalentInfo(tabIndex, talentIndex)
-    if GetTalentInfo then return GetTalentInfo(tabIndex, talentIndex) end
-    return nil
+    if TA and TA.IsForever then return nil end
+    if type(GetTalentInfo) ~= "function" then return nil end
+    return GetTalentInfo(tabIndex, talentIndex)
+end
+
+--- Spec from the talent tree with the most points. Used on clients with no
+--- spec API (Classic Era, TBC, and Mists when C_SpecializationInfo is absent).
+--- Returns nil when no tree has 10 or more points, or when two trees tie.
+--- Forever never reaches this: HasTalentTabs is false there.
+--- @return number|nil tabIndex, string|nil name
+function C.SpecFromTalentTabs()
+    if not C.HasTalentTabs() then return nil end
+    local okN, n = pcall(GetNumTalentTabs)
+    if not okN or type(n) ~= "number" or n <= 0 then return nil end
+    local bestName, bestPoints, bestIndex = nil, -1, nil
+    local tie = false
+    for i = 1, n do
+        local ok, a, b, c, d, e = pcall(GetTalentTabInfo, i)
+        if ok then
+            local name, points
+            if type(a) == "string" and type(c) == "number" then
+                name, points = a, c
+            elseif type(b) == "string" and type(e) == "number" then
+                name, points = b, e
+            elseif type(a) == "string" and type(b) == "number" then
+                name, points = a, b
+            end
+            points = tonumber(points) or 0
+            if points > bestPoints then
+                bestPoints, bestName, bestIndex, tie = points, name, i, false
+            elseif points > 0 and points == bestPoints then
+                tie = true
+            end
+        end
+    end
+    if tie or not bestName or bestPoints < 10 then return nil end
+    return bestIndex, bestName
 end
 
 return C

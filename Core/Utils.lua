@@ -143,6 +143,24 @@ function U.IsSecret(v)
     return ok and res == true
 end
 
+-- Addon art. Folder name matches the TOC (ToonAge.toc).
+U.TEX_RING        = "Interface\\AddOns\\ToonAge\\Media\\frame\\ring_32.tga"
+U.TEX_PIP         = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8.tga"
+U.TEX_PIP_RING    = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8_ring.tga"
+U.TEX_PIP_CHARGED = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8_charged.tga"
+
+--- True when a guide step's coordinates were converted and still need a spot-check.
+--- A guide flagged coordsEstimated marks every step that has a coord.
+function U.CoordsEstimated(step, guide)
+    if type(step) ~= "table" then return false end
+    if step.estimated then return true end
+    if type(guide) ~= "table" then
+        local QT = TA.GetModule and TA:GetModule("QuestTracker")
+        guide = QT and QT.guideID and TA.Guides and TA.Guides[QT.guideID]
+    end
+    return type(guide) == "table" and guide.coordsEstimated and step.coord and true or false
+end
+
 function U.SafeNum(val, fallback)
     if val == nil then return fallback or 0 end
     -- Ask before converting. This used to rely on tonumber(tostring(secret))
@@ -227,11 +245,7 @@ function U.SafeEquip(bag, slot, targetSlot, opts)
         if unbound == true then return false, "binds when equipped" end
         if unbound == nil then return false, "bind state unknown" end
     end
-    if C_Container and C_Container.PickupContainerItem then
-        C_Container.PickupContainerItem(bag, slot)
-    elseif PickupContainerItem then
-        PickupContainerItem(bag, slot)
-    else
+    if not (U.PickupContainerItem and U.PickupContainerItem(bag, slot)) then
         return false, "no pickup API"
     end
     EquipCursorItem(targetSlot)
@@ -321,16 +335,48 @@ function U.GetPlayerClass()
 end
 
 function U.GetPlayerSpec()
-    -- Specializations do not exist on every client this addon loads on. WoW
-    -- Forever reports itself as Mainline and carries Midnight's API set, but it
-    -- is Vanilla-era content with no spec system, so GetSpecialization is
-    -- simply absent there — and calling a nil global throws rather than
-    -- returning nil. Guard both calls: callers already handle "no spec".
-    if type(GetSpecialization) ~= "function" then return nil, nil, nil end
+    -- Era and TBC have no spec API. The tree with the most points is the spec.
+    -- Fewer than 10 points, or a tie, returns nil. Callers handle nil.
+    -- Do not probe GetSpecialization / C_SpecializationInfo on those clients.
+    if TA.IsClassicEra or TA.IsTBC then
+        if TA.Compat and TA.Compat.SpecFromTalentTabs then
+            return TA.Compat.SpecFromTalentTabs()
+        end
+        return nil, nil, nil
+    end
+
+    local function FromIndex(specIndex, infoFn)
+        if not specIndex or (U.IsSecret and U.IsSecret(specIndex)) then return nil end
+        if type(infoFn) ~= "function" then return specIndex, nil, nil end
+        local ok, id, name, _, icon = pcall(infoFn, specIndex)
+        if not ok or not id or (U.IsSecret and U.IsSecret(id)) then return nil end
+        return id, name, icon
+    end
+
+    if C_SpecializationInfo and type(C_SpecializationInfo.GetSpecialization) == "function" then
+        local ok, specIndex = pcall(C_SpecializationInfo.GetSpecialization)
+        if ok and specIndex then
+            local id, name, icon = FromIndex(specIndex, C_SpecializationInfo.GetSpecializationInfo)
+            if id then return id, name, icon end
+        end
+    end
+
+    -- A present global that returns nil means "no spec chosen", not "try tabs".
+    if type(GetSpecialization) ~= "function" then
+        if not TA.IsForever and TA.Compat and TA.Compat.SpecFromTalentTabs then
+            return TA.Compat.SpecFromTalentTabs()
+        end
+        return nil, nil, nil
+    end
     local ok, specIndex = pcall(GetSpecialization)
     if not ok or not specIndex then return nil, nil, nil end
-    if type(GetSpecializationInfo) ~= "function" then return nil, nil, nil end
-    local ok2, id, name, _, icon = pcall(GetSpecializationInfo, specIndex)
+    if type(GetSpecializationInfo) ~= "function"
+        and not (C_SpecializationInfo and type(C_SpecializationInfo.GetSpecializationInfo) == "function") then
+        return nil, nil, nil
+    end
+    local infoFn = (C_SpecializationInfo and type(C_SpecializationInfo.GetSpecializationInfo) == "function"
+        and C_SpecializationInfo.GetSpecializationInfo) or GetSpecializationInfo
+    local ok2, id, name, _, icon = pcall(infoFn, specIndex)
     if not ok2 then return nil, nil, nil end
     return id, name, icon
 end
@@ -343,15 +389,19 @@ function U.GetPlayerSpecID()
 end
 
 function U.GetPlayerRole()
-    -- Same guard as U.GetPlayerSpec: Forever has no spec system, and
-    -- /ta apiprobe on the 1.60.1 beta (2026-09-26) confirmed both globals are
-    -- absent there. Nothing in the Forever build calls this today; the guard
-    -- keeps the first module that does from throwing on every call.
-    if type(GetSpecialization) ~= "function" then return "NONE" end
-    local ok, specIndex = pcall(GetSpecialization)
+    if TA.IsClassicEra or TA.IsTBC then return "NONE" end
+    local infoFn = (C_SpecializationInfo and type(C_SpecializationInfo.GetSpecializationInfo) == "function"
+        and C_SpecializationInfo.GetSpecializationInfo) or nil
+    local indexFn = (C_SpecializationInfo and type(C_SpecializationInfo.GetSpecialization) == "function"
+        and C_SpecializationInfo.GetSpecialization) or nil
+    if not indexFn and type(GetSpecialization) == "function" then
+        indexFn = GetSpecialization
+        infoFn = infoFn or GetSpecializationInfo
+    end
+    if type(indexFn) ~= "function" or type(infoFn) ~= "function" then return "NONE" end
+    local ok, specIndex = pcall(indexFn)
     if not ok or not specIndex then return "NONE" end
-    if type(GetSpecializationInfo) ~= "function" then return "NONE" end
-    local ok2, _, _, _, _, role = pcall(GetSpecializationInfo, specIndex)
+    local ok2, _, _, _, _, role = pcall(infoFn, specIndex)
     if not ok2 then return "NONE" end
     return role or "NONE"
 end
@@ -399,13 +449,29 @@ end
 
 -- ── Spell utilities ───────────────────────────────────────────────────
 function U.GetSpellName(spellID)
-    local name = C_Spell.GetSpellName(spellID)
-    return name
+    if not spellID then return nil end
+    if C_Spell and type(C_Spell.GetSpellName) == "function" then
+        local ok, name = pcall(C_Spell.GetSpellName, spellID)
+        if ok and name then return name end
+    end
+    if type(GetSpellInfo) == "function" then
+        local ok, name = pcall(GetSpellInfo, spellID)
+        if ok then return name end
+    end
+    return nil
 end
 
 function U.GetSpellTexture(spellID)
-    local info = C_Spell.GetSpellInfo(spellID)
-    return info and info.iconID
+    if not spellID then return nil end
+    if C_Spell and type(C_Spell.GetSpellInfo) == "function" then
+        local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
+        if ok and type(info) == "table" then return info.iconID end
+    end
+    if type(GetSpellTexture) == "function" then
+        local ok, tex = pcall(GetSpellTexture, spellID)
+        if ok then return tex end
+    end
+    return nil
 end
 
 function U.IsSpellKnown(spellID)
@@ -422,13 +488,14 @@ end
 --- C_Spell.GetSpellCooldown or the bare global directly — see .rules.md.
 --- @return number start, number duration — both 0 when off cooldown/unknown
 function U.GetSpellCooldown(spellID)
-    if C_Spell and C_Spell.GetSpellCooldown then
-        local info = C_Spell.GetSpellCooldown(spellID)
-        if not info then return 0, 0 end
+    if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
+        local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+        if not ok or not info then return 0, 0 end
         return info.startTime or 0, info.duration or 0
     end
-    local start, duration = GetSpellCooldown(spellID)
-    if not start then return 0, 0 end
+    if type(GetSpellCooldown) ~= "function" then return 0, 0 end
+    local ok, start, duration = pcall(GetSpellCooldown, spellID)
+    if not ok or not start then return 0, 0 end
     return start, duration
 end
 
@@ -438,12 +505,14 @@ end
 --- @return string|nil name, number|nil iconID, number|nil castTime
 function U.GetSpellInfo(spellID)
     if not spellID then return nil end
-    if C_Spell and C_Spell.GetSpellInfo then
-        local info = C_Spell.GetSpellInfo(spellID)
-        if not info then return nil end
+    if C_Spell and type(C_Spell.GetSpellInfo) == "function" then
+        local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
+        if not ok or not info then return nil end
         return info.name, info.iconID, info.castTime
     end
-    local name, _, icon, castTime = GetSpellInfo(spellID)
+    if type(GetSpellInfo) ~= "function" then return nil end
+    local ok, name, _, icon, castTime = pcall(GetSpellInfo, spellID)
+    if not ok then return nil end
     return name, icon, castTime
 end
 
@@ -508,9 +577,13 @@ end
 --- wrapper means a future removal is a one-line fix, not a 19-site hunt.
 function U.GetItemInfo(item)
     if not item then return nil end
-    if C_Item and C_Item.GetItemInfo then
+    if TA.Compat and TA.Compat.GetItemInfo then
+        return TA.Compat.GetItemInfo(item)
+    end
+    if C_Item and type(C_Item.GetItemInfo) == "function" then
         return C_Item.GetItemInfo(item)
     end
+    if type(GetItemInfo) ~= "function" then return nil end
     return GetItemInfo(item)
 end
 
@@ -689,9 +762,13 @@ end
 
 -- ── Talent utilities ──────────────────────────────────────────────────
 function U.GetTalentString()
-    local configID = C_ClassTalents.GetActiveConfigID()
-    if not configID then return nil end
-    return C_Traits.GenerateImportString(configID)
+    if not (C_ClassTalents and type(C_ClassTalents.GetActiveConfigID) == "function") then return nil end
+    if not (C_Traits and type(C_Traits.GenerateImportString) == "function") then return nil end
+    local ok, configID = pcall(C_ClassTalents.GetActiveConfigID)
+    if not ok or not configID then return nil end
+    local ok2, str = pcall(C_Traits.GenerateImportString, configID)
+    if not ok2 then return nil end
+    return str
 end
 
 -- True plus the spent rank when nodeID has points in the active config.
@@ -705,10 +782,12 @@ end
 -- The loop over config.treeIDs went with it: a node resolves from the config,
 -- not from a tree, so iterating trees only repeated the same lookup.
 function U.IsNodeSelected(nodeID)
-    local configID = C_ClassTalents.GetActiveConfigID()
-    if not configID then return false end
-    local nodeInfo = C_Traits.GetNodeInfo(configID, nodeID)
-    if nodeInfo and nodeInfo.activeRank and nodeInfo.activeRank > 0 then
+    if not (C_ClassTalents and type(C_ClassTalents.GetActiveConfigID) == "function") then return false end
+    if not (C_Traits and type(C_Traits.GetNodeInfo) == "function") then return false end
+    local ok, configID = pcall(C_ClassTalents.GetActiveConfigID)
+    if not ok or not configID then return false end
+    local ok2, nodeInfo = pcall(C_Traits.GetNodeInfo, configID, nodeID)
+    if ok2 and nodeInfo and nodeInfo.activeRank and nodeInfo.activeRank > 0 then
         return true, nodeInfo.activeRank
     end
     return false
@@ -717,7 +796,10 @@ end
 -- ── Profession utilities ──────────────────────────────────────────────
 function U.GetProfessions()
     local profs = {}
-    local p1, p2, p3, p4, p5, p6 = GetProfessions()
+    if type(GetProfessions) ~= "function" then return profs end
+    local ok, p1, p2, p3, p4, p5, p6 = pcall(GetProfessions)
+    if not ok then return profs end
+    if type(GetProfessionInfo) ~= "function" then return profs end
     for _, profIndex in ipairs({p1, p2, p3, p4, p5, p6}) do
         if profIndex then
             local name, icon, rank, maxRank, _, _, skillLine = GetProfessionInfo(profIndex)
@@ -1045,4 +1127,13 @@ function U.GetContainerItemInfo(bag, slot)
         return TA.Compat.GetContainerItemInfo(bag, slot)
     end
     return nil
+end
+
+--- Pick a bag item up onto the cursor. Returns false when neither API exists,
+--- so a nil global is never called.
+function U.PickupContainerItem(bag, slot)
+    if TA.Compat and TA.Compat.PickupContainerItem then
+        return TA.Compat.PickupContainerItem(bag, slot)
+    end
+    return false
 end

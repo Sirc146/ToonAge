@@ -79,8 +79,12 @@ TA.Data.ForeverCoach = {
         Fire = {
             source = IV .. "fire-mage-ranged-dps-pve-guide",
             buff   = { "Arcane Intellect", "Frost Armor|Mage Armor" },
-            opener = { "Pyroblast", "Fireball" },   -- Fireball before 20
+            -- Low levels: Fireball is the filler. Fire Blast on cooldown.
+            -- Frost Nova is an emergency, not part of the rotation.
+            -- Heavy Arcane Missiles use is what the comparison flags.
+            opener = { "Fireball" },
             core   = { "Fireball", "Fire Blast" },
+            flag   = { "Arcane Missiles" },
         },
         Frost = {
             source = IV .. "frost-mage-ranged-dps-pve-guide",

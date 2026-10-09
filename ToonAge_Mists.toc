@@ -48,6 +48,9 @@ Data\Mists\PetFoods.lua
 
 # ── Guide Data (Mists) ─────────────────────────────────────────────────
 Data\Mists\Guides\TAG_Exiles_Reach.lua
+Data\Mists\Guides\TAG_Wandering_Isle.lua
+Data\Mists\Guides\TAG_Jade_Forest_Alliance.lua
+Data\Mists\Guides\TAG_Jade_Forest_Horde.lua
 
 # ── Modules: Infrastructure (SHARED ErrorLog first) ────────────────────
 # ── Modules: Automation (shared, flavour-neutral chores) ──────────

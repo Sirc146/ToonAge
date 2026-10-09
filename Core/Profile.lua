@@ -161,7 +161,7 @@ local PROFILES = {
             { id = "gear",       label = "Gear",       module = "Gear"         },
             -- Hidden for classes with no pet (N5): Hunter/Warlock, Frost Mage,
             -- Unholy DK, or any pet out. See TabConditions in Core/UI.lua.
-            { id = "pets",       label = "Pet Care",   module = "PetCare",
+            { id = "pets",       label = "Pets",       module = "PetCare",
               condition = "hasPetClass" },
         },
         data      = "Mists",

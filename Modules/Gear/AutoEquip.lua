@@ -298,11 +298,7 @@ local function EvaluateItem(itemLink)
 
     -- Equip: C_Container first (the container globals are gone on the modern
     -- Classic clients), global as the fallback for clients that still have it.
-    if C_Container and C_Container.PickupContainerItem then
-        C_Container.PickupContainerItem(bag, slot)
-    elseif PickupContainerItem then
-        PickupContainerItem(bag, slot)
-    else
+    if not (U.PickupContainerItem and U.PickupContainerItem(bag, slot)) then
         return
     end
     EquipCursorItem(targetSlot)

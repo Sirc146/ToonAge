@@ -133,7 +133,7 @@ local API_CHECKS = {
     { "CreateFrame",                            "all" },
     { "BackdropTemplateMixin",                  "all",          "every panel uses BackdropTemplate" },
     { "UISpecialFrames",                        "all" },
-    { "GetProfessions",                         "all",          "Init.lua OnLogin calls it unguarded, before InitModules/InitUI/slash" },
+    { "GetProfessions",                         "retail mists tbc forever", "guarded; Era returns an empty list" },
     { "GetProfessionInfo",                      "all" },
     -- Informational: AutoEquip tries C_Container.PickupContainerItem first and the
     -- global only as a guarded fallback. The real requirement ("some pickup API")
@@ -556,6 +556,32 @@ local function SuiteApi(S)
 
     -- Mists: Character stats and gear scoring are keyed on the spec, read through
     -- U.GetPlayerSpec. It returns nil (no error) when the spec API is absent.
+    -- Combo-point reads. Record whether each comes back as a secret so a
+    -- Retail or Forever self-test can confirm the pip row should hide.
+    do
+        local powerType = (Enum and Enum.PowerType and Enum.PowerType.ComboPoints) or 4
+        local secret = _G.issecretvalue
+        local function flag(label, value)
+            if value == nil then
+                S(INFO, label .. " absent")
+            elseif secret and secret(value) then
+                S(INFO, label .. " returned a secret value")
+            else
+                S(INFO, label .. " readable (" .. tostring(value) .. ")")
+            end
+        end
+        flag("UnitPower(ComboPoints)", UnitPower and UnitPower("player", powerType))
+        flag("UnitPowerMax(ComboPoints)", UnitPowerMax and UnitPowerMax("player", powerType))
+        local charged = GetUnitChargedPowerPoints and GetUnitChargedPowerPoints("player")
+        if charged == nil then
+            S(INFO, "GetUnitChargedPowerPoints absent")
+        elseif secret and secret(charged) then
+            S(INFO, "GetUnitChargedPowerPoints returned a secret value")
+        else
+            S(INFO, "GetUnitChargedPowerPoints readable")
+        end
+    end
+
     if flavor == "mists" then
         local U = TA.Utils
         local id = U and U.GetPlayerSpec and U.GetPlayerSpec()
@@ -825,10 +851,22 @@ local function SuiteSettings(S)
         end
         if UI and UI:IsShown() then
             local dTop, mBottom = d:GetTop(), UI:GetBottom()
-            if dTop and mBottom and dTop > mBottom + 1 then
-                S(WARN, format("settings drawer overlaps the main window by %.0f px (clamped to screen)", dTop - mBottom))
+            local dl, dr = d:GetLeft(), d:GetRight()
+            local dt, db = d:GetTop(), d:GetBottom()
+            local ml, mr = UI:GetLeft(), UI:GetRight()
+            local mt, mb = UI:GetTop(), UI:GetBottom()
+            if dl and ml and dr and mr and dt and db and mt and mb then
+                local overlapW = math.min(dr, mr) - math.max(dl, ml)
+                local overlapH = math.min(dt, mt) - math.max(db, mb)
+                if overlapW > 1 and overlapH > 1 then
+                    S(WARN, format("settings drawer overlaps the main window by %.0f x %.0f px", overlapW, overlapH))
+                else
+                    S(PASS, "settings drawer sits outside the main window")
+                end
+            elseif dTop and mBottom and dTop > mBottom + 1 then
+                S(WARN, format("settings drawer overlaps the main window by %.0f px", dTop - mBottom))
             else
-                S(PASS, "settings drawer sits below the main window")
+                S(PASS, "settings drawer sits outside the main window")
             end
         end
     elseif Set then
