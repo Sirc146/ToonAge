@@ -62,6 +62,8 @@ local function ParseStepLine(line)
             elseif key == "objectiveIndex" then step.objectiveIndex = tonumber(val)
             elseif key == "range" then step.range = tonumber(val)
             elseif key == "questItem" then step.questItem = tonumber(val)
+            elseif key == "useItem" then step.useItem = tonumber(val)
+            elseif key == "useItemUnverified" then step.useItemUnverified = (val == "true" or val == "1")
             elseif key == "class" then step.class = val
             elseif key == "race" then step.race = val
             elseif key == "faction" then step.faction = val

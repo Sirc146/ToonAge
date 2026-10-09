@@ -131,12 +131,12 @@ local function PlainName(name)
     return name
 end
 
---- The guide's quest item, when the player is near the objective or has it targeted.
+--- The guide's quest item, when the player is hovering the objective, near it, or has it targeted.
 --- `special` is whatever GetQuestLogSpecialItemInfo returned. `fallbackID` is the
 --- item id stored on the guide step, used only when the API returned nothing.
 function CA.QuestCandidate(facts)
     facts = facts or {}
-    if not facts.near and not facts.targeting then return nil end
+    if not facts.near and not facts.targeting and not facts.hover then return nil end
     local special = facts.special
     local itemID, name, texture
     local fromAPI = type(special) == "table"
@@ -205,7 +205,11 @@ end
 function CA:StatusLine()
     local source = self._source
     if type(source) ~= "string" or source == "" then source = "none" end
-    return "Context action: " .. source
+    local line = "Context action: " .. source
+    if self._unverified and source ~= "none" then
+        line = line .. " (unverified)"
+    end
+    return line
 end
 
 function CA:EnsureButton()
@@ -361,6 +365,7 @@ function CA:Paint(plan)
     local btn = self:EnsureButton()
     self._plan = plan
     self._source = plan and plan.source or nil
+    self._unverified = plan and plan.unverified and true or false
     if not btn then return end
     local sig = ""
     if plan and (plan.kind == "spell" or plan.kind == "item") and plan.action ~= nil then
@@ -369,6 +374,7 @@ function CA:Paint(plan)
         plan = nil
         self._plan = nil
         self._source = nil
+        self._unverified = false
     end
     if not plan then
         if self._shown and btn.Hide then btn:Hide() end

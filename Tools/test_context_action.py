@@ -139,6 +139,11 @@ def test_files_and_settings():
           "ContextAction:StatusLine" in read("Core/Init.lua"), True)
     check("the tracker no longer keeps a second item button",
           "TAQuestItemButton" in read("Modules/Navigation/QuestTracker.lua"), False)
+    check("mouseover is a trigger", "UPDATE_MOUSEOVER_UNIT" in quest, True)
+    check("soft interact is a trigger", "PLAYER_SOFT_INTERACT_CHANGED" in quest, True)
+    check("tooltip data is used when it exists", "C_TooltipInfo.GetUnit" in quest, True)
+    check("the quest driver leaves the cursor alone", "SetCursor" in quest, False)
+    check("the button leaves the cursor alone", "SetCursor" in button, False)
 
 
 def test_quest_item_rules():
@@ -368,11 +373,189 @@ def test_refresh_prefers_the_quest_item():
     check("leaving the objective clears the quest item", lua.eval("GONE"), "Context action: none")
 
 
+def test_hover_tooltip_and_use_item():
+    lua = runtime()
+    lua.execute(r"""
+        local QC = ToonAge.QuestContext
+        local CA = ToonAge.ContextAction
+        NUM = QC.UseItem({ useItem = 321 })
+        BOX = QC.UseItem({ useItem = { id = 654, unverified = true } })
+        FLAG = QC.UseItem({ useItem = 321, unverified = true })
+        MARK = QC.UseItem({ useItem = 321, useItemUnverified = true })
+        Enum = { TooltipDataLineType = { QuestTitle = 17, QuestObjective = 18, QuestPlayer = 19 } }
+        OWNED = {
+            [100] = { title = "Canteen Run", objectives = { "Wolf slain" } },
+            [200] = { title = "Ore Duty", objectives = {} },
+        }
+        SOFT = QC.MatchQuest({
+            { text = "Ore Duty", kind = "title", id = 200 },
+        }, OWNED)
+        BY_TEXT = QC.MatchQuest({
+            { text = "Canteen Run" },
+        }, OWNED, 100)
+        BY_OBJECTIVE = QC.MatchQuest({
+            { text = "Wolf slain: 0/1", kind = "objective" },
+        }, OWNED)
+        MISS = QC.MatchQuest({ { text = "A plain wolf" } }, OWNED)
+        OTHER_QUEST = QC.MatchQuest({
+            { text = "Someone Else", kind = "title", id = 404 },
+        }, OWNED)
+        UnitExists = function(token) return token == "softinteract" or token == "mouseover" end
+        C_TooltipInfo = {
+            GetUnit = function(token)
+                if token == "softinteract" then
+                    return { lines = { { leftText = "Ore Duty", type = 17, id = 200 } } }
+                end
+                return { lines = { { leftText = "Canteen Run", type = 17, id = 100 } } }
+            end,
+        }
+        HOVER = QC.HoveredQuest(OWNED)
+        C_TooltipInfo.GetUnit = function(token)
+            if token == "softinteract" then return { lines = {} } end
+            return { lines = { { leftText = "Canteen Run", type = 17, id = 100 } } }
+        end
+        MOUSE = QC.HoveredQuest(OWNED)
+    """)
+    check("a numeric useItem is an item id", lua.eval("NUM.id"), 321)
+    check("a numeric useItem is verified", lua.eval("NUM.unverified"), False)
+    check("a table useItem can be unverified", lua.eval("BOX.unverified"), True)
+    check("a table useItem keeps its id", lua.eval("BOX.id"), 654)
+    check("an unverified step marks useItem", lua.eval("FLAG.unverified"), True)
+    check("useItemUnverified marks the id", lua.eval("MARK.unverified"), True)
+    check("a quest-title line names that quest", lua.eval("SOFT"), 200)
+    check("title text matches a quest you have", lua.eval("BY_TEXT"), 100)
+    check("objective text matches a quest you have", lua.eval("BY_OBJECTIVE"), 100)
+    check("an unrelated tooltip is not a quest", lua.eval("MISS"), None)
+    check("a quest you do not have is ignored", lua.eval("OTHER_QUEST"), None)
+    check("the soft target wins over the mouseover", lua.eval("HOVER"), 200)
+    check("the mouseover is used when the soft target is empty", lua.eval("MOUSE"), 100)
+
+    lua.execute(r"""
+        C_TooltipInfo = nil
+        UnitExists = function(token) return token == "mouseover" end
+        CreateFrame = function(_, name)
+            local tip = {}
+            function tip:SetOwner() end
+            function tip:ClearLines() end
+            function tip:SetUnit() end
+            function tip:Hide() end
+            function tip:NumLines() return 1 end
+            _G[name .. "TextLeft1"] = { GetText = function() return "Canteen Run" end }
+            return tip
+        end
+        UIParent = {}
+        SCANNED = ToonAge.QuestContext.HoveredQuest(OWNED)
+    """)
+    check("without tooltip data the hidden tooltip is scanned", lua.eval("SCANNED"), 100)
+
+    lua = runtime()
+    lua.execute(FRAME)
+    lua.execute(r"""
+        local CA = ToonAge.ContextAction
+        local QC = ToonAge.QuestContext
+        CA:Init()
+        ToonAge.modules.QuestTracker = { guideID = "demo", stepIdx = 1 }
+        ToonAge.Guides = { demo = { steps = { {
+            questID = 100, useItem = 999, useItemUnverified = true, text = "Use the canteen",
+        } } } }
+        Enum = { TooltipDataLineType = { QuestTitle = 17, QuestObjective = 18, QuestPlayer = 19 } }
+        UnitExists = function(token) return token == "softinteract" end
+        C_QuestLog = {
+            GetNumQuestLogEntries = function() return 1 end,
+            GetInfo = function() return { questID = 100, title = "Canteen Run", isHeader = false } end,
+            GetLogIndexForQuestID = function() return 4 end,
+        }
+        C_TooltipInfo = {
+            GetUnit = function()
+                return { lines = { { leftText = "Canteen Run", type = 17, id = 100 } } }
+            end,
+        }
+        function GetQuestLogSpecialItemInfo() return "Dented Canteen", "icon" end
+        HIDES = CA._button._hides
+        SHOWS = CA._button._shows
+        SETS = CA._button._sets
+        InCombatLockdown = function() return true end
+        QC:OnEvent("UPDATE_MOUSEOVER_UNIT")
+        QC:OnEvent("PLAYER_SOFT_INTERACT_CHANGED")
+        COMBAT_SETS = CA._button._sets
+        COMBAT_SHOWS = CA._button._shows
+        COMBAT_HIDES = CA._button._hides
+        QUEUED = CA._dirty
+        InCombatLockdown = function() return false end
+        CA:OnEvent("PLAYER_REGEN_ENABLED")
+        GAME_ACTION = CA._button._attrs.item
+        GAME_LINE = CA:StatusLine()
+        GOLD = CA._button._rgb[1]
+        function GetQuestLogSpecialItemInfo() return nil end
+        QC:Refresh()
+        GUIDE_ACTION = CA._button._attrs.item
+        GUIDE_LINE = CA:StatusLine()
+        C_TooltipInfo.GetUnit = function() return { lines = { { leftText = "Just a deer", type = 0 } } } end
+        QC:Refresh()
+        CLEARED = CA:StatusLine()
+    """)
+    check("combat queues a hovered quest item", lua.eval("QUEUED"), True)
+    check("combat does not arm the hovered item", lua.eval("COMBAT_SETS"), lua.eval("SETS"))
+    check("combat does not show the hovered item", lua.eval("COMBAT_SHOWS"), lua.eval("SHOWS"))
+    check("combat does not hide for the hovered item", lua.eval("COMBAT_HIDES"), lua.eval("HIDES"))
+    check("the quest-log item wins over an unverified useItem", lua.eval("GAME_ACTION"), "Dented Canteen")
+    check("the game item is what diagnostics report", lua.eval("GAME_LINE"), "Context action: quest item")
+    check("the hovered item starts the gold glow", lua.eval("GOLD"), 0.910)
+    check("useItem is the fallback", lua.eval("GUIDE_ACTION"), "item:999")
+    check("an unverified useItem is marked", lua.eval("GUIDE_LINE"), "Context action: quest item (unverified)")
+    check("leaving the objective clears the button", lua.eval("CLEARED"), "Context action: none")
+
+    lua.execute(r"""
+        ToonAge.modules.QuestTracker.stepIdx = 1
+        ToonAge.Guides.demo.steps = {
+            { questID = 100, useItem = 999, text = "Use the canteen" },
+            { questID = 200, useItem = 777, useItemUnverified = true, text = "Mine the node" },
+        }
+        C_QuestLog.GetNumQuestLogEntries = function() return 2 end
+        C_QuestLog.GetInfo = function(i)
+            if i == 2 then return { questID = 200, title = "Ore Duty", isHeader = false } end
+            return { questID = 100, title = "Canteen Run", isHeader = false }
+        end
+        C_QuestLog.GetLogIndexForQuestID = function(id)
+            if id == 200 then return 8 end
+            return 4
+        end
+        function GetQuestLogSpecialItemInfo() return nil end
+        C_TooltipInfo.GetUnit = function()
+            return { lines = { { leftText = "Ore Duty", type = 17, id = 200 } } }
+        end
+        local QC = ToonAge.QuestContext
+        local CA = ToonAge.ContextAction
+        QC:Refresh()
+        OTHER_ACTION = CA._button._attrs.item
+        OTHER_LINE = CA:StatusLine()
+        function GetQuestLogSpecialItemInfo(idx)
+            if idx == 8 then return "Mining Pick", "pick-icon" end
+            return nil
+        end
+        QC:Refresh()
+        OTHER_GAME = CA._button._attrs.item
+        OTHER_GAME_LINE = CA:StatusLine()
+        C_TooltipInfo.GetUnit = function()
+            return { lines = { { leftText = "A loose rock", type = 0 } } }
+        end
+        function GetQuestLogSpecialItemInfo() return nil end
+        QC:Refresh()
+        OTHER_CLEAR = CA:StatusLine()
+    """)
+    check("a hovered quest uses its own useItem", lua.eval("OTHER_ACTION"), "item:777")
+    check("that useItem stays unverified", lua.eval("OTHER_LINE"), "Context action: quest item (unverified)")
+    check("the hovered quest's own item wins", lua.eval("OTHER_GAME"), "Mining Pick")
+    check("the game item drops the unverified mark", lua.eval("OTHER_GAME_LINE"), "Context action: quest item")
+    check("a quest with no item does not borrow another step", lua.eval("OTHER_CLEAR"), "Context action: none")
+
+
 def main():
     test_files_and_settings()
     test_quest_item_rules()
     test_priority_combat_and_binding()
     test_refresh_prefers_the_quest_item()
+    test_hover_tooltip_and_use_item()
     passed = sum(1 for ok in _results if ok)
     total = len(_results)
     print()

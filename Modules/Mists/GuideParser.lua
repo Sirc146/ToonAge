@@ -33,7 +33,9 @@
 --     race           = string?,      -- race restriction (e.g. "BloodElf")
 --     faction        = "Alliance"|"Horde"|nil,  -- step-level faction gate
 --     minLevel       = number?,      -- minimum level for this step
---     questItem      = number?,      -- item ID to show in quest-item button
+--     questItem      = number?,      -- older item id for the context button
+--     useItem        = number?,      -- Chronicler item id; may be unverified.
+--                                    -- The quest log's own item wins over it.
 --     reward         = number?,      -- preferred reward itemID for auto-quest
 --     noArrow        = boolean?,     -- suppress arrow for this step
 --     optional       = boolean?,     -- skippable achievement/side step
@@ -51,7 +53,7 @@
 -- accept    — Synonym for pickup (v1 compat).
 -- travel    — Travel step with optional coord.
 -- npc       — Interact with an NPC. Manual advance.
--- item      — Use/collect an item. questItem field drives the item button.
+-- item      — Use/collect an item. useItem (or questItem) drives the context button.
 -- action    — Perform a specific action (bind hearth, set spec, etc.).
 -- text      — Informational only. Always considered complete (auto-skip).
 -- flyto     — Take a flight path.
@@ -171,6 +173,14 @@ local function ValidateStep(id, n, step)
     if step.range ~= nil and (type(step.range) ~= "number" or step.range <= 0) then
         LogError(id, n, "'range' must be a positive number (yards)")
         ok = false
+    end
+    if step.useItem ~= nil then
+        local itemID = step.useItem
+        if type(itemID) == "table" then itemID = itemID.id or itemID.itemID end
+        if type(itemID) ~= "number" or itemID <= 0 then
+            LogError(id, n, "'useItem' must be an item id")
+            ok = false
+        end
     end
     return ok
 end

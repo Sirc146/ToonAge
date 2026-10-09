@@ -2,9 +2,14 @@
 -- Offers the current guide step's quest item to the shared context button.
 --
 -- GetQuestLogSpecialItemInfo is checked first. When that global is missing,
--- C_QuestLog.GetQuestLogSpecialItemInfo is the same lookup. When neither
--- returns an item, the item id on the guide step is the fallback.
--- The button shows only while the player is near that objective or targeting it.
+-- C_QuestLog.GetQuestLogSpecialItemInfo is the same lookup. The guide step's
+-- useItem is the fallback, and it may be unverified. The game's own quest
+-- item always wins over useItem.
+--
+-- UPDATE_MOUSEOVER_UNIT and PLAYER_SOFT_INTERACT_CHANGED are the trigger.
+-- C_TooltipInfo.GetUnit is used when it exists; otherwise a hidden tooltip
+-- is scanned. The button glows when that unit or object is an objective of
+-- a quest in the log. The cursor is left to the game.
 -- This file stays off Forever: it names quest-log APIs that client does not ship.
 
 local TA = ToonAge
@@ -105,17 +110,279 @@ function QC.ItemCooldown(itemID)
     return CA.SafeCooldown(start, duration)
 end
 
-function QC.CurrentStep()
+--- Guide fallback. A number, or { id = n, unverified = true }. The step's
+--- own unverified flag marks the id unverified too.
+function QC.UseItem(step)
+    if type(step) ~= "table" then return nil end
+    local raw = step.useItem
+    local id, unverified
+    if type(raw) == "number" then
+        id = raw
+    elseif type(raw) == "string" then
+        id = tonumber(raw)
+    elseif type(raw) == "table" then
+        id = tonumber(raw.id or raw.itemID)
+        unverified = raw.unverified and true or false
+    end
+    if type(id) ~= "number" or id <= 0 then return nil end
+    if step.useItemUnverified or step.unverified then unverified = true end
+    return { id = id, unverified = unverified and true or false }
+end
+
+function QC.Plain(text)
+    local CA = TA.ContextAction
+    if CA and CA.Secret(text) then return nil end
+    if type(text) ~= "string" then return nil end
+    text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    text = text:gsub("^%s+", ""):gsub("%s+$", "")
+    if text == "" then return nil end
+    return text:lower()
+end
+
+function QC.LineKind(typeValue)
+    local E = Enum and Enum.TooltipDataLineType
+    if not E or typeValue == nil then return nil end
+    if typeValue == E.QuestTitle then return "title" end
+    if typeValue == E.QuestObjective then return "objective" end
+    if typeValue == E.QuestPlayer then return "player" end
+    return nil
+end
+
+function QC.LinesFromData(data)
+    if type(data) ~= "table" then return nil end
+    local raw = data.lines
+    if type(raw) ~= "table" then return {} end
+    local CA = TA.ContextAction
+    local lines = {}
+    for _, ln in ipairs(raw) do
+        if type(ln) == "string" then
+            lines[#lines + 1] = { text = ln }
+        elseif type(ln) == "table" then
+            local text = ln.leftText or ln.text
+            if CA and CA.Secret(text) then text = nil end
+            if type(text) ~= "string" then text = nil end
+            local id = ln.id
+            if id == nil then id = ln.tooltipID end
+            if CA and CA.Secret(id) then id = nil end
+            if type(id) ~= "number" then id = tonumber(id) end
+            lines[#lines + 1] = { text = text, id = id, kind = QC.LineKind(ln.type) }
+        end
+    end
+    return lines
+end
+
+function QC.TextHit(lineText, title, objectives)
+    local text = QC.Plain(lineText)
+    if not text or #text < 3 then return false end
+    local titlePlain = QC.Plain(title)
+    if titlePlain and #titlePlain >= 3 then
+        if text == titlePlain or text:find(titlePlain, 1, true) or titlePlain:find(text, 1, true) then
+            return true
+        end
+    end
+    if type(objectives) == "table" then
+        for _, obj in ipairs(objectives) do
+            local plain = QC.Plain(obj)
+            if plain and #plain >= 3 then
+                if text == plain or text:find(plain, 1, true) or plain:find(text, 1, true) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+--- questID when a tooltip line belongs to a quest in `owned`.
+--- A quest-typed line whose id is in the log wins. Otherwise the line text
+--- has to match that quest's title or objective.
+function QC.MatchQuest(lines, owned, preferID)
+    if type(lines) ~= "table" or type(owned) ~= "table" then return nil end
+    for _, line in ipairs(lines) do
+        if type(line) == "table" and line.kind and line.id and owned[line.id] then
+            return line.id
+        end
+    end
+    local found, first = {}, nil
+    for _, line in ipairs(lines) do
+        if type(line) == "table" then
+            for id, quest in pairs(owned) do
+                if type(quest) == "table" and not found[id]
+                    and QC.TextHit(line.text, quest.title, quest.objectives) then
+                    found[id] = true
+                    if not first then first = id end
+                end
+            end
+        end
+    end
+    if preferID and found[preferID] then return preferID end
+    return first
+end
+
+function QC.UnitPresent(token)
+    if type(UnitExists) ~= "function" then return false end
+    local ok, exists = pcall(UnitExists, token)
+    return ok and exists and true or false
+end
+
+function QC.ReadTipLines(tip, prefix)
+    if not tip or type(tip.NumLines) ~= "function" then return nil end
+    local okN, n = pcall(tip.NumLines, tip)
+    if not okN or type(n) ~= "number" then return nil end
+    local CA = TA.ContextAction
+    local lines = {}
+    for i = 1, n do
+        local fs = _G[prefix .. "TextLeft" .. i]
+        local text = fs and fs.GetText and fs:GetText()
+        if not (CA and CA.Secret(text)) and type(text) == "string" and text ~= "" then
+            lines[#lines + 1] = { text = text }
+        end
+    end
+    return lines
+end
+
+--- Hidden scanner. The live GameTooltip is only read, and only when a
+--- private tooltip cannot be created. The cursor is never changed.
+function QC.ScanTooltip(token)
+    if type(CreateFrame) ~= "function" then
+        return QC.ReadTipLines(GameTooltip, "GameTooltip")
+    end
+    local tip = QC._scanTip
+    if not tip then
+        local ok, frame = pcall(CreateFrame, "GameTooltip", "TAContextScanTip", nil, "GameTooltipTemplate")
+        if ok and frame then
+            local owner = UIParent or WorldFrame
+            if owner and frame.SetOwner then
+                pcall(frame.SetOwner, frame, owner, "ANCHOR_NONE")
+            end
+            QC._scanTip = frame
+            tip = frame
+        end
+    end
+    if not tip or type(tip.SetUnit) ~= "function" then
+        return QC.ReadTipLines(GameTooltip, "GameTooltip")
+    end
+    local ok = pcall(function()
+        if tip.ClearLines then tip:ClearLines() end
+        tip:SetUnit(token)
+    end)
+    if tip.Hide then pcall(tip.Hide, tip) end
+    if not ok then return nil end
+    return QC.ReadTipLines(tip, "TAContextScanTip")
+end
+
+function QC.TooltipLines(token)
+    if not QC.UnitPresent(token) then return nil end
+    local fn = C_TooltipInfo and C_TooltipInfo.GetUnit
+    if type(fn) == "function" then
+        local ok, data = pcall(fn, token)
+        if ok then return QC.LinesFromData(data) or {} end
+    end
+    return QC.ScanTooltip(token)
+end
+
+--- Soft target first, then the mouseover.
+function QC.HoveredQuest(owned, preferID)
+    local soft = QC.TooltipLines("softinteract")
+    local id = soft and QC.MatchQuest(soft, owned, preferID)
+    if id then return id end
+    local mouse = QC.TooltipLines("mouseover")
+    return mouse and QC.MatchQuest(mouse, owned, preferID) or nil
+end
+
+function QC.ObjectiveTexts(questID)
+    local texts = {}
+    local fn = C_QuestLog and C_QuestLog.GetQuestObjectives
+    if type(fn) == "function" and questID then
+        local ok, objectives = pcall(fn, questID)
+        if ok and type(objectives) == "table" then
+            for _, obj in ipairs(objectives) do
+                if type(obj) == "table" and type(obj.text) == "string" then
+                    texts[#texts + 1] = obj.text
+                end
+            end
+        end
+    end
+    return texts
+end
+
+function QC.OwnedQuests()
+    local out = {}
+    local CA = TA.ContextAction
+    local numFn = C_QuestLog and C_QuestLog.GetNumQuestLogEntries
+    local infoFn = C_QuestLog and C_QuestLog.GetInfo
+    if type(numFn) == "function" and type(infoFn) == "function" then
+        local ok, n = pcall(numFn)
+        if ok and type(n) == "number" then
+            for i = 1, n do
+                local okI, info = pcall(infoFn, i)
+                if okI and type(info) == "table" and not info.isHeader and type(info.questID) == "number" then
+                    local title = info.title
+                    if CA and CA.Secret(title) then title = nil end
+                    if type(title) ~= "string" then title = nil end
+                    out[info.questID] = {
+                        title = title,
+                        objectives = QC.ObjectiveTexts(info.questID),
+                    }
+                end
+            end
+            return out
+        end
+    end
+    if type(GetNumQuestLogEntries) == "function" and type(GetQuestLogTitle) == "function" then
+        local ok, n = pcall(GetNumQuestLogEntries)
+        if ok and type(n) == "number" then
+            for i = 1, n do
+                local okT, title, _, _, isHeader, _, _, _, questID = pcall(GetQuestLogTitle, i)
+                if okT and not isHeader and type(questID) == "number" then
+                    if CA and CA.Secret(title) then title = nil end
+                    if type(title) ~= "string" then title = nil end
+                    out[questID] = { title = title, objectives = QC.ObjectiveTexts(questID) }
+                end
+            end
+        end
+    end
+    return out
+end
+
+function QC.GuideView()
     local QT = TA.GetModule and TA:GetModule("QuestTracker")
-    if not QT then return nil end
+    if not QT then return nil, nil end
     if type(QT.View) == "function" then
         local _, steps, idx = QT:View()
-        if steps and idx then return steps[idx] end
+        return steps, idx
     end
     local guide = QT.guideID and TA.Guides and TA.Guides[QT.guideID]
     local steps = guide and guide.steps
-    if not steps then return nil end
-    return steps[QT.stepIdx or 1]
+    if not steps then return nil, nil end
+    return steps, QT.stepIdx or 1
+end
+
+function QC.CurrentStep()
+    local steps, idx = QC.GuideView()
+    if not steps or not idx then return nil end
+    return steps[idx]
+end
+
+--- The guide step for this quest. A step that carries an item wins, and the
+--- current step wins when it is that quest and it has one.
+function QC.StepForQuest(questID)
+    local steps, idx = QC.GuideView()
+    if not steps or not questID then return nil end
+    local current = idx and steps[idx]
+    local function carries(step)
+        return QC.UseItem(step) or (type(step) == "table" and type(step.questItem) == "number")
+    end
+    if carries(current) and current.questID == questID then return current end
+    local any
+    for _, step in ipairs(steps) do
+        if type(step) == "table" and step.questID == questID then
+            if carries(step) then return step end
+            any = any or step
+        end
+    end
+    if type(current) == "table" and current.questID == questID then return current end
+    return any
 end
 
 function QC.Texts(step, logIndex)
@@ -232,21 +499,52 @@ function QC:Refresh()
         return
     end
     local step = QC.CurrentStep()
-    if type(step) ~= "table" then
+    local owned = QC.OwnedQuests()
+    local hoverID = QC.HoveredQuest(owned, step and step.questID)
+    local questID = hoverID
+    local hover = hoverID ~= nil
+    local near, targeting = false, false
+    if not hover and type(step) == "table" then
+        local logIndex = QC.LogIndex(step.questID)
+        near = QC.IsNear(step, logIndex) and true or false
+        targeting = QC.IsTargeting(step, logIndex) and true or false
+        if near or targeting then questID = step.questID or questID end
+    end
+    if not hover and not near and not targeting then
         CA:Set("quest item", nil)
         return
     end
-    local logIndex = QC.LogIndex(step.questID)
-    local special = QC.ReadSpecial(logIndex)
+    -- A hovered quest uses its own guide step. The current step is only the
+    -- fallback for the near/target path, so its item cannot leak onto another quest.
+    local guideStep = step
+    if hover then guideStep = QC.StepForQuest(questID) end
+    local special
+    if questID then special = QC.ReadSpecial(QC.LogIndex(questID)) end
+    local fromGame = special and (special.itemID or (type(special.name) == "string" and special.name ~= ""))
+    local use = QC.UseItem(guideStep)
+    local fallbackID, unverified
+    if fromGame then
+        unverified = false
+    elseif use then
+        fallbackID = use.id
+        unverified = use.unverified
+        special = nil
+    elseif type(guideStep) == "table" and type(guideStep.questItem) == "number" then
+        fallbackID = guideStep.questItem
+        unverified = guideStep.unverified and true or false
+        special = nil
+    end
     local cand = CA.QuestCandidate({
-        special = special,
-        fallbackID = step.questItem,
-        fallbackCount = QC.Count(step.questItem),
-        near = QC.IsNear(step, logIndex),
-        targeting = QC.IsTargeting(step, logIndex),
+        special = fromGame and special or nil,
+        fallbackID = fallbackID,
+        fallbackCount = QC.Count(fallbackID),
+        near = near,
+        targeting = targeting,
+        hover = hover,
     })
     if cand then
-        local id = (special and special.itemID) or step.questItem
+        cand.unverified = unverified and true or false
+        local id = (fromGame and special and special.itemID) or fallbackID
         local start, duration = QC.ItemCooldown(id)
         if start then cand.cooldown = { start = start, duration = duration } end
     end
@@ -254,12 +552,18 @@ function QC:Refresh()
 end
 
 function QC:OnEvent(event)
-    if event == "QUEST_LOG_UPDATE" or event == "PLAYER_TARGET_CHANGED" then
+    if event == "QUEST_LOG_UPDATE" or event == "PLAYER_TARGET_CHANGED"
+        or event == "UPDATE_MOUSEOVER_UNIT" or event == "PLAYER_SOFT_INTERACT_CHANGED" then
         self:Refresh()
     end
 end
 
-QC.Events = { "QUEST_LOG_UPDATE", "PLAYER_TARGET_CHANGED" }
+QC.Events = {
+    "QUEST_LOG_UPDATE",
+    "PLAYER_TARGET_CHANGED",
+    "UPDATE_MOUSEOVER_UNIT",
+    "PLAYER_SOFT_INTERACT_CHANGED",
+}
 
 function QC:Init()
     if type(C_Timer) == "table" and type(C_Timer.NewTicker) == "function" then
