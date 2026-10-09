@@ -1300,20 +1300,29 @@ function H:Render(content, side)
         .. "trainer, spellbook and talent captures. Other characters stay. "
         .. "Clear store throws away every observation from every character "
         .. "and cannot be undone.|r")
+    local id = Hv:CharacterIdentity()
+    local who = ("%s (%s)"):format((id and id.name) or "unknown", (id and id.className) or "unknown")
     y = L:ButtonRow(content, y, {
-        { label = self._confirmClearOne and "Really clear character?" or "Clear this character",
+        { danger = true,
+          label = self._confirmClearOne and ("Clear saved data for %s?"):format(who) or "Clear this character",
           onClick = function()
             if H._confirmClearOne then
+                local gone = Hv:CharacterIdentity()
+                local named = ("%s (%s)"):format((gone and gone.name) or "unknown",
+                    (gone and gone.className) or "unknown")
                 Hv:ClearCharacter()
                 H._confirmClearOne = nil
-                if TA.Raw then TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r This character's harvest captures cleared.") end
+                if TA.Raw then
+                    TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100[ToonAge]|r Saved harvest data for %s cleared."):format(named))
+                end
             else
                 H._confirmClearOne = true
                 H._confirmClear = nil
             end
             if L.RefreshUI then L:RefreshUI() end
           end },
-        { label = self._confirmClear and "Really clear store?" or "Clear store",
+        { danger = true,
+          label = self._confirmClear and "Really clear store?" or "Clear store",
           onClick = function()
             if H._confirmClear then
                 Hv:Clear()

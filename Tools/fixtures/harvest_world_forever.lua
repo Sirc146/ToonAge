@@ -46,7 +46,11 @@ TA.Layout = {
     Paragraph = function(self, c, y, t, o) rec("Paragraph|" .. tostring(t) .. "|" .. tostring(o and o.color)); return y - 10 end,
     ButtonRow = function(self, c, y, btns, o)
         local labels = {}
-        for _, b in ipairs(btns) do labels[#labels + 1] = b.label end
+        for _, b in ipairs(btns) do
+            labels[#labels + 1] = b.label
+            if b.danger then rec("ButtonDanger|" .. tostring(b.label)) end
+        end
+        LAST_BUTTONS = btns
         rec("ButtonRow|" .. table.concat(labels, ",") .. "|" .. tostring(o and o.label)); return y - 10 end,
     Divider = function(self, c, y) rec("Divider"); return y - 10 end,
     Finish = function(self, c, y) rec("Finish|" .. tostring(y)) end,

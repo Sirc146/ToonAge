@@ -194,12 +194,32 @@ check("hunter probe text is in the all-characters export", "hunt-probe" in both)
 L.execute("""
 LAYOUT_LOG = {}
 ToonAge.modules.DataHarvester:Render({}, nil)
-ToonAge.Harvester:ClearCharacter()
 """)
 lay = [L.eval("LAYOUT_LOG")[i] for i in range(1, len(L.eval("LAYOUT_LOG")) + 1)]
 check("reset offers a per-character clear and a full clear",
       ("Clear this character" in "\n".join(lay)) and ("Clear store" in "\n".join(lay)))
-check("clear this character drops only that character",
+check("both reset buttons use the danger style",
+      ("ButtonDanger|Clear this character" in lay) and ("ButtonDanger|Clear store" in lay))
+L.execute("""
+for _, b in ipairs(LAST_BUTTONS) do
+    if b.label == "Clear this character" then b.onClick() end
+end
+LAYOUT_LOG = {}
+ToonAge.modules.DataHarvester:Render({}, nil)
+""")
+armed = [L.eval("LAYOUT_LOG")[i] for i in range(1, len(L.eval("LAYOUT_LOG")) + 1)]
+check("confirmation names this character and class",
+      "ButtonDanger|Clear saved data for Eramali (Mage)?" in armed)
+check("the confirmation has not removed anyone yet",
+      (L.eval("ToonAge.db.harvest.captures[KEY].name"),
+       L.eval("ToonAge.db.harvest.captures[HUNT].probe.text")),
+      ("Eramali", "hunt-probe"))
+L.execute("""
+for _, b in ipairs(LAST_BUTTONS) do
+    if b.label == "Clear saved data for Eramali (Mage)?" then b.onClick() end
+end
+""")
+check("confirming removes only that character",
       (L.eval("ToonAge.db.harvest.captures[KEY]"),
        L.eval("ToonAge.db.harvest.captures[HUNT].probe.text")),
       (None, "hunt-probe"))
