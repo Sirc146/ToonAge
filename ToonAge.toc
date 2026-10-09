@@ -39,6 +39,7 @@ Core\Layout.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Caps.lua
 Core\Analytics.lua
 Core\StatEngine.lua
 
@@ -160,6 +161,9 @@ Data\Retail\Guides\TAG_Arathi_Highlands_Returning_Player.lua
 Modules\Infrastructure\DevHelpers.lua
 Modules\Infrastructure\ErrorLog.lua
 Modules\Infrastructure\CoordHarvester.lua
+# Shared probes (waypoint APIs included). No retail harvest pack, so this
+# records nothing until one exists; /ta probe still runs.
+Modules\Infrastructure\Harvester.lua
 Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\RotationLists.lua
 

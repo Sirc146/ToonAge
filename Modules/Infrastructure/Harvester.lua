@@ -30,7 +30,7 @@
 --   * Modules/Harvest/Packs/<Client>.lua -- which domains this client runs,
 --     its catalog ranges, its own probes and tab rows. The TOC is the
 --     packaging gate: a client's TOC lists only its own pack. With no pack for
---     this client the module stands down at Init.
+--     this client recording stands down at Init. Shared probes still run.
 
 local TA = ToonAge
 
@@ -1291,8 +1291,76 @@ local CORE_PROBES = {
         end
     end },
 
+    -- Waypoint APIs the arrow would need. Every client runs this section,
+    -- including ones with no arrow yet, so a probe says whether a port is
+    -- possible. UnitPosition returns nil inside an instance, so the instance
+    -- line is recorded beside it.
     map = { title = "Map", run = function(P, L)
+        local Caps = TA.Caps
+        local isIn = Caps and Caps.Fn("IsInInstance")
+        if not isIn then
+            L[#L + 1] = "IsInInstance()  ->  missing"
+        else
+            local ok, inside, kind = pcall(isIn)
+            if not ok then
+                L[#L + 1] = "IsInInstance()  ->  error: " .. tostring(inside)
+            else
+                local line = "IsInInstance()  ->  " .. P.Show(inside) .. ", " .. P.Show(kind)
+                if inside == true then
+                    line = line .. " (inside an instance; UnitPosition returns nil here)"
+                end
+                L[#L + 1] = line
+            end
+        end
+        P.Call(L, "UnitPosition(player)", "UnitPosition", "player")
         P.Call(L, "C_Map.GetBestMapForUnit(player)", "C_Map.GetBestMapForUnit", "player")
+
+        local mapID
+        local getBest = Caps and Caps.Fn("C_Map.GetBestMapForUnit")
+        if getBest then
+            local ok, id = pcall(getBest, "player")
+            if ok and type(id) == "number" then mapID = id end
+        end
+        local getPos = Caps and Caps.Fn("C_Map.GetPlayerMapPosition")
+        local pos
+        if not getPos then
+            L[#L + 1] = "C_Map.GetPlayerMapPosition  ->  missing"
+        elseif not mapID then
+            L[#L + 1] = "C_Map.GetPlayerMapPosition  ->  present, no sample (no map id)"
+        else
+            P.Call(L, "C_Map.GetPlayerMapPosition(" .. tostring(mapID) .. ", player)", getPos, mapID, "player")
+            local okP, sample = pcall(getPos, mapID, "player")
+            if okP then pos = sample end
+        end
+
+        local worldPos = Caps and Caps.Fn("C_Map.GetWorldPosFromMapPos")
+        if not worldPos then
+            L[#L + 1] = "C_Map.GetWorldPosFromMapPos  ->  missing"
+        elseif not (mapID and pos) then
+            L[#L + 1] = "C_Map.GetWorldPosFromMapPos  ->  present, no sample (no player map position)"
+        else
+            P.Call(L, "C_Map.GetWorldPosFromMapPos(" .. tostring(mapID) .. ", playerPos)", worldPos, mapID, pos)
+        end
+
+        local create = Caps and Caps.Fn("CreateFrame")
+        local tex
+        if create then
+            local okF, frame = pcall(create, "Frame")
+            if okF and type(frame) == "table" and type(frame.CreateTexture) == "function" then
+                local okT, made = pcall(frame.CreateTexture, frame)
+                if okT then tex = made end
+            end
+        end
+        if type(tex) ~= "table" or type(tex.SetRotation) ~= "function" then
+            L[#L + 1] = "Texture:SetRotation  ->  missing"
+        else
+            local okR, err = pcall(tex.SetRotation, tex, 0)
+            if okR then
+                L[#L + 1] = "Texture:SetRotation(0)  ->  present, sample ok"
+            else
+                L[#L + 1] = "Texture:SetRotation(0)  ->  present, error: " .. tostring(err)
+            end
+        end
     end },
 
     -- One line per profession skill line the running client can read:
@@ -1375,6 +1443,7 @@ function H:View()
 end
 
 function H:OnEvent(event, ...)
+    if self._probesOnly then return end
     if event == "SPELL_DATA_LOAD_RESULT" then
         Hv:OnSpellData(...)
         return
@@ -1397,6 +1466,7 @@ function H:OnEvent(event, ...)
 end
 
 function H:OnEnterWorld()
+    if self._probesOnly then return end
     RunEach(Hv:ActiveDomains(), "OnEnterWorld")
     Hv:Request("full", function() Hv:StartScan() end)
 end
@@ -1799,12 +1869,14 @@ end
 function H:Init()
     -- The pack is the packaging gate's runtime half: a client's TOC lists only
     -- its own pack, so no pack (or another client's) means this client does
-    -- not record. Only Forever ships a pack so far (spec T6-T9 add the rest).
+    -- not record. Shared probes still run (/ta probe), including the waypoint
+    -- API checks, on TBC, Era and every other client that loads this file.
     local pack = Hv._pack
     if not pack or pack.client ~= TA.flavor then
-        self._disabled = true
+        self._probesOnly = true
         return
     end
+    self._probesOnly = nil
     Hv:Activate()
 
     -- Combat end resumes a scan that was queued. Skill and trade-skill

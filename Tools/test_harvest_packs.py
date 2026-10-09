@@ -16,7 +16,7 @@ Forever client in Tools/fixtures/harvest_world_forever.lua):
     row, probe sections and Full report come out in the pack's order
   * a rescan writes the same record counts (T4's in-game check)
   * one failing domain does not stop the others, and its error still surfaces
-  * no pack for this client -> the module stands down, nothing registered
+  * no pack for this client -> recording stands down, shared probes still run
   * a G3 stand-in provider swaps into Caps and the pack runs unchanged; a
     provider that vetoes a need skips that domain and the report says why
   * hostile client (almost every API absent): nothing throws
@@ -86,8 +86,10 @@ for toc in sorted(f for f in os.listdir(ROOT) if f.startswith("ToonAge") and f.e
     files = toc_files(toc)
     check(f"{toc} names no Modules/Forever/DataHarvester.lua", "Modules/Forever/DataHarvester.lua" in files, False)
     if toc != "ToonAge_Camelot.toc":
-        check(f"{toc} ships no harvest core, domain or pack yet (T6-T9)",
-              [f for f in files if f.startswith("Modules/Harvest/") or f == CORE], [])
+        check(f"{toc} ships the shared probe core", CORE in files)
+        check(f"{toc} ships Caps for those probes", "Core/Caps.lua" in files)
+        check(f"{toc} ships no harvest domain or pack",
+              [f for f in files if f.startswith("Modules/Harvest/")], [])
 
 # R6: Forever-only probes and rows stay in Forever's pack.
 shared = [CORE] + DOMAIN_FILES + ["Modules/Harvest/Domains/TalentTrees.lua"]
@@ -218,6 +220,15 @@ check("probe sections in Forever's order", probes,
        "Reputation", "Scroll tooltips in your bags"])
 check("a missing API probes as 'missing', not an error",
       "UnitDefense(player)  ->  missing" in report)
+check("Forever's map probe names the waypoint APIs",
+      all(s in report for s in (
+          "UnitPosition(player)  ->  ",
+          "C_Map.GetWorldPosFromMapPos",
+          "C_Map.GetBestMapForUnit(player)",
+          "C_Map.GetPlayerMapPosition",
+          "Texture:SetRotation",
+          "IsInInstance()",
+      )))
 check("scroll probe reads the bag scroll's tooltip", "  2: \"Use: armor up.\"" in report)
 
 # Tab: the renamed scan button cannot be mistaken for the Copy row's button.
@@ -276,8 +287,48 @@ check("the domains after it still ran (character re-recorded at 19)",
 # ── No pack for this client ──────────────────────────────────────────────
 L2 = world(extra="ToonAge.flavor = 'tbc'")
 L2.execute("ToonAge.modules.DataHarvester:Init()")
-check("no pack for this client: the module stands down",
-      (L2.eval("ToonAge.modules.DataHarvester._disabled"), len(lst(L2, "EVENTS_LOG"))), (True, 0))
+check("no pack for this client: recording stands down, probes stay",
+      (L2.eval("ToonAge.modules.DataHarvester._probesOnly"),
+       L2.eval("ToonAge.modules.DataHarvester._disabled"),
+       len(lst(L2, "EVENTS_LOG"))), (True, None, 0))
+L2.execute("PROBE = table.concat(ToonAge.modules.DataHarvester:BuildProbeLines(), '\\n')")
+probe_tbc = L2.eval("PROBE")
+check("TBC probe report names UnitPosition", "UnitPosition(player)  ->  " in probe_tbc)
+check("TBC probe report names GetWorldPosFromMapPos", "C_Map.GetWorldPosFromMapPos" in probe_tbc)
+check("TBC probe report names GetBestMapForUnit", "C_Map.GetBestMapForUnit(player)" in probe_tbc)
+check("TBC probe report names GetPlayerMapPosition", "C_Map.GetPlayerMapPosition" in probe_tbc)
+check("TBC probe report names SetRotation", "Texture:SetRotation" in probe_tbc)
+check("TBC probe report notes an instance", "IsInInstance()" in probe_tbc)
+
+Linside = world(extra=r"""
+function IsInInstance() return true, "party" end
+function UnitPosition() return nil end
+function CreateFrame()
+    return { CreateTexture = function() return { SetRotation = function() end } end }
+end
+C_Map.GetPlayerMapPosition = function() return { x = 0.5, y = 0.5 } end
+C_Map.GetWorldPosFromMapPos = function() return 1, { x = 10, y = 20 } end
+""")
+Linside.execute("INSIDE = table.concat(ToonAge.modules.DataHarvester:BuildProbeLines(), '\\n')")
+inside = Linside.eval("INSIDE")
+check("an instance is noted beside UnitPosition",
+      "inside an instance; UnitPosition returns nil here" in inside)
+check("UnitPosition still reports its sample inside an instance",
+      "UnitPosition(player)  ->  nil" in inside)
+check("GetWorldPosFromMapPos reports a sample", "x=10" in inside)
+check("SetRotation reports present plus a sample",
+      "Texture:SetRotation(0)  ->  present, sample ok" in inside)
+
+Loutside = world(extra=r"""
+function IsInInstance() return false, "none" end
+function UnitPosition() return 1, 2, 3, 0 end
+""")
+Loutside.execute("OUTSIDE = table.concat(ToonAge.modules.DataHarvester:BuildProbeLines(), '\\n')")
+outside = Loutside.eval("OUTSIDE")
+check("outside an instance the nil warning is absent",
+      "inside an instance" not in outside and "IsInInstance()  ->  false" in outside)
+check("UnitPosition reports the open-world sample",
+      "UnitPosition(player)  ->  1, 2, 3, 0" in outside)
 
 # ── G3 stand-in provider ─────────────────────────────────────────────────
 L3 = world()

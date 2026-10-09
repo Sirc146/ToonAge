@@ -56,6 +56,21 @@ end
 function ToonAge:RegisterEvent() end
 function ToonAge:Raw(_, msg) _lines[#_lines + 1] = tostring(msg) end
 function ToonAge:Print(_, _, msg) _lines[#_lines + 1] = tostring(msg) end
+-- Stand-in for the real dispatch. The guard test loads Core/Init.lua and
+-- uses the real SlashCommand; this one only keeps the arrow file's checks
+-- able to see the text bare /way hands over.
+function ToonAge:SlashCommand(msg)
+    BARE_DISPATCH = msg
+    local A = self.modules.Arrow
+    if not A or A._disabled or A._profileSkipped then
+        self:Print(0, nil, "/ta way belongs to Arrow, which is not running here ("
+            .. ((A and A._profileReason) or "switched off") .. ").")
+        return
+    end
+    local raw = tostring(msg or ""):match("^%s*(.-)%s*$") or ""
+    local rawArgs = raw:match("^%S+%s*(.*)$") or ""
+    A.SlashCommands.way(A, rawArgs)
+end
 SlashCmdList = {}
 C_Map = {
     GetBestMapForUnit = function() return 84 end,
@@ -179,6 +194,7 @@ def check_arrow(rel, label):
     """)
     check(f"{label} bare /way uses the way handler", g(lua, "BARE_SEEN"), "10 20 The Bank")
     check(f"{label} bare /way keeps label capitals", g(lua, "BARE_TITLE"), "The Bank")
+    check(f"{label} bare /way goes through dispatch", g(lua, "BARE_DISPATCH"), "way 10 20 The Bank")
 
     claimed = load_arrow(rel)
     claimed.execute(r"""
@@ -294,6 +310,41 @@ def check_arrow(rel, label):
     check(f"{label} giving /way up with no hash does not error", g(yielded, "YIELD_OK"), True)
     check(f"{label} a later addon takes /way back", g(yielded, "YIELD_OURS") is None and g(yielded, "YIELD_HANDLER") is None)
     check(f"{label} the later addon's slash stays", g(yielded, "YIELD_THEIRS"), "/way")
+
+    quiet_mod = load_arrow(rel)
+    quiet_mod.execute(r"""
+        local A = ToonAge.modules.Arrow
+        A._disabled = true
+        BootArrow()
+        LoginArrow()
+        DISABLED_WAY = SLASH_TOONAGEWAY1
+        A._disabled = nil
+        A._profileSkipped = true
+        A._profileReason = "not in this flavor's profile"
+        LoginArrow()
+        SKIPPED_WAY = SLASH_TOONAGEWAY1
+    """)
+    check(f"{label} a disabled arrow does not claim /way", g(quiet_mod, "DISABLED_WAY") is None)
+    check(f"{label} a profile-skipped arrow does not claim /way", g(quiet_mod, "SKIPPED_WAY") is None)
+
+    denied = load_arrow(rel)
+    denied.execute(r"""
+        function ToonAge:ModuleAllowed() return false, "not in profile" end
+        BootArrow()
+        LoginArrow()
+        DENIED_WAY = SLASH_TOONAGEWAY1
+    """)
+    check(f"{label} an arrow that is not allowed for this client does not claim /way",
+          g(denied, "DENIED_WAY") is None)
+
+    toggled = load_arrow(rel)
+    toggled.execute(r"""
+        ToonAgeDB = { modules = { Arrow = false } }
+        BootArrow()
+        LoginArrow()
+        TOGGLED_WAY = SLASH_TOONAGEWAY1
+    """)
+    check(f"{label} a switched-off arrow does not claim /way", g(toggled, "TOGGLED_WAY") is None)
 
     src = read(rel)
     check(f"{label} ForeignWaySlash does not scan _G", "pairs(_G)" not in src)
@@ -445,6 +496,128 @@ def check_arrow_paint(rel, label):
           g(lua, "IDLE_ON_ETA") and g(lua, "IDLE_Y") == -4)
 
 
+def check_bare_dispatch():
+    """Bare /way uses RunModuleSlash, and help on an arrow-less client omits it."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_onboarding import PRELUDE, _read  # noqa: E402
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute(PRELUDE)
+    lua.execute(_read("Core/Init.lua"))
+    lua.execute(read("Modules/Navigation/Arrow.lua"))
+    lua.execute(r"""
+        ToonAgeDB = {}
+        ToonAge:InitDB()
+        C_Map = {
+            GetBestMapForUnit = function() return 84 end,
+            GetMapInfo = function(id)
+                if id == 84 then return { name = "Stormwind City", mapType = 3 } end
+                return nil
+            end,
+        }
+        HELP = {}
+        function ToonAge:BeginReport()
+            return {
+                Add = function(_, line) HELP[#HELP + 1] = tostring(line) end,
+                Finish = function() end,
+            }
+        end
+        local A = ToonAge.modules.Arrow
+        A.InitFrame = function() end
+        function HelpText()
+            HELP = {}
+            ToonAge:PrintInteractiveHelp()
+            return table.concat(HELP, "\n")
+        end
+        function RunBare(msg)
+            _printed = {}
+            A:RunBareWay(msg)
+            PRINTED = table.concat(_printed, "\n")
+            local wp = A.manualWaypoint
+            RAN_TITLE = wp and wp.title or nil
+        end
+    """)
+    lua.execute(r"""
+        local A = ToonAge.modules.Arrow
+        A._disabled = true
+        A:OnWayWatch("PLAYER_LOGIN")
+        CLAIMED = SLASH_TOONAGEWAY1
+        RunBare("10 20 The Bank")
+        OFF_PRINTED = PRINTED
+        OFF_TITLE = RAN_TITLE
+        A._disabled = true
+        A._safeSkipped = true
+        A._profileReason = nil
+        A._profileSkipped = nil
+        RunBare("10 20 The Bank")
+        SAFE_PRINTED = PRINTED
+        SAFE_TITLE = RAN_TITLE
+        A._disabled = true
+        A._safeSkipped = nil
+        A._profileSkipped = true
+        A._profileReason = "wrong build for this client"
+        RunBare("1 2 The Bank")
+        SKIP_PRINTED = PRINTED
+        HELP_OFF = HelpText()
+        A._disabled = false
+        A._profileSkipped = nil
+        A._profileReason = nil
+        A._safeSkipped = nil
+        RunBare("10 20 The Bank")
+        LIVE_PRINTED = PRINTED
+        LIVE_TITLE = RAN_TITLE
+        HELP_ON = HelpText()
+    """)
+    check("a disabled arrow's /way does not set a waypoint", g(lua, "OFF_TITLE") is None)
+    check("a disabled arrow's /way says it is not running",
+          "belongs to Arrow, which is not running here (switched off)." in g(lua, "OFF_PRINTED"))
+    check("a safe-skipped arrow's /way says it is not running",
+          "belongs to Arrow, which is not running here (switched off)." in g(lua, "SAFE_PRINTED")
+          and g(lua, "SAFE_TITLE") is None)
+    check("a wrong-client arrow's /way names the reason",
+          "belongs to Arrow, which is not running here (wrong build for this client)." in g(lua, "SKIP_PRINTED"))
+    check("a disabled arrow is left out of help", "tacommand:way" not in g(lua, "HELP_OFF"))
+    check("bare /way keeps the label when the arrow is running", g(lua, "LIVE_TITLE"), "The Bank")
+    check("help lists /ta way when the arrow is running", "tacommand:way" in g(lua, "HELP_ON"))
+    check("PLAYER_LOGIN does not claim /way while the arrow is disabled", g(lua, "CLAIMED") is None)
+
+    bare = lua51.LuaRuntime(unpack_returned_tuples=True)
+    bare.execute(PRELUDE)
+    bare.execute(_read("Core/Init.lua"))
+    bare.execute(r"""
+        ToonAgeDB = {}
+        ToonAge:InitDB()
+        HELP = {}
+        function ToonAge:BeginReport()
+            return {
+                Add = function(_, line) HELP[#HELP + 1] = tostring(line) end,
+                Finish = function() end,
+            }
+        end
+        ToonAge:PrintInteractiveHelp()
+        HELP_TEXT = table.concat(HELP, "\n")
+    """)
+    help_text = g(bare, "HELP_TEXT")
+    check("help without an arrow does not mention /ta way", "/ta way" not in help_text and "tacommand:way" not in help_text)
+
+    for toc in ("ToonAge_TBC.toc", "ToonAge_Vanilla.toc", "ToonAge_Wrath.toc",
+                "ToonAge_Cata.toc", "ToonAge_Camelot.toc"):
+        files = []
+        for line in read(toc).splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            s = s.split("[")[0].strip().replace("\\", "/")
+            if s.lower().endswith(".lua"):
+                files.append(s)
+        hits = []
+        for rel in files:
+            body = read(rel)
+            if ('"/ta way' in body or "'/ta way" in body
+                    or '"/way"' in body or "'/way'" in body):
+                hits.append(rel)
+        check(f"{toc} has no help text for /ta way or /way", hits, [])
+
+
 def check_talents():
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(BOOT)
@@ -489,6 +662,7 @@ def main():
     check_arrow("Modules/Navigation/Arrow.lua", "retail")
     check_arrow("Modules/Mists/Arrow.lua", "mists")
     check_label_case()
+    check_bare_dispatch()
     check_arrow_paint("Modules/Navigation/Arrow.lua", "retail")
     check_arrow_paint("Modules/Mists/Arrow.lua", "mists")
     check_talents()

@@ -105,6 +105,8 @@ local PROFILES = {
             -- Shared spell/item button above the action bars. Overload is
             -- retail-only and is not on this TOC; the button still loads.
             ContextAction     = true,
+            -- Probes only (no TBC harvest pack). /ta probe reads the waypoint APIs.
+            DataHarvester     = true,
             -- Standing bar only. No Renown and no paragon on this client.
             FactionTracker    = true,
         },
@@ -156,6 +158,8 @@ local PROFILES = {
             -- Shared spell/item button. Quest items offer through QuestContext.
             ContextAction = true,
             Arrow        = true,
+            -- Probes only (no Mists harvest pack). /ta probe reads the waypoint APIs.
+            DataHarvester = true,
             CoordResolver = true,
             AntTrail     = true,
             NavHud       = true,
@@ -203,7 +207,10 @@ local PROFILES = {
     cata = {
         label     = "Cataclysm Classic (scaffold)",
         allowAll  = false,
-        modules   = {},
+        modules   = {
+            -- Probes only. No recording pack, and no arrow, until one is built.
+            DataHarvester = true,
+        },
         data      = "Cata",
         statRules = "cata-trees",
         scaffold  = true,
@@ -222,6 +229,8 @@ local PROFILES = {
             FactionTracker  = true,
             -- Era's own rotation list. The tab is the card until a band has spells.
             RotationBoard   = true,
+            -- Probes only (no Era harvest pack). /ta probe reads the waypoint APIs.
+            DataHarvester   = true,
         },
         tabs      = {
             { id = "professions", label = "Professions", module = "ProfessionBoard" },
@@ -240,7 +249,10 @@ local PROFILES = {
     wrath = {
         label     = "Wrath of the Lich King Classic (scaffold)",
         allowAll  = false,
-        modules   = {},
+        modules   = {
+            -- Probes only. No recording pack, and no arrow, until one is built.
+            DataHarvester = true,
+        },
         data      = "Wrath",
         statRules = "wrath-trees",
         scaffold  = true,
