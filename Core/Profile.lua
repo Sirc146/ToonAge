@@ -86,6 +86,9 @@ local PROFILES = {
             Spells            = true,
             PetCare           = true,
             Gear              = true,
+            -- No heirlooms on TBC. The module skips the scan and draws the
+            -- empty-state card on the Gear tab.
+            Heirlooms         = true,
             PvPAdvisor        = true,
             -- Shipped by ToonAge_TBC.toc all along but never listed here, so
             -- they loaded and never initialized. AutoEquip scores with the
@@ -132,6 +135,9 @@ local PROFILES = {
             Character    = true,
             PetCare      = true,
             Gear         = true,
+            -- Collection API is checked at runtime. MoP predates the heirloom
+            -- journal, so a missing C_Heirloom falls back to a bag scan.
+            Heirlooms    = true,
             GuideParser  = true,
             GuideImporter = true,
             GuideBrowser = true,

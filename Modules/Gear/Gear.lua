@@ -725,6 +725,13 @@ function Gear:Render(content, sidebar)
     table.insert(self.frames, disc)
     y = y - 20
 
+    if self.viewMode ~= "target" then
+        local heirlooms = TA:GetModule("Heirlooms")
+        if heirlooms and heirlooms.Draw then
+            y = heirlooms:Draw(content, y, w) or y
+        end
+    end
+
     if self.viewMode == "target" then
         if not UnitIsPlayer("target") then
             local errF = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -744,7 +751,10 @@ end
 -- ── Player Grid ───────────────────────────────────────────────────────
 function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
     local specID = U.GetPlayerSpec()
-    if not specID then return end
+    if not specID then
+        content:SetHeight(math.abs(y) + 40)
+        return
+    end
     local colW, col = math.floor((w - 8) / 2), 0
     local claimedBags = {}
     local playerLevel = UnitLevel("player") or 1

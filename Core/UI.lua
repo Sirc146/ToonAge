@@ -924,6 +924,35 @@ function TA:InitUI()
                 or "")
             .. "Error capture is running, so anything that breaks is still recorded:\n"
             .. "type |cFFFFD100/ta errors|r to see it, or |cFFFFD100/ta health|r for what loaded.")
+        if TA.flavor == "vanilla" then
+            if not self.noContent.heirloom then
+                local card = CreateFrame("Frame", nil, self.noContent, "BackdropTemplate")
+                card:SetSize(360, 108)
+                card:SetPoint("TOP", self.noContent.body, "BOTTOM", 0, -18)
+                ApplyBackdrop(card, 0.07, 0.07, 0.08, 0.94, 0.30, 0.28, 0.24, 1)
+                local glyph = card:CreateTexture(nil, "ARTWORK")
+                glyph:SetSize(24, 24)
+                glyph:SetPoint("TOP", 0, -12)
+                glyph:SetTexture("Interface\\AddOns\\ToonAge\\Media\\frame\\ring_32.tga")
+                glyph:SetVertexColor(1, 0.82, 0)
+                local heading = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                heading:SetPoint("TOP", glyph, "BOTTOM", 0, -6)
+                heading:SetWidth(330)
+                heading:SetJustifyH("CENTER")
+                heading:SetText("No heirlooms here")
+                heading:SetTextColor(1, 0.82, 0)
+                local sentence = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                sentence:SetPoint("TOP", heading, "BOTTOM", 0, -4)
+                sentence:SetWidth(330)
+                sentence:SetJustifyH("CENTER")
+                sentence:SetText("Classic Era has no heirloom items, so this scan stays off.")
+                card.sentence = sentence
+                self.noContent.heirloom = card
+            end
+            self.noContent.heirloom:Show()
+        elseif self.noContent.heirloom then
+            self.noContent.heirloom:Hide()
+        end
         self.noContent:Show()
     end
 

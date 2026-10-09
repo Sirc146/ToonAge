@@ -151,7 +151,8 @@ def test_scaffolds_inert():
                 # guide stack; Forever is a readout plus the recorders.
                 "NavHud", "AutoMount", "AutoQuest", "VendorAssist",
                 # Banned 2026-09-27: blocked-action popup on Forever.
-                "CombatRecorder", "CombatReport"):
+                "CombatRecorder", "CombatReport",
+                "Heirlooms"):
         check(f"forever denies {mod}",   ta.ModuleInProfile(ta, mod), False)
     check("forever no retail data",      ta.DataNamespace(ta), "Forever")
     # Character (a readout) and Automation (chores). Both are flavor-safe;

@@ -62,6 +62,7 @@ Modules\Infrastructure\ErrorLog.lua
 # ── Modules: Character / Gear ──────────────────────────────────────────
 Modules\Mists\Character.lua
 Modules\Mists\PetCare.lua
+Modules\Gear\Heirlooms.lua
 Modules\Mists\Gear.lua
 Modules\Mists\AutoEquip.lua
 

@@ -708,6 +708,11 @@ function M:Render(content, side)
         })
     end
 
+    local heirlooms = TA:GetModule("Heirlooms")
+    if heirlooms and heirlooms.Draw then
+        y = heirlooms:Draw(content, y, L:Width(content)) or y
+    end
+
     L:Finish(content, y)
 end
 

@@ -132,6 +132,7 @@ Modules\Character\Professions.lua
 Modules\Character\Pets.lua
 
 # ── Modules: Gear ──────────────────────────────────────────────────────
+Modules\Gear\Heirlooms.lua
 Modules\Gear\Gear.lua
 Modules\Gear\DungeonGear.lua
 Modules\Gear\GearSets.lua

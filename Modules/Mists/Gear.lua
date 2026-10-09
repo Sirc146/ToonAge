@@ -374,8 +374,11 @@ function Gear:Render(content, sidebar)
     modeText:SetText("Mode: " .. pvxMode:upper() .. (specID and (" | Spec: " .. specID) or ""))
     modeText:SetTextColor(0.6, 0.6, 0.6)
 
-    -- List equipped items with scores
     local yOff = -50
+    local heirlooms = TA:GetModule("Heirlooms")
+    if heirlooms and heirlooms.Draw then
+        yOff = heirlooms:Draw(content, yOff, (content:GetWidth() or 480) - 20) or yOff
+    end
     for slot = 1, 17 do
         local link = GetInventoryItemLink("player", slot)
         if link then
