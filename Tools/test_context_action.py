@@ -57,7 +57,7 @@ def runtime():
 FRAME = r"""
 local function Mock(name)
     local f = { _name = name or "frame", _shown = false, _attrs = {}, _sets = 0, _shows = 0, _hides = 0 }
-    function f:SetSize() end
+    function f:SetSize(w, h) self._w, self._h = w, h end
     function f:SetFrameStrata() end
     function f:SetMovable() end
     function f:EnableMouse() end
@@ -74,6 +74,10 @@ local function Mock(name)
     function f:SetDrawEdge() end
     function f:SetTexCoord() end
     function f:SetText(text) self._text = text end
+    function f:SetOwner() end
+    function f:AddLine(text) self._lines = self._lines or {}; self._lines[#self._lines + 1] = text end
+    function f:SetItemByID() end
+    function f:SetSpellByID() end
     function f:SetFont() end
     function f:SetJustifyH() end
     function f:SetTextColor() end
@@ -144,6 +148,7 @@ def test_files_and_settings():
     check("tooltip data is used when it exists", "C_TooltipInfo.GetUnit" in quest, True)
     check("the quest driver leaves the cursor alone", "SetCursor" in quest, False)
     check("the button leaves the cursor alone", "SetCursor" in button, False)
+    check("the slot does not pulse", "OnUpdate" in button, False)
 
 
 def test_quest_item_rules():
@@ -184,6 +189,21 @@ def test_quest_item_rules():
             fallbackCount = 1,
             targeting = true,
         })
+        FAMILY = CA.WhyForFamily("Infused")
+        SECRET_TITLE = {}
+        function issecretvalue(v) return v == SECRET_TITLE end
+        SECRET_WHY = CA.WhyForQuest(SECRET_TITLE)
+        issecretvalue = nil
+        TITLED = CA.QuestCandidate({
+            special = { itemID = 2468, name = "Dented Canteen", texture = "icon" },
+            near = true,
+            questTitle = "Canteen Run",
+        })
+        BLANK_TITLE = CA.QuestCandidate({
+            special = { itemID = 2468, name = "Dented Canteen" },
+            near = true,
+            questTitle = "   ",
+        })
         NEAR = CA.WithinRange(14, nil)
         FAR_YARDS = CA.WithinRange(16, 15)
         NAMES = CA.ObjectiveNames({ "Wolf 0/8", "Slain: Boar 1/3" })
@@ -205,6 +225,10 @@ def test_quest_item_rules():
     check("an unknown bag count still offers the guide item", lua.eval("UNKNOWN_BAG.action"), "item:999")
     check("far from the objective and not targeting it stays hidden", lua.eval("FAR"), None)
     check("targeting the objective shows the item", lua.eval("TARGETED.action"), "item:999")
+    check("a quest title explains the button", lua.eval("TITLED.why"), "Quest item for: Canteen Run")
+    check("a blank quest title adds no line", lua.eval("BLANK_TITLE.why"), None)
+    check("an infused node explains the button", lua.eval("FAMILY"), "Infused node nearby")
+    check("a secret quest title adds no line", lua.eval("SECRET_WHY"), None)
     check("the default range is 15 yards", lua.eval("NEAR"), True)
     check("past the step range is not near", lua.eval("FAR_YARDS"), False)
     check("objective text yields the creature name", lua.eval("NAMES[1]"), "wolf")
@@ -240,6 +264,8 @@ def test_priority_combat_and_binding():
         CA:Init()
         POINT = CA._button._point[1]
         GAP = CA._button._point[4]
+        SIZE = CA._button._w
+        GOLD_AT_REST = CA._button._rgb[1]
         HIDES = CA._button._hides
         SHOWS = CA._button._shows
         SETS = CA._button._sets
@@ -251,9 +277,14 @@ def test_priority_combat_and_binding():
         COMBAT_HIDES = CA._button._hides
         COMBAT_SHOWS = CA._button._shows
         COMBAT_SETS = CA._button._sets
+        COMBAT_POINT = CA._button._point[1]
+        COMBAT_GAP = CA._button._point[4]
+        COMBAT_SIZE = CA._button._w
+        COMBAT_GOLD = CA._button._rgb[1]
         DIRTY = CA._dirty
         CA:SetKey("G")
         BINDS_IN_COMBAT = #BINDS
+        LABEL_IN_COMBAT = CA._button.keyText._text
         InCombatLockdown = function() return false end
         CA:OnEvent("PLAYER_REGEN_ENABLED")
         SPELL = CA._button._attrs.spell
@@ -263,6 +294,7 @@ def test_priority_combat_and_binding():
         SOURCE = CA:StatusLine()
         BOUND = BINDS[#BINDS].key
         BOUND_BUTTON = BINDS[#BINDS].button
+        KEY_LABEL = CA._button.keyText._text
         CA:Set("quest item", {
             source = "quest item", kind = "item", action = "item:2468",
             itemID = 2468, icon = "Interface\\Icons\\INV_Drink_01", priority = 20,
@@ -278,23 +310,35 @@ def test_priority_combat_and_binding():
         CA:Set("quest item", {
             source = "quest item", kind = "item", action = "item:2468",
             itemID = 2468, priority = 20,
+            why = "Quest item for: Canteen Run",
             cooldown = { start = 1, duration = SECRET },
         })
         SWIPE_AFTER = CA._button.cooldown._swipe[1]
         CA:SetKey("SHIFT-F")
         KEY2 = BINDS[#BINDS].key
+        KEY_LABEL2 = CA._button.keyText._text
+        CA._plan = CA._offers["quest item"]
+        CA._button.OnEnter(CA._button)
+        TIP = GameTooltip._lines and GameTooltip._lines[1]
     """)
     check("the button sits above the action bars", lua.eval("POINT"), "BOTTOM")
     check("the default gap clears the bar", lua.eval("GAP"), 72)
+    check("the slot is 44px", lua.eval("SIZE"), 44)
     check("combat does not hide the button", lua.eval("COMBAT_HIDES"), lua.eval("HIDES"))
     check("combat does not show the button", lua.eval("COMBAT_SHOWS"), lua.eval("SHOWS"))
     check("combat does not change attributes", lua.eval("COMBAT_SETS"), lua.eval("SETS"))
     check("combat queues the change", lua.eval("DIRTY"), True)
+    check("combat does not move the slot", lua.eval("COMBAT_POINT"), "BOTTOM")
+    check("combat keeps the gap", lua.eval("COMBAT_GAP"), 72)
+    check("combat does not resize the slot", lua.eval("COMBAT_SIZE"), 44)
+    check("combat does not retint the frame", lua.eval("COMBAT_GOLD"), 0.910)
+    check("combat does not rewrite the key label", lua.eval("LABEL_IN_COMBAT"), "")
     check("combat does not apply the keybind", lua.eval("BINDS_IN_COMBAT"), 0)
     check("leaving combat arms the queued spell", lua.eval("SPELL"), 9001)
     check("the secure type is spell", lua.eval("KIND"), "spell")
     check("leaving combat shows the button", lua.eval("SHOWN"), True)
-    check("showing it starts the gold glow", lua.eval("GOLD"), 0.910)
+    check("the frame stays gold", lua.eval("GOLD"), 0.910)
+    check("the key label shows G", lua.eval("KEY_LABEL"), "G")
     check("diagnostics name the overload", lua.eval("SOURCE"), "Context action: overload")
     check("the queued keybind is applied after combat", lua.eval("BOUND"), "G")
     check("the binding clicks the shared button", lua.eval("BOUND_BUTTON"), "TAContextActionButton")
@@ -305,6 +349,8 @@ def test_priority_combat_and_binding():
     check("diagnostics name the quest item", lua.eval("QUEST_LINE"), "Context action: quest item")
     check("a secret cooldown is not passed to the swipe", lua.eval("SWIPE_AFTER"), 10)
     check("a shifted key is stored as a binding", lua.eval("KEY2"), "SHIFT-F")
+    check("the slot abbreviates the shifted key", lua.eval("KEY_LABEL2"), "S-F")
+    check("the tooltip says why the item appeared", lua.eval("TIP"), "Quest item for: Canteen Run")
 
     lua = runtime()
     lua.execute(FRAME)
@@ -485,6 +531,7 @@ def test_hover_tooltip_and_use_item():
         CA:OnEvent("PLAYER_REGEN_ENABLED")
         GAME_ACTION = CA._button._attrs.item
         GAME_LINE = CA:StatusLine()
+        GAME_WHY = CA._offers["quest item"].why
         GOLD = CA._button._rgb[1]
         function GetQuestLogSpecialItemInfo() return nil end
         QC:Refresh()
@@ -500,6 +547,7 @@ def test_hover_tooltip_and_use_item():
     check("combat does not hide for the hovered item", lua.eval("COMBAT_HIDES"), lua.eval("HIDES"))
     check("the quest-log item wins over an unverified useItem", lua.eval("GAME_ACTION"), "Dented Canteen")
     check("the game item is what diagnostics report", lua.eval("GAME_LINE"), "Context action: quest item")
+    check("the tooltip names the quest", lua.eval("GAME_WHY"), "Quest item for: Canteen Run")
     check("the hovered item starts the gold glow", lua.eval("GOLD"), 0.910)
     check("useItem is the fallback", lua.eval("GUIDE_ACTION"), "item:999")
     check("an unverified useItem is marked", lua.eval("GUIDE_LINE"), "Context action: quest item (unverified)")

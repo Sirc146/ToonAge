@@ -396,6 +396,17 @@ function OL:Publish(result)
         if start ~= nil then cooldown = { start = start, duration = duration } end
     end
     self._currentSpell = result.spellID
+    local family = result.family
+    if type(family) ~= "string" or family == "" then
+        local data = OL.Data()
+        family = data and data.family
+    end
+    local why
+    if CA.WhyForFamily then
+        why = CA.WhyForFamily(family)
+    elseif type(family) == "string" and family ~= "" then
+        why = family .. " node nearby"
+    end
     CA:Set("overload", {
         source = "overload",
         kind = "spell",
@@ -404,6 +415,7 @@ function OL:Publish(result)
         label = result.label or "Overload",
         priority = CA.OVERLOAD_PRIORITY or 10,
         cooldown = cooldown,
+        why = why,
     })
 end
 

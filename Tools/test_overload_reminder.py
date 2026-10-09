@@ -301,6 +301,7 @@ def test_offers_the_shared_button():
         ACTION = ToonAge.ContextAction._offers.overload.action
         ICON = ToonAge.ContextAction._offers.overload.icon
         PRIORITY = ToonAge.ContextAction._offers.overload.priority
+        WHY = ToonAge.ContextAction._offers.overload.why
     """)
     check("diagnostics follow the shared button", lua.eval("LINE"), "Context action: overload")
     check("the offer is a spell", lua.eval("KIND"), "spell")
@@ -308,6 +309,7 @@ def test_offers_the_shared_button():
     check("the icon is the placeholder", lua.eval("ICON"),
           "Interface\\Icons\\INV_Misc_QuestionMark")
     check("overload priority is below a quest item", lua.eval("PRIORITY"), 10)
+    check("the offer says an infused node is nearby", lua.eval("WHY"), "Infused node nearby")
 
 
 def main():

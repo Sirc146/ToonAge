@@ -534,6 +534,10 @@ function QC:Refresh()
         unverified = guideStep.unverified and true or false
         special = nil
     end
+    local questTitle
+    if questID and type(owned[questID]) == "table" then
+        questTitle = owned[questID].title
+    end
     local cand = CA.QuestCandidate({
         special = fromGame and special or nil,
         fallbackID = fallbackID,
@@ -541,6 +545,7 @@ function QC:Refresh()
         near = near,
         targeting = targeting,
         hover = hover,
+        questTitle = questTitle,
     })
     if cand then
         cand.unverified = unverified and true or false
