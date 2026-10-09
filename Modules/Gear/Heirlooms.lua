@@ -27,7 +27,9 @@
 --   (BANKFRAME_OPENED, PLAYERBANKSLOTS_CHANGED, and a close snapshot).
 --   The main bank and the bank bags go through the C_Container wrappers.
 --   What was seen is cached on the character, so a closed bank can still
---   say "in your bank". Those rows do not get an Equip button.
+--   say "in your bank". A bank row has no Equip button: a small muted
+--   "In bank" note sits where the button would be. Mists heirlooms have
+--   no upgrade tiers, so that client draws no pips at all.
 --
 -- Forever: FOREVER_ENABLED stays false until heirlooms are confirmed there.
 -- The Camelot TOC does not load this file. Era and TBC have no heirlooms.
@@ -178,6 +180,16 @@ function M.BankRecord(item)
         classID = item.classID,
         subclassID = item.subclassID,
     }
+end
+
+--- Mists Classic heirlooms have no upgrade tiers. Anywhere else, one pip
+--- per tier, capped so a bad value cannot paint a row of dozens.
+function M.UpgradePipCount(flavor, maxUpgrade)
+    if flavor == "mists" then return 0 end
+    local pips = tonumber(maxUpgrade) or 0
+    if pips < 0 then pips = 0 end
+    if pips > 16 then pips = 16 end
+    return pips
 end
 
 function M.DetailLine(slotName, ilvl, eqIlvl, where)
@@ -922,9 +934,7 @@ function M:Draw(parent, y, width)
 
         local name = Font(line, 12)
         name:SetPoint("TOPLEFT", line, "TOPLEFT", 0, -2)
-        local pips = tonumber(item.maxUpgrade) or 0
-        if pips < 0 then pips = 0 end
-        if pips > 16 then pips = 16 end
+        local pips = M.UpgradePipCount(TA.flavor, item.maxUpgrade)
         name:SetWidth(math.max(80, width - 180 - (pips * 10)))
         name:SetJustifyH("LEFT")
         name:SetText(M.NAME_COLOR .. (item.name or "Heirloom") .. "|r")
@@ -951,32 +961,39 @@ function M:Draw(parent, y, width)
         detail:SetText(M.DetailLine(SLOT_NAME[row.slot], ilvlText, row.eqIlvl, item.where))
         detail:SetTextColor(NEUTRAL[1], NEUTRAL[2], NEUTRAL[3])
 
-        local btn
-        if item.where == "bag" and item.bag ~= nil and item.slot ~= nil and not InCombat() then
-            btn = MakeEquipButton(line, tostring(item.bag) .. " " .. tostring(item.slot))
-            -- The button lives on UIParent so a combat rebuild can drop this
-            -- row. Hiding the row must take the button with it.
-            line:SetScript("OnHide", function()
-                if InCombat() then
-                    btn:SetAlpha(0)
-                    if btn.Disable then btn:Disable() end
-                elseif btn.Hide then
-                    btn:Hide()
-                end
-            end)
-        elseif item.where == "bag" then
-            btn = MakePlainButton(line, "Equip", nil, true, true)
-        elseif item.where == "bank" then
-            btn = MakePlainButton(line, "In bank", nil, true, false)
+        if item.where == "bank" then
+            -- The item is not on the character, so there is nothing to equip.
+            local note = Font(line, 10)
+            note:SetPoint("RIGHT", line, "RIGHT", 0, 0)
+            note:SetJustifyH("RIGHT")
+            note:SetText("In bank")
+            note:SetTextColor(DIM[1], DIM[2], DIM[3])
         else
-            btn = MakePlainButton(line, "Open Heirloom Journal", function()
-                if not M.OpenJournal() and TA.Print then
-                    TA:Print(TA.LOG.OUTPUT, nil, "The Heirloom Journal is not available on this client.")
-                end
-            end, false, false)
-            btn:SetSize(158, 22)
+            local btn
+            if item.where == "bag" and item.bag ~= nil and item.slot ~= nil and not InCombat() then
+                btn = MakeEquipButton(line, tostring(item.bag) .. " " .. tostring(item.slot))
+                -- The button lives on UIParent so a combat rebuild can drop this
+                -- row. Hiding the row must take the button with it.
+                line:SetScript("OnHide", function()
+                    if InCombat() then
+                        btn:SetAlpha(0)
+                        if btn.Disable then btn:Disable() end
+                    elseif btn.Hide then
+                        btn:Hide()
+                    end
+                end)
+            elseif item.where == "bag" then
+                btn = MakePlainButton(line, "Equip", nil, true, true)
+            else
+                btn = MakePlainButton(line, "Open Heirloom Journal", function()
+                    if not M.OpenJournal() and TA.Print then
+                        TA:Print(TA.LOG.OUTPUT, nil, "The Heirloom Journal is not available on this client.")
+                    end
+                end, false, false)
+                btn:SetSize(158, 22)
+            end
+            btn:SetPoint("RIGHT", line, "RIGHT", 0, 0)
         end
-        btn:SetPoint("RIGHT", line, "RIGHT", 0, 0)
         y = y - 48
     end
 

@@ -145,6 +145,12 @@ eq("cache record drops the slot", rec.slot, nil)
 eq("cache record keeps the item", rec.itemID, 3)
 eq("cache record keeps equip loc", rec.equipLoc, "INVTYPE_HEAD")
 
+eq("mists hides upgrade pips", M.UpgradePipCount("mists", 4), 0)
+eq("mists hides pips even when the count is missing", M.UpgradePipCount("mists", nil), 0)
+eq("retail keeps one pip per tier", M.UpgradePipCount("retail", 4), 4)
+eq("retail caps a wild pip count", M.UpgradePipCount("retail", 40), 16)
+eq("a missing tier count draws nothing", M.UpgradePipCount("retail", nil), 0)
+
 local bagLine = M.DetailLine("Head", "20", 10, "bag")
 eq("bag line omits the bank", bagLine:find("in your bank", 1, true) == nil, true)
 local bankLine = M.DetailLine("Head", "20", nil, "bank")
@@ -174,7 +180,9 @@ check("bank open event", "BANKFRAME_OPENED" in src, True)
 check("bank slot event", "PLAYERBANKSLOTS_CHANGED" in src, True)
 check("bank close snapshot", "BANKFRAME_CLOSED" in src, True)
 check("per character bank cache", "heirloomBank" in src, True)
-check("bank rows are not equip buttons", 'MakePlainButton(line, "In bank"' in src, True)
+check("mists hides upgrade pips", 'if flavor == "mists" then return 0 end' in src, True)
+check("bank note is muted text", 'SetText("In bank")' in src, True)
+check("bank rows are not equip buttons", 'MakePlainButton(line, "In bank"' not in src, True)
 check("reads containers through the wrapper", "U.GetContainerNumSlots" in src, True)
 
 for toc, want in (
