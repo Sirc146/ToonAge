@@ -1566,6 +1566,10 @@ local function Dispatch(self, msg)
             if TA.RotationLists and TA.RotationLists.StatusLine then
                 Say("  " .. TA.RotationLists.StatusLine())
             end
+            local talents = TA.GetModule and TA:GetModule("ForeverTalents")
+            if talents and talents.StatusLine then
+                Say("  " .. talents.StatusLine())
+            end
             Say("━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
             -- "copy" opens the same report in a selectable window; without it,
