@@ -12,6 +12,8 @@ ignore:
     - .claude
     - .rules.md
     - CLAUDE.md
+    - Art
     - Docs
+    - docs
     - Releases
     - Tools

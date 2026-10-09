@@ -25,8 +25,8 @@
 
     This script reproduces release.yml's layout from what the next commit would
     contain (tracked + new files, minus .gitignore'd ones), with the same
-    exclusions: .git .github Tools Docs .claude __pycache__ *.pyc *.py
-    CLAUDE.md .rules.md .gitignore.
+    exclusions: .git .github Art Tools Docs docs .claude __pycache__
+    *.pyc *.py CLAUDE.md .rules.md .gitignore. Data ships: the TOC lists it.
 
     With -InstallTo it replaces that client's Interface\AddOns\ToonAge with the
     layout (SavedVariables are untouched -- they live under WTF\). Put the
@@ -65,7 +65,7 @@ $pkg = Join-Path $OutDir 'ToonAge'
 
 # Same exclusions as release.yml's rsync. rsync --exclude='Tools' drops any path
 # component named Tools, anywhere -- so this matches on every segment.
-$ExcludeDirs  = @('.git', '.github', 'Tools', 'Docs', '.claude', '__pycache__')
+$ExcludeDirs  = @('.git', '.github', 'Art', 'Tools', 'Docs', 'docs', '.claude', '__pycache__')
 $ExcludeNames = @('CLAUDE.md', '.rules.md', '.gitignore')
 function Test-Excluded([string] $rel) {
     $parts = $rel -split '[\\/]'
@@ -91,6 +91,18 @@ foreach ($rel in $files) {
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     Copy-Item -LiteralPath (Join-Path $Root $rel) -Destination $dst -Force
 }
+
+# The same check the GitHub release runs against the zip. A TOC path that
+# the exclusions dropped fails the build before anything is installed.
+$python = $null
+foreach ($name in @('python3', 'python')) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd) { $python = $cmd.Source; break }
+}
+if (-not $python) { throw "python is required to verify the release layout" }
+$checker = Join-Path $PSScriptRoot 'check_release_zip.py'
+& $python $checker --dir $pkg
+if ($LASTEXITCODE -ne 0) { throw "the release layout is missing a file a TOC lists" }
 
 Write-Host ""
 Write-Host "Release layout: $pkg  ($($files.Count) files)" -ForegroundColor Cyan

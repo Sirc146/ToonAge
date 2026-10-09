@@ -40,8 +40,10 @@ jobs:
           # Copy only addon files (exclude dev-only folders)
           rsync -a --exclude='.git' \
                    --exclude='.github' \
+                   --exclude='Art' \
                    --exclude='Tools' \
                    --exclude='Docs' \
+                   --exclude='docs' \
                    --exclude='.claude' \
                    --exclude='__pycache__' \
                    --exclude='*.pyc' \
@@ -53,6 +55,9 @@ jobs:
           sed -i "s/^## Version: .*/## Version: ${{ steps.version.outputs.version }}/" release/ToonAge/*.toc
           cd release
           zip -r ../ToonAge-${{ steps.version.outputs.version }}.zip ToonAge/
+
+      - name: Fail if a TOC file is missing from the zip
+        run: python3 Tools/check_release_zip.py "ToonAge-${{ steps.version.outputs.version }}.zip"
 
       - name: Write release.json (flavor map for WowUp / addon managers)
         run: |
