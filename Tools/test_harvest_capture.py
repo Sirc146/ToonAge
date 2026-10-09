@@ -90,6 +90,20 @@ check("trainer capture names the NPC, its id and the class",
       ("Aelthalyste", "5490", "MAGE"))
 check("trainer rows are this visit",
       cap.trainer.rows["133"].split("\t")[0], "Fireball")
+check("every rank is kept, including the ones past the level cap",
+      sorted(cap.trainer.rows.keys()), ["133", "3140", "7322", "8400"])
+check("each row records its service type",
+      (cap.trainer.rows["133"].split("\t")[3], cap.trainer.rows["3140"].split("\t")[3],
+       cap.trainer.rows["8400"].split("\t")[3], cap.trainer.rows["7322"].split("\t")[3]),
+      ("used", "available", "unavailable", "unavailable"))
+check("the read turned all three filters on, then put them back",
+      [L.eval("TRAINER_FILTER_SETS")[i] for i in range(1, len(L.eval("TRAINER_FILTER_SETS")) + 1)],
+      ["available=1", "unavailable=1", "used=1", "available=1", "unavailable=0", "used=1"])
+check("the player's filters are back before the call returns",
+      (L.eval("TRAINER_FILTER.available"), L.eval("TRAINER_FILTER.unavailable"), L.eval("TRAINER_FILTER.used")),
+      (True, False, True))
+check("the status line says the filters were restored",
+      "filters=restored" in L.eval("ToonAge.db.harvest.trainerApi"))
 
 # Change a value and scan again. The saved capture must move; the first value goes.
 L.execute(r"""
@@ -128,6 +142,8 @@ FLUSH()
 """)
 check("a closed trainer window does not wipe the capture",
       L.eval("ToonAge.db.harvest.captures[KEY].trainer.npcName"), "Aelthalyste")
+check("closing the window still restores the filters",
+      L.eval("TRAINER_FILTER.unavailable"), False)
 
 # A profession visit must not replace the class trainer capture.
 L.execute(r"""
@@ -315,6 +331,69 @@ check("confirming removes only that character",
 L.execute("ToonAge.Harvester:Clear()")
 check("clear store drops every character",
       L.eval("ToonAge.db.harvest"), None)
+
+# The setter fires TRAINER_UPDATE before it returns. That event is the same
+# read: it must not queue another widen.
+Lr = world()
+Lr.execute(r"""
+local real = SetTrainerServiceTypeFilter
+SetTrainerServiceTypeFilter = function(kind, on)
+    real(kind, on)
+    ToonAge.modules.DataHarvester:OnEvent("TRAINER_UPDATE")
+end
+ToonAge.modules.DataHarvester:Init()
+TIMERS = {}
+ToonAge.modules.DataHarvester:OnEvent("TRAINER_SHOW")
+KEY = ToonAge.Harvester:CharacterKey()
+""")
+lr_rows = Lr.eval("ToonAge.db.harvest.captures[KEY].trainer.rows")
+check("a filter write's TRAINER_UPDATE does not queue another read", Lr.eval("#TIMERS"), 0)
+check("filters are back in that same call",
+      (Lr.eval("TRAINER_FILTER.available"), Lr.eval("TRAINER_FILTER.unavailable"), Lr.eval("TRAINER_FILTER.used")),
+      (True, False, True))
+check("that same call still kept the hidden ranks",
+      (lr_rows["8400"].split("\t")[3], lr_rows["7322"].split("\t")[3]),
+      ("unavailable", "unavailable"))
+
+# Either function missing: do not touch the filters, and do not invent the
+# rows they were hiding.
+Ls = world()
+Ls.execute(r"""
+SetTrainerServiceTypeFilter = nil
+ToonAge.modules.DataHarvester:Init()
+ToonAge.modules.DataHarvester:OnEvent("TRAINER_SHOW")
+FLUSH()
+KEY = ToonAge.Harvester:CharacterKey()
+""")
+ls_rows = Ls.eval("ToonAge.db.harvest.captures[KEY].trainer.rows")
+check("without the setter, a hidden rank is left unread", ls_rows["8400"], None)
+check("without the setter, the ranks on screen are still recorded",
+      (ls_rows["133"].split("\t")[3], ls_rows["3140"].split("\t")[3]), ("used", "available"))
+check("without the setter, the unavailable filter stays off",
+      Ls.eval("TRAINER_FILTER.unavailable"), False)
+check("without the setter, the status line says the step was skipped",
+      "filters=skipped" in Ls.eval("ToonAge.db.harvest.trainerApi"))
+
+Lg = world()
+Lg.execute(r"""
+GetTrainerServiceTypeFilter = nil
+SET_CALLS = 0
+local real = SetTrainerServiceTypeFilter
+SetTrainerServiceTypeFilter = function(kind, on)
+    SET_CALLS = SET_CALLS + 1
+    return real(kind, on)
+end
+ToonAge.modules.DataHarvester:Init()
+ToonAge.modules.DataHarvester:OnEvent("TRAINER_SHOW")
+FLUSH()
+KEY = ToonAge.Harvester:CharacterKey()
+""")
+lg_rows = Lg.eval("ToonAge.db.harvest.captures[KEY].trainer.rows")
+check("without the getter, the setter is never called", Lg.eval("SET_CALLS"), 0)
+check("without the getter, the hidden rank stays hidden", lg_rows["8400"], None)
+check("without the getter, the player's filters are untouched",
+      (Lg.eval("TRAINER_FILTER.available"), Lg.eval("TRAINER_FILTER.unavailable"), Lg.eval("TRAINER_FILTER.used")),
+      (True, False, True))
 
 passed, total = sum(_res), len(_res)
 print(f"[{'PASS' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")

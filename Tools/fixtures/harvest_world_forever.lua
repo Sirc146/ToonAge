@@ -180,7 +180,11 @@ C_TooltipInfo = {
         if not s then return nil end
         return { lines = { { leftText = s[1] }, { leftText = "Instant", rightText = "2 min cooldown" }, { leftText = s[1] .. " effect." } } }
     end,
-    GetTrainerService = function(i) local r = TRAINER[i]; return r and { id = r[4] } or nil end,
+    GetTrainerService = function(i)
+        local list = TrainerServices()
+        local r = list[i]
+        return r and { id = r[4] } or nil
+    end,
     GetHyperlink = function(l) return { lines = { { leftText = "Scroll of Protection" }, { leftText = "Use: armor up." } } } end,
 }
 
@@ -210,14 +214,49 @@ C_Traits = {
 }
 
 -- ── Trainer (a class trainer visit) ──────────────────────────────────────
-TRAINER = {   -- name, category, levelReq, id
+-- name, category, levelReq, id. Unavailable starts off, the way the window
+-- is often left, so a scan has to turn that filter on to see the later ranks.
+TRAINER = {
     { "Fireball", "used", 1, 133 }, { "Fireball", "available", 18, 3140 }, { "Fireball", "unavailable", 24, 8400 },
     { "Frostbolt", "unavailable", 20, 7322 }, { "Class header", "header", 0, 1 },
 }
-function GetNumTrainerServices() return #TRAINER end
-function GetTrainerServiceInfo(i) local r = TRAINER[i]; return r[1], r[2], 135812 end
-function GetTrainerServiceLevelReq(i) return TRAINER[i][3] end
-function GetTrainerServiceTypeFilter(f) return true end
+TRAINER_FILTER = { available = true, unavailable = false, used = true }
+TRAINER_FILTER_SETS = {}
+
+function TrainerFilterShows(cat)
+    if cat == "header" then return true end
+    local on = TRAINER_FILTER[cat]
+    return on == true or on == 1
+end
+
+-- Service index i is the i-th row the open filters leave on screen.
+function TrainerServices()
+    local list = {}
+    for i = 1, #TRAINER do
+        local r = TRAINER[i]
+        if r and TrainerFilterShows(r[2]) then list[#list + 1] = r end
+    end
+    return list
+end
+
+function GetNumTrainerServices() return #TrainerServices() end
+function GetTrainerServiceInfo(i)
+    local r = TrainerServices()[i]
+    if not r then return end
+    return r[1], r[2], 135812
+end
+function GetTrainerServiceLevelReq(i)
+    local r = TrainerServices()[i]
+    return r and r[3] or nil
+end
+function GetTrainerServiceTypeFilter(kind)
+    local on = TRAINER_FILTER[kind]
+    return on == true or on == 1
+end
+function SetTrainerServiceTypeFilter(kind, on)
+    TRAINER_FILTER_SETS[#TRAINER_FILTER_SETS + 1] = tostring(kind) .. "=" .. tostring(on)
+    TRAINER_FILTER[kind] = (on == 1 or on == true)
+end
 
 -- ── Probe-only APIs ──────────────────────────────────────────────────────
 function GetProfessions() return 7, 8, nil, 9, 6, 5 end
