@@ -121,6 +121,7 @@ GP.PICKUP_TYPES = {
 -- ── Deferred log (flushed in Init) ───────────────────────────────────
 local _errors   = {}   -- { { id, stepN, msg } }
 local _summary  = {}   -- { { id, title, count, errCount, valid } }
+local _estimated = {}  -- { { id, title, count } } coords still needing a spot-check
 
 local function LogError(id, stepN, msg)
     table.insert(_errors, { id = id, stepN = stepN, msg = msg })
@@ -220,11 +221,24 @@ local function ValidateGuide(id, guide)
         LogError(id, nil, "'nextGuide' must be a string guide id")
     end
     -- Validate faction
-    if guide.faction ~= nil and guide.faction ~= "Alliance" and guide.faction ~= "Horde" then
-        LogError(id, nil, "'faction' must be 'Alliance' or 'Horde'")
+    if guide.faction ~= nil and guide.faction ~= "Alliance" and guide.faction ~= "Horde"
+       and guide.faction ~= "Neutral" then
+        LogError(id, nil, "'faction' must be 'Alliance', 'Horde' or 'Neutral'")
     end
+    local estimatedSteps = 0
     for n, step in ipairs(guide.steps) do
         ValidateStep(id, n, step)
+        if guide.coordsEstimated and step.coord then
+            estimatedSteps = estimatedSteps + 1
+            step.estimated = true
+        end
+    end
+    if estimatedSteps > 0 then
+        _estimated[#_estimated + 1] = {
+            id = id,
+            title = (type(guide.title) == "string" and guide.title) or id,
+            count = estimatedSteps,
+        }
     end
     local errs = #_errors - errsBefore
     return errs == 0, #guide.steps, errs
@@ -296,6 +310,11 @@ function GP:Init()
     elseif loadedCount > 0 then
         TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[TA]|r %d guide(s) loaded. Type |cFFFFD100/ta tracker|r to open the tracker.", loadedCount))
     end
+    for _, e in ipairs(_estimated) do
+        TA:Raw(TA.LOG.INFO, string.format(
+            "|cFFFFD100[TA]|r Guide '%s': %d step(s) use estimated coordinates (spot-check in game).",
+            e.title, e.count))
+    end
 end
 
 -- ── Public API ────────────────────────────────────────────────────────
@@ -305,6 +324,12 @@ end
 
 function GP:GetAllGuides()
     return TA.Guides
+end
+
+--- Guides whose coordinates were converted and still need an in-game spot-check.
+--- Each entry is { id, title, count } where count is steps that carry a coord.
+function GP:EstimatedCoords()
+    return _estimated
 end
 
 --- Returns the next guide in a chain, or nil.
@@ -360,7 +385,7 @@ end
 --- Check if a guide is applicable to the current player (faction, level).
 function GP:IsGuideApplicable(guide)
     if not guide then return false end
-    if guide.faction then
+    if guide.faction and guide.faction ~= "Neutral" then
         local playerFaction = UnitFactionGroup("player")
         if guide.faction ~= playerFaction then return false end
     end
