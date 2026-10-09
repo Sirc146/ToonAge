@@ -1,8 +1,8 @@
 # ToonAge icon media list (`Interface\AddOns\ToonAge\Media\icons\`)
 
-Shipped set, 2026-10-09. Every file from the three delivered archives is in this folder: the original set, the redraw (`tab_caps`, `tab_weapons`, `tab_weekly` and their `_32` cuts), then the final archive over the top (`tab_delves`, `tab_delves_32`, replacement `tab_caps_32` and `tab_weekly_32`, and `util_pip_8`, `util_pip_8_ring`, `util_pip_8_charged`). Name aliases `tab_guide`, `tab_rotation` and `util_harvest` are byte-copies of `tab_scrolls`, `tab_casts` and `tab_harvest`. 62 TGA files. Nothing in those archives is still pending.
+Shipped set, 2026-10-09. 71 TGA files are in this folder. The first 62 came from the three earlier archives: the original set, the redraw (`tab_caps`, `tab_weapons`, `tab_weekly` and their `_32` cuts), then the final archive over the top (`tab_delves`, `tab_delves_32`, replacement `tab_caps_32` and `tab_weekly_32`, and `util_pip_8`, `util_pip_8_ring`, `util_pip_8_charged`). Name aliases `tab_guide`, `tab_rotation` and `util_harvest` are byte-copies of `tab_scrolls`, `tab_casts` and `tab_harvest`.
 
-The earlier rev-3 draft counted 71 by also listing `tab_racials`, `tab_professions`, `tab_pets` (64 and `_32`) and `util_lock` (64, `_32`, `_16`). Those nine files were not in any archive, so they are not in this folder.
+The waypoint and gear archive added nine more: `util_waypoint`, `util_waypoint_hollow`, `util_waypoint_arrived` (64, full colour), and `util_upgrade`, `util_downgrade`, `util_sidegrade` (32 masters plus `_16`). The named set is 80. The other nine names are still not in any archive: `tab_racials`, `tab_professions`, `tab_pets` (64 and `_32`) and `util_lock`, `util_lock_32`, `util_lock_16`. The heirloom row still asks for `util_lock_16.tga`, which is not in this folder.
 
 Final icon set, signed off by the art director (Gilder) on 2026-10-08. Specs: `toonage/style-guide.md` (rev 2) §9b–§11 and `toonage/prompt-sheet-2026-10-08.md` §4. This manifest is the per-file usage list. The style guide stays the source of truth for the design rules.
 
@@ -14,6 +14,8 @@ All files are 32-bit uncompressed TGA (type 2) with straight alpha and power-of-
 2. **Compartment:** **`compartment.tga` / `compartment_32.tga`** stay **flat `#E8B35A`** with **no gradient**, on a transparent background. Do not tint or recolour. Unlike `logo_mark` and `minimap`, they carry no gold gradient, even though all three use the same hourglass mark.
 3. **Title-bar dots** (close / minimize / expand): at **idle** the dot is **plain colour** at 0.85 alpha, **with no glyph**. On **hover** the dot goes to 1.0 and shows its `util_*_16` glyph at 8 UI units, tinted `text_on_gold` `#1A0E02`. The expand hover glyph is a **plus** (`util_expand_16`).
 4. Small display sizes come from the hand-built `_16` files (8 px dot glyphs, 12 px list glyphs), never from shrinking `_32`.
+5. **Quest waypoint** (`util_waypoint`, `util_waypoint_hollow`, `util_waypoint_arrived`): 64 masters, full colour. Do not tint them with `SetVertexColor`. Draw at 48 px by default, adjustable from 32 to 64, rotated with `SetRotation` around the texture centre. The hollow cut is for an estimated coordinate or an unverified step, and it is not drawn below 40 px (at 32 it reads as solid). Distance text is `124 yd`, with `~` in front when the location is estimated. Fade the arrow from 8 yards down to 5, then show the arrived ring. Hide the arrow in an instance, and when the player has no position.
+6. **Gear marks** (`util_upgrade`, `util_downgrade`, `util_sidegrade`, plus `_16`): white art. Tint them in the `|T...|t` string, not by recolouring the file. Upgrade uses the success colour, downgrade the danger colour, sidegrade `text_muted`. The mark sits 4 px after the item name, never at the start of the row. The downgrade mark appears only in a comparison. List rows use the `_16` cut.
 
 ## Files
 
@@ -64,5 +66,14 @@ All files are 32-bit uncompressed TGA (type 2) with straight alpha and power-of-
 | `util_chevron.tga` | 64×64 | Right chevron, master (rotate with `SetRotation` for open) | master |
 | `util_chevron_32.tga` | 32×32 | Same, hinted | 16+ |
 | `util_chevron_16.tga` | 16×16 | Chevron, 1 px, bbox centred on (8,8) for clean rotation | 12 (collapsible sections, Diagnostics back chevron) |
+| `util_waypoint.tga` | 64×64 | Quest arrow, full colour (rule 5) | 48 default, 32–64 |
+| `util_waypoint_hollow.tga` | 64×64 | Same arrow, hollow, for an estimated or unverified step (rule 5) | 40–64 (never 32) |
+| `util_waypoint_arrived.tga` | 64×64 | Arrived ring, full colour, shown at 5 yards and closer (rule 5) | 48 default, 32–64 |
+| `util_upgrade.tga` | 32×32 | Upgrade mark, white, success tint in the `|T|t` string (rule 6) | master |
+| `util_upgrade_16.tga` | 16×16 | Upgrade mark, list cut (rule 6) | 16, 4 px after the item name |
+| `util_downgrade.tga` | 32×32 | Downgrade mark, white, danger tint (rule 6) | master; comparison views only |
+| `util_downgrade_16.tga` | 16×16 | Downgrade mark, list cut (rule 6) | 16, comparison views only |
+| `util_sidegrade.tga` | 32×32 | Sidegrade mark, white, `text_muted` tint (rule 6) | master |
+| `util_sidegrade_16.tga` | 16×16 | Sidegrade mark, list cut (rule 6) | 16, 4 px after the item name |
 
 Note: the clock's 64 and `_32` files still show the 10:10 pose. Only `util_clock_16` (the 12 px list glyph) uses the 12-and-3 L shape, per the AD's final fix. Likewise, the expand 64/`_32` keep the corner brackets, and only the `_16` hover glyph is a plus.

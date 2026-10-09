@@ -331,17 +331,27 @@ function Gear:InjectTooltipScore(tooltip, itemLink)
     tooltip:AddLine("ToonAge Score", 0.40, 0.75, 1.00)
 
     local diff = score - equippedScore
+    local kind
+    if equippedScore > 0 and diff > 0 then kind = "upgrade"
+    elseif equippedScore > 0 and diff < 0 then kind = "downgrade" end
+    if kind then
+        local nameFS = _G[(tooltip:GetName() or "GameTooltip") .. "TextLeft1"]
+        if nameFS and nameFS.GetText and nameFS.SetText then
+            nameFS:SetText(U.MarkItemName(nameFS:GetText() or "", kind, true))
+        end
+    end
+
     if equippedScore > 0 and diff > 0 then
         local pct = math.floor((diff / equippedScore) * 100)
         tooltip:AddDoubleLine(
             string.format("Score: %d", math.floor(score)),
-            "|cFF4AFF7A+" .. pct .. "% upgrade|r",
+            "|cFF4AFF7A+" .. pct .. "%|r",
             0.92, 0.90, 0.87, 0.30, 0.92, 0.40)
     elseif equippedScore > 0 and diff < 0 then
         local pct = math.floor((math.abs(diff) / equippedScore) * 100)
         tooltip:AddDoubleLine(
             string.format("Score: %d", math.floor(score)),
-            "|cFFFF6666-" .. pct .. "% downgrade|r",
+            "|cFFFF6666-" .. pct .. "%|r",
             0.92, 0.90, 0.87, 1.00, 0.40, 0.40)
     else
         tooltip:AddDoubleLine(

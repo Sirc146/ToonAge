@@ -612,7 +612,10 @@ local function RenderGearCheck(content, y, rows)
             end
             y = L:DataRow(content, y, {
                 label = u.slot,
-                value = string.format("%s  (ilvl %d vs %d)", Colored(u.name, u.quality), u.ilvl, u.curIlvl or 0),
+                value = string.format("%s  (ilvl %d vs %d)",
+                    U.MarkItemName(Colored(u.name, u.quality),
+                        (u.verdict == "better") and "upgrade" or "sidegrade", true),
+                    u.ilvl, u.curIlvl or 0),
                 note = (u.curName and ("vs " .. u.curName .. ": ") or "empty slot: ")
                     .. (u.diff or "stats not loaded"),
                 status = HEAD[u.verdict][3],
@@ -1178,7 +1181,8 @@ RenderEnchants = function(content, y)
         end
         y = L:DataRow(content, y, {
             label = c.v.slot .. " — " .. c.prof,
-            value = Colored(c.v.name, c.v.quality) .. ((c.v.verdict == "better") and "  |cFF4AE07AUP|r" or ""),
+            value = U.MarkItemName(Colored(c.v.name, c.v.quality),
+                (c.v.verdict == "better") and "upgrade" or "sidegrade", true),
             note = note,
             status = (c.v.verdict == "better") and "good" or "warn",
         })
@@ -1269,6 +1273,11 @@ local function Badge(btn)
         if not (r and GameTooltip and GameTooltip:IsOwned(self)) then return end
         local head = (r.verdict == "better") and "|cFF4AE07AToonAge: upgrade|r"
             or "|cFFFFA633ToonAge: trade-off|r"
+        local nameFS = _G["GameTooltipTextLeft1"]
+        if nameFS and nameFS.GetText and nameFS.SetText then
+            nameFS:SetText(U.MarkItemName(nameFS:GetText() or "",
+                (r.verdict == "better") and "upgrade" or "sidegrade", true))
+        end
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine(head .. "  (" .. r.slot .. (r.curName and (", vs " .. r.curName) or ", empty slot") .. ")")
         if r.diff then GameTooltip:AddLine(r.diff, 0.85, 0.85, 0.85, true) end
@@ -1327,20 +1336,22 @@ function M:FlagVendor()
                 end
             end
             btn._taVerdict = r
-            local b = (r or btn._taBadge) and Badge(btn)
-            if r then
-                local dim = r.short and "|cFF8A8780" or nil   -- can't afford: greyed, same glyph
-                if r.verdict == "better" then
-                    c.better = c.better + 1
-                    b.text:SetText((dim or "|cFF4AE07A") .. "UP|r")
-                else
-                    c.trade = c.trade + 1
-                    b.text:SetText((dim or "|cFFFFA633") .. "+/-|r")
+            -- The badge frame only exists so its OnEnter hook can run. The
+            -- mark itself is 4px after the item name, not in the corner.
+            local b = Badge(btn)
+            b:Hide()
+            local nameFS = _G["MerchantItem" .. i .. "Name"]
+            if nameFS and nameFS.GetText and nameFS.SetText then
+                local plain = (nameFS:GetText() or ""):gsub("|T.-|t", "")
+                local mark = ""
+                if r then
+                    mark = U.GearMarkForVerdict((r.verdict == "better") and "upgrade" or "sidegrade", true)
                 end
+                nameFS:SetText(plain .. mark)
+            end
+            if r then
+                if r.verdict == "better" then c.better = c.better + 1 else c.trade = c.trade + 1 end
                 if r.short then c.short = c.short + 1 end
-                b:Show()
-            elseif b then
-                b:Hide()
             end
         end
     end
@@ -1392,6 +1403,10 @@ local function HideVendorFlags()
         if btn then
             btn._taVerdict = nil
             if btn._taBadge then btn._taBadge:Hide() end
+        end
+        local nameFS = _G["MerchantItem" .. i .. "Name"]
+        if nameFS and nameFS.GetText and nameFS.SetText then
+            nameFS:SetText((nameFS:GetText() or ""):gsub("|T.-|t", ""))
         end
     end
     local mf = _G.MerchantFrame

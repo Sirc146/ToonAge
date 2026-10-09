@@ -625,7 +625,7 @@ function M:Render(content, side)
             end
 
             y = L:DataRow(content, y, {
-                label  = U.ColourItemName(up.name or "?", up.quality)
+                label  = U.MarkItemName(U.ColourItemName(up.name or "?", up.quality), "upgrade", true)
                        .. "  |cFF555049→ " .. (U.SLOT_NAMES[up.slot] or "?") .. "|r",
                 value  = (up.mainHandBlocks and "|cFFFF9A1Anot yet|r  " or "") .. "+" .. U.Score(up.gain),
                 status = status, bold = true,
