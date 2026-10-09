@@ -6,8 +6,11 @@
 -- too low for as well, under the "Unavailable" filter, and Forever's does the
 -- same (measured on build 70205: 35 "unavailable" rows up to level 60 on a
 -- level-17 Mage). So ONE visit per class gives the whole rank table at any
--- level. Records only; it never changes the trainer's filters or buys
--- anything. What the client answered is kept in trainerApi.
+-- level. Records only; it never buys anything. For the length of one read it
+-- turns the available, unavailable and used filters on, then puts each one
+-- back, so a rank past the player's level is still in the list. If either
+-- filter function is missing, that step is skipped and the list is read as
+-- the player left it. What the client answered is kept in trainerApi.
 --
 -- PROFESSION TRAINERS (T4, option (a) approved 2026-10-04): a profession
 -- trainer's recipes are recorded too, but under professions -- never as class
@@ -21,7 +24,7 @@
 -- Modules/Forever/DataHarvester.lua in T4.
 --
 --   trainer[CLASS][spellID]          = name, rank text, level required,
---                                      category (available / unavailable / used), when
+--                                      service type (available / unavailable / used), when
 --   trainerProf[PROFESSION][spellID] = the same fields, from a profession trainer
 
 local TA = ToonAge
@@ -30,6 +33,41 @@ local Hv, Caps = TA.Harvester, TA.Caps
 local Try, Clean, Fields, Size = Hv.Try, Hv.Clean, Hv.Fields, Hv.Size
 
 local CATEGORY = { available = true, unavailable = true, used = true, header = true }
+
+-- The three service-type filters a trainer window has. Widened only for the
+-- read, then restored to whatever the player had.
+local FILTERS = { "available", "unavailable", "used" }
+
+--- 1 when the client says that filter is on, else 0. True and 1 both count
+--- as on; a secret answer has already been turned into the word "secret".
+local function FilterBit(v)
+    if v == true or v == 1 then return 1 end
+    return 0
+end
+
+--- The player's three filters, or nil when either call is missing.
+--- Reading only: the sets happen after this returns, so a failure in between
+--- can still put the saved values back.
+local function SavedFilters()
+    if not Caps.Fn("GetTrainerServiceTypeFilter") or not Caps.Fn("SetTrainerServiceTypeFilter") then
+        return nil
+    end
+    local saved = {}
+    for i = 1, #FILTERS do
+        local kind = FILTERS[i]
+        saved[kind] = FilterBit(Try("GetTrainerServiceTypeFilter", kind))
+    end
+    return saved
+end
+
+local function ApplyFilters(bits)
+    for i = 1, #FILTERS do
+        local kind = FILTERS[i]
+        Try("SetTrainerServiceTypeFilter", kind, bits[kind])
+    end
+end
+
+local OPEN = { available = 1, unavailable = 1, used = 1 }
 
 -- A profession's own rank rows ("Apprentice Mining", "Journeyman Mining") name
 -- the profession; class trainers sell no such rows.
@@ -81,115 +119,135 @@ end
 function D:ScanTrainer()
     local s = Hv:Store()
     if not s then return end
-    local api = {}
-    for _, n in ipairs({ "GetNumTrainerServices", "GetTrainerServiceInfo",
-                         "GetTrainerServiceLevelReq", "GetTrainerServiceTypeFilter" }) do
-        api[#api + 1] = n .. "=" .. (Caps.Fn(n) and "yes" or "NO")
-    end
-    local hasTip = Caps.Fn("C_TooltipInfo.GetTrainerService") ~= nil
-    api[#api + 1] = "C_TooltipInfo.GetTrainerService=" .. (hasTip and "yes" or "NO")
+    -- SetTrainerServiceTypeFilter fires TRAINER_UPDATE before it returns.
+    -- That event is this same read, not a new visit: ignore it until the
+    -- filters are back, or a trailing scan would widen them again.
+    self._reading = true
+    local saved
+    local ok, rows, npc = pcall(function()
+        local api = {}
+        for _, n in ipairs({ "GetNumTrainerServices", "GetTrainerServiceInfo",
+                             "GetTrainerServiceLevelReq", "GetTrainerServiceTypeFilter",
+                             "SetTrainerServiceTypeFilter" }) do
+            api[#api + 1] = n .. "=" .. (Caps.Fn(n) and "yes" or "NO")
+        end
+        local hasTip = Caps.Fn("C_TooltipInfo.GetTrainerService") ~= nil
+        api[#api + 1] = "C_TooltipInfo.GetTrainerService=" .. (hasTip and "yes" or "NO")
 
-    local n = tonumber((Try("GetNumTrainerServices")))
-    local _, class = Try("UnitClass", "player")
-    if not (n and class) then
-        s.trainerApi = table.concat(api, " ") .. " | services=nil"
-        return
-    end
-    if n == 0 then
-        -- TRAINER_UPDATE also fires as the window closes, with 0 services.
-        -- Recording that would overwrite the real visit's status line and
-        -- this character's trainer capture.
-        return nil
-    end
-    local unavailShown = Try("GetTrainerServiceTypeFilter", "unavailable")
-    -- Record format 2 (2026-10-03). Format 1 keyed rows by name + the 2nd
-    -- return, assumed to be rank text. MEASURED on Forever build 70205: the
-    -- returns are (name, category, texture, ...) -- no rank text -- so every
-    -- rank of a spell shared one key and only the last survived (Fireball
-    -- kept its level-60 rank only). Keyed by spell ID now.
-    if s.trainerFormat ~= 2 then s.trainer = {}; s.trainerFormat = 2; Hv:AdoptSection("trainer", s.trainer) end
+        -- Save, then turn all three on, then read. Both calls have to exist;
+        -- otherwise the list is read exactly as the player left it.
+        saved = SavedFilters()
+        if saved then ApplyFilters(OPEN) end
 
-    -- This visit's rows, read first and judged on their own.
-    local keys, lines, names = {}, {}, {}
-    local unavailable, noID = 0, 0
-    local now = Hv.Now() or 0
-    for i = 1, n do
-        local r = { Try("GetTrainerServiceInfo", i) }
-        local name = r[1]
-        -- Category is whichever early return is a category word, so a client
-        -- that does return rank text (Classic Era's order) still parses.
-        local category, rankText
-        for k = 2, 4 do
-            local v = r[k]
-            if type(v) == "string" then
-                if CATEGORY[v] then category = category or v
-                elseif v:find("%d") then rankText = rankText or v end
+        local n = tonumber((Try("GetNumTrainerServices")))
+        local _, class = Try("UnitClass", "player")
+        if not (n and class) then
+            s.trainerApi = table.concat(api, " ") .. " | services=nil"
+            return
+        end
+        if n == 0 then
+            -- TRAINER_UPDATE also fires as the window closes, with 0 services.
+            -- Recording that would overwrite the real visit's status line and
+            -- this character's trainer capture. The filters are still put back.
+            return nil
+        end
+        local unavailShown = saved and saved.unavailable or Try("GetTrainerServiceTypeFilter", "unavailable")
+        local filterNote = saved and "restored" or "skipped"
+        -- Record format 2 (2026-10-03). Format 1 keyed rows by name + the 2nd
+        -- return, assumed to be rank text. MEASURED on Forever build 70205: the
+        -- returns are (name, category, texture, ...) -- no rank text -- so every
+        -- rank of a spell shared one key and only the last survived (Fireball
+        -- kept its level-60 rank only). Keyed by spell ID now. The category word
+        -- is the service type and is stored on the row.
+        if s.trainerFormat ~= 2 then s.trainer = {}; s.trainerFormat = 2; Hv:AdoptSection("trainer", s.trainer) end
+
+        -- This visit's rows, read first and judged on their own.
+        local keys, lines, names = {}, {}, {}
+        local unavailable, noID = 0, 0
+        local now = Hv.Now() or 0
+        for i = 1, n do
+            local r = { Try("GetTrainerServiceInfo", i) }
+            local name = r[1]
+            -- Service type is whichever early return is a category word, so a
+            -- client that does return rank text (Classic Era's order) still parses.
+            local category, rankText
+            for k = 2, 4 do
+                local v = r[k]
+                if type(v) == "string" then
+                    if CATEGORY[v] then category = category or v
+                    elseif v:find("%d") then rankText = rankText or v end
+                end
+            end
+            -- A name the client marks secret comes back from Caps as "secret".
+            if type(name) == "string" and name ~= "" and name ~= "secret" and category ~= "header" then
+                local req = tonumber((Try("GetTrainerServiceLevelReq", i))) or 0
+                local id
+                if hasTip then
+                    local data = Try("C_TooltipInfo.GetTrainerService", i)
+                    if type(data) == "table" and type(data.id) == "number" then id = data.id end
+                end
+                local key = id and tostring(id) or (Clean(name) .. "@" .. req)
+                if not id then noID = noID + 1 end
+                keys[#keys + 1] = key
+                names[#names + 1] = name
+                lines[#lines + 1] = table.concat({ Clean(name), Clean(rankText), req, Clean(category), now }, "\t")
+                if category == "unavailable" then unavailable = unavailable + 1 end
             end
         end
-        -- A name the client marks secret comes back from Caps as "secret".
-        if type(name) == "string" and name ~= "" and name ~= "secret" and category ~= "header" then
-            local req = tonumber((Try("GetTrainerServiceLevelReq", i))) or 0
-            local id
-            if hasTip then
-                local data = Try("C_TooltipInfo.GetTrainerService", i)
-                if type(data) == "table" and type(data.id) == "number" then id = data.id end
+        local rows = #lines
+
+        -- Class or profession? The client's own answer when it has one, else this
+        -- visit's level requirements.
+        local profession = rows > 0 and (Try("IsTradeskillTrainer") == true or not LooksLikeClassVisit(lines))
+        local where = class
+        if rows > 0 then
+            local t
+            if profession then
+                where = ProfessionOf(names) or "unknown"
+                t = ProfTable(s, where)
+                Hv:Touch("trainerProf")
+            else
+                s.trainer[class] = s.trainer[class] or {}
+                t = s.trainer[class]
+                Hv:Touch("trainer")
             end
-            local key = id and tostring(id) or (Clean(name) .. "@" .. req)
-            if not id then noID = noID + 1 end
-            keys[#keys + 1] = key
-            names[#names + 1] = name
-            lines[#lines + 1] = table.concat({ Clean(name), Clean(rankText), req, Clean(category), now }, "\t")
-            if category == "unavailable" then unavailable = unavailable + 1 end
+            for i = 1, rows do t[keys[i]] = lines[i] end
         end
-    end
-    local rows = #lines
 
-    -- Class or profession? The client's own answer when it has one, else this
-    -- visit's level requirements.
-    local profession = rows > 0 and (Try("IsTradeskillTrainer") == true or not LooksLikeClassVisit(lines))
-    local where = class
-    if rows > 0 then
-        local t
-        if profession then
-            where = ProfessionOf(names) or "unknown"
-            t = ProfTable(s, where)
-            Hv:Touch("trainerProf")
-        else
-            s.trainer[class] = s.trainer[class] or {}
-            t = s.trainer[class]
-            Hv:Touch("trainer")
+        -- Class visits only. A profession trainer must not replace the class
+        -- trainer capture. The NPC is whoever the client says is open.
+        local npcName
+        if rows > 0 and not profession then
+            npcName = Try("UnitName", "npc")
+            if type(npcName) ~= "string" or npcName == "" or npcName == "secret" then
+                npcName = Try("UnitName", "target")
+            end
+            if type(npcName) ~= "string" or npcName == "" or npcName == "secret" then
+                npcName = nil
+            end
+            local guid = Try("UnitGUID", "npc")
+            if type(guid) ~= "string" or guid == "" or guid == "secret" then
+                guid = Try("UnitGUID", "target")
+            end
+            local npcID = (type(guid) == "string") and guid:match("%-(%d+)%-%x+$") or nil
+            local capRows = {}
+            for i = 1, rows do capRows[keys[i]] = lines[i] end
+            Hv:SaveCapture("trainer", {
+                npcName = npcName, npcID = npcID, class = class, rows = capRows,
+            })
         end
-        for i = 1, rows do t[keys[i]] = lines[i] end
-    end
 
-    -- Class visits only. A profession trainer must not replace the class
-    -- trainer capture. The NPC is whoever the client says is open.
-    local npcName
-    if rows > 0 and not profession then
-        npcName = Try("UnitName", "npc")
-        if type(npcName) ~= "string" or npcName == "" or npcName == "secret" then
-            npcName = Try("UnitName", "target")
-        end
-        if type(npcName) ~= "string" or npcName == "" or npcName == "secret" then
-            npcName = nil
-        end
-        local guid = Try("UnitGUID", "npc")
-        if type(guid) ~= "string" or guid == "" or guid == "secret" then
-            guid = Try("UnitGUID", "target")
-        end
-        local npcID = (type(guid) == "string") and guid:match("%-(%d+)%-%x+$") or nil
-        local capRows = {}
-        for i = 1, rows do capRows[keys[i]] = lines[i] end
-        Hv:SaveCapture("trainer", {
-            npcName = npcName, npcID = npcID, class = class, rows = capRows,
-        })
-    end
-
-    s.trainerApi = table.concat(api, " ")
-        .. (" | %s%s: services=%d recorded=%d unavailable=%d noSpellID=%d filter(unavailable)=%s")
-        :format(profession and "profession trainer " or "", where, n, rows, unavailable, noID, tostring(unavailShown))
-    if profession or rows == 0 then return nil end
-    return rows, npcName
+        s.trainerApi = table.concat(api, " ")
+            .. (" | %s%s: services=%d recorded=%d unavailable=%d noSpellID=%d filter(unavailable)=%s filters=%s")
+            :format(profession and "profession trainer " or "", where, n, rows, unavailable, noID,
+                tostring(unavailShown), filterNote)
+        if profession or rows == 0 then return nil end
+        return rows, npcName
+    end)
+    if saved then ApplyFilters(saved) end
+    self._reading = false
+    if not ok then error(rows) end
+    return rows, npc
 end
 
 --- One time: rows a profession trainer left under a class (before T4) move to
@@ -228,7 +286,9 @@ end
 
 function D:OnEvent(event)
     -- TRAINER_SHOW and TRAINER_UPDATE. At most once every 10 seconds; the
-    -- NPC name is whoever the client says is open.
+    -- NPC name is whoever the client says is open. A TRAINER_UPDATE fired by
+    -- our own filter change is ignored (see ScanTrainer).
+    if self._reading then return end
     Hv:Request("trainer", function()
         local rows, npc = D:ScanTrainer()
         if rows and rows > 0 then
