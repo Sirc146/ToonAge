@@ -61,6 +61,8 @@ Modules\Automation\VendorAssist.lua
 Modules\Mists\DevHelpers.lua
 Modules\Infrastructure\ErrorLog.lua
 Modules\Infrastructure\ContextAction.lua
+Modules\Infrastructure\RotationLists.lua
+Modules\Infrastructure\RotationBoard.lua
 
 # ── Modules: Character / Gear ──────────────────────────────────────────
 Modules\Mists\Character.lua

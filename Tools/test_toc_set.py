@@ -64,6 +64,7 @@ FOREVER_MODULES = [
     "Modules/Infrastructure/ErrorLog.lua",
     "Modules/Infrastructure/Settings.lua",
     "Modules/Infrastructure/ContextAction.lua",
+    "Modules/Infrastructure/RotationLists.lua",
     "Modules/Infrastructure/ChatCopy.lua",
     "Modules/Infrastructure/CoordHarvester.lua",
     # Harvest sensor array (Docs/SPEC_HARVEST_SENSOR_ARRAY.md, T2, 2026-10-04): the
@@ -240,12 +241,14 @@ def test_scaffold_tocs_are_core_only():
                   [f for f in files if f.startswith("Data/")],
                   ["Data/Vanilla/ProfessionSkills.lua"])
             mods = [f for f in files if f.startswith("Modules/") and f != SELFTEST]
-            check("vanilla: ErrorLog plus the profession readout",
+            check("vanilla: ErrorLog, the profession readout and the rotation list",
                   sorted(mods),
                   ["Modules/Character/ProfessionBoard.lua",
                    "Modules/Character/ProfessionSkills.lua",
                    "Modules/Infrastructure/ContextAction.lua",
-                   "Modules/Infrastructure/ErrorLog.lua"])
+                   "Modules/Infrastructure/ErrorLog.lua",
+                   "Modules/Infrastructure/RotationBoard.lua",
+                   "Modules/Infrastructure/RotationLists.lua"])
             check("vanilla: includes Layout for the profession cards",
                   any(f.endswith("Core/Layout.lua") for f in files), True)
         else:

@@ -763,6 +763,27 @@ function M:Render(content, side)
     local lines, readable = ReadSpellbook()
 
     local y = -8
+    local RL = TA.RotationLists
+    if RL and RL.Resolve and L then
+        local class = U.GetPlayerClass and U.GetPlayerClass() or nil
+        local _, specName = U.GetPlayerSpec()
+        local level = tonumber(Try(UnitLevel, "player"))
+        local st = RL.Resolve(nil, class, specName, level, "st")
+        if st ~= nil then
+            local aoe = RL.Resolve(nil, class, specName, level, "aoe")
+            if st.empty and (not aoe or aoe.empty) then
+                y = RL.DrawList(content, y, L, st, "ROTATION")
+            else
+                if not st.empty then
+                    y = RL.DrawList(content, y, L, st, "SINGLE TARGET")
+                end
+                if aoe and not aoe.empty then
+                    y = RL.DrawList(content, y, L, aoe, "AOE")
+                end
+            end
+            y = L:Divider(content, y)
+        end
+    end
     if not readable then
         y = RenderUnreadable(content, y)
     else
@@ -780,6 +801,123 @@ function M:Render(content, side)
         y = RenderLines(content, y, lines, check, catalog, level)
     end
     L:Finish(content, y)
+end
+
+local function AssistedSpell()
+    local fn = C_AssistedCombat and C_AssistedCombat.GetNextCastSpell
+    if type(fn) ~= "function" then return nil end
+    local ok, id = pcall(fn)
+    if not ok or id == nil then return nil end
+    if U.IsSecret and U.IsSecret(id) then return nil end
+    if type(id) ~= "number" or id <= 0 then return nil end
+    local name = U.GetSpellName and U.GetSpellName(id) or ""
+    if U.IsSecret and U.IsSecret(name) then name = "" end
+    return { spellID = id, name = name or "" }
+end
+
+local function InCombat()
+    if type(InCombatLockdown) == "function" then
+        local ok, locked = pcall(InCombatLockdown)
+        if ok and locked then return true end
+    end
+    return false
+end
+
+--- Fixed gold bar. The list sets the three slots. In combat the first slot
+--- is Assisted Combat when that spell id is not secret.
+function M:Init()
+    if self._bar or type(CreateFrame) ~= "function" or not UIParent then return end
+    local bar = CreateFrame("Frame", "TAForeverRotationBar", UIParent, "BackdropTemplate")
+    bar:SetSize(200, 68)
+    bar:SetFrameStrata("MEDIUM")
+    bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 180)
+    if bar.SetBackdrop then
+        bar:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+        })
+        bar:SetBackdropColor(0.02, 0.02, 0.02, 0.85)
+        bar:SetBackdropBorderColor(0.910, 0.702, 0.353, 0.70)
+    end
+    local icons = {}
+    for i = 1, 3 do
+        local frame = CreateFrame("Frame", nil, bar, "BackdropTemplate")
+        frame:SetSize(40, 40)
+        frame:SetPoint("LEFT", bar, "LEFT", 8 + (i - 1) * 46, -6)
+        if frame.SetBackdrop then
+            frame:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+            })
+            frame:SetBackdropBorderColor(0.910, 0.702, 0.353, 0.70)
+        end
+        local tex = frame:CreateTexture(nil, "ARTWORK")
+        tex:SetSize(36, 36)
+        tex:SetPoint("CENTER")
+        if tex.SetTexCoord then tex:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        frame.icon = tex
+        local label = frame:CreateFontString(nil, "OVERLAY")
+        if label.SetFont and STANDARD_TEXT_FONT then
+            label:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
+        end
+        if label.SetPoint then label:SetPoint("TOP", frame, "BOTTOM", 0, -1) end
+        frame.nameLabel = label
+        frame:Hide()
+        icons[i] = frame
+    end
+    self._bar = bar
+    self._barIcons = icons
+    bar:SetScript("OnUpdate", function(_, elapsed)
+        M._barWait = (M._barWait or 0) + (elapsed or 0)
+        if M._barWait < 0.2 then return end
+        M._barWait = 0
+        M:PaintBar()
+    end)
+    bar:Hide()
+end
+
+function M:PaintBar()
+    local RL = TA.RotationLists
+    local bar = self._bar
+    if not RL or not bar or not self._barIcons then return end
+    local class = U.GetPlayerClass and U.GetPlayerClass() or nil
+    local _, specName = U.GetPlayerSpec()
+    local level = tonumber(Try(UnitLevel, "player"))
+    local view = RL.Resolve(nil, class, specName, level, "st")
+    if not view then
+        if bar.Hide then bar:Hide() end
+        return
+    end
+    local inCombat = InCombat()
+    local assisted = inCombat and AssistedSpell() or nil
+    local plan = RL.BarPlan(view.spells, assisted, inCombat)
+    if #plan == 0 then
+        if bar.Hide then bar:Hide() end
+        return
+    end
+    if bar.Show then bar:Show() end
+    local gold = { 0.910, 0.702, 0.353 }
+    for i = 1, 3 do
+        local frame = self._barIcons[i]
+        local spell = plan[i]
+        if spell and frame then
+            local tex = spell.spellID and U.GetSpellTexture and U.GetSpellTexture(spell.spellID)
+            if frame.icon and frame.icon.SetTexture then
+                frame.icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
+            end
+            if frame.nameLabel and frame.nameLabel.SetText then
+                frame.nameLabel:SetText(spell.name or "")
+            end
+            if frame.SetBackdropBorderColor then
+                frame:SetBackdropBorderColor(gold[1], gold[2], gold[3], spell.suggested and 1 or 0.70)
+            end
+            if frame.Show then frame:Show() end
+        elseif frame and frame.Hide then
+            frame:Hide()
+        end
+    end
 end
 
 function M:OnEvent(event, spellID)

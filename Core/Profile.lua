@@ -170,13 +170,16 @@ local PROFILES = {
             VendorAssist = true,
             -- Shared profession cards. One bar from GetProfessions.
             ProfessionBoard = true,
+            -- Per-version rotation list. Empty bands say there is no verified rotation.
+            RotationBoard = true,
         },
-        -- Leveling companion: no Delves/Weekly/Talents/Rotation. Professions is
+        -- Leveling companion: no Delves/Weekly. Professions is
         -- the shared skill-bar readout (one card, one bar), not retail advice.
         tabs      = {
             { id = "character",  label = "Character",  module = "Character"    },
             { id = "guide",      label = "Guide",      module = "QuestTracker" },
             { id = "gear",       label = "Gear",       module = "Gear"         },
+            { id = "rotation",   label = "Rotation",   module = "RotationBoard" },
             { id = "professions", label = "Professions", module = "ProfessionBoard" },
             -- Hidden for classes with no pet (N5): Hunter/Warlock, Frost Mage,
             -- Unholy DK, or any pet out. See TabConditions in Core/UI.lua.
@@ -209,9 +212,12 @@ local PROFILES = {
             -- Shared spell/item button. No guide and no Overload on Era, so
             -- the button stays hidden until something offers a candidate.
             ContextAction   = true,
+            -- Era's own rotation list. The tab is the card until a band has spells.
+            RotationBoard   = true,
         },
         tabs      = {
             { id = "professions", label = "Professions", module = "ProfessionBoard" },
+            { id = "rotation",    label = "Rotation",    module = "RotationBoard" },
         },
         data      = "Vanilla",
         statRules = "vanilla-trees",

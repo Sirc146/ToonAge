@@ -82,6 +82,28 @@ function M:Render(content, side)
 
     local specName, specPoints = U.GetTalentSummary()
 
+    -- The version file wins when this class is in it. An empty band is the
+    -- card. A class the file does not list keeps the older priority text.
+    local RL = TA.RotationLists
+    if RL and RL.Resolve then
+        local st = RL.Resolve(nil, class, specName, level, "st")
+        if st ~= nil then
+            local aoe = RL.Resolve(nil, class, specName, level, "aoe")
+            if st.empty and (not aoe or aoe.empty) then
+                y = RL.DrawList(content, y, L, st, "ROTATION")
+            else
+                if not st.empty then
+                    y = RL.DrawList(content, y, L, st, "SINGLE TARGET")
+                end
+                if aoe and not aoe.empty then
+                    y = RL.DrawList(content, y, L, aoe, "AOE")
+                end
+            end
+            L:Finish(content, y)
+            return
+        end
+    end
+
     -- Druid Feral is one talent tree but two very different roles depending
     -- on shapeshift form at max level (Bear tank vs. Cat dps) — show both
     -- rather than guessing which form you're currently in. The leveling
