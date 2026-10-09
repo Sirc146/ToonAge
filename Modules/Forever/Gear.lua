@@ -1103,6 +1103,8 @@ RenderEnchants = function(content, y)
     end
 
     local missing = 0
+    local missingRows = {}
+    local hasEnchanting = recipes["Enchanting"] ~= nil
     for _, slot in ipairs({ 15, 5, 9, 10, 8, 16, 17 }) do
         local link = Try(GetInventoryItemLink, "player", slot)
         local relevant = link and (slot ~= 17 or hasShield)
@@ -1110,28 +1112,35 @@ RenderEnchants = function(content, y)
             local enchanted = (EnchantID(link) or 0) > 0
             if not enchanted then
                 missing = missing + 1
-                local known = bySlot[slot]
-                local note
-                if known and #known > 0 then
-                    table.sort(known, function(a, b) return a.avail > b.avail end)
-                    local parts = {}
-                    for k = 1, math.min(3, #known) do
-                        local e = known[k]
-                        parts[#parts + 1] = e.name:gsub("^Enchant [^-]+%- ", "")
-                            .. ((e.avail > 0) and (" (materials for " .. e.avail .. ")") or " (missing materials)")
-                    end
-                    note = "you know: " .. table.concat(parts, "; ")
-                else
-                    note = "no enchant for this slot among your recorded recipes"
-                end
-                y = L:DataRow(content, y, { label = (SLOT_NAME[slot] or tostring(slot)) .. " -- not enchanted",
-                    value = (known and #known > 0) and "you can enchant this" or "", note = note,
-                    status = (known and #known > 0) and "warn" or "dim" })
+                missingRows[#missingRows + 1] = slot
             end
         end
     end
     if missing == 0 then
         y = L:Paragraph(content, y, "Every enchantable piece you wear is enchanted.", { color = L.C_SUCCESS })
+    elseif not hasEnchanting then
+        y = L:Paragraph(content, y, "No Enchanting profession, so empty slots are not listed one by one.",
+            { color = L.C_DIM })
+    else
+        for _, slot in ipairs(missingRows) do
+            local known = bySlot[slot]
+            local note
+            if known and #known > 0 then
+                table.sort(known, function(a, b) return a.avail > b.avail end)
+                local parts = {}
+                for k = 1, math.min(3, #known) do
+                    local e = known[k]
+                    parts[#parts + 1] = e.name:gsub("^Enchant [^-]+%- ", "")
+                        .. ((e.avail > 0) and (" (materials for " .. e.avail .. ")") or "")
+                end
+                note = "you know: " .. table.concat(parts, "; ")
+            else
+                note = "no enchant for this slot among your recorded recipes"
+            end
+            y = L:DataRow(content, y, { label = (SLOT_NAME[slot] or tostring(slot)) .. " — not enchanted",
+                value = (known and #known > 0) and "you can enchant this" or "", note = note,
+                status = (known and #known > 0) and "warn" or "dim" })
+        end
     end
 
     -- Craftable upgrades: every recipe product through the shared verdict.
@@ -1144,16 +1153,33 @@ RenderEnchants = function(content, y)
             end
         end
     end
-    table.sort(craft, function(a, b)
+    local function NetNegative(diff)
+        if not diff or diff == "" then return false end
+        local anyPos = false
+        for n in tostring(diff):gmatch("([%+%-]%d+)") do
+            local v = tonumber(n)
+            if v and v > 0 then anyPos = true end
+        end
+        return not anyPos and tostring(diff):find("%-%d") ~= nil
+    end
+    local shown = {}
+    for _, c in ipairs(craft) do
+        if not NetNegative(c.v.diff) then shown[#shown + 1] = c end
+    end
+    table.sort(shown, function(a, b)
         if (a.v.verdict == "better") ~= (b.v.verdict == "better") then return a.v.verdict == "better" end
         return a.avail > b.avail
     end)
-    for k = 1, math.min(6, #craft) do
-        local c = craft[k]
+    for k = 1, math.min(6, #shown) do
+        local c = shown[k]
+        local note = c.v.diff or ""
+        if c.avail and c.avail > 0 then
+            note = "materials for " .. c.avail .. ((note ~= "") and (" · " .. note) or "")
+        end
         y = L:DataRow(content, y, {
-            label = c.v.slot .. " -- " .. c.prof,
-            value = Colored(c.v.name, c.v.quality) .. ((c.v.verdict == "better") and "  |cFF4AE07AUP|r" or "  |cFFFFA633+/-|r"),
-            note = ((c.avail > 0) and ("materials for " .. c.avail .. ": ") or "missing materials: ") .. (c.v.diff or ""),
+            label = c.v.slot .. " — " .. c.prof,
+            value = Colored(c.v.name, c.v.quality) .. ((c.v.verdict == "better") and "  |cFF4AE07AUP|r" or ""),
+            note = note,
             status = (c.v.verdict == "better") and "good" or "warn",
         })
     end

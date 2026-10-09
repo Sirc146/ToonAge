@@ -471,7 +471,7 @@ function Delves:RenderSidebar(sidebar, mode, mc, tier, tc, iLvl)
             current and 1 or (done and tcc[1] or 0.30),
             current and 1 or (done and tcc[2] or 0.30),
             current and 1 or (done and tcc[3] or 0.30), 1)
-        row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", current and 0 or 2, current and -4 or -2)
+        row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, current and -4 or -2)
         anchor = row
     end
 end

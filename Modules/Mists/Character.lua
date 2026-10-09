@@ -287,18 +287,29 @@ function Character:UpdateData()
     if not self.widgets.primName then return end
 
     local specID, specName = U.GetPlayerSpec()
-    if not specID then return end
 
     local pvxMode = self.pvxMode
     self.widgets.modeLbl:SetText(pvxMode == "pve" and "Mode: PvE" or "Mode: PvP")
 
-    -- Primary
-    local primaryKey = SW:GetPrimary(specID)
+    -- Primary. With no spec yet, show the highest of Strength / Agility / Intellect.
+    local primaryKey
+    if specID then
+        primaryKey = SW:GetPrimary(specID)
+    else
+        local best, bestKey = -1, "STR"
+        for _, row in ipairs({ { "STR", 1 }, { "AGI", 2 }, { "INT", 4 } }) do
+            local _, eff = UnitStat("player", row[2])
+            eff = SafeNum(eff)
+            if eff > best then best, bestKey = eff, row[1] end
+        end
+        primaryKey = bestKey
+        specName = specName or "no spec yet"
+    end
     local statIndex  = primaryKey == "STR" and 1 or primaryKey == "AGI" and 2 or 4
     local _, effPrimary = UnitStat("player", statIndex)
     effPrimary = SafeNum(effPrimary)
 
-    local weights    = SW:GetWeights(specID, pvxMode) or {}
+    local weights    = (specID and SW:GetWeights(specID, pvxMode)) or {}
     local primWeight = weights[primaryKey] or 1.0
 
     local STAT_NAMES = { STR="Strength", AGI="Agility", INT="Intellect" }
@@ -328,10 +339,10 @@ function Character:UpdateData()
           -- Casters read spell hit (CR_HIT_SPELL = 8, includes Spirit->hit
           -- conversions); everyone else melee/ranged hit (CR_HIT_MELEE = 6).
           -- Non-rating hit (talents/passives) is added from the modifier API.
-          pct=(SW:IsSpellHitSpec(specID)
+          pct=((specID and SW:IsSpellHitSpec(specID))
                 and (SafeNum(SafeCall(GetCombatRatingBonus, 8)) + SafeNum(SafeCall(GetSpellHitModifier)))
                 or  (SafeNum(SafeCall(GetCombatRatingBonus, 6)) + SafeNum(SafeCall(GetHitModifier)))),
-          rating=SafeCall(GetCombatRating, SW:IsSpellHitSpec(specID) and 8 or 6) },
+          rating=SafeCall(GetCombatRating, (specID and SW:IsSpellHitSpec(specID)) and 8 or 6) },
         { key="EXP",     name="Expertise",
           pct=SafeCall(GetCombatRatingBonus, 24),
           rating=SafeCall(GetCombatRating, 24) },
@@ -348,9 +359,9 @@ function Character:UpdateData()
     for _, s in ipairs(secondaries) do
         s.weight = weights[s.key] or 0.5
         s.capped = false
-        if s.key == "HIT" and SW:IsHitCapped(hitPct, specID, expPct, capLevel) then
+        if specID and s.key == "HIT" and SW:IsHitCapped(hitPct, specID, expPct, capLevel) then
             s.capped = true
-        elseif s.key == "EXP" and SW:IsExpCapped(expPct, specID, hitPct, capLevel) then
+        elseif specID and s.key == "EXP" and SW:IsExpCapped(expPct, specID, hitPct, capLevel) then
             s.capped = true
         end
     end
@@ -419,9 +430,8 @@ end
 
 -- ── Render entry point ────────────────────────────────────────────────
 function Character:Render(content, sidebar)
-    if self.lastContent ~= content then
-        self:BuildUI(content, sidebar)
-        self.lastContent = content
-    end
+    -- The content frame is pooled and its height is reset every visit.
+    -- Skipping BuildUI on the second visit left the pane at height 1.
+    self:BuildUI(content, sidebar)
     self:UpdateData()
 end

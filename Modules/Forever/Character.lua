@@ -95,9 +95,8 @@ end
 -- So a secret is never displayed, never measured, never concatenated. The row
 -- says what is true -- that the client is withholding it -- in a plain string
 -- of our own.
-local HIDDEN_TEXT = "|cFF6E6A62hidden|r"
-local HIDDEN_NOTE = "the client returns this as a secret value in combat -- "
-                 .. "it cannot be read, shown or measured by an addon"
+local HIDDEN_TEXT = "—"
+local HIDDEN_FOOTNOTE = "Health and mana are secret in combat, so those rows show a dash until you leave combat."
 
 --- "n/a" for a missing answer, the formatted number otherwise.
 local function Show(value, fmt)
@@ -240,10 +239,12 @@ local function RenderHeadline(content, y)
     local rawXPM = UnitXPMax and Try(UnitXPMax, "player")
     local cur, max = Num(rawXP), Num(rawXPM)
 
+    local secretNote = false
     if (not cur or not max) and rawXP ~= nil and isSecret(rawXP) then
         y = L:DataRow(content, y, {
-            label = "Experience", value = HIDDEN_TEXT, note = HIDDEN_NOTE, status = "dim",
+            label = "Experience", value = HIDDEN_TEXT, status = "dim",
         })
+        secretNote = true
     end
 
     if cur and max and max > 0 then
@@ -271,8 +272,9 @@ local function RenderHeadline(content, y)
         })
     elseif rawHP ~= nil and isSecret(rawHP) then
         y = L:DataRow(content, y, {
-            label = "Health", value = HIDDEN_TEXT, note = HIDDEN_NOTE, status = "dim",
+            label = "Health", value = HIDDEN_TEXT, status = "dim",
         })
+        secretNote = true
     end
 
     -- Power type 0 is mana. A class without it reports 0 max, and a bar of
@@ -286,8 +288,12 @@ local function RenderHeadline(content, y)
         })
     elseif rawMP ~= nil and isSecret(rawMP) then
         y = L:DataRow(content, y, {
-            label = "Mana", value = HIDDEN_TEXT, note = HIDDEN_NOTE, status = "dim",
+            label = "Mana", value = HIDDEN_TEXT, status = "dim",
         })
+        secretNote = true
+    end
+    if secretNote then
+        y = L:Paragraph(content, y, HIDDEN_FOOTNOTE, { color = L.C_DIM, size = 9 })
     end
     return y
 end

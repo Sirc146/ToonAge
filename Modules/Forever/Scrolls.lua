@@ -661,12 +661,28 @@ function M:Render(content, side)
     local _, token = PlayerClass()
     if token == "MAGE" then
         y = L:SectionHeader(content, y, "Comprehension")
+        local spellKnown = false
+        if not myRank then
+            local knownFn = (C_SpellBook and C_SpellBook.IsSpellKnown) or IsSpellKnown
+            if type(knownFn) == "function" then
+                local ok, known = pcall(knownFn, 1296017) -- Comprehend Scroll
+                spellKnown = ok and known and true or false
+            end
+        end
+        local note
+        if myRank then
+            note = nil
+        elseif spellKnown then
+            note = "Comprehend Scroll is in your spellbook. The client did not report a skill rank."
+        else
+            note = "The client did not report a Comprehension skill line. "
+                .. "Learn Comprehend Scroll from a Mage trainer (level 6)."
+        end
         y = L:DataRow(content, y, {
             label  = "Your skill",
             value  = myRank and (myMax and string.format("%d / %d", myRank, myMax) or tostring(myRank)) or "n/a",
             status = myRank and "neutral" or "dim",
-            note   = myRank and nil or "The client did not report a Comprehension skill line. "
-                .. "Learn Comprehend Scroll from a Mage trainer (level 6).",
+            note   = note,
         })
         y = L:Spacer(y, 6)
     end

@@ -151,6 +151,24 @@ local function ReadTree(configID, treeID)
     return ranked, available, spent
 end
 
+--- Ranked talents across every tree: { { name, rank }, ... }.
+--- Casts uses this to tell Fire from Frost. Empty when the trait API is absent.
+function M:RankedTalents()
+    local configID = ActiveConfig()
+    if not configID or not (C_Traits and C_Traits.GetConfigInfo) then return nil end
+    local cfg = Try(C_Traits.GetConfigInfo, configID)
+    local treeIDs = type(cfg) == "table" and cfg.treeIDs
+    if type(treeIDs) ~= "table" then return nil end
+    local out = {}
+    for _, treeID in ipairs(treeIDs) do
+        local ranked = ReadTree(configID, treeID)
+        for _, r in ipairs(ranked) do
+            out[#out + 1] = r
+        end
+    end
+    return out
+end
+
 --- Unspent points for a tree, when the client reports a currency for it.
 local function TreeCurrency(configID, treeID)
     if not (C_Traits and C_Traits.GetTreeCurrencyInfo) then return nil end
@@ -224,7 +242,9 @@ local function RenderAvailable(content, y, trees, unspent)
 
     for _, t in ipairs(trees) do
         for _, a in ipairs(t.available) do
-            y = L:DataRow(content, y, { label = a.name, value = t.name, status = "dim" })
+            -- One tree: the tree name repeats on every row and adds nothing.
+            local value = (#trees > 1) and t.name or ""
+            y = L:DataRow(content, y, { label = a.name, value = value, status = "dim" })
         end
     end
 

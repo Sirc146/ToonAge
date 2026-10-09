@@ -83,7 +83,19 @@ local function FightStart()
     prepull = {}
 end
 
+local castBegan, channelBegan
+
+local function AddActive(from)
+    if not current or not from then return end
+    local dt = GetTime() - from
+    if dt and dt > 0 and dt < 30 then
+        current.active = (current.active or 0) + dt
+    end
+end
+
 local function FightEnd()
+    if castBegan then AddActive(castBegan); castBegan = nil end
+    if channelBegan then AddActive(channelBegan); channelBegan = nil end
     local f = current
     current = nil
     if not f then return end
@@ -91,7 +103,7 @@ local function FightEnd()
     if dur < MIN_FIGHT_SECS or #f.casts == 0 then return end
     local s = Store()
     if not s then return end
-    table.insert(s.fights, 1, { stamp = f.stamp, dur = dur, casts = f.casts })
+    table.insert(s.fights, 1, { stamp = f.stamp, dur = dur, casts = f.casts, active = f.active or 0 })
     while #s.fights > MAX_FIGHTS do table.remove(s.fights) end
     if TA.QueueUIRefresh then TA:QueueUIRefresh("CASTLOG_FIGHT") end
 end
@@ -239,6 +251,19 @@ function M.Analyse(fights, ref, known, buffs, buffsReadable)
         end
     end
 
+    -- Abilities the guide calls out when they show up often (not a priority).
+    for _, e in ipairs(ref.flag or {}) do
+        local n = AnyKnown(known, e)
+        if n then
+            local hit = 0
+            for _, pf in ipairs(perFight) do if pf.seen[n] then hit = hit + 1 end end
+            if hit > 0 then
+                add(string.format("%s showed up in %d of %d fights. The guide treats that as filler you should not lean on.",
+                    n, hit, #perFight), "warn")
+            end
+        end
+    end
+
     -- Limits (e.g. Arcane Blast at most 4 in a row).
     for _, lim in ipairs(ref.limit or {}) do
         local n, max = lim[1], lim[2]
@@ -269,6 +294,91 @@ end
 
 local GUIDE_WRITTEN_FOR = 20   -- level cap the coach references were written for
 
+-- Talent-name hints. A point in a talent whose name contains one of these
+-- words counts for that spec. The tree with the most such points wins.
+-- A manual button pick overrides this. No points means no guess.
+local SPEC_HINTS = {
+    MAGE = {
+        Fire   = { "fire", "pyro", "ignite", "inciner", "scorch", "combust", "flame" },
+        Frost  = { "frost", "ice", "winter", "shatter", "cold" },
+        Arcane = { "arcane", "evocat", "presence of mind" },
+    },
+    DRUID = {
+        Balance = { "moon", "wrath", "star", "nature" },
+        Feral = { "cat", "bear", "claw", "rip", "feral", "maul" },
+        Restoration = { "rejuven", "regrowth", "heal", "swiftmend" },
+    },
+    HUNTER = {
+        ["Beast Mastery"] = { "beast", "pet", "aspect of the" },
+        Marksmanship = { "mark", "aimed", "scatter" },
+        Survival = { "trap", "survival", "wyvern" },
+    },
+    PALADIN = {
+        Holy = { "holy", "flash", "cleanse" },
+        Protection = { "protection", "consecr", "righteous defense" },
+        Retribution = { "retrib", "seal of command", "crusader" },
+    },
+    PRIEST = {
+        Discipline = { "discipl", "inner focus", "power infusion" },
+        Holy = { "holy", "renew", "smite" },
+        Shadow = { "shadow", "mind", "vampir" },
+    },
+    ROGUE = {
+        Assassination = { "mutilate", "poison", "cold blood" },
+        Combat = { "blade flurry", "adrenaline", "sword" },
+        Subtlety = { "hemorrhage", "premed", "shadowstep", "ghostly" },
+    },
+    SHAMAN = {
+        Elemental = { "elemental", "lightning", "flame shock" },
+        Enhancement = { "stormstrike", "dual", "windfury" },
+        Restoration = { "healing wave", "chain heal", "earth shield" },
+    },
+    WARLOCK = {
+        Affliction = { "afflict", "curse", "drain", "agony" },
+        Demonology = { "demon", "fel", "master demon" },
+        Destruction = { "destruct", "conflag", "shadowburn", "immolate" },
+    },
+    WARRIOR = {
+        Arms = { "mortal strike", "sweeping", "overpower" },
+        Fury = { "bloodthirst", "whirlwind", "enrage" },
+        Protection = { "shield slam", "devastate", "last stand" },
+    },
+}
+
+local function DetectSpec(token)
+    local hints = SPEC_HINTS[token]
+    if not hints then return nil end
+    local FT = TA.GetModule and TA:GetModule("ForeverTalents")
+    local ranked = FT and FT.RankedTalents and FT:RankedTalents()
+    if type(ranked) ~= "table" then return nil end
+    local score = {}
+    for spec in pairs(hints) do score[spec] = 0 end
+    for _, t in ipairs(ranked) do
+        local name = type(t.name) == "string" and t.name:lower() or ""
+        local rank = tonumber(t.rank) or 0
+        if rank > 0 and name ~= "" then
+            for spec, words in pairs(hints) do
+                for _, w in ipairs(words) do
+                    if name:find(w, 1, true) then
+                        score[spec] = score[spec] + rank
+                        break
+                    end
+                end
+            end
+        end
+    end
+    local best, bestN, second = nil, 0, 0
+    for spec, n in pairs(score) do
+        if n > bestN then
+            second, bestN, best = bestN, n, spec
+        elseif n > second then
+            second = n
+        end
+    end
+    if not best or bestN < 1 or bestN == second then return nil end
+    return best
+end
+
 local VERDICT_COLOUR = { good = U.GREEN, warn = U.ORANGE, bad = U.RED, dim = U.GREY }
 
 local function RenderCoach(content, y, s)
@@ -281,11 +391,14 @@ local function RenderCoach(content, y, s)
     end
 
     TA.charDB.coachSpec = TA.charDB.coachSpec or {}
-    local chosen = TA.charDB.coachSpec[token]
+    TA.charDB.coachSpecManual = TA.charDB.coachSpecManual or {}
+    local detected = DetectSpec(token)
+    local chosen = TA.charDB.coachSpecManual[token] and TA.charDB.coachSpec[token] or detected
     local buttons = {}
     for _, spec in ipairs(order) do
         buttons[#buttons + 1] = { label = spec, active = (spec == chosen), onClick = function()
             TA.charDB.coachSpec[token] = spec
+            TA.charDB.coachSpecManual[token] = true
             if L.RefreshUI then L:RefreshUI() end
         end }
     end
@@ -351,11 +464,12 @@ function SpellName(id)
 end
 
 local function Summarise(f)
+    -- Ranks are separate spell IDs. Merge by name so Arcane Missiles is one row.
     local counts, order = {}, {}
     for _, c in ipairs(f.casts) do
-        local id = c[2]
-        if not counts[id] then counts[id] = 0; order[#order + 1] = id end
-        counts[id] = counts[id] + 1
+        local name = SpellName(c[2])
+        if not counts[name] then counts[name] = 0; order[#order + 1] = name end
+        counts[name] = counts[name] + 1
     end
     table.sort(order, function(a, b) return counts[a] > counts[b] end)
     return counts, order
@@ -382,22 +496,44 @@ function M:Render(content, side)
     local mins = f.dur / 60
     local total = #f.casts
     local maxCasts = math.floor(f.dur / GCD_SECONDS)
+    local _, classToken = UnitClass("player")
+    local CASTERS = { MAGE = true, WARLOCK = true, PRIEST = true, SHAMAN = true, DRUID = true, EVOKER = true }
+    local active = tonumber(f.active) or 0
+    local activePct = (f.dur and f.dur > 0) and math.min(100, (active / f.dur) * 100) or 0
     y = L:SectionHeader(content, y, "Last fight",
         date("%H:%M", f.stamp) .. string.format("  ·  %d fights kept", #s.fights))
     y = L:DataRow(content, y, { label = "Length", value = string.format("%.0f sec", f.dur) })
     y = L:DataRow(content, y, { label = "Casts", value = tostring(total),
         note = string.format("%.1f per minute", mins > 0 and total / mins or 0) })
-    y = L:DataRow(content, y, { label = "Global cooldowns used",
-        value = maxCasts > 0 and string.format("%d%%", math.min(100, math.floor(100 * total / maxCasts))) or "n/a",
-        note = string.format("%d casts out of at most %d at a %.1f s global cooldown. "
-            .. "Channels and cast times over 1.5 s lower the ceiling.", total, maxCasts, GCD_SECONDS) })
+    if CASTERS[classToken] then
+        local past = activePct >= 90
+        y = L:CapBar(content, y, {
+            label = "Active time",
+            value = string.format("%d%%", math.floor(activePct + 0.5)),
+            current = active,
+            cap = f.dur,
+            capped = past,
+            fillRGB = past and { 0.275, 0.784, 0.416 } or { 0.45, 0.52, 0.58 },
+            tickAt = 0.90,
+            note = "Cast and channel time over the fight. Target is 90%.",
+        })
+        y = L:DataRow(content, y, { label = "Global cooldowns used",
+            value = maxCasts > 0 and string.format("%d%%", math.min(100, math.floor(100 * total / maxCasts))) or "n/a",
+            note = string.format("%d casts out of at most %d at a %.1f s global cooldown.",
+                total, maxCasts, GCD_SECONDS) })
+    else
+        y = L:DataRow(content, y, { label = "Global cooldowns used",
+            value = maxCasts > 0 and string.format("%d%%", math.min(100, math.floor(100 * total / maxCasts))) or "n/a",
+            note = string.format("%d casts out of at most %d at a %.1f s global cooldown.",
+                total, maxCasts, GCD_SECONDS) })
+    end
 
     y = L:Divider(content, y)
     y = L:SectionHeader(content, y, "What you cast")
     local counts, order = Summarise(f)
-    for _, id in ipairs(order) do
-        y = L:DataRow(content, y, { label = SpellName(id), value = tostring(counts[id]),
-            note = string.format("%.0f%% of casts", 100 * counts[id] / total) })
+    for _, name in ipairs(order) do
+        y = L:DataRow(content, y, { label = name, value = tostring(counts[name]),
+            note = string.format("%.0f%% of casts", 100 * counts[name] / total) })
     end
 
     y = L:Divider(content, y)
@@ -406,7 +542,8 @@ function M:Render(content, side)
     for i = 1, math.min(6, total) do
         open[#open + 1] = string.format("%s (%.1fs)", SpellName(f.casts[i][2]), f.casts[i][1])
     end
-    y = L:Paragraph(content, y, table.concat(open, "  >  "), { color = L.C_PRIMARY })
+    local chev = "|TInterface\\AddOns\\ToonAge\\Media\\icons\\util_chevron_16.tga:10:10:0:0|t"
+    y = L:Paragraph(content, y, table.concat(open, "  " .. chev .. "  "), { color = L.C_PRIMARY })
 
     if InCombatLockdown and InCombatLockdown() then
         y = L:Divider(content, y)
@@ -423,12 +560,33 @@ end
 function M:Init()
     if not TA.IsForever then self._disabled = true; return end
     local fr = CreateFrame("Frame")
-    pcall(fr.RegisterUnitEvent, fr, "UNIT_SPELLCAST_SUCCEEDED", "player")
+    local function RegUnit(ev)
+        if fr.RegisterUnitEvent then pcall(fr.RegisterUnitEvent, fr, ev, "player") end
+    end
+    RegUnit("UNIT_SPELLCAST_SUCCEEDED")
+    RegUnit("UNIT_SPELLCAST_START")
+    RegUnit("UNIT_SPELLCAST_STOP")
+    RegUnit("UNIT_SPELLCAST_INTERRUPTED")
+    RegUnit("UNIT_SPELLCAST_FAILED")
+    RegUnit("UNIT_SPELLCAST_CHANNEL_START")
+    RegUnit("UNIT_SPELLCAST_CHANNEL_STOP")
     pcall(fr.RegisterEvent, fr, "PLAYER_REGEN_DISABLED")
     pcall(fr.RegisterEvent, fr, "PLAYER_REGEN_ENABLED")
     fr:SetScript("OnEvent", function(_, event, unit, _, spellID)
         if event == "UNIT_SPELLCAST_SUCCEEDED" then
             OnCast(spellID)
+        elseif event == "UNIT_SPELLCAST_START" then
+            castBegan = GetTime()
+        elseif event == "UNIT_SPELLCAST_STOP"
+            or event == "UNIT_SPELLCAST_INTERRUPTED"
+            or event == "UNIT_SPELLCAST_FAILED" then
+            AddActive(castBegan)
+            castBegan = nil
+        elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
+            channelBegan = GetTime()
+        elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
+            AddActive(channelBegan)
+            channelBegan = nil
         elseif event == "PLAYER_REGEN_DISABLED" then
             FightStart()
         elseif event == "PLAYER_REGEN_ENABLED" then

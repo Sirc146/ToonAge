@@ -330,7 +330,9 @@ function Talents:RenderContent(content, activeSpecID)
 
     -- ── Recommended build card ──────────────────────────────────────────
     local hasString = build.string and build.string ~= ""
-    local cardH     = hasString and 88 or 64
+    -- Description sits above the button row. 64 was short enough that the
+    -- Sentinel line ran through Import / Capture Build.
+    local cardH     = 96
     local card = CreateFrame("Frame", nil, content, "BackdropTemplate")
     card:SetSize(w, cardH)
     card:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
@@ -425,8 +427,10 @@ function Talents:RenderContent(content, activeSpecID)
 
         local noStr = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         noStr:SetFont(STANDARD_TEXT_FONT, 9)
-        noStr:SetText("|cFF4A4A4ANo import string yet — click to add one.|r")
-        noStr:SetPoint("LEFT", impBtn, "RIGHT", 8, 0)
+        noStr:SetText("|cFF4A4A4ANo import string yet. Click to add one.|r")
+        noStr:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -46)
+        noStr:SetWidth(w - 20)
+        noStr:SetWordWrap(false)
     end
 
     y = y - cardH - 10

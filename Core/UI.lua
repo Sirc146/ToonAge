@@ -325,11 +325,12 @@ function TA:InitUI()
     -- than on one tab. Each runs the /ta command of the same name.
     local function TitleButton(anchor, text, width, tip, cmd)
         local b = CreateFrame("Button", nil, titleBar, "BackdropTemplate")
-        b:SetSize(width, 20)
-        b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
         local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         fs:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
         fs:SetText(text)
+        local textW = (fs.GetStringWidth and fs:GetStringWidth()) or width
+        b:SetSize(math.max(textW + 16, width), 20)
+        b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
         fs:SetTextColor(0.62, 0.59, 0.55, 1)
         fs:SetAllPoints(b)
         fs:SetJustifyH("CENTER")
@@ -345,9 +346,21 @@ function TA:InitUI()
         return b
     end
     local helpBtn = TitleButton(optionsBtn, "?", 20, "Commands", "help")
-    local copyBtn = TitleButton(helpBtn, "Copy", 36, "Copy chat", "copy")
+    local copyBtn = TitleButton(helpBtn, "Copy", 56, "Copy chat", "copy")
 
     versionLabel:SetPoint("RIGHT", copyBtn, "LEFT", -10, 0)
+    versionLabel:SetWidth(150)
+    versionLabel:SetJustifyH("RIGHT")
+    versionLabel:SetWordWrap(false)
+    local versionFull = versionLabel:GetText() or ""
+    local versionHit = CreateFrame("Button", nil, titleBar)
+    versionHit:SetAllPoints(versionLabel)
+    versionHit:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText(versionFull, 1, 0.82, 0)
+        GameTooltip:Show()
+    end)
+    versionHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local optIcon = optionsBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     optIcon:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
     optIcon:SetText("\226\154\153")  -- gear glyph
@@ -363,7 +376,11 @@ function TA:InitUI()
     -- reflects this build. Width 1, not 0: Help/Copy still anchor to it.
     if not self:GetModule("Settings") then
         optionsBtn:SetWidth(1)
+        optionsBtn:EnableMouse(false)
         optionsBtn:Hide()
+        optionsBtn:SetScript("OnShow", function(b)
+            if not TA:GetModule("Settings") then b:Hide() end
+        end)
     end
 
     -- ── Tab bar ───────────────────────────────────────────────────────
@@ -1345,8 +1362,14 @@ end
 -- Keeps settings separate from the playable tabs.
 
 -- Right-hand Quick Actions column inside the drawer.
-local DRAWER_SIDE_W    = 180
-local DRAWER_CONTENT_W = FRAME_WIDTH - 30 - DRAWER_SIDE_W - 8
+-- The drawer hangs off the window's outside edge, so it is a side panel,
+-- not a second copy of the 900-wide main frame.
+local DRAWER_W         = 420
+local DRAWER_SIDE_W    = 148
+local function DrawerContentWidth(drawer)
+    local w = (drawer and drawer:GetWidth()) or DRAWER_W
+    return math.max(math.floor(w - 26 - DRAWER_SIDE_W - 16), 160)
+end
 
 function TA:ToggleSettingsDrawer()
     local mainFrame = self.UI
@@ -1361,7 +1384,7 @@ function TA:ToggleSettingsDrawer()
     -- Create drawer on first use
     if not self._settingsDrawer then
         local drawer = CreateFrame("Frame", "TASettingsDrawer", UIParent, "BackdropTemplate")
-        drawer:SetSize(FRAME_WIDTH, 400)
+        drawer:SetSize(DRAWER_W, 400)
         drawer:SetFrameStrata("DIALOG")
         drawer:SetMovable(true)
         drawer:EnableMouse(true)
@@ -1390,7 +1413,7 @@ function TA:ToggleSettingsDrawer()
         scroll:SetPoint("BOTTOMRIGHT", drawer, "BOTTOMRIGHT", -(26 + DRAWER_SIDE_W + 8), 4)
 
         local content = CreateFrame("Frame", nil, scroll)
-        content:SetWidth(DRAWER_CONTENT_W)
+        content:SetWidth(DrawerContentWidth(drawer))
         content:SetHeight(1)
         scroll:SetScrollChild(content)
 
@@ -1414,20 +1437,49 @@ function TA:ToggleSettingsDrawer()
         return
     end
 
-    -- Position: below main frame if visible, otherwise center of screen
+    -- Attach to the window's outside edge. Flip to the left when the right
+    -- side cannot hold the drawer. Same rule on every flavor: a drawer that
+    -- opens underneath gets pushed up by SetClampedToScreen and covers the
+    -- window (Forever ~60 px, Era ~233 px).
     drawer:ClearAllPoints()
-    if mainFrame and mainFrame:IsVisible() then
-        drawer:SetPoint("TOPLEFT", mainFrame, "BOTTOMLEFT", 0, -2)
-    else
-        drawer:SetPoint("CENTER", UIParent, "CENTER", 0, -50)
+    local function PlaceDrawer()
+        drawer:ClearAllPoints()
+        drawer:SetWidth(DRAWER_W)
+        local gap = 8
+        local dw = DRAWER_W
+        if not (mainFrame and mainFrame:IsVisible() and mainFrame:GetRight()) then
+            drawer:SetPoint("CENTER", UIParent, "CENTER", 0, -50)
+            return
+        end
+        local screenW = (UIParent and UIParent:GetWidth()) or 0
+        local roomRight = screenW - (mainFrame:GetRight() or 0)
+        local roomLeft = mainFrame:GetLeft() or 0
+        local function fit(room)
+            if room >= dw + gap then return dw end
+            local shrunk = math.floor(room - gap)
+            if shrunk >= 220 then
+                drawer:SetWidth(shrunk)
+                return shrunk
+            end
+            return nil
+        end
+        if fit(roomRight) then
+            drawer:SetPoint("TOPLEFT", mainFrame, "TOPRIGHT", gap, 0)
+        elseif fit(roomLeft) then
+            drawer:SetPoint("TOPRIGHT", mainFrame, "TOPLEFT", -gap, 0)
+        else
+            drawer:SetWidth(dw)
+            drawer:SetPoint("TOPLEFT", mainFrame, "TOPRIGHT", gap, 0)
+        end
     end
+    PlaceDrawer()
 
     -- Rebuild content each time (settings may have changed)
     local old = drawer.scroll:GetScrollChild()
     if old then old:Hide(); old:SetParent(nil) end
 
     local content = CreateFrame("Frame", nil, drawer.scroll)
-    content:SetWidth(DRAWER_CONTENT_W)
+    content:SetWidth(DrawerContentWidth(drawer))
     content:SetHeight(1)
     drawer.scroll:SetScrollChild(content)
     drawer.scroll:SetVerticalScroll(0)
