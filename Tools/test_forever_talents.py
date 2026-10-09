@@ -135,14 +135,40 @@ def main():
     check("maxed is pale yellow", round(theme.maxed[1] * 255), 251)
     check("maxed green channel", round(theme.maxed[2] * 255), 224)
     check("maxed blue channel", round(theme.maxed[3] * 255), 143)
-    check("available is green", round(theme.available[2] * 255) > round(theme.available[1] * 255), True)
-    check("partial frame is white", theme.partial[1], 1)
-    check("partial frame is white throughout", theme.partial[2] == 1 and theme.partial[3] == 1, True)
+    check("available is green", round(theme.available[1] * 255), 70)
+    check("available green channel", round(theme.available[2] * 255), 200)
+    check("available blue channel", round(theme.available[3] * 255), 106)
+    check("partial is the pale frame", round(theme.partial[1] * 255), 245)
+    check("partial green channel", round(theme.partial[2] * 255), 247)
+    check("partial blue channel", round(theme.partial[3] * 255), 250)
+    check("locked frame is the dim grey", round(theme.locked[1] * 255), 122)
+    check("locked green channel", round(theme.locked[2] * 255), 130)
+    check("locked blue channel", round(theme.locked[3] * 255), 140)
     check("gold is the hover colour", round(theme.gold[1] * 255), 232)
     check("gold green channel", round(theme.gold[2] * 255), 179)
     check("gold blue channel", round(theme.gold[3] * 255), 90)
     check("locked talents are dimmed", M.LOCK_ALPHA, 0.5)
     check("the lock uses the shared icon", "util_lock_16" in M.LOCK_TEXTURE, True)
+    check("the lock stays in Media/icons", "Media\\icons\\" in M.LOCK_TEXTURE, True)
+
+    tex = M.TEX
+    check("square master lives in Media/frame", "Media\\frame\\talent_square.tga" in tex.square, True)
+    check("circle master lives in Media/frame", "Media\\frame\\talent_circle.tga" in tex.circle, True)
+    check("40px uses the square master", M.FrameFile("square", False, 40), tex.square)
+    check("36px still uses the square master", M.FrameFile("square", False, 36), tex.square)
+    check("28px uses the square 32 cut", M.FrameFile("square", False, 28), tex.square32)
+    check("hover on a circle uses the focus master", M.FrameFile("circle", True, 40), tex.circleFocus)
+    check("hover on a small circle uses the focus 32 cut", M.FrameFile("circle", True, 28), tex.circleFocus32)
+    check("a square entry is a square frame", M.Shape(1), "square")
+    check("a capstone square entry is a square frame", M.Shape(14), "square")
+    check("a circle entry is a circle frame", M.Shape(2), "circle")
+    check("a missing entry type is a circle frame", lua.eval("ToonAge.modules.ForeverTalents.Shape(nil)"), "circle")
+    check("a required edge is an arrow", M.EdgeArrow(3), True)
+    check("a sufficient edge is an arrow", M.EdgeArrow(2), True)
+    check("a visual-only edge stays a line", M.EdgeArrow(0), False)
+    check("an edge with no type stays a line", lua.eval("ToonAge.modules.ForeverTalents.EdgeArrow(nil)"), False)
+    check("the glow texture is talent_glow_circle", "talent_glow_circle.tga" in tex.glow, True)
+    check("the badge has a fill and a border", "talent_badge_fill.tga" in tex.badgeFill and "talent_badge_border.tga" in tex.badgeBorder, True)
     check("a 5-point lock says what it requires", M.LockTip(5), "Requires 5 points spent")
     check("a 30-point lock says what it requires", M.LockTip(30), "Requires 30 points spent")
     check("an open node has no lock text", lua.eval("ToonAge.modules.ForeverTalents.LockTip(nil)"), None)
@@ -184,6 +210,8 @@ def main():
 
     check("a repeated edge is one line", len(plan.lines), 1)
     check("that line joins the two nodes", plan.lines[1].a == 1000 and plan.lines[1].b == 1001, True)
+    check("an untyped edge uses talent_edge", "talent_edge.tga" in plan.lines[1].texture, True)
+    check("that line is not an arrow", plan.lines[1].arrow, False)
 
     text = lua.eval("reportText(ToonAge.modules.ForeverTalents.Diagnose(nodes, conds))")
     check("self-test says posY increases downward", "posY increases downward" in text, True)
@@ -246,7 +274,7 @@ C_Traits = {
             return {
                 posX = 0, posY = 0, activeRank = 2, maxRanks = 5,
                 conditionIDs = { 101 },
-                visibleEdges = { { targetNode = 11 } },
+                visibleEdges = { { targetNode = 11, type = 3 } },
                 activeEntry = { entryID = 1 }, entryIDs = { 1 },
             }
         end
@@ -262,7 +290,10 @@ C_Traits = {
         if cid == 101 then return { spentAmountRequired = 5, isMet = true } end
         return { spentRequired = 10, isMet = false }
     end,
-    GetEntryInfo = function(_, eid) return { definitionID = eid } end,
+    GetEntryInfo = function(_, eid)
+        if eid == 1 then return { definitionID = eid, type = 1 } end
+        return { definitionID = eid, type = 2 }
+    end,
     GetDefinitionInfo = function() return { spellID = 133 } end,
 }
 readNodes, readConds, readErr, readSpent, readUnspent = ToonAge.modules.ForeverTalents.ReadGrid()
@@ -283,6 +314,10 @@ readReport = reportText(ToonAge.modules.ForeverTalents.Diagnose(readNodes, readC
     check("spentAmountRequired is accepted", "condition 101 requires 5 points, gates nodes 10" in g.readReport, True)
     check("spentRequired is accepted", "condition 102 requires 10 points, gates nodes 11" in g.readReport, True)
     check("the edge is kept", len(g.readPlan.lines), 1)
+    check("a required edge uses talent_arrow", "talent_arrow.tga" in g.readPlan.lines[1].texture, True)
+    check("that required edge points at the gated node", g.readPlan.lines[1].a == 10 and g.readPlan.lines[1].b == 11, True)
+    check("the square entry is a square node", lua.eval("cell(readPlan, 10).shape"), "square")
+    check("the circle entry is a circle node", lua.eval("cell(readPlan, 11).shape"), "circle")
     check("partial badge from the live rank", lua.eval("cell(readPlan, 10).badge"), "2/5")
 
     passed = sum(_results)
