@@ -2,10 +2,9 @@
 """
 ToonAge -- Forever talent grid
 ==============================
-Columns and rows are the rank order of posX and posY. A node is locked by
-its own condition. The row label is the lowest unmet gate on that row.
-posY that grows upward is flipped. Node size follows the tab-bar widths,
-then the grid shrinks to the content width.
+Columns and rows are the rank order of posX and posY. A gated node carries
+its own lock. posY that grows upward is flipped. Node size follows the
+tab-bar widths, then the grid shrinks to the content width.
 
 Usage:  python3 Tools/test_forever_talents.py [-v]
 """
@@ -135,7 +134,15 @@ def main():
     check("maxed blue channel", round(theme.maxed[3] * 255), 143)
     check("available is green", round(theme.available[2] * 255) > round(theme.available[1] * 255), True)
     check("partial frame is white", theme.partial[1], 1)
+    check("partial frame is white throughout", theme.partial[2] == 1 and theme.partial[3] == 1, True)
     check("gold is the hover colour", round(theme.gold[1] * 255), 232)
+    check("gold green channel", round(theme.gold[2] * 255), 179)
+    check("gold blue channel", round(theme.gold[3] * 255), 90)
+    check("locked talents are dimmed", M.LOCK_ALPHA, 0.5)
+    check("the lock uses the shared icon", "util_lock_16" in M.LOCK_TEXTURE, True)
+    check("a 5-point lock says what it requires", M.LockTip(5), "Requires 5 points spent")
+    check("a 30-point lock says what it requires", M.LockTip(30), "Requires 30 points spent")
+    check("an open node has no lock text", lua.eval("ToonAge.modules.ForeverTalents.LockTip(nil)"), None)
 
     lua.execute("nodes, conds = build()")
     lua.execute("plan = place(900, 640, nodes, conds)")
@@ -160,12 +167,17 @@ def main():
 
     lua.execute("c = cell(plan, 2001)")
     check("unmet node on a shared row is locked", lua.globals().c.locked, True)
+    check("that lock names its own 5 points", lua.globals().c.lockTip, "Requires 5 points spent")
     lua.execute("c = cell(plan, 3002)")
     check("met node beside it stays open", lua.globals().c.locked, False)
-    check("shared row labels the lower unmet gate", plan.rowLabels[2], "5 pts")
-    check("a row with 10 and 15 labels 10", plan.rowLabels[3], "10 pts")
-    check("the 30-point row labels 30", plan.rowLabels[6], "30 pts")
-    check("the open top row has no pts label", plan.rowLabels[1], None)
+    check("the open neighbour has no lock", lua.globals().c.lockTip, None)
+    lua.execute("c = cell(plan, 2002)")
+    check("the 10-point node carries its own lock", lua.globals().c.lockTip, "Requires 10 points spent")
+    lua.execute("c = cell(plan, 3003)")
+    check("the 15-point neighbour is not folded into that lock", lua.globals().c.lockTip, "Requires 15 points spent")
+    lua.execute("c = cell(plan, 2005)")
+    check("the 30-point node carries its own lock", lua.globals().c.lockTip, "Requires 30 points spent")
+    check("there is no row label", plan.rowLabels, None)
 
     check("a repeated edge is one line", len(plan.lines), 1)
     check("that line joins the two nodes", plan.lines[1].a == 1000 and plan.lines[1].b == 1001, True)
@@ -261,6 +273,8 @@ readReport = reportText(ToonAge.modules.ForeverTalents.Diagnose(readNodes, readC
     check("rank subtext was not consulted", g.subtextCalls, 0)
     check("a met gate does not lock", lua.eval("cell(readPlan, 10).locked"), False)
     check("an unmet gate locks only that node", lua.eval("cell(readPlan, 11).locked"), True)
+    check("that node's lock names 10 points", lua.eval("cell(readPlan, 11).lockTip"), "Requires 10 points spent")
+    check("the met node has no lock text", lua.eval("cell(readPlan, 10).lockTip"), None)
     check("spentAmountRequired is accepted", "condition 101 requires 5 points, gates nodes 10" in g.readReport, True)
     check("spentRequired is accepted", "condition 102 requires 10 points, gates nodes 11" in g.readReport, True)
     check("the edge is kept", len(g.readPlan.lines), 1)

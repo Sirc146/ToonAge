@@ -166,9 +166,10 @@ end
 --   window >= 676  -> 36 px   (Compact)
 --   below 676      -> 28 px   (Glyph; the window itself stops at 568)
 --
--- Available and maxed colours live in M.Theme only. Gold is hover and
--- selection, never a rank state. Gilder's talent_* textures are not in
--- Media/frame yet, so the node is a flat square until they arrive.
+-- Available, partial, and maxed colours live in M.Theme only. Gold, with the
+-- white highlight, is hover and selection. A gated talent carries its own
+-- lock; the row does not. Gilder's talent_* textures are not in Media/frame
+-- yet, so the node is a flat square until they arrive.
 
 -- Same window cuts as the tab bar.
 local BREAK_FULL    = 740
@@ -177,19 +178,20 @@ local NODE_FULL     = 40
 local NODE_COMPACT  = 36
 local NODE_GLYPH    = 28
 
--- Gap and the "30 pts" gutter, before the grid is scaled down to fit.
-local GRID_GAP   = 8
-local LABEL_W    = 48
+-- Gap between nodes, before the grid is scaled down to fit.
+local GRID_GAP = 8
 
 M.LINE_PX = 2
+M.LOCK_TEXTURE = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_lock_16.tga"
+M.LOCK_ALPHA = 0.5
 
 M.Theme = {
-    available = { 70 / 255, 200 / 255, 106 / 255 },   -- #46C86A green
+    available = { 70 / 255, 200 / 255, 106 / 255 },   -- green frame
     partial   = { 1, 1, 1 },                           -- white frame
     maxed     = { 251 / 255, 224 / 255, 143 / 255 },   -- #FBE08F pale yellow
-    locked    = { 0.45, 0.43, 0.40 },
+    locked    = { 0.45, 0.43, 0.40 },                  -- dimmed
     gold      = { 232 / 255, 179 / 255, 90 / 255 },    -- #E8B35A hover and selection
-    highlight = { 1, 0.957, 0.745 },                   -- white-gold hairline
+    highlight = { 1, 0.957, 0.745 },                   -- white highlight on gold
     line      = { 0.62, 0.58, 0.48, 0.90 },
 }
 
@@ -238,8 +240,15 @@ function M.Badge(rank, max)
     return string.format("%d/%d", rank, max)
 end
 
---- Rank wins over the gate: a bought rank is partial or maxed. Gold is not a
---- state; hover and selection paint over whichever of these is current.
+--- "Requires N points spent" for the lock on one gated talent.
+function M.LockTip(amount)
+    amount = tonumber(amount)
+    if not amount then return nil end
+    return string.format("Requires %d points spent", amount)
+end
+
+--- Rank wins over the gate for the frame colour: a bought rank is partial or
+--- maxed. The lock is separate, and gold is not a state.
 function M.NodeState(rank, max, locked)
     rank = tonumber(rank) or 0
     max  = tonumber(max) or 0
@@ -421,21 +430,20 @@ function M.Diagnose(nodes, conditions)
 end
 
 local function Fit(nodePx, cols, avail)
-    local natural = LABEL_W + cols * nodePx + math.max(cols - 1, 0) * GRID_GAP
+    local natural = cols * nodePx + math.max(cols - 1, 0) * GRID_GAP
     local scale = 1
     if avail and avail > 0 and natural > avail then
         scale = avail / natural
     end
     local draw = math.max(1, math.floor(nodePx * scale + 0.5))
     local gap = math.max(0, math.floor(GRID_GAP * scale + 0.5))
-    local labelW = math.max(0, math.floor(LABEL_W * scale + 0.5))
     local function width()
-        return labelW + cols * draw + math.max(cols - 1, 0) * gap
+        return cols * draw + math.max(cols - 1, 0) * gap
     end
     local w = width()
     -- Rounding can push the grid a pixel or two past the content width.
-    -- Shrink the gap, then the nodes, then the gutter, so it never needs a
-    -- horizontal scroll. The 568px window is the narrowest this has to fit.
+    -- Shrink the gap, then the nodes, so it never needs a horizontal scroll.
+    -- The 568px window is the narrowest this has to fit.
     if avail and avail > 0 then
         while w > avail and gap > 0 do
             gap = gap - 1
@@ -445,17 +453,12 @@ local function Fit(nodePx, cols, avail)
             draw = draw - 1
             w = width()
         end
-        while w > avail and labelW > 0 do
-            labelW = labelW - 1
-            w = width()
-        end
     end
-    return draw, gap, labelW, w, scale
+    return draw, gap, w, scale
 end
 
---- Place every node. Row 1 is the top of the tree. An unmet gate on a node
---- locks that node only. The row label is the lowest unmet gate on the row,
---- or nil when the row has none.
+--- Place every node. Row 1 is the top of the tree. An unmet gate locks that
+--- node only, and the lock text is that node's own requirement.
 function M.Layout(nodes, conditions, opts)
     opts = opts or {}
     conditions = conditions or {}
@@ -465,9 +468,9 @@ function M.Layout(nodes, conditions, opts)
     local diag = M.Diagnose(usable, conditions)
     local cols, rows = #xlist, #ylist
     local nodePx = M.NodePx(opts.windowWidth)
-    local draw, gap, labelW, width, scale = 0, 0, 0, 0, 1
+    local draw, gap, width, scale = 0, 0, 0, 1
     if cols > 0 then
-        draw, gap, labelW, width, scale = Fit(nodePx, cols, opts.availWidth)
+        draw, gap, width, scale = Fit(nodePx, cols, opts.availWidth)
     end
     local height = 0
     if rows > 0 then
@@ -475,7 +478,6 @@ function M.Layout(nodes, conditions, opts)
     end
 
     local cells = {}
-    local rowUnmet = {}
     for _, n in ipairs(usable) do
         local col = xmap[Round(n.posX)]
         local yRank = ymap[Round(n.posY)]
@@ -487,34 +489,27 @@ function M.Layout(nodes, conditions, opts)
             id = n.id,
             col = col,
             row = row,
-            x = labelW + (col - 1) * (draw + gap),
+            x = (col - 1) * (draw + gap),
             y = (row - 1) * (draw + gap),
             w = draw,
             h = draw,
             rank = rank,
             max = max,
-            locked = locked,
+            locked = locked and true or false,
             unmet = unmet,
+            lockTip = locked and M.LockTip(unmet) or nil,
             state = M.NodeState(rank, max, locked),
             badge = M.Badge(rank, max),
             name = n.name,
             spellID = n.spellID,
             texture = n.texture,
         }
-        if unmet and (not rowUnmet[row] or unmet < rowUnmet[row]) then
-            rowUnmet[row] = unmet
-        end
     end
     table.sort(cells, function(a, b)
         if a.row ~= b.row then return a.row < b.row end
         if a.col ~= b.col then return a.col < b.col end
         return tostring(a.id) < tostring(b.id)
     end)
-
-    local rowLabels = {}
-    for row, amount in pairs(rowUnmet) do
-        rowLabels[row] = string.format("%d pts", amount)
-    end
 
     local byID = {}
     for _, cell in ipairs(cells) do
@@ -548,7 +543,6 @@ function M.Layout(nodes, conditions, opts)
         nodePx = nodePx,
         drawPx = draw,
         gap = gap,
-        labelWidth = labelW,
         scale = scale,
         width = width,
         height = height,
@@ -557,7 +551,6 @@ function M.Layout(nodes, conditions, opts)
         yDown = diag.yDown,
         flipped = diag.flipped,
         cells = cells,
-        rowLabels = rowLabels,
         lines = lines,
         linePx = M.LINE_PX,
         gates = diag.gates,
@@ -725,10 +718,11 @@ local function PaintNode(btn)
     local theme = M.Theme
     local rgb = theme[btn.state] or theme.available
     local hot = btn._hover or btn.id == M.selectedID
+    local dim = btn.state == "locked" and not hot
     if hot then rgb = theme.gold end
     btn:SetBackdrop(hot and EDGE_HOVER or EDGE)
-    btn:SetBackdropColor(0.06, 0.06, 0.07, btn.state == "locked" and 0.55 or 0.92)
-    btn:SetBackdropBorderColor(rgb[1], rgb[2], rgb[3], 1)
+    btn:SetBackdropColor(0.06, 0.06, 0.07, dim and M.LOCK_ALPHA or 0.92)
+    btn:SetBackdropBorderColor(rgb[1], rgb[2], rgb[3], dim and M.LOCK_ALPHA or 1)
     if btn.highlight then
         if hot then btn.highlight:Show() else btn.highlight:Hide() end
     end
@@ -736,8 +730,11 @@ local function PaintNode(btn)
         if hot then btn.glow:Show() else btn.glow:Hide() end
     end
     if btn.icon then
-        btn.icon:SetAlpha(btn.state == "locked" and 0.45 or 1)
+        btn.icon:SetAlpha(dim and M.LOCK_ALPHA or 1)
         if btn.icon.SetDesaturated then btn.icon:SetDesaturated(btn.state == "locked") end
+    end
+    if btn.lock then
+        if btn._locked then btn.lock:Show() else btn.lock:Hide() end
     end
 end
 
@@ -755,6 +752,7 @@ local function DrawGrid(content, y, plan)
         btn:SetPoint("TOPLEFT", holder, "TOPLEFT", math.floor(cell.x), -math.floor(cell.y))
         btn.id = cell.id
         btn.state = cell.state
+        btn._locked = cell.locked
         btn._baseLevel = btn:GetFrameLevel()
 
         local icon = btn:CreateTexture(nil, "ARTWORK")
@@ -796,6 +794,16 @@ local function DrawGrid(content, y, plan)
             badge:SetTextColor(1, 1, 1, 1)
         end
 
+        -- One lock per gated talent. The row used to carry a single "N pts"
+        -- label; the requirement now belongs to the node it gates.
+        local lock = btn:CreateTexture(nil, "OVERLAY")
+        local lockPx = math.min(16, math.max(10, math.floor(cell.w * 0.4)))
+        lock:SetSize(lockPx, lockPx)
+        lock:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
+        lock:SetTexture(M.LOCK_TEXTURE)
+        lock:Hide()
+        btn.lock = lock
+
         local function raise()
             local top = (holder:GetFrameLevel() or 0) + 20
             btn:SetFrameLevel(top)
@@ -814,8 +822,8 @@ local function DrawGrid(content, y, plan)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(cell.name or "Talent")
                 if cell.badge then GameTooltip:AddLine(cell.badge, 1, 1, 1) end
-                if cell.unmet then
-                    GameTooltip:AddLine("Requires " .. cell.unmet .. " points spent", 0.85, 0.75, 0.45)
+                if cell.lockTip then
+                    GameTooltip:AddLine(cell.lockTip, 0.85, 0.75, 0.45)
                 end
                 GameTooltip:Show()
             end
@@ -853,22 +861,6 @@ local function DrawGrid(content, y, plan)
                     end)
                 end
             end
-        end
-    end
-
-    for row, text in pairs(plan.rowLabels) do
-        local sample = nil
-        for _, cell in ipairs(plan.cells) do
-            if cell.row == row then sample = cell break end
-        end
-        if sample then
-            local fs = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            fs:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -math.floor(sample.y))
-            fs:SetSize(math.floor(plan.labelWidth), math.floor(sample.h))
-            fs:SetJustifyH("CENTER")
-            fs:SetJustifyV("MIDDLE")
-            fs:SetText(text)
-            fs:SetTextColor(0.62, 0.59, 0.55, 1)
         end
     end
 
