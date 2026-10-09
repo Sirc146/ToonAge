@@ -353,6 +353,89 @@ L5.execute("FIRST = ToonAge.db.harvest.times.catalog.last; NOW = NOW + 60; ToonA
 check("a scan that changes nothing does not move the harvest date",
       L5.eval("ToonAge.db.harvest.times.catalog.last == FIRST"), True)
 
+# ── Catalog: load blank spell data, then read it ─────────────────────────
+# Rank text is empty until SPELL_DATA_LOAD_RESULT. Requests go out 200 per
+# frame. The level is GetSpellLevelLearned or, when that is 0, the trainer row.
+Lload = world(extra=r"""
+for i = 20000, 21199 do SPELL[i] = { "Bolt" .. i, "", i } end
+LOAD_N = 0
+BATCHES = {}
+LOADS = 0
+local realAfter = C_Timer.After
+C_Spell.RequestLoadSpellData = function(id)
+    LOAD_N = LOAD_N + 1
+    LOADS = LOADS + 1
+    SPELL[id][2] = "Rank 1"
+    ToonAge.modules.DataHarvester:OnEvent("SPELL_DATA_LOAD_RESULT", id, true)
+end
+C_Timer.After = function(sec, fn)
+    if LOAD_N > 0 then BATCHES[#BATCHES + 1] = LOAD_N; LOAD_N = 0 end
+    return realAfter(sec, fn)
+end
+""")
+Lload.execute(r"""
+ToonAge.modules.DataHarvester:Init()
+ToonAge.Harvester:Pack().catalogRanges = { { 20000, 21199 } }
+CHAT_LOG = {}
+ToonAge.modules.DataHarvester:ScanCatalog()
+FLUSH()
+if LOAD_N > 0 then BATCHES[#BATCHES + 1] = LOAD_N end
+""")
+check("blank ids are requested 200 per frame",
+      lst(Lload, "BATCHES"), [200, 200, 200, 200, 200, 200])
+check("a loaded spell is not asked again", Lload.eval("LOADS"), 1200)
+check("the load event fills the rank text",
+      Lload.eval("ToonAge.db.harvest.catalog['20000']"), "Bolt20000\tRank 1\t20000")
+check("the level is the trained level, not the rank number",
+      Lload.eval("ToonAge.db.harvest.catalog['21199']"), "Bolt21199\tRank 1\t21199")
+check("progress names how many of the blanks have loaded",
+      any("Catalog: 1,200 / 1,200 loaded" in x for x in lst(Lload, "CHAT_LOG")))
+check("the pass line counts the ranks the events filled",
+      Lload.eval("ToonAge.db.harvest.catalogPasses[1]"), "load: +1200 ranks, 0 still blank")
+
+Llate = world(extra=r"""
+SPELL[30001] = { "Timeout Bolt", "", 4 }
+SPELL[30002] = { "Late Bolt", "", 8 }
+SPELL[30010] = { "Frostbolt", "", 0 }
+SPELL[30013] = { "Ghost", "", 6 }
+SEEN = {}
+C_Spell.RequestLoadSpellData = function(id)
+    SEEN[id] = (SEEN[id] or 0) + 1
+    if id == 30002 and SEEN[id] == 2 then
+        SPELL[id][2] = "Rank 2"
+        ToonAge.modules.DataHarvester:OnEvent("SPELL_DATA_LOAD_RESULT", id, true)
+    elseif id == 30010 and SEEN[id] == 1 then
+        SPELL[id][2] = "Rank 3"
+        ToonAge.modules.DataHarvester:OnEvent("SPELL_DATA_LOAD_RESULT", id, true)
+    elseif id == 30013 and SEEN[id] == 1 then
+        ToonAge.modules.DataHarvester:OnEvent("SPELL_DATA_LOAD_RESULT", id, true)
+    end
+end
+""", store=STORE.replace(
+    "trainer = {}",
+    'trainer = { MAGE = { ["30010"] = "Frostbolt\\t\\t20\\tunavailable\\t1" } }'))
+Llate.execute(r"""
+ToonAge.modules.DataHarvester:Init()
+ToonAge.Harvester:Pack().catalogRanges = { { 30001, 30013 } }
+CHAT_LOG = {}
+ToonAge.modules.DataHarvester:ScanCatalog()
+FLUSH()
+""")
+check("a spell that never answers is asked a second time", Llate.eval("SEEN[30001]"), 2)
+check("the second request is the only retry", Llate.eval("SEEN[30002]"), 2)
+check("a timed-out id is not invented", Llate.eval("ToonAge.db.harvest.catalog['30001']"), None)
+check("the retry's load event fills the rank",
+      Llate.eval("ToonAge.db.harvest.catalog['30002']"), "Late Bolt\tRank 2\t8")
+check("trainer data supplies the level when the spell API does not",
+      Llate.eval("ToonAge.db.harvest.catalog['30010']"), "Frostbolt\tRank 3\t20")
+check("a loaded spell with no rank text is still not kept",
+      Llate.eval("ToonAge.db.harvest.catalog['30013']"), None)
+check("progress counts loads, not the ones still waiting",
+      any("Catalog: 3 / 4 loaded" in x for x in lst(Llate, "CHAT_LOG")))
+passes = lst(Llate, "ToonAge.db.harvest.catalogPasses")
+check("the first round and the retry are both recorded",
+      passes, ["load: +1 ranks, 2 still blank", "retry: +1 ranks, 1 still blank"])
+
 # ── Repair: the 8 ranks lost 2026-10-04 ──────────────────────────────────
 L6 = world()
 L6.execute("ToonAge.modules.DataHarvester:Init()")
