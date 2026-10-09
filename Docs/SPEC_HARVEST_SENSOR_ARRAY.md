@@ -278,8 +278,12 @@ The shared header comes from `HarvestFormat.Header(meta, section, page, pages, f
 ```
 -- ToonAge harvest · trainer · page 1/1 · records 1-39 of 39
 -- client forever · 1.60.1 · build 70205 · interface 16001 · project 18 · channel beta
+-- source MAGE trainer · recorded by Eramali · current character Mage
 -- harvested 2026-09-26 .. 2026-10-04 · exported 2026-10-04 15:10 · store v3 · ToonAge 2.0.0-dev.1
 ```
+
+- **Source line:** the third header line of every export. `source` is the class token the rows were filtered to, or `all` when the export is every class (the saved-file path, the full report, and the All classes button). `recorded by` is the character names in `chars` of that class (`all` lists every name). `current character` is the display name `UnitClass` returned in game, and `unknown` from the saved file, which has no current character. A missing name prints `unknown`.
+- **Per-class copy buttons** (trainer, spells, talents, spell catalog) default to the current character's class. A class with no rows exports `No ROGUE trainer data yet. Open a rogue trainer to record it.` (and the same shape for the other three) instead of another class's rows. Shift-click, or the button beside it (All trainer classes, and the same for spells, talents and the catalog), exports every class. When the current class has no rows and another class does, the tab shows a muted `Showing saved Hunter data` by that button.
 
 - **Channel in game:** the value stored in `client.channel`, set only by the Harvest tab's channel button. **D1** decides whether that button exists. Default is `unknown`.
 - **Channel from the saved file:** `Tools/export_harvest.lua <ToonAge.lua> <outdir> [channel]`. The argument wins; if it is absent, the stored value is used; if neither exists, `unknown`. Never guessed (S3).

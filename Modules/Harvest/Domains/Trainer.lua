@@ -208,6 +208,12 @@ end
 D.summary = {
     { section = "trainer", label = "Trainer ranks (open a class trainer)",
       value = function(s)
+          local token = Hv.PlayerClass and Hv:PlayerClass()
+          if token then
+              local t = s.trainer and s.trainer[token]
+              local n = (type(t) == "table") and Size(t) or 0
+              return (n > 0) and tostring(n) or "none yet"
+          end
           local classes, rows = 0, 0
           for _, t in pairs(s.trainer or {}) do classes = classes + 1; rows = rows + Size(t) end
           return (rows > 0) and string.format("%d from %d class%s", rows, classes,

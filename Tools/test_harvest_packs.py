@@ -228,6 +228,29 @@ check("no button named just 'Spell catalog' outside the Copy row",
 check("World refresh row comes from the pack", "ButtonRow|World refresh log|nil" in lay)
 check("summary shows profession trainers", any(x.startswith("DataRow|Profession trainers|") for x in lay))
 
+# Another class's saved rows must not read as this character's export.
+L.execute(r"""
+ToonAge.db.harvest.trainer = { HUNTER = { ["1978"] = "Serpent Sting\tRank 1\t4\tavailable\t1" } }
+function UnitClass() return "Rogue", "ROGUE" end
+LAYOUT_LOG = {}
+WINDOWS_LOG = {}
+ToonAge.modules.DataHarvester:Render({}, nil)
+ToonAge.modules.DataHarvester:Export("trainer", 1)
+function UnitClass() return "Mage", "MAGE", 8 end
+""")
+lay_rogue = lst(L, "LAYOUT_LOG")
+exported = lst(L, "WINDOWS_LOG")[0].text.splitlines()
+check("trainer summary counts this class only",
+      "DataRow|Trainer ranks (open a class trainer)|none yet" in lay_rogue)
+check("copy row has an all-classes button beside the class exports",
+      any(x.startswith("ButtonRow|") and "All trainer classes" in x and x.endswith("|Copy:") for x in lay_rogue))
+check("muted label names the saved class that is not this character",
+      "Paragraph|Trainer ranks: Showing saved Hunter data|dim" in lay_rogue)
+check("the trainer button exports the empty sentence, not the hunter rows",
+      exported[-1], "No ROGUE trainer data yet. Open a rogue trainer to record it.")
+check("that export's source line names the current character",
+      "-- source ROGUE trainer · recorded by unknown · current character Rogue" in exported)
+
 # Export of a section not written yet still opens a stamped window.
 L.execute("WINDOWS_LOG = {}; ToonAge.modules.DataHarvester:Export('trainerProf', 1)")
 w = lst(L, "WINDOWS_LOG")

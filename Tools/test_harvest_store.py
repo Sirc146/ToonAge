@@ -175,10 +175,31 @@ lines = lines[0] if isinstance(lines, tuple) else lines
 lst = [lines[i] for i in range(1, len(lines) + 1)]
 check("trainer export is stamped",
       lst[1], "-- client forever · 1.60.1 · build 70205 · interface 16001 · project 18 · channel unknown")
+check("unfiltered export names every recorded character and no current class",
+      lst[2], "-- source all trainer · recorded by Eramali, Malefice · current character unknown")
 check("moved store export says the start is unknown, never today",
-      re.match(r"-- harvested unknown \.\. \d{4}-\d\d-\d\d · exported ", lst[2]) is not None)
-check("trainer export flattens CLASS:spellID", [l.split("\t")[0] for l in lst[4:]],
+      re.match(r"-- harvested unknown \.\. \d{4}-\d\d-\d\d · exported ", lst[3]) is not None)
+check("trainer export flattens CLASS:spellID", [l.split("\t")[0] for l in lst[5:]],
       ["MAGE:10097", "MAGE:2657", "MAGE:3307"])
+
+# A rogue who never opened a trainer must not be handed the mage rows.
+L.execute('function UnitClass() return "Rogue", "ROGUE" end')
+rogue = Hv.ExportLines(Hv, "trainer", 0, "class")
+rogue = rogue[0] if isinstance(rogue, tuple) else rogue
+rogue_lines = [rogue[i] for i in range(1, len(rogue) + 1)]
+check("current class with no rows exports the empty sentence",
+      rogue_lines[-1], "No ROGUE trainer data yet. Open a rogue trainer to record it.")
+check("current-class export does not contain another class",
+      any(l.startswith("MAGE:") for l in rogue_lines), False)
+check("current-class export names the character who is logged in",
+      rogue_lines[2], "-- source ROGUE trainer · recorded by unknown · current character Rogue")
+kept = Hv.ExportLines(Hv, "trainer", 0, "all")
+kept = kept[0] if isinstance(kept, tuple) else kept
+kept_lines = [kept[i] for i in range(1, len(kept) + 1)]
+check("all-classes export still has every trainer row",
+      [l.split("\t")[0] for l in kept_lines[5:]], ["MAGE:10097", "MAGE:2657", "MAGE:3307"])
+check("all-classes export says the data is not this character's class",
+      kept_lines[2].startswith("-- source all trainer · "), True)
 
 # ── Both keys present: merge, nothing dropped ────────────────────────────
 L2 = fresh_runtime()
