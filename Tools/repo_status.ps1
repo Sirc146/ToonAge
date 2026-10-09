@@ -172,15 +172,28 @@ try {
 
 # ── Release workflows ────────────────────────────────────────────────────
 Section "Release workflows  (.github/workflows)"
+$release = Join-Path (Join-Path (Join-Path $Root '.github') 'workflows') 'release.yml'
 $wago = Join-Path (Join-Path (Join-Path $Root '.github') 'workflows') 'wago.yml'
-if (-not (Test-Path -LiteralPath $wago)) {
-    Row 'wago.yml' 'missing' $false
-    $problems.Add("no .github/workflows/wago.yml -> Wago never receives a build")
-} elseif (Select-String -LiteralPath $wago -Pattern '^\s*args:\s*-d\s*$' -Quiet) {
-    Row 'wago.yml' "passes -d to the packager (= skip uploading)" $false
-    $problems.Add("wago.yml has 'args: -d' -> delete the 'with:' / 'args: -d' lines, or Wago gets nothing")
+if (-not (Test-Path -LiteralPath $release)) {
+    Row 'release.yml' 'missing' $false
+    $problems.Add("no .github/workflows/release.yml -> tags never publish")
 } else {
-    Row 'wago.yml' 'uploads to Wago (no -d)' $true
+    $hasPackager = Select-String -LiteralPath $release -Pattern 'BigWigsMods/packager' -Quiet
+    $skipsUpload = Select-String -LiteralPath $release -Pattern '^\s*args:\s*-d\s*$' -Quiet
+    $hasCurse = Select-String -LiteralPath $release -Pattern 'CF_API_KEY' -Quiet
+    $hasWago = Select-String -LiteralPath $release -Pattern 'WAGO_API_TOKEN' -Quiet
+    if ($hasPackager -and $hasCurse -and $hasWago -and -not $skipsUpload) {
+        Row 'release.yml' 'packager uploads to CurseForge and Wago (no -d)' $true
+    } else {
+        Row 'release.yml' 'packager is missing, incomplete, or passes -d (skip upload)' $false
+        $problems.Add("release.yml must call BigWigsMods/packager with CF_API_KEY and WAGO_API_TOKEN, and must not pass -d")
+    }
+}
+if ((Test-Path -LiteralPath $wago) -and (Select-String -LiteralPath $wago -Pattern 'BigWigsMods/packager' -Quiet)) {
+    Row 'wago.yml' 'still runs the packager (would upload twice)' $false
+    $problems.Add("wago.yml still calls the packager -> a tag would publish twice; release.yml owns that")
+} else {
+    Row 'wago.yml' 'does not upload (release.yml owns CurseForge and Wago)' $true
 }
 
 # ── Installs ─────────────────────────────────────────────────────────────

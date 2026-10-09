@@ -1,5 +1,17 @@
 name: Package and Release
 
+# One v* tag does three things:
+#   1. Build the zip this repo has always attached to the GitHub release,
+#      plus release.json for WowUp.
+#   2. Publish that GitHub release (softprops). Do not also give the
+#      packager a GitHub token: two workflows creating the same release
+#      collide.
+#   3. Hand the same tag to BigWigsMods/packager, which uploads to
+#      CurseForge (CF_API_KEY + X-Curse-Project-ID) and Wago
+#      (WAGO_API_TOKEN + X-Wago-ID). Either secret may be absent; the
+#      packager skips a site it has no token for. Neither value is
+#      written into the repo.
+
 on:
   push:
     tags:
@@ -14,6 +26,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The packager reads the tag and changelog from git history.
+          fetch-depth: 0
 
       - name: Get version from tag
         id: version
@@ -56,7 +71,8 @@ jobs:
                   { "flavor": "mists",    "interface": 50504  },
                   { "flavor": "classic",  "interface": 11509  },
                   { "flavor": "cata",     "interface": 40402  },
-                  { "flavor": "wrath",    "interface": 30405  }
+                  { "flavor": "wrath",    "interface": 30405  },
+                  { "flavor": "forever",  "interface": 16001  }
                 ]
               }
             ]
@@ -73,3 +89,30 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, 'dev') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'test') }}
+
+      - name: Are CurseForge or Wago tokens configured?
+        id: publish
+        run: |
+          ready=false
+          if [ -n "${{ secrets.CF_API_KEY }}" ]; then
+            echo "CurseForge token is set."
+            ready=true
+          else
+            echo "CF_API_KEY is not set. CurseForge upload will be skipped."
+          fi
+          if [ -n "${{ secrets.WAGO_API_TOKEN }}" ]; then
+            echo "Wago token is set."
+            ready=true
+          else
+            echo "WAGO_API_TOKEN is not set. Wago upload will be skipped."
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to CurseForge and Wago
+        if: steps.publish.outputs.ready == 'true'
+        uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+        # No -d: that flag skips every upload, including CurseForge and Wago.
+        # No GitHub token: the step above already published the GitHub release.

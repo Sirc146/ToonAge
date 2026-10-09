@@ -9,7 +9,7 @@
 ## AddonCompartmentFuncOnEnter: ToonAge_OnAddonCompartmentEnter
 ## AddonCompartmentFuncOnLeave: ToonAge_OnAddonCompartmentLeave
 ## X-Flavor: fallback
-## X-Curse-Project-ID:
+## X-Curse-Project-ID: 1734520
 ## X-Wago-ID: 56ndnjG9
 ## OptionalDependencies: WagoAnalytics
 # ── Generic fallback TOC ───────────────────────────────────────────────

@@ -201,9 +201,10 @@ local PROFILES = {
         statRules = "wrath-trees",
         scaffold  = true,
     },
-    -- WoW Forever. Detected since the 2026-09 beta (Mainline project id with a
-    -- 1.60.x interface). The client picks ToonAge_Mainline.toc, so every retail
-    -- file is loaded and this profile is the only thing deciding what runs.
+    -- WoW Forever. Detected since the 2026-09 beta (project id 18, or a
+    -- Mainline project id with a 1.60.x interface). The client loads
+    -- ToonAge_Camelot.toc, which does not include retail modules. This
+    -- allow-list is the second gate if a wrong TOC is ever what loaded.
     --
     -- The split is by DEPENDENCY, not by caution. Modules listed here read the
     -- world through APIs this client has and carry no expansion numbers of

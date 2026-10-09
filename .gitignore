@@ -19,3 +19,12 @@ release/
 # embedded-repo pointer on GitHub, and release.yml packs the repo root into the
 # zip players install. Keep it out of the trunk entirely if you can.
 deepseek-tui/
+
+# Machine-local skill telemetry. Do not commit.
+.claude/learning/runs.jsonl
+.claude/learning/patterns.md
+.claude/learning/skill-feedback.jsonl
+.claude/learning/task-skill-proposals.json
+.claude/learning/task-active-skills.json
+.claude/learning/task-drift-reproposal.json
+.claude/learning/task-drift-prompt.json

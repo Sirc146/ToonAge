@@ -818,7 +818,7 @@ local EVENT_ROUTES = {
     UNIT_ATTACK_POWER = {  },
     BAG_UPDATE_DELAYED = { "AutoEquip", "DataHarvester", "ForeverGear" },
     ZONE_CHANGED = { "CoordResolver", "TravelRouter" },
-    UNIT_SPELLCAST_SUCCEEDED = { "CombatRecorder", "ForeverCastLog" },
+    UNIT_SPELLCAST_SUCCEEDED = { "CombatRecorder", "CombatState", "ForeverCastLog" },
 }
 -- END GENERATED EVENT_ROUTES
 

@@ -36,6 +36,9 @@ own state, and gives no advice at all. That is deliberate. Retail's gear scores
 and rotations are wrong for a Classic character, and wrong advice is worse than
 none.
 
+A feature-by-feature rating of each target client is in
+[Docs/ASSESSMENT.md](Docs/ASSESSMENT.md).
+
 If the client ever loads another edition's file list, ToonAge stops every
 feature and says so in chat ("This is a … client but the … build loaded"). It
 won't run the wrong product quietly.
@@ -192,7 +195,8 @@ before the unified source is kept as `archive/*` tags.
 ## Releases
 
 Pushing a `v*` tag builds the zip, publishes a GitHub release with
-`release.json` (for WowUp) and uploads to Wago.
+`release.json` (for WowUp), and uploads to CurseForge and Wago from that
+same tag.
 
 ```
 git tag -a v2.0.4 -m "..."
@@ -205,8 +209,13 @@ or `Tools\save_day.ps1 -Tag v2.0.4 -PushOrigin`, which pushes that one tag.
   tags arrive in one push.
 - Tags containing `test`, `beta`, `alpha` or `dev` publish as pre-releases,
   and WowUp prefers stable releases.
-- The Wago upload needs the `WAGO_API_TOKEN` repository secret; without it
-  that job skips itself.
+- CurseForge and Wago are uploaded by the packager step in
+  `.github/workflows/release.yml`. It reads `X-Curse-Project-ID`
+  (1734520) and `X-Wago-ID` from the TOC files.
+- The CurseForge upload needs the `CF_API_KEY` repository secret. The Wago
+  upload needs `WAGO_API_TOKEN`. If a secret is missing, that site is
+  skipped and the GitHub release still publishes. Do not commit either
+  token.
 
 Testers: see [`Docs/TESTER_SETUP.md`](Docs/TESTER_SETUP.md).
 

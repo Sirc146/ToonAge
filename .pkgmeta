@@ -9,6 +9,7 @@ package-as: ToonAge
 ignore:
     - .github
     - .gitignore
+    - .claude
     - .rules.md
     - CLAUDE.md
     - Docs
