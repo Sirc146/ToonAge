@@ -7,6 +7,10 @@
 -- be recognised. They are not a claim that Forever uses them. The tab says
 -- so until a probe confirms the list.
 --
+-- Forever 1.60.1 confirmed one hunter skill by name: Gardening, spell 1278062.
+-- That number is the spell, not a measured skill-line id, so the row matches
+-- by name and stays class-gated. The file flag stays unverified.
+--
 -- prefer is skillinfo: C_SkillInfo.GetNumSkillLines / GetSkillLineInfo, which
 -- that probe did confirm. The reader still checks that those calls exist
 -- before using them.
@@ -19,6 +23,8 @@ local function Line(id, name, secondary, gate)
     if type(gate) == "table" then
         row.class = gate.class
         row.minLevel = gate.minLevel
+        if gate.spell ~= nil then row.spell = gate.spell end
+        if gate.verified then row.verified = true end
     end
     return row
 end
@@ -49,5 +55,8 @@ TA.Data.ProfessionSkills = {
         -- A rogue skill, matched by the name the client reports. No skill
         -- line id has been measured, so this row does not invent one.
         Line(nil, "Poisons", false, { class = "ROGUE" }),
+        -- Hunter skill confirmed on Forever 1.60.1. 1278062 is the spell,
+        -- not a skill-line id, so this row does not store one.
+        Line(nil, "Gardening", false, { class = "HUNTER", spell = 1278062, verified = true }),
     },
 }
