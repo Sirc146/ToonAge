@@ -51,8 +51,9 @@ M.GUIDE_KEYS = {
     [16] = "dragonflight",
 }
 
--- Short names for the header pill. The API's own name ("The Legion Invasion")
--- stays on the timeline for the self-test. The pill says "Legion".
+-- Short names for the empty-state card ("Legion timeline guide is coming.").
+-- The header pill uses the in-game campaign name from
+-- GetChromieTimeExpansionOptions (timeline.name), not this short label.
 M.SHORT = {
     [5]  = "Cataclysm",
     [6]  = "Outland",
@@ -66,10 +67,12 @@ M.SHORT = {
 }
 
 -- Chromie Time guide files, in the order they are being written.
--- Chronicler is writing dragonflight_chromie.lua next, then Legion, BfA,
--- and Shadowlands. A regular expansion guide is not one of these.
+-- Dragonflight is Chronicler's campaign file. Legion, BfA, and Shadowlands
+-- are still coming. A regular expansion guide is not one of these.
+M.DF_GUIDE_ID = "dragonflight_chromie_campaign"
+M.SKIP_ACHIEVEMENT = 16326
 M.GUIDE_PRIORITY = {
-    { key = "dragonflight", id = "dragonflight_chromie", short = "Dragonflight" },
+    { key = "dragonflight", id = "dragonflight_chromie_campaign", short = "Dragonflight" },
     { key = "legion",       id = "legion_chromie",       short = "Legion" },
     { key = "bfa",          id = "bfa_chromie",          short = "BfA" },
     { key = "shadowlands",  id = "shadowlands_chromie",  short = "Shadowlands" },
@@ -133,8 +136,8 @@ function M.GuideIdFor(key)
 end
 
 --- A timeline guide is the Chromie Time file for that expansion
---- (dragonflight_chromie, and the same shape after it), or a guide that
---- says so with chromie = true. The ordinary zone guides do not count.
+--- (dragonflight_chromie_campaign, and the same shape after it), or a guide
+--- that says so with chromie = true. The ordinary zone guides do not count.
 function M.IsTimelineGuide(guide, key)
     if type(guide) ~= "table" or type(key) ~= "string" then return false end
     if guide.id == M.GuideIdFor(key) then return true end
@@ -157,13 +160,14 @@ function M.ComingCopy(short)
     return short .. " timeline guide is coming. Your game is fine."
 end
 
---- Plain pill text. Nil when the player is not on a timeline.
+--- Plain pill text. Uses the campaign's in-game name from the options list.
+--- Nil when the player is not on a timeline.
 function M.PillText(timeline)
     if not timeline or timeline.skipped or not timeline.active then return nil end
-    local short = timeline.short
-    if type(short) ~= "string" or short == "" then short = timeline.name end
-    if type(short) ~= "string" or short == "" then return nil end
-    return "Chromie Time · " .. short
+    local name = timeline.name
+    if type(name) ~= "string" or name == "" then name = timeline.short end
+    if type(name) ~= "string" or name == "" then return nil end
+    return "Chromie Time · " .. name
 end
 
 function M.IsIntroGuide(guide)
@@ -287,6 +291,148 @@ function M.Detect()
         return M.Read("retail", nil, nil), false
     end
     return M.FromApi("retail", UnitChromieTimeID, C_ChromieTime.GetChromieTimeExpansionOptions)
+end
+
+-- Steps whose trailing comment in the campaign file says UNVERIFIED.
+-- Comments are gone once the file loads, so the match is quest, type, map,
+-- and coordinate. 77345 and 66718 each appear twice; only the noted step matches.
+M.UNVERIFIED = {
+    { 66956, "quest",  2022, 0.642, 0.329 },
+    { 65994, "quest",  2022, 0.639, 0.336 },
+    { 77345, "turnin", 2022, 0.575, 0.591 },
+    { 66960, "quest",  2022, 0.548, 0.822 },
+    { 66117, "quest",  2022, 0.557, 0.815 },
+    { 65892, "quest",  2023, 0.636, 0.155 },
+    { 69968, "quest",  2023, 0.598, 0.669 },
+    { 66421, "quest",  2023, 0.254, 0.378 },
+    { 66970, "quest",  2023, 0.259, 0.342 },
+    { 67173, "quest",  2024, 0.368, 0.325 },
+    { 65841, "quest",  2024, 0.179, 0.381 },
+    { 69872, "quest",  2024, 0.173, 0.417 },
+    { 66718, "quest",  2024, 0.578, 0.451 },
+    { 69895, "quest",  2024, 0.701, 0.332 },
+}
+
+local function UnverifiedKey(questID, stepType, map, x, y)
+    return string.format("%d|%s|%d|%.3f|%.3f", questID or 0, stepType or "", map or 0, x or 0, y or 0)
+end
+
+function M.MarkUnverified(guide)
+    if type(guide) ~= "table" or type(guide.steps) ~= "table" then return 0 end
+    local want = {}
+    for _, row in ipairs(M.UNVERIFIED) do
+        want[UnverifiedKey(row[1], row[2], row[3], row[4], row[5])] = true
+    end
+    local n = 0
+    for _, step in ipairs(guide.steps) do
+        local c = step.coord
+        if c and step.questID and step.type then
+            local key = UnverifiedKey(step.questID, step.type, c.map, c.x, c.y)
+            if want[key] then
+                step.estimated = true
+                want[key] = nil
+                n = n + 1
+            end
+        end
+    end
+    return n
+end
+
+-- The campaign file leaves APR's skip branch out. These steps exist only
+-- at runtime. 72293, then one of 72266-72269. They are not written into
+-- the 1,139-step table.
+M.SKIP_ZONES = {
+    { questID = 72266, text = "The Waking Shores", map = 2022 },
+    { questID = 72267, text = "Ohn'ahran Plains",  map = 2023 },
+    { questID = 72268, text = "The Azure Span",    map = 2024 },
+    { questID = 72269, text = "Thaldraszus",       anchor = 66159 },
+}
+
+function M.SkipSteps()
+    if M._skipSteps then return M._skipSteps end
+    M._skipSteps = {
+        { type = "accept", questID = 72293, text = "Adventuring in the Dragon Isles" },
+        { type = "turnin", questID = 72293, text = "Turn in: Adventuring in the Dragon Isles" },
+        {
+            type = "text",
+            _zonePick = true,
+            text = "Pick a zone: The Waking Shores (72266), Ohn'ahran Plains (72267), The Azure Span (72268), or Thaldraszus (72269).",
+        },
+    }
+    return M._skipSteps
+end
+
+--- First campaign step for a skip-zone choice. Faction-tagged steps that
+--- are not this character's are skipped when a later step on that map fits.
+function M.ZoneStartIndex(steps, zone, faction)
+    if type(steps) ~= "table" or type(zone) ~= "table" then return nil end
+    local fallback
+    for i, step in ipairs(steps) do
+        local hit = false
+        if zone.anchor and step.questID == zone.anchor then
+            hit = true
+        elseif zone.map and step.coord and step.coord.map == zone.map then
+            hit = true
+        end
+        if hit then
+            if not fallback then fallback = i end
+            local fac = step.faction
+            if not fac or fac == "Neutral" or not faction or fac == faction then
+                return i
+            end
+        end
+    end
+    return fallback
+end
+
+function M.ZoneByQuest(questID)
+    for _, zone in ipairs(M.SKIP_ZONES) do
+        if zone.questID == questID then return zone end
+    end
+    return nil
+end
+
+--- completed is GetAchievementInfo's 4th return, or a table from
+--- C_AchievementInfo.GetAchievementInfo. Account-wide achievements report
+--- completed when the account has earned them.
+function M.AchievementCompleted(completed)
+    if type(completed) == "table" then return completed.completed == true end
+    return completed == true
+end
+
+function M.ShouldShowSkipCard(guideID, earned, dismissed, skipping, listingDF)
+    if earned ~= true or dismissed or skipping then return false end
+    if guideID == M.DF_GUIDE_ID then return true end
+    if listingDF then return true end
+    return false
+end
+
+--- Hidden account achievement 16326 "ACCOUNT: Campaign Complete".
+--- GetAchievementInfo's 4th return is `completed` (Warcraft Wiki). The
+--- C_AchievementInfo lookup returns an AchievementInfo table with the same
+--- field. A missing API means the card stays hidden.
+function M.ReadAchievementComplete()
+    local id = M.SKIP_ACHIEVEMENT
+    if type(C_AchievementInfo) == "table" and type(C_AchievementInfo.GetAchievementInfo) == "function" then
+        local ok, info = pcall(C_AchievementInfo.GetAchievementInfo, id)
+        if ok and type(info) == "table" and info.completed ~= nil then
+            return info.completed == true
+        end
+    end
+    if type(GetAchievementInfo) == "function" then
+        local ok, first, _, _, completed = pcall(GetAchievementInfo, id)
+        if ok then
+            if type(first) == "table" then return first.completed == true end
+            return completed == true
+        end
+    end
+    return false
+end
+
+do
+    local guides = TA.Guides or TA.GuideData
+    local g = guides and guides[M.DF_GUIDE_ID]
+    if g then M.MarkUnverified(g) end
 end
 
 return M

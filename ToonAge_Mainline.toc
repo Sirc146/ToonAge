@@ -97,6 +97,7 @@ Data\Retail\Guides\TAG_Shadowlands_Horde.lua
 Data\Retail\Guides\TAG_Dragonflight.lua
 Data\Retail\Guides\TAG_Dragonflight_Alliance.lua
 Data\Retail\Guides\TAG_Dragonflight_horde.lua
+Data\Retail\Guides\TAG_Dragonflight_Chromie.lua
 Data\Retail\Guides\TAG_10_70_Ally_EclipseGlaives.lua
 Data\Retail\Guides\TAG_TheWarWithin.lua
 Data\Retail\Guides\TAG_TheWarWithin_Isle_of_Dorn.lua

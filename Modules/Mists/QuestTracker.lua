@@ -919,11 +919,35 @@ function QT:UpdateWindow()
     if not win.stepText then
         win.stepText = win:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         win.stepText:SetPoint("TOPLEFT", 10, -10)
-        win.stepText:SetPoint("RIGHT", -10, 0)
+        win.stepText:SetPoint("RIGHT", -28, 0)
         win.stepText:SetWordWrap(true)
     end
     win.stepText:SetText(step.text or "")
     win.stepText:Show()
+
+    if not win._stepRing then
+        local ring = CreateFrame("Frame", nil, win)
+        ring:SetSize(14, 14)
+        ring:SetPoint("TOPRIGHT", -8, -10)
+        ring:EnableMouse(true)
+        local tex = ring:CreateTexture(nil, "OVERLAY")
+        tex:SetAllPoints()
+        tex:SetTexture(TA.Utils.TEX_RING)
+        tex:SetVertexColor(0.92, 0.90, 0.87, 1)
+        ring:SetScript("OnEnter", function(f)
+            GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
+            GameTooltip:SetText(TA.Utils.ESTIMATED_TIP, 0.92, 0.90, 0.87)
+            GameTooltip:Show()
+        end)
+        ring:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        ring:Hide()
+        win._stepRing = ring
+    end
+    if TA.Utils.CoordsEstimated(step, guide) then
+        win._stepRing:Show()
+    else
+        win._stepRing:Hide()
+    end
 end
 
 function QT:CheckProximityAdvance()
@@ -984,7 +1008,16 @@ function QT:Render(content, sidebar)
         if step then
             local isCurrent = (i == self.stepIdx)
             local line = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            line:SetPoint("TOPLEFT", 10, yOff)
+            local left = 10
+            if TA.Utils.CoordsEstimated(step, guide) then
+                local ring = content:CreateTexture(nil, "OVERLAY")
+                ring:SetSize(12, 12)
+                ring:SetTexture(TA.Utils.TEX_RING)
+                ring:SetVertexColor(0.92, 0.90, 0.87, 1)
+                ring:SetPoint("TOPLEFT", 8, yOff + 1)
+                left = 24
+            end
+            line:SetPoint("TOPLEFT", left, yOff)
             line:SetPoint("RIGHT", -10, 0)
             line:SetWordWrap(true)
 

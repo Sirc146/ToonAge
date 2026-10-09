@@ -376,6 +376,10 @@ function QT:ApplySpatialRouting(guide)
 end
 
 function QT:FastForward(silent)
+    if self._campaignSkip and self._campaignSkip.active then
+        self:PollCampaignSkip(silent)
+        return
+    end
     if not self.guideID then return end
     local guide = TA.Guides and TA.Guides[self.guideID]
     if not guide then return end
@@ -756,6 +760,225 @@ function QT:SaveState()
     TA.charDB.tracker = TA.charDB.tracker or {}
     TA.charDB.tracker.guideID = self.guideID
     TA.charDB.tracker.stepIdx = self.stepIdx
+    if self._campaignSkip and self._campaignSkip.active then
+        TA.charDB.tracker.campaignSkip = true
+        TA.charDB.tracker.campaignSkipIdx = self._campaignSkip.idx or 1
+    else
+        TA.charDB.tracker.campaignSkip = nil
+        TA.charDB.tracker.campaignSkipIdx = nil
+    end
+end
+
+--- The steps the tracker is walking. During a campaign skip this is the
+--- runtime path (72293, then the zone pick), not the 1,139 campaign steps.
+function QT:View()
+    local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
+    if not guide then return nil, nil, nil, false end
+    local C = TA.Chromie
+    if self._campaignSkip and self._campaignSkip.active and C and self.guideID == C.DF_GUIDE_ID then
+        local steps = C.SkipSteps()
+        local idx = self._campaignSkip.idx or 1
+        if idx < 1 then idx = 1 end
+        if idx > #steps then idx = #steps end
+        return guide, steps, idx, true
+    end
+    return guide, guide.steps, self.stepIdx, false
+end
+
+function QT:CampaignSkipStep()
+    local _, steps, idx, skipping = self:View()
+    if not skipping then return nil end
+    return steps and steps[idx]
+end
+
+function QT:SkipDismissed()
+    return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.dismissCampaignSkip == true
+end
+
+function QT:DismissCampaignSkip()
+    if TA.charDB then
+        TA.charDB.tracker = TA.charDB.tracker or {}
+        TA.charDB.tracker.dismissCampaignSkip = true
+    end
+    self:RefreshSkipCard()
+    if self._contentFrame then self:RenderMiddlePanel(self._contentFrame) end
+end
+
+function QT:LandCampaignSkip(zone, silent)
+    local C = TA.Chromie
+    local guide = C and TA.Guides and TA.Guides[C.DF_GUIDE_ID]
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    local land = guide and C.ZoneStartIndex(guide.steps, zone, faction)
+    self._campaignSkip = nil
+    if land then self.stepIdx = land end
+    self:SaveState()
+    self:UpdateWindow()
+    if self.UpdateDrawer then self:UpdateDrawer() end
+    if not silent then
+        self:ShowToast("Skipped to " .. (zone.text or "the zone"))
+    end
+end
+
+function QT:PollCampaignSkip(silent)
+    local C = TA.Chromie
+    if not C or not (self._campaignSkip and self._campaignSkip.active) then return end
+    local _, steps, idx = self:View()
+    if not steps then return end
+    local function done(qid)
+        return C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted
+            and C_QuestLog.IsQuestFlaggedCompleted(qid) == true
+    end
+    local function inlog(qid)
+        return C_QuestLog and C_QuestLog.GetLogIndexForQuestID
+            and C_QuestLog.GetLogIndexForQuestID(qid) ~= nil
+    end
+    local step = steps[idx]
+    if step and step.questID == 72293 and done(72293) then
+        for i, s in ipairs(steps) do
+            if s._zonePick then
+                self._campaignSkip.idx = i
+                break
+            end
+        end
+        idx = self._campaignSkip.idx
+        step = steps[idx]
+    end
+    if step and step._zonePick then
+        for _, zone in ipairs(C.SKIP_ZONES) do
+            if inlog(zone.questID) or done(zone.questID) then
+                self:LandCampaignSkip(zone, silent)
+                return
+            end
+        end
+    end
+    self:SaveState()
+    self:UpdateWindow()
+end
+
+function QT:AdvanceCampaignSkip()
+    local _, steps, idx = self:View()
+    local step = steps and steps[idx]
+    if not step then return end
+    if step._zonePick then
+        self:ShowToast("Accept one zone quest: Waking Shores, Ohn'ahran Plains, Azure Span, or Thaldraszus.")
+        self:PollCampaignSkip(true)
+        return
+    end
+    if idx < #steps then
+        self._campaignSkip.idx = idx + 1
+    end
+    self:PollCampaignSkip(true)
+end
+
+function QT:BeginCampaignSkip()
+    local C = TA.Chromie
+    if not C then return end
+    local id = C.DF_GUIDE_ID
+    if not (TA.Guides and TA.Guides[id]) then return end
+    self.guideID = id
+    self._questLogFollowMode = false
+    self._campaignSkip = { active = true, idx = 1 }
+    if TA.charDB then
+        TA.charDB.tracker = TA.charDB.tracker or {}
+        TA.charDB.tracker.dismissCampaignSkip = true
+    end
+    self:SaveState()
+    if self.window and not self.window:IsVisible() then
+        self.window:Show()
+        if TA.charDB then TA.charDB.tracker.visible = true end
+    end
+    self:UpdateWindow()
+    if self.UpdateDrawer then self:UpdateDrawer() end
+end
+
+function QT:PaintStepRing(step, guide)
+    local ring = self.window and self.window._stepRing
+    if not ring then return end
+    if step and U.CoordsEstimated(step, guide) then
+        ring:Show()
+    else
+        ring:Hide()
+    end
+end
+
+-- Neutral button. Mark Done stays the only gold primary.
+local function PaintSecondary(btn)
+    btn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+    })
+    btn:SetBackdropColor(0.08, 0.07, 0.06, 1)
+    btn:SetBackdropBorderColor(0.30, 0.28, 0.24, 1)
+    if btn._lbl then btn._lbl:SetTextColor(0.92, 0.90, 0.87, 1) end
+end
+
+function QT:RefreshSkipCard()
+    local card = self.window and self.window._skipCard
+    if not card then return end
+    local C = TA.Chromie
+    local earned = C and C.ReadAchievementComplete and C.ReadAchievementComplete()
+    local skipping = self._campaignSkip and self._campaignSkip.active
+    local show = C and C.ShouldShowSkipCard(self.guideID, earned == true, self:SkipDismissed(), skipping, false)
+    if show then card:Show() else card:Hide() end
+end
+
+function QT:DrawCampaignSkipCard(parent, track, padL, y)
+    local card = track(CreateFrame("Frame", nil, parent, "BackdropTemplate"))
+    card:SetHeight(72)
+    card:SetPoint("TOPLEFT", parent, "TOPLEFT", padL - 4, y)
+    card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -padL + 4, y)
+    card:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+    })
+    card:SetBackdropColor(0.07, 0.07, 0.08, 0.96)
+    card:SetBackdropBorderColor(0.30, 0.28, 0.24, 1)
+
+    local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetFont(STANDARD_TEXT_FONT, 11, "")
+    title:SetPoint("TOPLEFT", 10, -8)
+    title:SetPoint("RIGHT", -70, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
+    title:SetText("This account already finished the campaign.")
+    title:SetTextColor(0.92, 0.90, 0.87, 1)
+
+    local body = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    body:SetFont(STANDARD_TEXT_FONT, 10, "")
+    body:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -2)
+    body:SetPoint("RIGHT", -10, 0)
+    body:SetJustifyH("LEFT")
+    body:SetWordWrap(false)
+    body:SetText("Skip to Adventuring in the Dragon Isles, then pick a zone.")
+    body:SetTextColor(0.62, 0.59, 0.55, 1)
+
+    local dismiss = track(CreateFrame("Button", nil, card))
+    dismiss:SetSize(56, 16)
+    dismiss:SetPoint("TOPRIGHT", -6, -6)
+    local dl = dismiss:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    dl:SetFont(STANDARD_TEXT_FONT, 9, "")
+    dl:SetAllPoints(dismiss)
+    dl:SetJustifyH("RIGHT")
+    dl:SetText("Dismiss")
+    dl:SetTextColor(0.62, 0.59, 0.55, 1)
+    dismiss:SetScript("OnClick", function() self:DismissCampaignSkip() end)
+
+    local skipBtn = track(CreateFrame("Button", nil, card, "BackdropTemplate"))
+    skipBtn:SetSize(120, 20)
+    skipBtn:SetPoint("BOTTOMLEFT", 10, 8)
+    local sl = skipBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    sl:SetFont(STANDARD_TEXT_FONT, 10, "")
+    sl:SetAllPoints(skipBtn)
+    sl:SetJustifyH("CENTER")
+    sl:SetText("Skip campaign")
+    skipBtn._lbl = sl
+    PaintSecondary(skipBtn)
+    skipBtn:SetScript("OnClick", function() self:BeginCampaignSkip() end)
+    skipBtn:SetScript("OnEnter", function(f) f:SetBackdropColor(0.14, 0.12, 0.10, 1) end)
+    skipBtn:SetScript("OnLeave", function(f) PaintSecondary(f) end)
+    return y - 80
 end
 
 -- ── Auto-Quest Engine ─────────────────────────────────────────────────────────
@@ -763,6 +986,11 @@ end
 -- steps are expecting so gossip selection can target them specifically rather
 -- than blindly taking whatever NPC quest comes first.
 local function GetGuideExpectedQuestIDs(self)
+    if self._campaignSkip and self._campaignSkip.active and self.CampaignSkipStep then
+        local step = self:CampaignSkipStep()
+        if step and step.questID then return { [step.questID] = true } end
+        return {}
+    end
     if not self.guideID then return {} end
     local guide = TA.Guides and TA.Guides[self.guideID]
     if not guide then return {} end
@@ -1112,6 +1340,9 @@ function QT:Init()
     if t.guideID and TA.Guides and TA.Guides[t.guideID] then
         self.guideID = t.guideID
         self.stepIdx = t.stepIdx or 1
+        if t.campaignSkip and TA.Chromie and t.guideID == TA.Chromie.DF_GUIDE_ID then
+            self._campaignSkip = { active = true, idx = t.campaignSkipIdx or 1 }
+        end
         self:FastForward(true)   -- re-sync on login in case progress happened offline
     elseif t.guideID then
         -- Guide was saved but isn't loaded yet (e.g. BtWQuests LoadOnDemand).
@@ -1392,6 +1623,24 @@ function QT:InitWindow()
     win.stepBadgeF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
     win.stepBadgeF:SetPoint("TOPRIGHT", win, "TOPRIGHT", -PAD, -64)
 
+    -- Hollow ring beside the step when its coordinate is estimated.
+    local stepRing = CreateFrame("Frame", nil, win)
+    stepRing:SetSize(14, 14)
+    stepRing:SetPoint("RIGHT", win.stepBadgeF, "LEFT", -4, 0)
+    stepRing:EnableMouse(true)
+    local stepRingTex = stepRing:CreateTexture(nil, "OVERLAY")
+    stepRingTex:SetAllPoints()
+    stepRingTex:SetTexture(U.TEX_RING)
+    stepRingTex:SetVertexColor(0.92, 0.90, 0.87, 1)
+    stepRing:SetScript("OnEnter", function(f)
+        GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
+        GameTooltip:SetText(U.ESTIMATED_TIP, 0.92, 0.90, 0.87)
+        GameTooltip:Show()
+    end)
+    stepRing:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    stepRing:Hide()
+    win._stepRing = stepRing
+
     -- Step text + injected objectives, capped above the second divider.
     -- SetHeight(65): -80 top + 65px = -145, five pixels before the -150 divider.
     win.stepTextF = win:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1436,13 +1685,24 @@ function QT:InitWindow()
     -- ── Bottom buttons ────────────────────────────────────────────────────────
     local backBtn = MakeBtn(win, 60, 22, "< Back", function()
         if not self.guideID then return end
+        if self._campaignSkip and self._campaignSkip.active then
+            self._campaignSkip.idx = math.max(1, (self._campaignSkip.idx or 1) - 1)
+            self:SaveState()
+            self:UpdateWindow()
+            return
+        end
         self.stepIdx = math.max(1, self.stepIdx - 1)
         self:SaveState()
         self:UpdateWindow()
     end)
     backBtn:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", PAD, PAD)
 
+    -- Mark Done is the tracker's only gold primary button.
     win.doneBtn = MakeBtn(win, 108, 22, "Mark Done >", function()
+        if self._campaignSkip and self._campaignSkip.active then
+            self:AdvanceCampaignSkip()
+            return
+        end
         if not self.guideID then return end
         local guide = TA.Guides and TA.Guides[self.guideID]
         if not guide then return end
@@ -1554,6 +1814,61 @@ function QT:InitWindow()
     qib:Hide()
     win.questItemBtn = qib
 
+    -- Dismissible campaign-skip card, docked on top of the tracker.
+    -- The button is secondary. Mark Done below stays the gold primary.
+    local skipCard = CreateFrame("Frame", nil, win, "BackdropTemplate")
+    skipCard:SetHeight(70)
+    skipCard:SetPoint("BOTTOMLEFT", win, "TOPLEFT", 0, 4)
+    skipCard:SetPoint("BOTTOMRIGHT", win, "TOPRIGHT", 0, 4)
+    skipCard:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1,
+    })
+    skipCard:SetBackdropColor(0.07, 0.07, 0.08, 0.96)
+    skipCard:SetBackdropBorderColor(0.30, 0.28, 0.24, 1)
+    local skipTitle = skipCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    skipTitle:SetFont(STANDARD_TEXT_FONT, 11, "")
+    skipTitle:SetPoint("TOPLEFT", 10, -8)
+    skipTitle:SetPoint("RIGHT", -70, 0)
+    skipTitle:SetJustifyH("LEFT")
+    skipTitle:SetWordWrap(false)
+    skipTitle:SetText("This account already finished the campaign.")
+    skipTitle:SetTextColor(0.92, 0.90, 0.87, 1)
+    local skipBody = skipCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    skipBody:SetFont(STANDARD_TEXT_FONT, 10, "")
+    skipBody:SetPoint("TOPLEFT", skipTitle, "BOTTOMLEFT", 0, -2)
+    skipBody:SetPoint("RIGHT", -10, 0)
+    skipBody:SetJustifyH("LEFT")
+    skipBody:SetWordWrap(false)
+    skipBody:SetText("Skip to Adventuring in the Dragon Isles, then pick a zone.")
+    skipBody:SetTextColor(0.62, 0.59, 0.55, 1)
+    local dismiss = CreateFrame("Button", nil, skipCard)
+    dismiss:SetSize(56, 16)
+    dismiss:SetPoint("TOPRIGHT", -6, -6)
+    local dl = dismiss:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    dl:SetFont(STANDARD_TEXT_FONT, 9, "")
+    dl:SetAllPoints(dismiss)
+    dl:SetJustifyH("RIGHT")
+    dl:SetText("Dismiss")
+    dl:SetTextColor(0.62, 0.59, 0.55, 1)
+    dismiss:SetScript("OnClick", function() self:DismissCampaignSkip() end)
+    local skipBtn = CreateFrame("Button", nil, skipCard, "BackdropTemplate")
+    skipBtn:SetSize(120, 20)
+    skipBtn:SetPoint("BOTTOMLEFT", 10, 8)
+    local sl = skipBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    sl:SetFont(STANDARD_TEXT_FONT, 10, "")
+    sl:SetAllPoints(skipBtn)
+    sl:SetJustifyH("CENTER")
+    sl:SetText("Skip campaign")
+    skipBtn._lbl = sl
+    PaintSecondary(skipBtn)
+    skipBtn:SetScript("OnClick", function() self:BeginCampaignSkip() end)
+    skipBtn:SetScript("OnEnter", function(f) f:SetBackdropColor(0.14, 0.12, 0.10, 1) end)
+    skipBtn:SetScript("OnLeave", function(f) PaintSecondary(f) end)
+    skipCard:Hide()
+    win._skipCard = skipCard
+
     self.window = win
     self:UpdateWindow()
 end
@@ -1567,8 +1882,8 @@ function QT:UpdateQuestItemButton()
     if not (win and win.questItemBtn) then return end
     local qib = win.questItemBtn
 
-    local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
-    local step  = guide and guide.steps[self.stepIdx]
+    local _, steps, idx = self:View()
+    local step  = steps and steps[idx]
     local itemID = step and step.questItem
 
     if not itemID then
@@ -1644,6 +1959,7 @@ end
 function QT:UpdateWindow()
     local win = self.window
     if not win then return end
+    self:RefreshSkipCard()
 
     local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
 
@@ -1669,6 +1985,7 @@ function QT:UpdateWindow()
         win.guideTitleF:SetText("|cFF888780Scanning quests...|r")
         win.stepNumF:SetText("")
         win.stepBadgeF:SetText("")
+        self:PaintStepRing(nil)
 
         local loaded = 0
         for _ in pairs(TA.Guides or {}) do loaded = loaded + 1 end
@@ -1774,16 +2091,20 @@ function QT:UpdateWindow()
         win.nextStepF:SetText("")
         win.doneBtn._lbl:SetText("Mark Done >")
         win.doneBtn:SetBackdropColor(0.10, 0.08, 0.01, 0.70)
+        self:PaintStepRing(nil)
         return
     end
 
-    local total = #guide.steps
+    local _, steps, idx, skipping = self:View()
+    steps = steps or guide.steps or {}
+    local total = #steps
 
     -- Stub guide (0 steps) — show Quest Log Follow mode with the guide's title
     if total == 0 then
         win.guideTitleF:SetText(guide.title or "Guide")
         win.stepNumF:SetText("|cFF1EBCFFQuest Log Follow|r")
         win.stepBadgeF:SetText("")
+        self:PaintStepRing(nil)
 
         -- Show tracked quest from Blizzard's system
         local trackedQuestID, trackedTitle, trackedObjectives
@@ -1838,17 +2159,24 @@ function QT:UpdateWindow()
         return
     end
 
-    self.stepIdx = math.max(1, math.min(total, self.stepIdx))
-    local step = guide.steps[self.stepIdx]
+    idx = math.max(1, math.min(total, idx or 1))
+    if skipping then
+        self._campaignSkip.idx = idx
+    else
+        self.stepIdx = idx
+    end
+    local step = steps[idx]
 
     local titleStr = guide.title
+    if skipping then titleStr = "Skip campaign" end
     if #titleStr > 30 then titleStr = titleStr:sub(1, 27) .. "..." end
     win.guideTitleF:SetText(titleStr)
-    win.stepNumF:SetText("Step " .. self.stepIdx .. " / " .. total)
+    win.stepNumF:SetText("Step " .. idx .. " / " .. total)
 
     local sType = step.type or "text"
     self._badgeBase = (BADGE[sType] or "|cFFFFFFFF") .. "[" .. sType:upper() .. "]|r"
     win.stepBadgeF:SetText(self._badgeBase)
+    self:PaintStepRing(step, skipping and nil or guide)
 
     if not self:IsStepApplicable(step) then
         win.stepTextF:SetText("|cFF888780(Not applicable to your spec/class — skipped)|r")
@@ -1952,23 +2280,25 @@ function QT:UpdateWindow()
     self:RenderStatusLine()
 
     -- Next-step preview
-    local nextStep = guide.steps[self.stepIdx + 1]
+    local nextStep = steps[idx + 1]
     if nextStep then
         local nextText = nextStep.text or ""
         if #nextText > 42 then nextText = nextText:sub(1, 39) .. "..." end
         win.nextStepF:SetText("|cFF8B7040Next:|r " .. nextText)
     else
-        win.nextStepF:SetText(self.stepIdx >= total and "|cFF8B7040Final step|r" or "")
+        win.nextStepF:SetText(idx >= total and "|cFF8B7040Final step|r" or "")
     end
 
     -- Contextual hint: explain WHY this step is currently selected
-    local hint = self:GetStepContextHint(guide, self.stepIdx)
+    local hint = (not skipping) and self:GetStepContextHint(guide, idx)
     if hint then
         win.tipF:SetText(hint)
+    elseif skipping and step and step._zonePick then
+        win.tipF:SetText("|cFF888780Accept one zone quest to continue.|r")
     end
 
-    -- Done button state
-    local isLast = self.stepIdx >= total
+    -- Done button state. Stays the only gold primary, including on the skip path.
+    local isLast = idx >= total and not (step and step._zonePick)
     win.doneBtn._lbl:SetText(self:IsStepComplete(step) and "Done >" or "Mark Done >")
     if isLast then
         win.doneBtn:SetBackdropColor(0.10, 0.08, 0.01, 0.70)
@@ -1996,6 +2326,7 @@ function QT:RenderStatusLine()
     if not (self.guideID and TA.Guides and TA.Guides[self.guideID]) then
         win.questStatusF:SetText("")
         if win.stepBadgeF then win.stepBadgeF:SetText("") end
+        self:PaintStepRing(nil)
         return
     end
 
@@ -2003,8 +2334,9 @@ function QT:RenderStatusLine()
     local distStr = ""
     local hasLiveTarget = false
 
-    local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
-    local step  = guide and guide.steps[self.stepIdx]
+    local guide, steps, idx, skipping = self:View()
+    local step = steps and steps[idx]
+    self:PaintStepRing(step, skipping and nil or guide)
     if step and step.coord and step.type ~= "text" then
         local Arrow = TA:GetModule("Arrow")
         if Arrow and Arrow.GetEffectiveCoord then
@@ -2955,6 +3287,19 @@ function QT:RenderMiddlePanel(content)
     end
     y = self:DrawZoneHeader(content, Track, padL, y, zoneName)
 
+    local listingDF = false
+    for _, zg in ipairs(zoneGuides) do
+        if TA.Chromie and zg.id == TA.Chromie.DF_GUIDE_ID then listingDF = true break end
+    end
+    if listingDF and TA.Chromie and TA.Chromie.ShouldShowSkipCard(
+        self.guideID,
+        TA.Chromie.ReadAchievementComplete(),
+        self:SkipDismissed(),
+        self._campaignSkip and self._campaignSkip.active,
+        true) then
+        y = self:DrawCampaignSkipCard(content, Track, padL, y)
+    end
+
     -- ── Empty state ──────────────────────────────────────────────────────────
     if #zoneGuides == 0 then
         local noData = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
@@ -3539,6 +3884,7 @@ QT.SlashCommands = {
 local PROXIMITY_RANGE = 15  -- yards — advance when within this distance
 
 function QT:CheckProximityAdvance()
+    if self._campaignSkip and self._campaignSkip.active then return end
     if not self.guideID then return end
     local guide = TA.Guides and TA.Guides[self.guideID]
     if not guide then return end
@@ -3733,8 +4079,11 @@ function QT:UpdateDrawer()
         return
     end
 
-    local total = #guide.steps
-    local step  = guide.steps[self.stepIdx] or {}
+    local _, steps, idx, skipping = self:View()
+    steps = steps or guide.steps or {}
+    local total = #steps
+    idx = idx or self.stepIdx or 1
+    local step  = steps[idx] or {}
     local y = -PAD
 
     -- Guide title
@@ -3745,7 +4094,7 @@ function QT:UpdateDrawer()
     y = y - 14
 
     -- Step progress
-    local progressF = M:CreateData(content, string.format("Step %d / %d", self.stepIdx, total))
+    local progressF = M:CreateData(content, string.format("Step %d / %d", idx, total))
     progressF:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, y)
     y = y - 16
 
@@ -3761,7 +4110,7 @@ function QT:UpdateDrawer()
     barFill:SetTexture("Interface\\Buttons\\WHITE8X8")
     barFill:SetPoint("TOPLEFT", barBg, "TOPLEFT", 0, 0)
     barFill:SetPoint("BOTTOMLEFT", barBg, "BOTTOMLEFT", 0, 0)
-    local pct = total > 0 and (self.stepIdx / total) or 0
+    local pct = total > 0 and (idx / total) or 0
     barFill:SetWidth(math.max(1, (contentW - PAD * 2) * pct))
     barFill:SetVertexColor(0.30, 0.80, 0.45, 0.9)
     y = y - 12
@@ -3789,6 +4138,16 @@ function QT:UpdateDrawer()
     badgeF:SetPoint("TOPLEFT", content, "TOPLEFT", PAD, y)
     local bClr = badgeColors[typeBadge] or M.CLR_TEXT_SECONDARY
     badgeF:SetTextColor(unpack(bClr))
+    if U.CoordsEstimated(step, skipping and nil or guide) then
+        local ring = content:CreateTexture(nil, "OVERLAY")
+        ring:SetSize(12, 12)
+        ring:SetTexture(U.TEX_RING)
+        ring:SetVertexColor(0.92, 0.90, 0.87, 1)
+        ring:SetPoint("LEFT", badgeF, "RIGHT", 6, 0)
+        local note = M:CreateCaption(content, U.ESTIMATED_TIP)
+        note:SetPoint("LEFT", ring, "RIGHT", 4, 0)
+        note:SetTextColor(0.92, 0.90, 0.87, 1)
+    end
     y = y - 14
 
     -- Step text

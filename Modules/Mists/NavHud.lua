@@ -317,7 +317,11 @@ function NavHud:UpdatePins(playerX, playerY, bearing, currentMap)
             pin:Show()
 
             local color = PIN_COLORS[step.type] or PIN_COLORS.default
-            pin.tex:SetVertexColor(unpack(color))
+            if U.CoordsEstimated(step, guide) then
+                U.PaintWaypointMark(pin.tex, true)
+            else
+                U.PaintWaypointMark(pin.tex, false, color[1], color[2], color[3], color[4])
+            end
 
             local relNum = i - QT.stepIdx + 1
             pin.numLabel:SetText(relNum)
