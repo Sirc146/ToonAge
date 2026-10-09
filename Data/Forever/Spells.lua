@@ -3,6 +3,8 @@
 --
 -- Class spells seen in spellbooks: rank text and the level each rank is trained.
 -- Measured on the Forever client (interface 16001); 94 records.
+-- Forever 1.60.1 spellbook: Stealth 1784 is rank 1 at level 1. Rapid Regeneration
+-- 1260270 is the troll racial, so it is not listed on the hunter spellbook.
 -- Regenerate after a harvest: lua Tools/gen_forever_data.lua <ToonAge.lua saved file> <addon root>
 
 local TA = ToonAge
@@ -23,7 +25,6 @@ TA.Data.ForeverSpells = {
         { id = 75, name = "Auto Shot", line = "Marksmanship", learned = 1 },
         { id = 81, name = "Dodge", line = "General", rank = "Passive", learned = 1, passive = true },
         { id = 1293657, name = "Languages", line = "General", passive = true },
-        { id = 1260270, name = "Rapid Regeneration", line = "General" },
         { id = 2973, name = "Raptor Strike", line = "Survival", rank = "Rank 1", learned = 1 },
     },
     ["MAGE"] = {
@@ -81,10 +82,11 @@ TA.Data.ForeverSpells = {
         { id = 1293712, name = "Armor Proficiency", line = "General", passive = true },
         { id = 6603, name = "Attack", line = "General" },
         { id = 81, name = "Dodge", line = "General", rank = "Passive", learned = 1, passive = true },
-        { id = 2098, name = "Eviscerate", line = "Assassination", rank = "Rank 1", learned = 1 },
+        { id = 2098, name = "Eviscerate", line = "Assassination", rank = "Rank 1", learned = 1, verified = true },
         { id = 1293657, name = "Languages", line = "General", passive = true },
-        { id = 1752, name = "Sinister Strike", line = "Combat", rank = "Rank 1", learned = 1 },
-        { id = 2764, name = "Throw", line = "General", learned = 1 },
+        { id = 1752, name = "Sinister Strike", line = "Combat", rank = "Rank 1", learned = 1, verified = true },
+        { id = 1784, name = "Stealth", line = "Subtlety", rank = "Rank 1", learned = 1, verified = true },
+        { id = 2764, name = "Throw", line = "General", learned = 1, verified = true },
     },
     ["SHAMAN"] = {
         { id = 1293712, name = "Armor Proficiency", line = "General", passive = true },

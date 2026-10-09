@@ -127,6 +127,8 @@ def test_source_has_no_version_branch():
     check("reader does not mention TA.flavor", "TA.flavor" in src, False)
     check("reader does not hardcode an absent profession", "Jewelcrafting" in src, False)
     check("reader does not hardcode a class gate", '"MAGE"' in src, False)
+    check("reader does not hardcode Gardening", "Gardening" in src, False)
+    check("reader does not hardcode the gardening spell", "1278062" in src, False)
     check("reader does not compare flavor", "flavor ==" in src, False)
     for name in ("segments", "professions", "skilllines", "skillinfo"):
         check(f"reader knows the {name} feature", name in src, True)
@@ -300,6 +302,41 @@ def test_forever_skillinfo():
     check("a level 5 mage does not see comprehension", lua.eval("lowNames"), "Blacksmithing")
     check("a level 6 mage sees comprehension and not poisons",
           lua.eval("mageNames"), "Blacksmithing,Comprehension")
+
+    # Gardening is a hunter skill matched by name. The spell id is not a
+    # skill-line id. A mage does not see the row.
+    lua.execute(FOREVER_APIS)
+    lua.execute(r"""
+        local lines = ToonAge.Data.ProfessionSkills.lines
+        garden = nil
+        for i = 1, #lines do
+            if lines[i].name == "Gardening" then garden = lines[i] end
+        end
+        function UnitClass() return "Hunter", "HUNTER" end
+        function UnitLevel() return 1 end
+        local orig = C_SkillInfo.GetSkillLineInfo
+        C_SkillInfo.GetSkillLineInfo = function(i)
+            if i == 9 then return { name = "Gardening", rank = 1, maxRank = 75, skillID = 1278062 } end
+            return orig(i)
+        end
+        C_SkillInfo.GetNumSkillLines = function() return 9 end
+        result = ToonAge.ProfessionSkills.Collect()
+        local names = {}
+        for i = 1, #result.cards do names[i] = result.cards[i].name end
+        hunterNames = table.concat(names, ",")
+        function UnitClass() return "Mage", "MAGE" end
+        function UnitLevel() return 6 end
+        result = ToonAge.ProfessionSkills.Collect()
+        names = {}
+        for i = 1, #result.cards do names[i] = result.cards[i].name end
+        mageGarden = table.concat(names, ",")
+    """)
+    check("gardening row has no skill-line id", lua.eval("garden.id"), None)
+    check("gardening stores the confirmed spell", lua.eval("garden.spell"), 1278062)
+    check("gardening is hunter gated", lua.eval("garden.class"), "HUNTER")
+    check("gardening row records the confirmation", lua.eval("garden.verified"), True)
+    check("a hunter sees gardening by name", lua.eval("hunterNames"), "Blacksmithing,Gardening")
+    check("a mage does not see gardening", lua.eval("mageGarden"), "Blacksmithing,Comprehension")
 
 
 FRAME = r"""
