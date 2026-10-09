@@ -48,7 +48,8 @@ local STORE_VERSION = 3
 local BASE_SECTIONS = { "items", "spells", "talents", "chars", "counts", "racials", "trainer", "talentGeo", "catalog" }
 
 -- Store fields that are not exportable sections (HarvestFormat skips them too).
-local NOT_SECTIONS = { client = true, times = true }
+-- captures is per character and per scan; the section exporter does not flatten it.
+local NOT_SECTIONS = { client = true, times = true, captures = true }
 
 -- section table -> section name, so a write through Put can stamp its section's
 -- time without every call site naming it. Weak keys: a cleared store's tables go.
@@ -135,8 +136,9 @@ function Hv:Store()
 
     -- Backfill rather than reset: an older store still holds real observations.
     for _, k in ipairs(BASE_SECTIONS) do s[k] = s[k] or {} end
-    s.client = s.client or {}
-    s.times  = s.times  or {}
+    s.client   = s.client   or {}
+    s.times    = s.times    or {}
+    s.captures = s.captures or {}
     s.version = STORE_VERSION
 
     for k, v in pairs(s) do
@@ -216,6 +218,9 @@ local Size = Hv.Size
 
 --- Writes key -> line if the key is new and the table is under its cap.
 --- Returns true when something was actually recorded.
+--- Character scans do not use this. A probe, trainer, spellbook or talent
+--- run overwrites that character's capture (SaveCapture); a known key here
+--- stays so the shared class catalog does not grow on every login.
 function Hv.Put(tbl, key, line, cap)
     if tbl[key] ~= nil then return false end
     if cap and Size(tbl) >= cap then return false end
@@ -342,6 +347,128 @@ function Hv:PlayerClass()
         display = (F and F.ClassName) and F.ClassName(token) or token
     end
     return token, display
+end
+
+--- Who is logged in, plus the client build this scan is taken on.
+--- Name or class nil means the client has not answered; CharacterKey then
+--- refuses to write, so a scan is never filed under a blank identity.
+function Hv:CharacterIdentity()
+    local name = Hv.Try("UnitName", "player")
+    if type(name) ~= "string" or name == "" or name == "secret" or name == "?" then
+        name = nil
+    else
+        name = Hv.Clean(name)
+    end
+    local realm = Hv.Try("GetRealmName")
+    if type(realm) ~= "string" or realm == "" or realm == "?" then
+        realm = ""
+    else
+        realm = Hv.Clean(realm)
+    end
+    -- The same answer the tab's class filter uses. Caps caches the first
+    -- function it resolved, so a later UnitClass would otherwise disagree
+    -- with PlayerClass and a new character would still export the old one.
+    local token, display = self:PlayerClass()
+    if token then token = Hv.Clean(token) end
+    if display then display = Hv.Clean(display) end
+    local level = tonumber((Hv.Try("UnitLevel", "player")))
+    local version, build = Hv.Try("GetBuildInfo")
+    if type(version) ~= "string" or version == "" then version = nil end
+    if build == nil or build == "" then
+        build = nil
+    else
+        build = tostring(build)
+    end
+    local timestamp = Now()
+    local when
+    if type(date) == "function" and type(timestamp) == "number" then
+        local ok, formatted = pcall(date, "%Y-%m-%d %H:%M", timestamp)
+        if ok and type(formatted) == "string" and formatted ~= "" then when = formatted end
+    end
+    return {
+        realm = realm, name = name, class = token, className = display,
+        level = level, version = version, build = build,
+        timestamp = timestamp, when = when,
+    }
+end
+
+--- realm, character name, class token. Nil until both name and class exist.
+function Hv:CharacterKey(id)
+    id = id or self:CharacterIdentity()
+    if type(id) ~= "table" then return nil end
+    if type(id.name) ~= "string" or id.name == "" then return nil end
+    if type(id.class) ~= "string" or id.class == "" then return nil end
+    return (id.realm or "") .. "\t" .. id.name .. "\t" .. id.class
+end
+
+--- Replace this character's saved scan of `kind` (probe, trainer, spellbook,
+--- talents). Other characters, and this character's other scan types, stay.
+--- Version, build, timestamp, when, level and class always come from this
+--- run, so a caller cannot leave a stale stamp in place.
+function Hv:SaveCapture(kind, body)
+    if type(kind) ~= "string" or kind == "" then return nil end
+    local s = self:Store()
+    if not s then return nil end
+    s.captures = s.captures or {}
+    local id = self:CharacterIdentity()
+    local key = self:CharacterKey(id)
+    if not key then return nil end
+    local entry = s.captures[key]
+    if type(entry) ~= "table" then entry = {} end
+    entry.realm = id.realm
+    entry.name = id.name
+    entry.class = id.class
+    entry.className = id.className
+    local scan = {
+        version = id.version, build = id.build, timestamp = id.timestamp,
+        when = id.when, level = id.level, class = id.class,
+    }
+    if type(body) == "table" then
+        for k, v in pairs(body) do
+            if k == "rows" and type(v) == "table" then
+                local copy = {}
+                for rk, rv in pairs(v) do copy[rk] = rv end
+                scan.rows = copy
+            elseif k ~= "version" and k ~= "build" and k ~= "timestamp"
+                and k ~= "when" and k ~= "level" and k ~= "class" then
+                scan[k] = v
+            end
+        end
+    end
+    entry[kind] = scan
+    s.captures[key] = entry
+    return key
+end
+
+--- Drop one character's captures. Nil key means the current character.
+--- The shared class catalog and every other character stay.
+function Hv:ClearCharacter(key)
+    local s = self:Store()
+    if not s then return false end
+    s.captures = s.captures or {}
+    if key == nil or key == "" then key = self:CharacterKey() end
+    if not key then return false end
+    s.captures[key] = nil
+    return true
+end
+
+--- Copy window for one scan type. scope "all" is every character who has
+--- that scan; anything else is the current character (an empty sentence
+--- when they have not been recorded yet).
+function Hv:ExportCapture(kind, scope, page)
+    local s = self:Store()
+    local F = TA.HarvestFormat
+    if not (s and F and F.CaptureLines) then return nil end
+    s.captures = s.captures or {}
+    local id = self:CharacterIdentity()
+    local key = (scope == "all") and "all" or self:CharacterKey(id)
+    local lines, p, pages = F.CaptureLines(s.captures, kind, key, id, page or 1)
+    if not lines then return nil end
+    if TA.ShowCopyWindow then
+        TA:ShowCopyWindow(("ToonAge harvest — %s (%d/%d)"):format(tostring(kind), p, pages),
+                          concat(lines, "\n"))
+    end
+    return p, pages
 end
 
 --- Stamp for an export. scope "class" limits a per-class section to the
@@ -917,6 +1044,7 @@ function Hv:RunAll()
     out[#out + 1] = "== Probes =="
     local okP, probe = pcall(self.BuildProbeLines, self)
     if okP and type(probe) == "table" then
+        self:SaveCapture("probe", { text = concat(probe, "\n") })
         for _, l in ipairs(probe) do out[#out + 1] = l end
     else
         out[#out + 1] = "probes FAILED: " .. tostring(probe)
@@ -935,8 +1063,11 @@ function Hv:RunAll()
 end
 
 function Hv:RunProbes()
+    local lines = self:BuildProbeLines()
+    self:SaveCapture("probe", { text = concat(lines, "\n") })
+    if self:ExportCapture("probe", "character", 0) then return end
     if TA.ShowCopyWindow then
-        TA:ShowCopyWindow("ToonAge client probes", concat(self:BuildProbeLines(), "\n"))
+        TA:ShowCopyWindow("ToonAge client probes", concat(lines, "\n"))
     end
 end
 
@@ -951,16 +1082,22 @@ function H:ExportLines(section, page, scope)
     return Hv:ExportLines(section or "items", page, scope)
 end
 
--- Copy buttons for these sections default to the current character's class.
--- "all" is the shift-click / second button and is what the full report uses.
+-- Catalog still copies one class. Spells, talents and trainer copy the
+-- current character's latest capture; "all" is every character.
 local CLASS_EXPORT = { spells = true, talents = true, trainer = true, catalog = true }
-local ALL_LABEL = {
-    spells = "All spell classes", talents = "All talent classes",
-    trainer = "All trainer classes", catalog = "All catalog classes",
-}
+local CAPTURE_KIND = { spells = "spellbook", talents = "talents", trainer = "trainer" }
+local ALL_LABEL = { catalog = "All catalog classes" }
 
 function H:Export(section, page, scope)
     section = section or "items"
+    local kind = CAPTURE_KIND[section]
+    if kind and scope ~= "legacy" then
+        if scope == nil or scope == "class" or scope == "character" then scope = "character" end
+        local p, pages = Hv:ExportCapture(kind, scope, page)
+        if not p then return end
+        self._page, self._pages, self._section, self._scope = p, pages, section, scope
+        return
+    end
     if scope == nil and CLASS_EXPORT[section] then scope = "class" end
     local p, pages = Hv:Export(section, page, scope)
     if not p then return end
@@ -1056,7 +1193,22 @@ function H:Render(content, side)
         end
         for _, e in ipairs(Hv:Exports()) do
             local section = e.section
-            if CLASS_EXPORT[section] then
+            if CAPTURE_KIND[section] then
+                row[#row + 1] = {
+                    label = e.label,
+                    tooltip = { e.label, "Copies this character's latest scan. Shift-click to copy every character." },
+                    onClick = function()
+                        H:Export(section, 1, shifted() and "all" or "character")
+                    end,
+                }
+                row[#row + 1] = {
+                    label = "All characters",
+                    tooltip = { "All characters", "Copies this scan for every character saved on this account." },
+                    onClick = function() H:Export(section, 1, "all") end,
+                }
+                local note = Hv:ForeignNote(section, s)
+                if note then notes[#notes + 1] = e.label .. ": " .. note end
+            elseif CLASS_EXPORT[section] then
                 row[#row + 1] = {
                     label = e.label,
                     tooltip = { e.label, "Copies this character's class. Shift-click to copy every class." },
@@ -1118,6 +1270,9 @@ function H:Render(content, side)
         "Runs every client probe and opens the results in a copyable window.")
     y = L:ButtonRow(content, y, {
         { label = "Run probes", onClick = function() H:RunProbes() end },
+        { label = "All characters",
+          tooltip = { "All characters", "Copies the saved probe for every character." },
+          onClick = function() Hv:ExportCapture("probe", "all", 0) end },
     })
 
     y = L:Divider(content, y)
@@ -1141,12 +1296,33 @@ function H:Render(content, side)
     y = L:Divider(content, y)
     y = L:SectionHeader(content, y, "Reset")
     y = L:Paragraph(content, y,
-        "|cFF888780Clearing throws away every observation collected so far and "
-        .. "cannot be undone. There is no reason to do it unless a store is "
-        .. "corrupt -- re-recording an item costs nothing, so the table never "
-        .. "needs pruning.|r")
+        "|cFF888780Clear this character drops only that character's probe, "
+        .. "trainer, spellbook and talent captures. Other characters stay. "
+        .. "Clear store throws away every observation from every character "
+        .. "and cannot be undone.|r")
+    local id = Hv:CharacterIdentity()
+    local who = ("%s (%s)"):format((id and id.name) or "unknown", (id and id.className) or "unknown")
     y = L:ButtonRow(content, y, {
-        { label = self._confirmClear and "Really clear?" or "Clear store",
+        { danger = true,
+          label = self._confirmClearOne and ("Clear saved data for %s?"):format(who) or "Clear this character",
+          onClick = function()
+            if H._confirmClearOne then
+                local gone = Hv:CharacterIdentity()
+                local named = ("%s (%s)"):format((gone and gone.name) or "unknown",
+                    (gone and gone.className) or "unknown")
+                Hv:ClearCharacter()
+                H._confirmClearOne = nil
+                if TA.Raw then
+                    TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100[ToonAge]|r Saved harvest data for %s cleared."):format(named))
+                end
+            else
+                H._confirmClearOne = true
+                H._confirmClear = nil
+            end
+            if L.RefreshUI then L:RefreshUI() end
+          end },
+        { danger = true,
+          label = self._confirmClear and "Really clear store?" or "Clear store",
           onClick = function()
             if H._confirmClear then
                 Hv:Clear()
@@ -1154,6 +1330,7 @@ function H:Render(content, side)
                 if TA.Raw then TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Harvest store cleared.") end
             else
                 H._confirmClear = true
+                H._confirmClearOne = nil
             end
             if L.RefreshUI then L:RefreshUI() end
           end },

@@ -89,7 +89,9 @@ end
 function F.Sections(store)
     local out = {}
     for k, v in pairs(store or {}) do
-        if type(v) == "table" and k ~= "client" and k ~= "times" then out[#out + 1] = k end
+        if type(v) == "table" and k ~= "client" and k ~= "times" and k ~= "captures" then
+            out[#out + 1] = k
+        end
     end
     sort(out, ByString)
     return out
@@ -234,6 +236,161 @@ function F.ClassesIn(store, section)
     end
     sort(list, ByString)
     return list
+end
+
+--- What an empty character capture says. The class word is the display name.
+function F.CaptureEmpty(kind, name, className)
+    name, className = S(name), S(className)
+    if kind == "trainer" then
+        return ("No trainer data yet for %s (%s). Open a trainer to record it."):format(name, className)
+    elseif kind == "spellbook" then
+        return ("No spellbook data yet for %s (%s). Open your spellbook to record it."):format(name, className)
+    elseif kind == "talents" then
+        return ("No talent data yet for %s (%s). Open your talent frame to record it."):format(name, className)
+    elseif kind == "probe" then
+        return ("No probe data yet for %s (%s). Run probes to record it."):format(name, className)
+    end
+end
+
+--- First line of a character capture. Times arrive already formatted.
+function F.CaptureSource(who)
+    who = who or {}
+    return ("-- source %s · %s · level %s · build %s · captured %s"):format(
+        S(who.name), S(who.className), S(who.level), S(who.build), S(who.when))
+end
+
+local function CaptureWho(entry, scan)
+    entry = entry or {}
+    scan = scan or {}
+    local className = entry.className
+    if type(className) ~= "string" or className == "" then
+        if type(entry.class) == "string" and entry.class ~= "" then
+            className = F.ClassName(entry.class)
+        end
+    end
+    return {
+        name = entry.name, className = className,
+        level = scan.level, build = scan.build, when = scan.when,
+    }
+end
+
+local function SplitLines(text)
+    local out = {}
+    if type(text) ~= "string" or text == "" then return out end
+    local pos = 1
+    while pos <= #text do
+        local a = text:find("\n", pos, true)
+        if not a then
+            out[#out + 1] = text:sub(pos)
+            break
+        end
+        out[#out + 1] = text:sub(pos, a - 1)
+        pos = a + 1
+        if pos > #text then break end
+    end
+    return out
+end
+
+local function CaptureRowList(scan)
+    local rows = {}
+    if type(scan) == "table" and type(scan.rows) == "table" then
+        for k, v in pairs(scan.rows) do
+            if type(v) ~= "table" then rows[#rows + 1] = { tostring(k), tostring(v) } end
+        end
+    end
+    sort(rows, function(a, b) return a[1] < b[1] end)
+    return rows
+end
+
+--- One character's capture. page 0 is every record. A missing scan is the
+--- empty sentence for `identity` (the character the button was clicked on),
+--- never another character's rows.
+function F.OneCapture(entry, kind, identity, page, pageSize)
+    local scan = (type(entry) == "table") and entry[kind] or nil
+    local has = type(scan) == "table"
+    local who
+    if has then
+        who = CaptureWho(entry, scan)
+    else
+        local id = identity or {}
+        who = CaptureWho(
+            { name = id.name, class = id.class, className = id.className },
+            { level = id.level, build = id.build })
+    end
+    local out = { F.CaptureSource(who) }
+    if has and kind == "trainer" then
+        out[#out + 1] = ("-- trainer %s · id %s · class %s"):format(
+            S(scan.npcName), S(scan.npcID), S(scan.class))
+    end
+    out[#out + 1] = ""
+    local name, className = who.name, who.className
+    if not has then
+        local sentence = F.CaptureEmpty(kind, name, className)
+        if sentence then out[#out + 1] = sentence end
+        return out, 1, 1
+    end
+    if kind == "probe" then
+        local text = scan.text or ""
+        if text == "" then
+            local sentence = F.CaptureEmpty(kind, name, className)
+            if sentence then out[#out + 1] = sentence end
+        else
+            local body = SplitLines(text)
+            for i = 1, #body do out[#out + 1] = body[i] end
+        end
+        return out, 1, 1
+    end
+    local rows = CaptureRowList(scan)
+    local total = #rows
+    page = page or 1
+    pageSize = pageSize or F.PAGE_SIZE
+    local first, last, pages
+    if page == 0 then
+        first, last, pages = 1, total, 1
+    else
+        pages = (total == 0) and 1 or floor((total + pageSize - 1) / pageSize)
+        if page > pages then page = pages end
+        if page < 1 then page = 1 end
+        first = (page - 1) * pageSize + 1
+        last = page * pageSize
+        if last > total then last = total end
+    end
+    if total == 0 then
+        local sentence = F.CaptureEmpty(kind, name, className)
+        if sentence then out[#out + 1] = sentence end
+    else
+        for i = first, last do
+            local r = rows[i]
+            if r then out[#out + 1] = r[1] .. "\t" .. r[2] end
+        end
+    end
+    return out, (page == 0) and 1 or page, pages
+end
+
+--- `key` nil or "all" exports every character who has this scan, each block
+--- starting with that character's source line. A key exports that character.
+function F.CaptureLines(captures, kind, key, identity, page, pageSize)
+    captures = captures or {}
+    if key == nil or key == "all" then
+        local keys = {}
+        for k, entry in pairs(captures) do
+            if type(entry) == "table" and type(entry[kind]) == "table" then
+                keys[#keys + 1] = k
+            end
+        end
+        sort(keys, ByString)
+        if #keys == 0 then
+            return F.OneCapture(nil, kind, identity, 0, pageSize)
+        end
+        local out = {}
+        for i, k in ipairs(keys) do
+            local block = F.OneCapture(captures[k], kind, nil, 0, pageSize)
+            if i > 1 then out[#out + 1] = "" end
+            for _, line in ipairs(block) do out[#out + 1] = line end
+        end
+        return out, 1, 1
+    end
+    return F.OneCapture(captures[key], kind, identity, page, pageSize)
 end
 
 --- What an empty class-scoped export says instead of another class's rows.

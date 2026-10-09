@@ -53,6 +53,7 @@ function D:ScanTraitTree()
     class = class or "UNKNOWN"
     local level = Try("UnitLevel", "player") or 0
     local n = 0
+    local rows = {}
     local hasTreeInfo = Caps.State("C_Traits.GetTreeInfo") == "present"
 
     local geoKeysSeen = false
@@ -151,11 +152,16 @@ function D:ScanTraitTree()
                     }, "\t")
 
                     local key = class .. ":T:" .. tostring(treeID) .. ":" .. tostring(nodeID)
-                    if Put(s.talents, key, table.concat({
+                    local rec = table.concat({
                             Clean(treeID), Clean(nodeID), Clean(entryID),
                             Clean(spellID), Clean(name), Clean(rank),
                             Clean(info.maxRanks), Clean(level),
-                        }, "\t"), MAX_TALENTS) then
+                        }, "\t")
+                    rows[key] = rec
+                    if s.talents[key] ~= nil then
+                        s.talents[key] = rec
+                        Hv:Touch("talents")
+                    elseif Put(s.talents, key, rec, MAX_TALENTS) then
                         n = n + 1
                     end
                 end
@@ -163,6 +169,7 @@ function D:ScanTraitTree()
         end
     end
     if geoWritten then Hv:Touch("talentGeo") end
+    Hv:SaveCapture("talents", { rows = rows })
     return n
 end
 

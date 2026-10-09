@@ -97,7 +97,8 @@ function D:ScanTrainer()
     end
     if n == 0 then
         -- TRAINER_UPDATE also fires as the window closes, with 0 services.
-        -- Recording that would overwrite the real visit's status line.
+        -- Recording that would overwrite the real visit's status line and
+        -- this character's trainer capture.
         return
     end
     local unavailShown = Try("GetTrainerServiceTypeFilter", "unavailable")
@@ -159,6 +160,28 @@ function D:ScanTrainer()
             Hv:Touch("trainer")
         end
         for i = 1, rows do t[keys[i]] = lines[i] end
+    end
+
+    -- Class visits only. A profession trainer must not replace the class
+    -- trainer capture. The NPC is whoever the client says is open.
+    if rows > 0 and not profession then
+        local npcName = Try("UnitName", "npc")
+        if type(npcName) ~= "string" or npcName == "" or npcName == "secret" then
+            npcName = Try("UnitName", "target")
+        end
+        if type(npcName) ~= "string" or npcName == "" or npcName == "secret" then
+            npcName = nil
+        end
+        local guid = Try("UnitGUID", "npc")
+        if type(guid) ~= "string" or guid == "" or guid == "secret" then
+            guid = Try("UnitGUID", "target")
+        end
+        local npcID = (type(guid) == "string") and guid:match("%-(%d+)%-%x+$") or nil
+        local capRows = {}
+        for i = 1, rows do capRows[keys[i]] = lines[i] end
+        Hv:SaveCapture("trainer", {
+            npcName = npcName, npcID = npcID, class = class, rows = capRows,
+        })
     end
 
     s.trainerApi = table.concat(api, " ")

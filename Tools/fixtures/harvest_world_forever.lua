@@ -46,7 +46,11 @@ TA.Layout = {
     Paragraph = function(self, c, y, t, o) rec("Paragraph|" .. tostring(t) .. "|" .. tostring(o and o.color)); return y - 10 end,
     ButtonRow = function(self, c, y, btns, o)
         local labels = {}
-        for _, b in ipairs(btns) do labels[#labels + 1] = b.label end
+        for _, b in ipairs(btns) do
+            labels[#labels + 1] = b.label
+            if b.danger then rec("ButtonDanger|" .. tostring(b.label)) end
+        end
+        LAST_BUTTONS = btns
         rec("ButtonRow|" .. table.concat(labels, ",") .. "|" .. tostring(o and o.label)); return y - 10 end,
     Divider = function(self, c, y) rec("Divider"); return y - 10 end,
     Finish = function(self, c, y) rec("Finish|" .. tostring(y)) end,
@@ -73,11 +77,17 @@ function GetBuildInfo() return "1.60.1", "70205", "Oct  2 2026", 16001, "", " " 
 LEVEL = 18
 function UnitClass() return "Mage", "MAGE", 8 end
 function UnitLevel() return LEVEL end
-function UnitName() return "Eramali" end
+function UnitName(unit)
+    if unit == "npc" or unit == "target" then return "Aelthalyste" end
+    return "Eramali"
+end
 function GetRealmName() return "Classic Beta PvE" end
 function UnitRace() return "Undead", "Scourge" end
 function UnitSex() return 3 end
-function UnitGUID() return "Player-4618-008D2110" end
+function UnitGUID(unit)
+    if unit == "npc" or unit == "target" then return "Creature-0-1-0-1454-5490-0000ABCD" end
+    return "Player-4618-008D2110"
+end
 function UnitFactionGroup() return "Horde", "Horde" end
 
 -- ── Items ────────────────────────────────────────────────────────────────
@@ -168,7 +178,7 @@ C_TooltipInfo = {
 
 -- ── Trait tree ───────────────────────────────────────────────────────────
 C_ClassTalents = { GetActiveConfigID = function() return 7 end }
-local NODES = {
+NODES = {
     [105795] = { posX = 300, posY = 600, entry = 130524, def = 9001, spell = 11069, rank = 5, max = 5, edges = { { targetNode = 105796, type = 0 } }, conds = { 43463 } },
     [105762] = { posX = 900, posY = 1200, entry = 130491, def = 9002, spell = 11426, rank = 0, max = 1, edges = {}, conds = {} },
 }
