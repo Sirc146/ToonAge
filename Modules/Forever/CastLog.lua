@@ -294,89 +294,16 @@ end
 
 local GUIDE_WRITTEN_FOR = 20   -- level cap the coach references were written for
 
--- Talent-name hints. A point in a talent whose name contains one of these
--- words counts for that spec. The tree with the most such points wins.
--- A manual button pick overrides this. No points means no guess.
-local SPEC_HINTS = {
-    MAGE = {
-        Fire   = { "fire", "pyro", "ignite", "inciner", "scorch", "combust", "flame" },
-        Frost  = { "frost", "ice", "winter", "shatter", "cold" },
-        Arcane = { "arcane", "evocat", "presence of mind" },
-    },
-    DRUID = {
-        Balance = { "moon", "wrath", "star", "nature" },
-        Feral = { "cat", "bear", "claw", "rip", "feral", "maul" },
-        Restoration = { "rejuven", "regrowth", "heal", "swiftmend" },
-    },
-    HUNTER = {
-        ["Beast Mastery"] = { "beast", "pet", "aspect of the" },
-        Marksmanship = { "mark", "aimed", "scatter" },
-        Survival = { "trap", "survival", "wyvern" },
-    },
-    PALADIN = {
-        Holy = { "holy", "flash", "cleanse" },
-        Protection = { "protection", "consecr", "righteous defense" },
-        Retribution = { "retrib", "seal of command", "crusader" },
-    },
-    PRIEST = {
-        Discipline = { "discipl", "inner focus", "power infusion" },
-        Holy = { "holy", "renew", "smite" },
-        Shadow = { "shadow", "mind", "vampir" },
-    },
-    ROGUE = {
-        Assassination = { "mutilate", "poison", "cold blood" },
-        Combat = { "blade flurry", "adrenaline", "sword" },
-        Subtlety = { "hemorrhage", "premed", "shadowstep", "ghostly" },
-    },
-    SHAMAN = {
-        Elemental = { "elemental", "lightning", "flame shock" },
-        Enhancement = { "stormstrike", "dual", "windfury" },
-        Restoration = { "healing wave", "chain heal", "earth shield" },
-    },
-    WARLOCK = {
-        Affliction = { "afflict", "curse", "drain", "agony" },
-        Demonology = { "demon", "fel", "master demon" },
-        Destruction = { "destruct", "conflag", "shadowburn", "immolate" },
-    },
-    WARRIOR = {
-        Arms = { "mortal strike", "sweeping", "overpower" },
-        Fury = { "bloodthirst", "whirlwind", "enrage" },
-        Protection = { "shield slam", "devastate", "last stand" },
-    },
-}
-
+--- The spec is the C_Traits section with the most points, not a spellbook tab
+--- and not a guess from talent names. A manual button pick still overrides.
 local function DetectSpec(token)
-    local hints = SPEC_HINTS[token]
-    if not hints then return nil end
-    local FT = TA.GetModule and TA:GetModule("ForeverTalents")
-    local ranked = FT and FT.RankedTalents and FT:RankedTalents()
-    if type(ranked) ~= "table" then return nil end
-    local score = {}
-    for spec in pairs(hints) do score[spec] = 0 end
-    for _, t in ipairs(ranked) do
-        local name = type(t.name) == "string" and t.name:lower() or ""
-        local rank = tonumber(t.rank) or 0
-        if rank > 0 and name ~= "" then
-            for spec, words in pairs(hints) do
-                for _, w in ipairs(words) do
-                    if name:find(w, 1, true) then
-                        score[spec] = score[spec] + rank
-                        break
-                    end
-                end
-            end
-        end
-    end
-    local best, bestN, second = nil, 0, 0
-    for spec, n in pairs(score) do
-        if n > bestN then
-            second, bestN, best = bestN, n, spec
-        elseif n > second then
-            second = n
-        end
-    end
-    if not best or bestN < 1 or bestN == second then return nil end
-    return best
+    local compat = TA.Compat
+    if not (compat and compat.SpecFromTraitSections) then return nil end
+    local _, name = compat.SpecFromTraitSections()
+    if type(name) ~= "string" then return nil end
+    local specs = SpecsFor(token)
+    if specs and specs[name] then return name end
+    return nil
 end
 
 local VERDICT_COLOUR = { good = U.GREEN, warn = U.ORANGE, bad = U.RED, dim = U.GREY }

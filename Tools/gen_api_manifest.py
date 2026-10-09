@@ -72,6 +72,12 @@ BARE_GLOBALS = [
     "GetNumLootItems", "GetLootSlotLink", "GetLootSlotInfo",
     "GetNumTalentTabs", "GetTalentTabInfo", "GetNumTalents",
     "GetNumSkillLines", "GetSkillLineInfo", "UnitDefense",
+    # Forever 1.60.1 probe: these three are absent. Weapon skill and Defense
+    # are read from C_SkillInfo; the calls stay in source, type-checked, so
+    # ApiGuard still reports them missing.
+    "UnitAttackBothHands", "UnitRangedAttack",
+    # The global is absent. C_Spell.GetSpellLevelLearned is the one that works.
+    "GetSpellLevelLearned",
     "CanMerchantRepair", "GetRepairAllCost", "RepairAllItems",
     "CanGuildBankRepair", "GetGuildBankWithdrawMoney", "GetMoneyString",
     "GetNumSpellTabs", "GetSpellTabInfo", "GetSpellBookItemInfo",

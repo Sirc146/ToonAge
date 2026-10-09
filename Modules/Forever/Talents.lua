@@ -334,7 +334,24 @@ function M:Render(content, side)
         if cur then unspent = (unspent or 0) + cur end
     end
 
-    y = RenderTrees(content, y, trees, totalSpent, unspent)
+    -- One combined tree: the spec sections are columns inside it, split by
+    -- C_Traits (points per section). Spellbook tabs are not those sections.
+    local headerTrees = trees
+    if #treeIDs == 1 and TA.Compat and TA.Compat.ReadTraitSections then
+        local sections = TA.Compat.ReadTraitSections()
+        if type(sections) == "table" and #sections > 1 then
+            headerTrees, totalSpent = {}, 0
+            for _, s in ipairs(sections) do
+                headerTrees[#headerTrees + 1] = {
+                    name = s.name or ("Section " .. s.index),
+                    spent = s.points or 0,
+                }
+                totalSpent = totalSpent + (s.points or 0)
+            end
+        end
+    end
+
+    y = RenderTrees(content, y, headerTrees, totalSpent, unspent)
     y = RenderRanked(content, y, trees)
     y = RenderAvailable(content, y, trees, unspent)
     y = RenderFooter(content, y)

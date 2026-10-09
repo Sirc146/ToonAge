@@ -68,6 +68,10 @@ check("skills guard the API's absence",
       and 'type(GetNumSkillLines) == "function"' in reader)
 check("professions are not listed twice", "professionNames[l.name]" in skills)
 check("a capped-short skill is called out", "below the cap for your level" in skills)
+check("weapon skill is read by skill line ID", "GetSkillLineInfoByID" in reader)
+check("a missing skill line is not rank 0", "info == nil" in reader)
+check("class skill lines are not weapon skills", "[38]" in src and "[253]" in src)
+check("weapon cap is 5 per level", "level * 5" in code)
 
 # The whole point: no advice.
 for word in ("weight", "score(", "recommend", "best in slot", "upgrade"):

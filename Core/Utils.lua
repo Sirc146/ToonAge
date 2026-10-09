@@ -358,6 +358,17 @@ function U.GetPlayerClass()
 end
 
 function U.GetPlayerSpec()
+    -- Forever has no GetSpecialization. The spec is the C_Traits section with
+    -- the most points spent (Compat.SpecFromTraitSections). A spellbook tab
+    -- is not a spec: those lines exist at level 1, before any point is spent.
+    if TA.IsForever then
+        if TA.Compat and TA.Compat.SpecFromTraitSections then
+            local idx, name, pts = TA.Compat.SpecFromTraitSections()
+            if idx and name then return idx, name, nil, pts end
+        end
+        return nil, nil, nil
+    end
+
     -- Era and TBC have no spec API. The tree with the most points is the spec.
     -- Fewer than 10 points, or a tie, returns nil. Callers handle nil.
     -- Do not probe GetSpecialization / C_SpecializationInfo on those clients.
