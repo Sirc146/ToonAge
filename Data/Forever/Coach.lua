@@ -10,7 +10,7 @@
 -- what role, so a wrong entry produces a wrong suggestion, never a wrong stat.
 --
 -- Abilities are keyed by NAME, not spell ID: Forever keeps a separate spell
--- ID per rank (Fireball 133/143/145, measured 2026-09-26), and a name matches
+-- ID per rank (Fireball 133/143/145/3140), and a name matches
 -- every rank. An ability is only judged when your spellbook has it, so
 -- anything above your level is skipped rather than reported as missing.
 -- "A|B" means either one satisfies the entry.

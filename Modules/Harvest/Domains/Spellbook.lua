@@ -137,7 +137,7 @@ end
 -- ── Probe: spell ranks ────────────────────────────────────────────────────
 -- The Spells tab's lower-rank-on-bar check needs a rank order. The first full
 -- report showed EVERY spell with an empty rank field (item.subName and
--- C_Spell.GetSpellSubtext both blank, even Fireball 133/143/145), so this
+-- C_Spell.GetSpellSubtext both blank, even Fireball 133/143/145/3140), so this
 -- looks for where the client keeps it instead. Up to 4 spell names with more
 -- than one ID in the harvest store; C_Spell answers by ID, so this works on
 -- any character.
@@ -169,7 +169,7 @@ D.probes = {
                 L[#L + 1] = "  -- " .. id
                 P.Call(L, "    C_Spell.GetSpellSubtext", "C_Spell.GetSpellSubtext", id)
                 P.Call(L, "    C_Spell.GetSpellLevelLearned", "C_Spell.GetSpellLevelLearned", id)
-                P.Call(L, "    GetSpellLevelLearned", "GetSpellLevelLearned", id)
+                P.Call(L, "    GetSpellLevelLearned(id)", "GetSpellLevelLearned", id)
                 P.Call(L, "    C_Spell.GetSpellPowerCost", "C_Spell.GetSpellPowerCost", id)
                 P.Call(L, "    C_Spell.GetSpellInfo", "C_Spell.GetSpellInfo", id)
                 P.Call(L, "    C_Spell.GetSpellRank", "C_Spell.GetSpellRank", id)

@@ -130,19 +130,30 @@ local RESIST_ORDER = {
 
 -- ─── SKILL LINES ─────────────────────────────────────────────────────────
 --
--- MEASURED on Forever 2026-09-29 (Warlock, Paladin, Druid, Warrior probes):
---   GetNumSkillLines / GetSkillLineInfo / UnitAttackBothHands / UnitDefense
---     -> all MISSING.
---   C_SkillInfo.GetNumSkillLines() -> 12..20
---   C_SkillInfo.GetSkillLineInfo(i) -> { name, isHeader, rank, maxRank,
---     modifier, skillID, skillLineCategoryID, ... }
---     category 6 = Weapon Skills (Defense, skillID 95, lives here too),
+-- MEASURED on Forever 1.60.1 (interface 16001), level 1 Rogue, 2026-10-09:
+--   UnitAttackBothHands / UnitRangedAttack / UnitDefense -> MISSING.
+--   UnitDefenseSkill("player") works.
+--   C_SkillInfo.GetNumSkillLines / GetSkillLineInfo / GetSkillLineInfoByID
+--     answer rank and maxRank. maxRank is 5 per level.
+--   GetSkillLineInfoByID returns nil for a skill the character does not have.
+--     That nil is "absent", not rank 0.
+--   category 6 = Weapon Skills (Defense, skillID 95, lives here too),
 --     7 = class lines, 8 = armour, 10 = languages.
---   UnitDefenseSkill("player") -> base, modifier   (1, 0 at level 1)
+--   Class lines Combat (38) and Assassination (253) are already listed at
+--   level 1. They are spellbook tabs, not a chosen spec, and not weapon skills.
 -- The legacy globals are kept as a fallback for any client that has them.
 
 local CAT_WEAPON = 6
 local SKILL_DEFENSE = 95
+-- Class skill lines present on a level 1 Rogue. Not weapon skills, and not a spec.
+local CLASS_SKILL_LINE = { [38] = true, [253] = true }
+
+--- Forever weapon and Defense caps are 5 skill points per level.
+local function LevelSkillCap()
+    local level = Num(Try(UnitLevel, "player")) or 1
+    if level < 1 then level = 1 end
+    return level * 5
+end
 
 --- Every skill line as { name, rank, max, mod, id, cat, header }.
 local function ReadSkillLines()
@@ -152,8 +163,10 @@ local function ReadSkillLines()
         for i = 1, n do
             local info = Try(C_SkillInfo.GetSkillLineInfo, i)
             if type(info) == "table" and info.name then
+                local rank, max = Num(info.rank), Num(info.maxRank)
+                if rank and (not max or max <= 0) then max = LevelSkillCap() end
                 out[#out + 1] = {
-                    name = tostring(info.name), rank = Num(info.rank), max = Num(info.maxRank),
+                    name = tostring(info.name), rank = rank, max = max,
                     mod = Num(info.modifier) or 0, id = Num(info.skillID),
                     cat = Num(info.skillLineCategoryID), header = info.isHeader and true or false,
                 }
@@ -215,6 +228,29 @@ M._WeaponSkillFor = WeaponSkillFor
 
 local function FindSkill(lines, id)
     for _, l in ipairs(lines) do if l.id == id then return l end end
+end
+
+--- One skill by ID. nil when the character does not have it.
+--- GetSkillLineInfoByID returns nil in that case (Forever 1.60.1). A nil
+--- result is not reported as rank 0.
+local function SkillByID(skillID)
+    if not skillID then return nil end
+    if CLASS_SKILL_LINE[skillID] then return nil end
+    if C_SkillInfo and type(C_SkillInfo.GetSkillLineInfoByID) == "function" then
+        local ok, info = pcall(C_SkillInfo.GetSkillLineInfoByID, skillID)
+        if not ok or info == nil or type(info) ~= "table" then return nil end
+        local rank, max = Num(info.rank), Num(info.maxRank)
+        if rank and (not max or max <= 0) then max = LevelSkillCap() end
+        if not max or max <= 0 then return nil end
+        return {
+            name = tostring(info.name or ""),
+            rank = rank or 0,
+            max = max,
+            mod = Num(info.modifier) or 0,
+            id = skillID,
+        }
+    end
+    return FindSkill(ReadSkillLines(), skillID)
 end
 
 -- ─── SECTIONS ────────────────────────────────────────────────────────────
@@ -356,13 +392,14 @@ local function RenderOffense(content, y)
 
     -- Spell power is reported per school; arcane (6) stands in for "magic", the
     -- same way the character sheet does.
-    local sp    = Num(Try(GetSpellBonusDamage, 6))
-    local skill = Num(Try(UnitAttackBothHands, "player"))
+    local sp = Num(Try(GetSpellBonusDamage, 6))
 
     -- One scale for the flat numbers in this section, so attack power and spell
     -- power are comparable. Percentages stay out of it -- they have their own
     -- real maximum, and mixing the two would make 4% look like 40.
-    offenseScale = L:StatScale({ ap, rap, sp, skill }, offenseScale)
+    -- Weapon skill is not on this scale: it has a real cap (5 per level) and
+    -- UnitAttackBothHands, which used to stand in for it, is missing.
+    offenseScale = L:StatScale({ ap, rap, sp }, offenseScale)
 
     y = L:StatBar(content, y, {
         label = "Attack Power", value = ap, scale = offenseScale, text = Show(ap),
@@ -392,15 +429,16 @@ local function RenderOffense(content, y)
     end
 
     -- Weapon skill for what you are actually holding. Forever keeps Vanilla's
-    -- capped weapon skills (5 x level), one per weapon type, and has no
-    -- UnitAttackBothHands -- so the equipped weapon's type picks its skill line
-    -- out of C_SkillInfo. Below the cap means more misses and more glancing
-    -- blows; it rises only by hitting things with THAT weapon type.
-    local lines = ReadSkillLines()
+    -- capped weapon skills (5 x level), one per weapon type. UnitAttackBothHands
+    -- and UnitRangedAttack are missing, so the equipped weapon's type picks its
+    -- skill line out of C_SkillInfo (rank and maxRank). GetSkillLineInfoByID
+    -- returns nil when the character has not trained that weapon. Below the cap
+    -- means more misses and more glancing blows; it rises only by hitting
+    -- things with THAT weapon type.
     local shown = {}
     for _, hand in ipairs({ { 16, "Main hand" }, { 17, "Off hand" }, { 18, "Ranged" } }) do
         local id = WeaponSkillFor(hand[1])
-        local line = id and FindSkill(lines, id)
+        local line = id and SkillByID(id)
         if line and line.rank and line.max and line.max > 0 and not shown[id] then
             shown[id] = true
             local eff = line.rank + (line.mod or 0)
@@ -419,11 +457,6 @@ local function RenderOffense(content, y)
                     short) or nil,
             })
         end
-    end
-    if not next(shown) and skill and skill > 0 then
-        y = L:StatBar(content, y, {
-            label = "Weapon Skill", value = skill, scale = offenseScale, text = Show(skill),
-        })
     end
 
     -- Forever is a custom realm, not real 1.60. Its combat stats do not map
@@ -446,14 +479,20 @@ local function RenderDefense(content, y)
     local armorBase, armorEff = Try(UnitArmor, "player")
     local armor = Num(armorEff) or Num(armorBase)
 
-    -- UnitDefense is missing on Forever; UnitDefenseSkill answers (measured
-    -- 2026-09-29), and C_SkillInfo's Defense line (95) carries the cap.
-    local defBase, defMod = Try(UnitDefense, "player")
-    if defBase == nil then defBase, defMod = Try(UnitDefenseSkill, "player") end
-    local defTotal
-    if Num(defBase) then defTotal = (Num(defBase) or 0) + (Num(defMod) or 0) end
-    local defLine = FindSkill(ReadSkillLines(), SKILL_DEFENSE)
-    local defCap = defLine and defLine.max
+    -- UnitDefense is missing. Defense rank and cap come from C_SkillInfo
+    -- (skill 95, maxRank = 5 per level). GetSkillLineInfoByID nil means this
+    -- character has no Defense line -- that is not a rank of 0. UnitDefenseSkill
+    -- still answers and is only the fallback when C_SkillInfo itself is absent.
+    local defLine = SkillByID(SKILL_DEFENSE)
+    local defBase, defMod, defCap, defTotal
+    if defLine then
+        defBase, defMod, defCap = defLine.rank, defLine.mod, defLine.max
+        defTotal = (defBase or 0) + (defMod or 0)
+    elseif not (C_SkillInfo and type(C_SkillInfo.GetSkillLineInfoByID) == "function") then
+        defBase, defMod = Try(UnitDefenseSkill, "player")
+        defBase, defMod = Num(defBase), Num(defMod)
+        if defBase then defTotal = defBase + (defMod or 0) end
+    end
 
     defenseScale = L:StatScale({ armor, defTotal }, defenseScale)
 
@@ -598,8 +637,11 @@ local function RenderSkills(content, y, professionNames)
     local rows = {}
     for _, l in ipairs(ReadSkillLines()) do
         -- Weapon skills only: armour and languages are 1/1 or 300/300 and say
-        -- nothing, class lines are spellbook tabs, and Defense has its own row.
+        -- nothing, class lines are spellbook tabs (Combat 38, Assassination 253
+        -- are already there at level 1 and are not a chosen spec), and Defense
+        -- has its own row.
         if not l.header and l.cat == CAT_WEAPON and l.id ~= SKILL_DEFENSE
+           and not CLASS_SKILL_LINE[l.id]
            and l.rank and l.max and l.max > 0 and not professionNames[l.name] then
             rows[#rows + 1] = l
         end

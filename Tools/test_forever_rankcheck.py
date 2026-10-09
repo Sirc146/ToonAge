@@ -12,8 +12,8 @@ The rule under test: ranks come ONLY from rank text. Spell IDs are never used
 to order ranks, so a spellbook with no rank text must report ranked=false and
 flag nothing.
 
-Fixture spell IDs are the ones the harvester recorded on the Forever beta
-(2026-09-26): Frostbolt 116/205, Fireball 133/143/145.
+Fixture spell IDs are one ID per rank (Forever probe): Frostbolt 116/205,
+Fireball 133/143/145/3140. 3140 is rank 4; the check still uses rank text.
 
 Usage:  python Tools/test_forever_rankcheck.py [-v]
 """
@@ -67,7 +67,8 @@ def main():
               { name = "Fire", spells = {
                 { name = "Fireball", spellID = 133, rank = "Rank 1" },
                 { name = "Fireball", spellID = 143, rank = "Rank 2" },
-                { name = "Fireball", spellID = 145, rank = "Rank 3" } } },
+                { name = "Fireball", spellID = 145, rank = "Rank 3" },
+                { name = "Fireball", spellID = 3140, rank = "Rank 4" } } },
               { name = "General", spells = {
                 { name = "Attack", spellID = 6603 } } } }
             bars = { { slot = 7, spellID = 143 }, { slot = 2, spellID = 116 },
@@ -93,7 +94,7 @@ def main():
     end""")
 
     got, ranked = find(M, "ranked")
-    check("ranked: flags low ranks in slot order", got, "2:Frostbolt:1/2,7:Fireball:2/3")
+    check("ranked: flags low ranks in slot order", got, "2:Frostbolt:1/2,7:Fireball:2/4")
     check("ranked: reports ranks available", ranked, True)
 
     got, ranked = find(M, "current")

@@ -29,9 +29,11 @@
 --     say the tooltip names Comprehension; whether it uses ITEM_MIN_SKILL or a
 --     line of its own is not confirmed. Both are matched below, and anything
 --     that mentions Comprehension with a number is treated as the gate.
---   * Which API reports the Comprehension skill. GetProfessions() is tried
---     first, then the Classic skill-line globals. If neither answers, the tab
---     says "your skill: n/a" instead of guessing.
+-- Comprehension itself is skill line 3012, read with
+-- C_TradeSkillUI.GetProfessionInfoBySkillLineID. Forever 1.60.1 answers
+-- skillLevel 0 and maxSkillLevel 0 for a non-mage, and the skill row is hidden
+-- in that case. GetSkillLineInfoByID returns nil when the character does not
+-- have the skill; that nil is not a rank of 0.
 --
 -- WHAT COUNTS AS A SCROLL for the tab: anything Comprehension-gated, anything
 -- class-restricted that is not equipment, and anything with "Scroll" in its
@@ -129,38 +131,65 @@ end
 --- @return number|nil rank, number|nil maxRank
 local COMPREHENSION_SKILL_LINE = 3012   -- Wowhead Forever, skill=3012
 
+--- Pure read of the two Comprehension answers.
+--- profInfo: C_TradeSkillUI.GetProfessionInfoBySkillLineID(3012), or nil.
+--- skillInfo: C_SkillInfo.GetSkillLineInfoByID(3012). Pass false when that
+--- call returned nil -- the character does not have the skill. nil means the
+--- call was not made. A max of 0 is definitive (a non-mage on Forever 1.60.1
+--- answers skillLevel 0 and maxSkillLevel 0) and does not fall through.
+--- @return number|nil rank, number|nil maxRank
+function M.ReadComprehension(profInfo, skillInfo)
+    if type(profInfo) == "table" then
+        local max = tonumber(profInfo.maxSkillLevel)
+        local rank = tonumber(profInfo.skillLevel)
+        if max == 0 then return nil, 0 end
+        if max and max > 0 then return rank or 0, max end
+    end
+    if skillInfo == false then return nil, 0 end
+    if type(skillInfo) == "table" then
+        local max = tonumber(skillInfo.maxRank)
+        if not max or max <= 0 then return nil, 0 end
+        return tonumber(skillInfo.rank) or 0, max
+    end
+    return nil, nil
+end
+
 local function PlayerComprehension()
     -- Comprehension is NOT in GetProfessions() on Forever (measured 2026-09-27:
-    -- five slots, all trade/secondary skills). Ask for its skill line directly.
-    if C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
-        local info = Try(C_TradeSkillUI.GetProfessionInfoBySkillLineID, COMPREHENSION_SKILL_LINE)
-        if type(info) == "table" then
-            local rank = U.SafeNum(info.skillLevel, nil)
-            if rank and rank > 0 then
-                return rank, U.SafeNum(info.maxSkillLevel, nil)
-            end
-        end
+    -- five slots, all trade/secondary skills). Ask for skill line 3012.
+    -- Forever 1.60.1: a non-mage gets skillLevel 0 and maxSkillLevel 0 from
+    -- GetProfessionInfoBySkillLineID. That hides the skill row. Do not fall
+    -- through and invent a rank.
+    local profInfo
+    if C_TradeSkillUI and type(C_TradeSkillUI.GetProfessionInfoBySkillLineID) == "function" then
+        local ok, info = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, COMPREHENSION_SKILL_LINE)
+        if ok and type(info) == "table" then profInfo = info end
     end
+    if type(profInfo) == "table" and tonumber(profInfo.maxSkillLevel) == 0 then
+        return M.ReadComprehension(profInfo, nil)
+    end
+    if type(profInfo) == "table" and tonumber(profInfo.maxSkillLevel) and tonumber(profInfo.maxSkillLevel) > 0 then
+        return M.ReadComprehension(profInfo, nil)
+    end
+
     local profs = Try(U.GetProfessions)
     if type(profs) == "table" then
         for _, p in ipairs(profs) do
             if IsComprehension(p.name) then
-                return U.SafeNum(p.rank, nil), U.SafeNum(p.maxRank, nil)
+                local rank, max = U.SafeNum(p.rank, nil), U.SafeNum(p.maxRank, nil)
+                if max == 0 then return nil, 0 end
+                if rank or max then return rank, max end
             end
         end
     end
 
-    -- The skill book, Forever's way. MEASURED 2026-09-30 on a level 17 Mage:
-    -- C_TradeSkillUI above answered skillLevel=0 for 3012, while
-    -- C_SkillInfo.GetSkillLineInfo listed "Comprehension" rank 25 / 85 and
-    -- GetSkillLineInfoByID answers for any skill ID the character has. The
-    -- old GetNumSkillLines/GetSkillLineInfo globals below are missing on
-    -- Forever, so without this the Comprehension gate never had a number.
-    if C_SkillInfo and C_SkillInfo.GetSkillLineInfoByID then
-        local info = Try(C_SkillInfo.GetSkillLineInfoByID, COMPREHENSION_SKILL_LINE)
-        if type(info) == "table" and U.SafeNum(info.maxRank, 0) > 0 then
-            return U.SafeNum(info.rank, nil), U.SafeNum(info.maxRank, nil)
-        end
+    -- GetSkillLineInfoByID returns nil when the character does not have the
+    -- skill. The old GetNumSkillLines/GetSkillLineInfo globals below are
+    -- missing on Forever.
+    if C_SkillInfo and type(C_SkillInfo.GetSkillLineInfoByID) == "function" then
+        local ok, info = pcall(C_SkillInfo.GetSkillLineInfoByID, COMPREHENSION_SKILL_LINE)
+        if ok and info == nil then return M.ReadComprehension(nil, false) end
+        if ok and type(info) == "table" then return M.ReadComprehension(nil, info) end
     end
 
     -- Classic skill-line globals. Forever may not have them; every call is
@@ -659,7 +688,9 @@ function M:Render(content, side)
 
     local y = -8
     local _, token = PlayerClass()
-    if token == "MAGE" then
+    -- maxSkillLevel 0 (a non-mage, or a character with no Comprehension cap)
+    -- hides the skill row. An unanswered client still shows n/a for a Mage.
+    if token == "MAGE" and myMax ~= 0 then
         y = L:SectionHeader(content, y, "Comprehension")
         local spellKnown = false
         if not myRank then

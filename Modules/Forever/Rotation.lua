@@ -22,8 +22,8 @@
 -- GetNumSpellTabs / GetSpellBookItem* globals as a fallback. If neither
 -- answers, the tab says so rather than rendering an empty list.
 --
--- RANK CHECK. Forever keeps Vanilla's spell ranks (measured 2026-09-26: the
--- harvester saw Fireball 133/143/145 and Frostbolt 116/205 on one Mage). A bar
+-- RANK CHECK. Forever keeps Vanilla's spell ranks, one spell ID per rank
+-- (measured: Fireball 133/143/145/3140, Frostbolt 116/205). A bar
 -- slot holding a lower rank than you know is either an oversight or a
 -- deliberate downrank for mana, so the tab LISTS it -- it does not call it an
 -- error. Each spell row in the list carries the note inline ("Lower rank in
@@ -68,7 +68,7 @@ local function RankText(subName, spellID)
 end
 
 --- Level a spell ID is learned at, from the client. nil when unanswered.
---- Measured on Forever 2026-09-29: Fireball 133/143/145 -> 1/6/12, Arcane
+--- Measured on Forever: Fireball 133/143/145/3140, one ID per rank. Arcane
 --- Intellect 1459/1460 -> 1/14. Used ONLY when rank text is blank, as a
 --- second source of rank order; it is the client's own trainer data, not a
 --- guess from spell IDs (which do not follow rank: Battle Shout R1 is 6673,

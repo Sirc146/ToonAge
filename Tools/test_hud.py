@@ -22,7 +22,7 @@ def check(name, got, want=True):
 
 ut = open(os.path.join(ROOT, "Core/Utils.lua"), encoding="utf-8").read()
 spec = ut[ut.index("function U.GetPlayerSpec"):]
-spec = spec[:spec.index("\nend") + 4]
+spec = spec[:spec.index("function U.GetPlayerSpecID")]
 check("spec lookup checks the API exists", 'type(GetSpecialization) ~= "function"' in spec)
 check("spec lookup guards GetSpecializationInfo too",
       'type(GetSpecializationInfo) ~= "function"' in spec)
