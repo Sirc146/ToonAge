@@ -56,8 +56,10 @@ local guides = {
     midnight_intro = { id = "midnight_intro", title = "Midnight: Quel'Thalas Intro", expansion = "midnight" },
     eversong = { id = "midnight_eversong_campaign", title = "Midnight: Eversong Woods", expansion = "midnight" },
     legion = { id = "Legion", title = "Legion", expansion = "legion", steps = {} },
+    legion_chromie = { id = "legion_chromie", title = "Legion Chromie", expansion = "legion", steps = {} },
     wrath = { id = "WrathOfTheLichKing", title = "Wrath", expansion = "wrath" },
     df = { id = "Dragonflight", title = "Dragonflight", expansion = "dragonflight" },
+    df_chromie = { id = "dragonflight_chromie", title = "Dragonflight Chromie", expansion = "dragonflight" },
 }
 local expansions = {
     { key = "midnight", label = "Midnight" },
@@ -95,17 +97,34 @@ eq("recommended comes from the API", recommended, "wrath")
 local legion = M.Read("retail", 10, options)
 eq("legion is active", legion.active, true)
 eq("legion uses the API name", legion.name, "The Legion Invasion")
+eq("legion short name", legion.short, "Legion")
 eq("legion maps to the guide key", legion.guideKey, "legion")
+eq("pill uses the short name", M.PillText(legion), "Chromie Time · Legion")
 local legionSet = M.Resolve(legion, guides)
-eq("legion has a guide set", legionSet.mode, "timeline")
+eq("a chromie file selects that timeline", legionSet.mode, "timeline")
 eq("legion selects legion", legionSet.key, "legion")
-eq("legion header is the timeline name", legionSet.header, "The Legion Invasion")
+eq("legion header is the short name", legionSet.header, "Legion")
+
+local ordinary = {
+    midnight_intro = guides.midnight_intro,
+    eversong = guides.eversong,
+    legion = guides.legion,
+    df = guides.df,
+}
+local ordinarySet = M.Resolve(legion, ordinary)
+eq("a regular legion guide is not the timeline guide", ordinarySet.mode, "missing")
+eq("coming copy names legion", ordinarySet.cardBody, "Legion timeline guide is coming. Your game is fine.")
+eq("card title is the short name", ordinarySet.cardTitle, "Legion")
 
 local df = M.Read("retail", 16, options)
 eq("dragonflight id maps", df.guideKey, "dragonflight")
+eq("dragonflight short name", df.short, "Dragonflight")
 local dfSet = M.Resolve(df, guides)
-eq("dragonflight guides are used", dfSet.mode, "timeline")
-eq("dragonflight header is the API name", dfSet.header, "Dragonflight")
+eq("dragonflight_chromie is the timeline guide", dfSet.mode, "timeline")
+eq("dragonflight header is the short name", dfSet.header, "Dragonflight")
+local dfGap = M.Resolve(df, ordinary)
+eq("without dragonflight_chromie the card says it is coming", dfGap.mode, "missing")
+eq("dragonflight coming copy", dfGap.cardBody, "Dragonflight timeline guide is coming. Your game is fine.")
 
 local guidesNoDf = {
     midnight_intro = guides.midnight_intro,
@@ -116,8 +135,8 @@ local gap = M.Resolve(df, guidesNoDf)
 eq("a timeline with no guide is a gap", gap.mode, "missing")
 eq("a gap does not substitute another key", gap.key, nil)
 eq("a gap names the timeline", gap.header, "Dragonflight")
-eq("a gap card names the timeline", gap.cardTitle, "No guide for Dragonflight yet")
-eq("a gap offers the zones we have", gap.cardBody, "These are the zones we do have.")
+eq("a gap card names the timeline", gap.cardTitle, "Dragonflight")
+eq("a gap says the guide is coming", gap.cardBody, "Dragonflight timeline guide is coming. Your game is fine.")
 
 local unknown = M.Read("retail", 99, options)
 eq("unknown id has no guide key", unknown.guideKey, nil)
@@ -132,8 +151,13 @@ eq("intro key is midnight", intro.key, "midnight")
 eq("intro header", intro.header, "Midnight intro")
 eq("only the intro guide counts", M.IsIntroGuide(guides.midnight_intro), true)
 eq("a midnight zone is not the intro", M.IsIntroGuide(guides.eversong), false)
-eq("header says no timeline", M.HeaderLine(none), "No timeline")
-eq("header says the timeline name", M.HeaderLine(legion), "The Legion Invasion")
+eq("no pill without a timeline", M.PillText(none) == nil, true)
+eq("priority starts with dragonflight", M.GUIDE_PRIORITY[1].id, "dragonflight_chromie")
+eq("priority then legion", M.GUIDE_PRIORITY[2].id, "legion_chromie")
+eq("priority then bfa", M.GUIDE_PRIORITY[3].short, "BfA")
+eq("priority then shadowlands", M.GUIDE_PRIORITY[4].key, "shadowlands")
+eq("regular guide is not a timeline guide", M.IsTimelineGuide(guides.legion, "legion"), false)
+eq("chromie file is a timeline guide", M.IsTimelineGuide(guides.legion_chromie, "legion"), true)
 
 local bare = {}
 for _, zone in ipairs(M.ZonesWeHave(guidesNoDf, expansions)) do
@@ -192,7 +216,13 @@ check("no singular option call",
 detect = qt[qt.index("function QT:DetectBestExpansion"):qt.index("function QT:Render")]
 check("picker does not use a level ladder", "playerLevel" not in detect and "UnitLevel" not in detect, True)
 check("guide keys match the data", 'key = "dragonflight"' in qt and 'key = "wrath"' in qt, True)
-check("empty card offers zones", "These are the zones we do have." in qt, True)
+check("empty card names the timeline", "timeline guide is coming. Your game is fine." in src, True)
+check("pill is plain text", 'return "Chromie Time · " .. short' in src, True)
+check("pill sits to the right of the zone name", 'pill:SetPoint("LEFT", hdr, "RIGHT", 8, 0)' in qt, True)
+check("pill text is neutral", 'lab:SetTextColor(0.92, 0.90, 0.87, 1)' in qt, True)
+header_fn = qt[qt.index("function QT:DrawZoneHeader"):qt.index("function QT:RenderMiddlePanel")]
+check("pill does not use an expansion logo", "SetAtlas" not in header_fn, True)
+check("empty card still offers the zones we have", "ZonesWeHave" in qt, True)
 check("retail only registration", 'TA.flavor == "retail"' in qt, True)
 
 guide = ui[ui.index("guide = {"):ui.index("character = {")]

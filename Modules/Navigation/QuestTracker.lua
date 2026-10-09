@@ -2612,19 +2612,6 @@ function QT:Render(content, sidebar)
     sideTitle:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, sideY)
     sideY = sideY - 16
 
-    local timelineLine = TA.Chromie and TA.Chromie.HeaderLine(self._timeline) or nil
-    if timelineLine then
-        local sideTime = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        sideTime:SetFont(STANDARD_TEXT_FONT, 9, "")
-        sideTime:SetText(timelineLine)
-        sideTime:SetTextColor(0.55, 0.52, 0.48, 1)
-        sideTime:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, sideY)
-        sideTime:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -6, sideY)
-        sideTime:SetJustifyH("LEFT")
-        sideTime:SetWordWrap(false)
-        sideY = sideY - 14
-    end
-
     -- recommended comes from the options list, not from a level bracket.
     local suggestedKey = nil
     local timeline = self._timeline
@@ -2768,6 +2755,39 @@ function QT:ClassifyGuideExpansion(guide)
     return "starter"
 end
 
+--- Zone name on the left. When a timeline is active, a small neutral pill
+--- sits to its right: "Chromie Time · Legion". The pill is plain text.
+--- It is not gold, and it does not use an expansion logo.
+function QT:DrawZoneHeader(content, track, padL, y, zoneName)
+    local hdr = track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+    hdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+    hdr:SetText(zoneName or "")
+    hdr:SetTextColor(0.92, 0.90, 0.87, 1)
+    hdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    hdr:SetJustifyH("LEFT")
+    hdr:SetWordWrap(false)
+    local pillText = TA.Chromie and TA.Chromie.PillText(self._timeline)
+    if pillText then
+        local pill = track(CreateFrame("Frame", nil, content, "BackdropTemplate"))
+        pill:SetHeight(16)
+        pill:SetWidth((#pillText * 5) + 16)
+        pill:SetPoint("LEFT", hdr, "RIGHT", 8, 0)
+        pill:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+        })
+        pill:SetBackdropColor(0.16, 0.15, 0.14, 0.95)
+        pill:SetBackdropBorderColor(0.40, 0.38, 0.35, 0.70)
+        local lab = pill:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        lab:SetFont(STANDARD_TEXT_FONT, 9, "")
+        lab:SetPoint("CENTER")
+        lab:SetText(pillText)
+        lab:SetTextColor(0.92, 0.90, 0.87, 1)
+    end
+    return y - 22
+end
+
 function QT:RenderMiddlePanel(content)
     if not content then return end
 
@@ -2821,12 +2841,7 @@ function QT:RenderMiddlePanel(content)
     -- A timeline with no guide of its own must not fall through onto some
     -- other expansion's zones. The card names the gap and lists what we have.
     if choice and choice.mode == "missing" and not self._expansionPinned then
-        local hdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
-        hdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
-        hdr:SetText(choice.header or "No timeline")
-        hdr:SetTextColor(0.92, 0.90, 0.87, 1)
-        hdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
-        y = y - 22
+        y = self:DrawZoneHeader(content, Track, padL, y, choice.header or "Timeline")
 
         local cardW = math.min(360, math.max((w > 40) and w or 220, 220))
         local card = Track(CreateFrame("Frame", nil, content, "BackdropTemplate"))
@@ -2857,7 +2872,7 @@ function QT:RenderMiddlePanel(content)
         body:SetWidth(cardW - 28)
         body:SetJustifyH("CENTER")
         body:SetWordWrap(true)
-        body:SetText(choice.cardBody or "These are the zones we do have.")
+        body:SetText(choice.cardBody or "This timeline guide is coming. Your game is fine.")
         body:SetTextColor(0.92, 0.90, 0.87)
         y = y - 116
 
@@ -2895,13 +2910,20 @@ function QT:RenderMiddlePanel(content)
 
     -- ── Gather guides for the selected expansion ─────────────────────────────
     local introOnly = choice and choice.mode == "intro" and not self._expansionPinned
+    local timelineOnly = choice and choice.mode == "timeline" and not self._expansionPinned
     local zoneGuides = {}
     for id, guide in pairs(TA.Guides or {}) do
         local guideExp = self:ClassifyGuideExpansion(guide)
         local skipIntro = introOnly and TA.Chromie and not TA.Chromie.IsIntroGuide(guide)
-        if guideExp == selectedExp and not skipIntro then
+        local show
+        if timelineOnly and TA.Chromie then
+            show = TA.Chromie.IsTimelineGuide(guide, selectedExp)
+        else
+            show = guideExp == selectedExp and not skipIntro
+        end
+        if show then
             local total, completed = 0, 0
-            for _, step in ipairs(guide.steps) do
+            for _, step in ipairs(guide.steps or {}) do
                 if step.questID then
                     total = total + 1
                     if C_QuestLog.IsQuestFlaggedCompleted(step.questID) then
@@ -2925,23 +2947,13 @@ function QT:RenderMiddlePanel(content)
         if def.key == selectedExp then expLabel = def.label; break end
     end
 
-    local timelineName = TA.Chromie and TA.Chromie.HeaderLine(self._timeline) or nil
-    local hdrText
+    local zoneName
     if self._expansionPinned or not (choice and choice.header) then
-        hdrText = expLabel .. " Guides"
+        zoneName = expLabel .. " Guides"
     else
-        hdrText = choice.header
+        zoneName = choice.header
     end
-    if timelineName and timelineName ~= hdrText and timelineName ~= (choice and choice.name) then
-        hdrText = hdrText .. "  ·  " .. timelineName
-    end
-
-    local hdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
-    hdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
-    hdr:SetText(hdrText)
-    hdr:SetTextColor(0.92, 0.90, 0.87, 1)
-    hdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
-    y = y - 22
+    y = self:DrawZoneHeader(content, Track, padL, y, zoneName)
 
     -- ── Empty state ──────────────────────────────────────────────────────────
     if #zoneGuides == 0 then

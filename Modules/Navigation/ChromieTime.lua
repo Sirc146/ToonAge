@@ -51,6 +51,30 @@ M.GUIDE_KEYS = {
     [16] = "dragonflight",
 }
 
+-- Short names for the header pill. The API's own name ("The Legion Invasion")
+-- stays on the timeline for the self-test. The pill says "Legion".
+M.SHORT = {
+    [5]  = "Cataclysm",
+    [6]  = "Outland",
+    [7]  = "Wrath",
+    [8]  = "Pandaria",
+    [9]  = "Draenor",
+    [10] = "Legion",
+    [14] = "Shadowlands",
+    [15] = "BfA",
+    [16] = "Dragonflight",
+}
+
+-- Chromie Time guide files, in the order they are being written.
+-- Chronicler is writing dragonflight_chromie.lua next, then Legion, BfA,
+-- and Shadowlands. A regular expansion guide is not one of these.
+M.GUIDE_PRIORITY = {
+    { key = "dragonflight", id = "dragonflight_chromie", short = "Dragonflight" },
+    { key = "legion",       id = "legion_chromie",       short = "Legion" },
+    { key = "bfa",          id = "bfa_chromie",          short = "BfA" },
+    { key = "shadowlands",  id = "shadowlands_chromie",  short = "Shadowlands" },
+}
+
 local function EachOption(options, fn)
     if type(options) ~= "table" then return end
     if #options > 0 then
@@ -95,8 +119,51 @@ function M.Read(flavor, chromieID, options)
     end
     return {
         skipped = false, active = true, id = id, name = name,
+        short = M.SHORT[id],
         guideKey = M.GUIDE_KEYS[id], intro = false, eligible = eligible,
     }
+end
+
+function M.GuideIdFor(key)
+    for _, row in ipairs(M.GUIDE_PRIORITY) do
+        if row.key == key then return row.id end
+    end
+    if type(key) == "string" and key ~= "" then return key .. "_chromie" end
+    return nil
+end
+
+--- A timeline guide is the Chromie Time file for that expansion
+--- (dragonflight_chromie, and the same shape after it), or a guide that
+--- says so with chromie = true. The ordinary zone guides do not count.
+function M.IsTimelineGuide(guide, key)
+    if type(guide) ~= "table" or type(key) ~= "string" then return false end
+    if guide.id == M.GuideIdFor(key) then return true end
+    if guide.chromie == true and guide.expansion == key then return true end
+    return false
+end
+
+function M.CountTimelineGuides(guides, key)
+    local n = 0
+    for _, g in pairs(guides or {}) do
+        if M.IsTimelineGuide(g, key) then n = n + 1 end
+    end
+    return n
+end
+
+function M.ComingCopy(short)
+    if type(short) ~= "string" or short == "" then
+        return "This timeline guide is coming. Your game is fine."
+    end
+    return short .. " timeline guide is coming. Your game is fine."
+end
+
+--- Plain pill text. Nil when the player is not on a timeline.
+function M.PillText(timeline)
+    if not timeline or timeline.skipped or not timeline.active then return nil end
+    local short = timeline.short
+    if type(short) ~= "string" or short == "" then short = timeline.name end
+    if type(short) ~= "string" or short == "" then return nil end
+    return "Chromie Time · " .. short
 end
 
 function M.IsIntroGuide(guide)
@@ -147,19 +214,24 @@ function M.Resolve(timeline, guides)
         }
     end
     local key = timeline.guideKey
-    local label = timeline.name or ("Chromie Time " .. tostring(timeline.id))
-    local n = (key and M.CountGuides(guides, key, false)) or 0
+    local short = timeline.short
+    if type(short) ~= "string" or short == "" then short = timeline.name end
+    local n = (key and M.CountTimelineGuides(guides, key)) or 0
     if not key or n == 0 then
         return {
             mode = "missing",
             key = nil,
-            header = label,
-            name = label,
-            cardTitle = "No guide for " .. label .. " yet",
-            cardBody = "These are the zones we do have.",
+            header = short,
+            name = timeline.name,
+            short = short,
+            cardTitle = short or "Timeline",
+            cardBody = M.ComingCopy(short),
         }
     end
-    return { mode = "timeline", key = key, header = label, name = label }
+    return {
+        mode = "timeline", key = key, header = short or key,
+        name = timeline.name, short = short,
+    }
 end
 
 function M.ZonesWeHave(guides, expansions)
@@ -171,14 +243,6 @@ function M.ZonesWeHave(guides, expansions)
         end
     end
     return out
-end
-
-function M.HeaderLine(timeline)
-    if not timeline or timeline.skipped then return nil end
-    if timeline.active then
-        return timeline.name or ("Chromie Time " .. tostring(timeline.id))
-    end
-    return "No timeline"
 end
 
 function M.Status(timeline, apiPresent)
