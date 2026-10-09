@@ -85,6 +85,7 @@ Modules\TBC\TalentBuilds.lua
 Modules\TBC\Rotation.lua
 Modules\TBC\Spells.lua
 Modules\TBC\PetCare.lua
+Modules\Gear\Heirlooms.lua
 Modules\TBC\Gear.lua
 Modules\TBC\AutoEquip.lua
 Modules\TBC\PvPAdvisor.lua

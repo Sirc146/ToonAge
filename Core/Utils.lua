@@ -151,6 +151,7 @@ U.TEX_PIP_CHARGED = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8_charge
 
 --- True when a guide step's coordinates were converted and still need a spot-check.
 --- A guide flagged coordsEstimated marks every step that has a coord.
+--- Individual steps (Dragonflight Chromie UNVERIFIED notes) set step.estimated.
 function U.CoordsEstimated(step, guide)
     if type(step) ~= "table" then return false end
     if step.estimated then return true end
@@ -159,6 +160,28 @@ function U.CoordsEstimated(step, guide)
         guide = QT and QT.guideID and TA.Guides and TA.Guides[QT.guideID]
     end
     return type(guide) == "table" and guide.coordsEstimated and step.coord and true or false
+end
+
+-- One phrase for every estimated pin, step ring, and arrow tooltip.
+U.ESTIMATED_TIP = "Approximate. Not checked yet."
+
+--- Hollow ring for an estimated waypoint. Filled square otherwise.
+--- The ring texture is the same mark on the step, the arrow, and map pins.
+function U.PaintWaypointMark(tex, estimated, r, g, b, a)
+    if not tex or not tex.SetTexture then return end
+    if estimated then
+        tex:SetTexture(U.TEX_RING)
+        if tex.SetVertexColor then tex:SetVertexColor(0.92, 0.90, 0.87, a or 1) end
+    else
+        tex:SetTexture("Interface\\Buttons\\WHITE8X8")
+        if tex.SetVertexColor then tex:SetVertexColor(r or 1, g or 1, b or 1, a or 1) end
+    end
+end
+
+function U.AddEstimatedTip(tooltip, step, guide)
+    if not tooltip or not tooltip.AddLine then return end
+    if not U.CoordsEstimated(step, guide) then return end
+    tooltip:AddLine(U.ESTIMATED_TIP, 0.92, 0.90, 0.87)
 end
 
 function U.SafeNum(val, fallback)

@@ -15,6 +15,7 @@
 --   Pins are placed at normalized (x, y) coordinates within that frame.
 
 local TA = ToonAge
+local U  = TA.Utils
 
 local MapPins = {}
 TA:RegisterModule("MapPins", MapPins)
@@ -55,11 +56,17 @@ local function CreatePin(index, parent)
     pin:SetFrameStrata("TOOLTIP")  -- above map elements
     pin:SetFrameLevel(100 + index)
 
-    -- Background dot
+    -- Background dot. Estimated coordinates swap this for the hollow ring.
     local bg = pin:CreateTexture(nil, "BACKGROUND")
     bg:SetTexture("Interface\\Buttons\\WHITE8X8")
     bg:SetAllPoints()
     pin.bg = bg
+
+    local ring = pin:CreateTexture(nil, "ARTWORK")
+    ring:SetAllPoints()
+    ring:SetTexture(U.TEX_RING)
+    ring:Hide()
+    pin._ring = ring
 
     -- Border (slightly larger, dark)
     local border = pin:CreateTexture(nil, "BORDER")
@@ -96,6 +103,7 @@ local function CreatePin(index, parent)
         if self.isCurrent then
             GameTooltip:AddLine("|cFF4AFF7A← Current Step|r")
         end
+        if U and U.AddEstimatedTip then U.AddEstimatedTip(GameTooltip, self.stepData) end
         GameTooltip:Show()
     end)
     pin:SetScript("OnLeave", function()
@@ -223,8 +231,19 @@ function MapPins:Refresh()
             pin:ClearAllPoints()
             pin:SetPoint("CENTER", canvas, "TOPLEFT", cx * canvasW, -cy * canvasH)
 
-            -- Apply color
-            pin.bg:SetVertexColor(color[1], color[2], color[3], color[4] * 0.85)
+            -- Filled square, or the hollow ring when the coordinate is estimated.
+            local estimated = U.CoordsEstimated(step)
+            if estimated then
+                pin.bg:Hide()
+                pin.border:Hide()
+                pin._ring:Show()
+                U.PaintWaypointMark(pin._ring, true)
+            else
+                pin._ring:Hide()
+                pin.bg:Show()
+                pin.border:Show()
+                pin.bg:SetVertexColor(color[1], color[2], color[3], color[4] * 0.85)
+            end
 
             -- Number label
             pin.numLabel:SetText(tostring(relNum))

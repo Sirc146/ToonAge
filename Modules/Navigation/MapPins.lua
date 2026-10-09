@@ -9,6 +9,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+local U  = TA.Utils
 
 local MapPins = {}
 TA:RegisterModule("MapPins", MapPins)
@@ -140,13 +141,17 @@ function TAMapPinMixin:OnAcquired(x, y, step, relNum, color, isCurrent)
     self.relNum   = relNum
     self.isCurrent = isCurrent
 
-    -- Background dot
+    -- Background dot. Estimated coordinates use the hollow ring instead.
     if not self.bg then
         self.bg = self:CreateTexture(nil, "BACKGROUND")
         self.bg:SetTexture("Interface\\Buttons\\WHITE8X8")
         self.bg:SetAllPoints()
     end
-    self.bg:SetVertexColor(color[1], color[2], color[3], color[4] * 0.85)
+    if not self._ring then
+        self._ring = self:CreateTexture(nil, "ARTWORK")
+        self._ring:SetAllPoints()
+        self._ring:SetTexture(U.TEX_RING)
+    end
 
     -- Border (slightly larger, dark)
     if not self.border then
@@ -155,7 +160,20 @@ function TAMapPinMixin:OnAcquired(x, y, step, relNum, color, isCurrent)
         self.border:SetPoint("TOPLEFT", -1, 1)
         self.border:SetPoint("BOTTOMRIGHT", 1, -1)
     end
-    self.border:SetVertexColor(0, 0, 0, 0.7)
+
+    local estimated = U.CoordsEstimated(step)
+    if estimated then
+        self.bg:Hide()
+        self.border:Hide()
+        self._ring:Show()
+        U.PaintWaypointMark(self._ring, true)
+    else
+        self._ring:Hide()
+        self.bg:Show()
+        self.border:Show()
+        self.bg:SetVertexColor(color[1], color[2], color[3], color[4] * 0.85)
+        self.border:SetVertexColor(0, 0, 0, 0.7)
+    end
 
     -- Number label
     if not self.numLabel then
@@ -191,6 +209,7 @@ function TAMapPinMixin:OnMouseEnter()
     if self.isCurrent then
         GameTooltip:AddLine("|cFF4AFF7A← Current Step|r")
     end
+    U.AddEstimatedTip(GameTooltip, self.step)
 
     GameTooltip:Show()
 end

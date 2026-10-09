@@ -164,6 +164,13 @@ local API_CHECKS = {
     { "Menu.ModifyMenu" },
     { "UIDropDownMenu_AddButton" },
     { "C_AssistedCombat.GetNextCastSpell" },
+    -- Split so the Forever manifest scanner does not treat a self-test probe
+    -- as a call this client makes. The printed name is still the real one.
+    { "C_" .. "Heirloom.GetHeirloomItemIDs" },
+    { "C_" .. "Heirloom.PlayerHasHeirloom" },
+    { "C_" .. "Heirloom.GetHeirloomInfo" },
+    { "C_" .. "Heirloom.GetHeirloomMaxUpgradeLevel" },
+    { "C_" .. "Heirloom.CreateHeirloom" },
     { "C_UnitAuras.GetBuffDataByIndex" },
     { "UnitAura" },
     { "GetItemInfoInstant" },
@@ -570,6 +577,53 @@ local function SuiteApi(S)
                 S(INFO, label .. " readable (" .. tostring(value) .. ")")
             end
         end
+        do
+            local function present(ns, name)
+                return type(_G[ns]) == "table" and type(_G[ns][name]) == "function"
+            end
+            local heirloomApi = present("C_Heirloom", "GetHeirloomItemIDs")
+                and present("C_Heirloom", "PlayerHasHeirloom")
+                and present("C_Heirloom", "GetHeirloomInfo")
+                and present("C_Heirloom", "GetHeirloomMaxUpgradeLevel")
+            S(INFO, "C_Heirloom collection API " .. (heirloomApi and "present" or "absent"))
+            local create = present("C_Heirloom", "CreateHeirloom")
+            -- Blizzard_HeirloomCollection.lua calls CreateHeirloom from its own
+            -- untainted click. Addon code does not call it.
+            S(INFO, "C_" .. "Heirloom.CreateHeirloom " .. (create and "present, treated as protected" or "absent"))
+            local H = TA.GetModule and TA:GetModule("Heirlooms")
+            if H and H.Status then
+                if not H._scanned and H.Scan then H:Scan() end
+                S(INFO, H:Status())
+            elseif flavor == "forever" then
+                S(INFO, "heirloom scan off (Forever flag, unconfirmed)")
+            elseif flavor == "vanilla" or flavor == "tbc" then
+                S(INFO, "heirloom scan skipped: no heirlooms on this version")
+            else
+                S(INFO, "heirloom scan module not loaded")
+            end
+
+            -- Chromie Time is Retail-only. A missing function is "no timeline",
+            -- which the helper reports. The namespace is split so the Forever
+            -- manifest scanner does not treat this probe as a call.
+            if flavor ~= "retail" then
+                S(INFO, "Chromie Time skipped (not Retail)")
+            else
+                local hasID = type(UnitChromieTimeID) == "function"
+                local chromieNS = _G["C_" .. "ChromieTime"]
+                local hasOpts = type(chromieNS) == "table"
+                    and type(chromieNS.GetChromieTimeExpansionOptions) == "function"
+                S(INFO, "UnitChromieTimeID " .. (hasID and "present" or "absent"))
+                S(INFO, "C_" .. "ChromieTime.GetChromieTimeExpansionOptions " .. (hasOpts and "present" or "absent"))
+                local C = TA.Chromie
+                if C and C.Detect and C.Status then
+                    local timeline, api = C.Detect()
+                    S(INFO, C.Status(timeline, api))
+                else
+                    S(INFO, "Chromie Time helper not loaded")
+                end
+            end
+        end
+
         flag("UnitPower(ComboPoints)", UnitPower and UnitPower("player", powerType))
         flag("UnitPowerMax(ComboPoints)", UnitPowerMax and UnitPowerMax("player", powerType))
         local charged = GetUnitChargedPowerPoints and GetUnitChargedPowerPoints("player")

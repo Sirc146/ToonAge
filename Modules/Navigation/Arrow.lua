@@ -33,10 +33,25 @@ end
 
 local function GetTargetStep()
     local QT = TA:GetModule("QuestTracker")
-    if not (QT and QT.guideID and QT.stepIdx) then return nil end
+    if not QT then return nil end
+    if QT.CampaignSkipStep then
+        local skip = QT:CampaignSkipStep()
+        if skip then return skip end
+    end
+    if not (QT.guideID and QT.stepIdx) then return nil end
     local guide = TA.Guides and TA.Guides[QT.guideID]
     if not guide then return nil end
     return guide.steps[QT.stepIdx]
+end
+
+local function PaintEstimate(f, step)
+    f._estimateStep = step
+    if not f._estimateRing then return end
+    if step and step.coord and U.CoordsEstimated(step) then
+        f._estimateRing:Show()
+    else
+        f._estimateRing:Hide()
+    end
 end
 
 -- Distance/ETA math lives in Core/Utils.lua (TA.Utils) so QuestTracker.lua
@@ -225,6 +240,7 @@ function Arrow:InitFrame()
         GameTooltip:AddLine("Right-click: Lock / Unlock", 1, 1, 1)
         GameTooltip:AddLine("Scroll: Resize", 1, 1, 1)
         GameTooltip:AddLine("Drag: Move", 0.7, 0.7, 0.7)
+        U.AddEstimatedTip(GameTooltip, fr._estimateStep)
         GameTooltip:Show()
     end)
     f:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -248,6 +264,15 @@ function Arrow:InitFrame()
     arrowTex:SetTexture("Interface\\Minimap\\ROTATING-MINIMAPARROW")
     arrowTex:SetVertexColor(1, 0.82, 0, 1)
     f.arrowTex = arrowTex
+
+    -- Hollow ring around the arrow when this step's coordinate is estimated.
+    local estimateRing = f:CreateTexture(nil, "OVERLAY")
+    estimateRing:SetSize(64, 64)
+    estimateRing:SetPoint("CENTER", arrowTex, "CENTER", 0, 0)
+    estimateRing:SetTexture(U.TEX_RING)
+    estimateRing:SetVertexColor(0.92, 0.90, 0.87, 0.95)
+    estimateRing:Hide()
+    f._estimateRing = estimateRing
 
     -- Grey arrow (inactive — no coord or wrong zone)
     local greyTex = f:CreateTexture(nil, "ARTWORK")
@@ -318,6 +343,7 @@ function Arrow:Tick(f)
     -- ── MANUAL WAYPOINT (from /ta way) takes priority over guide step ──
     local coordMap, cx, cy, label
     local isManualWP = false
+    PaintEstimate(f, nil)
 
     if self.manualWaypoint then
         coordMap = self.manualWaypoint.map
@@ -332,6 +358,7 @@ function Arrow:Tick(f)
             return
         end
         local step = GetTargetStep()
+        PaintEstimate(f, (step and step.coord) and step or nil)
 
         if not step or not step.coord then
             f.arrowTex:Hide()
