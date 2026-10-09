@@ -4,9 +4,11 @@
 -- ── WHAT THIS TAB IS ──────────────────────────────────────────────────────
 -- ══════════════════════════════════════════════════════════════════════════
 --
--- A readout of your talent trees: points spent per tree, every talent you have
--- ranked, and -- the part that needs no researched data at all -- which nodes
--- you could spend a point on right now.
+-- The talent tree as a grid. Columns and rows come from the distinct posX and
+-- posY values on the trait nodes, in rank order, so the tree scales to the
+-- window instead of scrolling sideways. A node is locked from its own
+-- condition, not from the row it sits on. The tab does not say which talent
+-- is best.
 --
 -- WHY IT WAS REWRITTEN. The previous version read GetNumTalentTabs /
 -- GetTalentInfo, the Vanilla-era globals. Forever's talent window is the
@@ -71,36 +73,6 @@ end
 local function ActiveConfig()
     if not (C_ClassTalents and C_ClassTalents.GetActiveConfigID) then return nil end
     return Num(Try(C_ClassTalents.GetActiveConfigID))
-end
-
---- Tree display names.
----
---- C_Traits hands back tree IDs, not names -- the "Arcane / Fire / Frost"
---- headings in Blizzard's own window come from the specialisation list. So the
---- names are taken from there, and ONLY when the count matches the number of
---- trees; otherwise the trees are numbered. A mislabelled tree is worse than an
---- unlabelled one.
-local function TreeNames(count)
-    local names = {}
-    -- Forever ships ONE combined tree per class (measured 2026-09-29/30:
-    -- configInfo.treeIDs has a single entry for all 9 classes, 50-54 nodes).
-    -- The spec list is absent here (GetNumSpecializations/GetSpecializationInfo),
-    -- so the honest label for a single tree is the class itself.
-    if count == 1 then
-        local className = Try(UnitClass, "player")
-        if className and not (issecretvalue and issecretvalue(className)) then
-            names[1] = tostring(className) .. " talents"
-        end
-        return names
-    end
-    local n = Num(Try(GetNumSpecializations))
-    if n and n == count then
-        for i = 1, n do
-            local _, specName = Try(GetSpecializationInfo, i)
-            names[i] = specName and tostring(specName) or nil
-        end
-    end
-    return names
 end
 
 --- Walk one tree.
@@ -183,78 +155,537 @@ local function TreeCurrency(configID, treeID)
     return any and total or nil
 end
 
--- ─── SECTIONS ────────────────────────────────────────────────────────────
+-- ─── GRID ──────────────────────────────────────────────────────────────────
+--
+-- Forever's measured tree has 12 distinct posX values and 7 distinct posY
+-- values. Cells are placed by the rank of those coordinates, not by the raw
+-- pixel gap, and the whole grid shrinks to the content width.
+--
+-- Node size follows the tab-bar window breakpoints (style guide §5):
+--   window >= 740  -> 40 px   (Full)
+--   window >= 676  -> 36 px   (Compact)
+--   below 676      -> 28 px   (Glyph; the window itself stops at 568)
+--
+-- Available and maxed colours live in M.Theme only. Gold is hover and
+-- selection, never a rank state. Gilder's talent_* textures are not in
+-- Media/frame yet, so the node is a flat square until they arrive.
 
-local function RenderTrees(content, y, trees, totalSpent, unspent)
-    y = L:SectionHeader(content, y, "Talents",
-        string.format("%d point%s spent.", totalSpent, totalSpent == 1 and "" or "s"))
+-- Same window cuts as the tab bar.
+local BREAK_FULL    = 740
+local BREAK_COMPACT = 676
+local NODE_FULL     = 40
+local NODE_COMPACT  = 36
+local NODE_GLYPH    = 28
 
-    -- Points per tree as bars against the group's own scale: the comparison
-    -- that matters is between your three trees, and there is no cap to measure
-    -- against -- the same reasoning as the attribute bars.
-    local counts = {}
-    for _, t in ipairs(trees) do counts[#counts + 1] = t.spent end
-    local scale = L.StatScale and L:StatScale(counts) or nil
+-- Gap and the "30 pts" gutter, before the grid is scaled down to fit.
+local GRID_GAP   = 8
+local LABEL_W    = 48
 
-    for _, t in ipairs(trees) do
-        if scale and L.StatBar then
-            y = L:StatBar(content, y, {
-                label = t.name, value = t.spent, scale = scale, text = tostring(t.spent),
-            })
-        else
-            y = L:DataRow(content, y, { label = t.name, value = tostring(t.spent) })
-        end
-    end
+M.LINE_PX = 2
 
-    if unspent and unspent > 0 then
-        y = L:Paragraph(content, y,
-            string.format("%d unspent point%s.", unspent, unspent == 1 and "" or "s"),
-            { color = L.C_WARNING })
-    end
-    return y
+M.Theme = {
+    available = { 70 / 255, 200 / 255, 106 / 255 },   -- #46C86A green
+    partial   = { 1, 1, 1 },                           -- white frame
+    maxed     = { 251 / 255, 224 / 255, 143 / 255 },   -- #FBE08F pale yellow
+    locked    = { 0.45, 0.43, 0.40 },
+    gold      = { 232 / 255, 179 / 255, 90 / 255 },    -- #E8B35A hover and selection
+    highlight = { 1, 0.957, 0.745 },                   -- white-gold hairline
+    line      = { 0.62, 0.58, 0.48, 0.90 },
+}
+
+local function Secret(v)
+    if v == nil then return false end
+    if U and U.IsSecret and U.IsSecret(v) then return true end
+    if issecretvalue and issecretvalue(v) then return true end
+    return false
 end
 
-local function RenderRanked(content, y, trees)
-    for _, t in ipairs(trees) do
-        if #t.ranked > 0 then
-            y = L:Divider(content, y)
-            y = L:SectionHeader(content, y, t.name,
-                string.format("%d point%s", t.spent, t.spent == 1 and "" or "s"))
-            for _, r in ipairs(t.ranked) do
-                y = L:DataRow(content, y, {
-                    label = r.name,
-                    value = string.format("%d / %d", r.rank, r.max),
-                })
+local function Plain(v)
+    if v == nil or Secret(v) then return nil end
+    local ok, s = pcall(tostring, v)
+    if not ok then return nil end
+    return tonumber(s)
+end
+
+local function Round(n)
+    return math.floor(n + 0.5)
+end
+
+function M.NodePx(windowWidth)
+    local w = tonumber(windowWidth) or 900
+    if w >= BREAK_FULL then return NODE_FULL end
+    if w >= BREAK_COMPACT then return NODE_COMPACT end
+    return NODE_GLYPH
+end
+
+function M.Header(spent, unspent)
+    spent   = math.floor(tonumber(spent) or 0)
+    unspent = math.floor(tonumber(unspent) or 0)
+    local left
+    if spent == 1 then
+        left = "1 point spent"
+    else
+        left = string.format("%d points spent", spent)
+    end
+    return left .. " · " .. string.format("%d to spend", unspent)
+end
+
+--- "2/5" once a multi-rank node has a point in it. Rank 0 stays bare.
+function M.Badge(rank, max)
+    rank = tonumber(rank) or 0
+    max  = tonumber(max) or 0
+    if max <= 1 or rank <= 0 then return nil end
+    return string.format("%d/%d", rank, max)
+end
+
+--- Rank wins over the gate: a bought rank is partial or maxed. Gold is not a
+--- state; hover and selection paint over whichever of these is current.
+function M.NodeState(rank, max, locked)
+    rank = tonumber(rank) or 0
+    max  = tonumber(max) or 0
+    if max > 0 and rank >= max then return "maxed" end
+    if rank > 0 then return "partial" end
+    if locked then return "locked" end
+    return "available"
+end
+
+local function Ranks(values)
+    local seen, list = {}, {}
+    for _, v in ipairs(values) do
+        if type(v) == "number" then
+            local r = Round(v)
+            if not seen[r] then
+                seen[r] = true
+                list[#list + 1] = r
             end
         end
     end
-    return y
+    table.sort(list)
+    local map = {}
+    for i, v in ipairs(list) do map[v] = i end
+    return map, list
 end
 
-local function RenderAvailable(content, y, trees, unspent)
-    local any = false
-    for _, t in ipairs(trees) do if #t.available > 0 then any = true break end end
-    if not any then return y end
+local function Usable(nodes)
+    local out, xs, ys = {}, {}, {}
+    if type(nodes) ~= "table" then return out, xs, ys end
+    for _, n in ipairs(nodes) do
+        if type(n) == "table" and type(n.posX) == "number" and type(n.posY) == "number" then
+            out[#out + 1] = n
+            xs[#xs + 1] = n.posX
+            ys[#ys + 1] = n.posY
+        end
+    end
+    return out, xs, ys
+end
 
-    y = L:Divider(content, y)
-    y = L:SectionHeader(content, y, "Open to you now",
-        "Nodes the client says a point can go into.")
+local function ReqOf(cond)
+    if type(cond) ~= "table" then return nil end
+    local req = cond.spentRequired
+    if type(req) ~= "number" then req = cond.spentAmountRequired end
+    if type(req) ~= "number" then return nil end
+    return req
+end
 
-    for _, t in ipairs(trees) do
-        for _, a in ipairs(t.available) do
-            -- One tree: the tree name repeats on every row and adds nothing.
-            local value = (#trees > 1) and t.name or ""
-            y = L:DataRow(content, y, { label = a.name, value = value, status = "dim" })
+--- Lowest spent-requirement on this node, whether or not it is already met.
+local function MinReq(node, conds)
+    if type(node.conditionIDs) ~= "table" then return nil end
+    local best
+    for _, cid in ipairs(node.conditionIDs) do
+        local req = ReqOf(conds and conds[cid])
+        if req and (not best or req < best) then best = req end
+    end
+    return best
+end
+
+--- Locked when any of this node's own conditions is unmet. A neighbour on
+--- the same row does not lock it. Returns locked, lowest unmet amount.
+local function NodeGate(node, conds, spent)
+    if type(node.conditionIDs) ~= "table" then return false, nil end
+    local locked, lowest = false, nil
+    for _, cid in ipairs(node.conditionIDs) do
+        local c = conds and conds[cid]
+        local req = ReqOf(c)
+        local met
+        if type(c) == "table" then met = c.isMet end
+        -- A false isMet must stay false. `and/or` would swallow it.
+        if met ~= true and met ~= false then
+            if req and type(spent) == "number" then met = spent >= req end
+        end
+        if met == false then
+            locked = true
+            if req and (not lowest or req < lowest) then lowest = req end
+        end
+    end
+    return locked, lowest
+end
+
+--- posY increases downward when the cheapest gate sits above the dearest
+--- one (smaller posY on the smaller requirement). No spread: leave it
+--- downward, which is the trait UI's own axis. Returns yDown.
+local function YIncreasesDown(nodes, conds)
+    local lowReq, highReq
+    for _, n in ipairs(nodes) do
+        local req = MinReq(n, conds)
+        if req then
+            if not lowReq or req < lowReq then lowReq = req end
+            if not highReq or req > highReq then highReq = req end
+        end
+    end
+    if not lowReq or not highReq or lowReq == highReq then return true end
+    local function avg(req)
+        local sum, n = 0, 0
+        for _, node in ipairs(nodes) do
+            if MinReq(node, conds) == req then
+                sum = sum + node.posY
+                n = n + 1
+            end
+        end
+        if n == 0 then return nil end
+        return sum / n
+    end
+    local a, b = avg(lowReq), avg(highReq)
+    if not a or not b or a == b then return true end
+    return a < b
+end
+
+local function GateReport(nodes, conds)
+    local bucket = {}
+    for _, n in ipairs(nodes) do
+        if type(n.conditionIDs) == "table" and n.id ~= nil then
+            for _, cid in ipairs(n.conditionIDs) do
+                local key = cid
+                bucket[key] = bucket[key] or {}
+                bucket[key][#bucket[key] + 1] = n.id
+            end
+        end
+    end
+    local ids = {}
+    for cid in pairs(bucket) do ids[#ids + 1] = cid end
+    table.sort(ids, function(a, b)
+        local sa = ReqOf(conds and conds[a]) or 999999
+        local sb = ReqOf(conds and conds[b]) or 999999
+        if sa ~= sb then return sa < sb end
+        if type(a) == "number" and type(b) == "number" then return a < b end
+        return tostring(a) < tostring(b)
+    end)
+    local gates = {}
+    for _, cid in ipairs(ids) do
+        local who = bucket[cid]
+        table.sort(who, function(a, b)
+            if type(a) == "number" and type(b) == "number" then return a < b end
+            return tostring(a) < tostring(b)
+        end)
+        gates[#gates + 1] = {
+            id = cid,
+            spent = ReqOf(conds and conds[cid]),
+            nodes = who,
+        }
+    end
+    return gates
+end
+
+local function JoinIds(list)
+    local parts = {}
+    for i, id in ipairs(list) do parts[i] = tostring(id) end
+    if #parts == 0 then return "none" end
+    return table.concat(parts, ", ")
+end
+
+function M.Diagnose(nodes, conditions)
+    local usable, xs, ys = Usable(nodes)
+    local _, xlist = Ranks(xs)
+    local _, ylist = Ranks(ys)
+    local yDown = YIncreasesDown(usable, conditions)
+    local gates = GateReport(usable, conditions)
+    local lines = {
+        string.format("talent grid: %d columns, %d rows; posY increases %s%s",
+            #xlist, #ylist,
+            yDown and "downward" or "upward",
+            yDown and "" or "; layout flipped"),
+    }
+    for _, g in ipairs(gates) do
+        local req = g.spent and (tostring(g.spent) .. " points") or "an unknown amount"
+        lines[#lines + 1] = string.format(
+            "talent gate condition %s requires %s, gates nodes %s",
+            tostring(g.id), req, JoinIds(g.nodes))
+    end
+    return {
+        yDown = yDown,
+        flipped = not yDown,
+        columns = #xlist,
+        rows = #ylist,
+        gates = gates,
+        lines = lines,
+    }
+end
+
+local function Fit(nodePx, cols, avail)
+    local natural = LABEL_W + cols * nodePx + math.max(cols - 1, 0) * GRID_GAP
+    local scale = 1
+    if avail and avail > 0 and natural > avail then
+        scale = avail / natural
+    end
+    local draw = math.max(1, math.floor(nodePx * scale + 0.5))
+    local gap = math.max(0, math.floor(GRID_GAP * scale + 0.5))
+    local labelW = math.max(0, math.floor(LABEL_W * scale + 0.5))
+    local function width()
+        return labelW + cols * draw + math.max(cols - 1, 0) * gap
+    end
+    local w = width()
+    -- Rounding can push the grid a pixel or two past the content width.
+    -- Shrink the gap, then the nodes, then the gutter, so it never needs a
+    -- horizontal scroll. The 568px window is the narrowest this has to fit.
+    if avail and avail > 0 then
+        while w > avail and gap > 0 do
+            gap = gap - 1
+            w = width()
+        end
+        while w > avail and draw > 1 do
+            draw = draw - 1
+            w = width()
+        end
+        while w > avail and labelW > 0 do
+            labelW = labelW - 1
+            w = width()
+        end
+    end
+    return draw, gap, labelW, w, scale
+end
+
+--- Place every node. Row 1 is the top of the tree. An unmet gate on a node
+--- locks that node only. The row label is the lowest unmet gate on the row,
+--- or nil when the row has none.
+function M.Layout(nodes, conditions, opts)
+    opts = opts or {}
+    conditions = conditions or {}
+    local usable, xs, ys = Usable(nodes)
+    local xmap, xlist = Ranks(xs)
+    local ymap, ylist = Ranks(ys)
+    local diag = M.Diagnose(usable, conditions)
+    local cols, rows = #xlist, #ylist
+    local nodePx = M.NodePx(opts.windowWidth)
+    local draw, gap, labelW, width, scale = 0, 0, 0, 0, 1
+    if cols > 0 then
+        draw, gap, labelW, width, scale = Fit(nodePx, cols, opts.availWidth)
+    end
+    local height = 0
+    if rows > 0 then
+        height = rows * draw + math.max(rows - 1, 0) * gap
+    end
+
+    local cells = {}
+    local rowUnmet = {}
+    for _, n in ipairs(usable) do
+        local col = xmap[Round(n.posX)]
+        local yRank = ymap[Round(n.posY)]
+        local row = diag.yDown and yRank or (rows + 1 - yRank)
+        local locked, unmet = NodeGate(n, conditions, opts.spent)
+        local rank = tonumber(n.rank) or 0
+        local max = tonumber(n.max) or 0
+        cells[#cells + 1] = {
+            id = n.id,
+            col = col,
+            row = row,
+            x = labelW + (col - 1) * (draw + gap),
+            y = (row - 1) * (draw + gap),
+            w = draw,
+            h = draw,
+            rank = rank,
+            max = max,
+            locked = locked,
+            unmet = unmet,
+            state = M.NodeState(rank, max, locked),
+            badge = M.Badge(rank, max),
+            name = n.name,
+            spellID = n.spellID,
+            texture = n.texture,
+        }
+        if unmet and (not rowUnmet[row] or unmet < rowUnmet[row]) then
+            rowUnmet[row] = unmet
+        end
+    end
+    table.sort(cells, function(a, b)
+        if a.row ~= b.row then return a.row < b.row end
+        if a.col ~= b.col then return a.col < b.col end
+        return tostring(a.id) < tostring(b.id)
+    end)
+
+    local rowLabels = {}
+    for row, amount in pairs(rowUnmet) do
+        rowLabels[row] = string.format("%d pts", amount)
+    end
+
+    local byID = {}
+    for _, cell in ipairs(cells) do
+        if cell.id ~= nil and not byID[cell.id] then byID[cell.id] = cell end
+    end
+    local lines, seen = {}, {}
+    for _, n in ipairs(usable) do
+        if type(n.edges) == "table" and byID[n.id] then
+            for _, e in ipairs(n.edges) do
+                local tid = type(e) == "table" and (e.targetNode or e.targetNodeID) or e
+                local other = byID[tid]
+                if other and tid ~= n.id then
+                    local a, b = n.id, tid
+                    if tostring(b) < tostring(a) then a, b = b, a end
+                    local key = tostring(a) .. ":" .. tostring(b)
+                    if not seen[key] then
+                        seen[key] = true
+                        local from, to = byID[a], byID[b]
+                        lines[#lines + 1] = {
+                            a = a, b = b,
+                            x1 = from.x + draw / 2, y1 = from.y + draw / 2,
+                            x2 = to.x + draw / 2,   y2 = to.y + draw / 2,
+                        }
+                    end
+                end
+            end
         end
     end
 
-    y = L:Paragraph(content, y,
-        (unspent and unspent > 0)
-            and "These are the nodes your unspent points can reach. Which of them is worth taking is not something this addon claims to know."
-            or  "Listed for when you next have a point. Availability is the client's answer; value is not.",
-        { color = L.C_DIM })
-    return y
+    return {
+        nodePx = nodePx,
+        drawPx = draw,
+        gap = gap,
+        labelWidth = labelW,
+        scale = scale,
+        width = width,
+        height = height,
+        columns = cols,
+        rows = rows,
+        yDown = diag.yDown,
+        flipped = diag.flipped,
+        cells = cells,
+        rowLabels = rowLabels,
+        lines = lines,
+        linePx = M.LINE_PX,
+        gates = diag.gates,
+        report = diag.lines,
+    }
 end
+
+--- Live tree: one record per node, plus the condition map those nodes cite.
+--- Returns nodes, conditions, err, spent, unspent.
+function M.ReadGrid()
+    local configID = ActiveConfig()
+    if not configID then return nil, nil, "no config" end
+    if not (C_Traits and C_Traits.GetConfigInfo and C_Traits.GetTreeNodes) then
+        return nil, nil, "traits unavailable"
+    end
+    local cfg = Try(C_Traits.GetConfigInfo, configID)
+    local treeIDs = type(cfg) == "table" and cfg.treeIDs
+    if type(treeIDs) ~= "table" or #treeIDs == 0 then
+        return nil, nil, "no tree"
+    end
+
+    local nodes, conds = {}, {}
+    local spent, unspent, sawCurrency = 0, 0, false
+
+    local function learnCondition(cid)
+        if conds[cid] or not (C_Traits.GetConditionInfo) then return end
+        local ci = Try(C_Traits.GetConditionInfo, configID, cid)
+        if type(ci) ~= "table" then
+            conds[cid] = {}
+            return
+        end
+        local req = Plain(ci.spentRequired)
+        if req == nil then req = Plain(ci.spentAmountRequired) end
+        local met = ci.isMet
+        if Secret(met) or (met ~= true and met ~= false) then met = nil end
+        conds[cid] = { spentRequired = req, isMet = met }
+    end
+
+    for _, treeID in ipairs(treeIDs) do
+        local list = Try(C_Traits.GetTreeNodes, treeID)
+        if type(list) == "table" then
+            for _, nodeID in ipairs(list) do
+                local info = Try(C_Traits.GetNodeInfo, configID, nodeID)
+                if type(info) == "table" then
+                    local posX, posY = Plain(info.posX), Plain(info.posY)
+                    if posX and posY then
+                        local rank = Plain(info.activeRank) or Plain(info.ranksPurchased) or 0
+                        local max = Plain(info.maxRanks) or 0
+                        spent = spent + rank
+
+                        local entryID = info.activeEntry and not Secret(info.activeEntry) and info.activeEntry.entryID
+                        if Secret(entryID) then entryID = nil end
+                        if not entryID and type(info.entryIDs) == "table" then
+                            entryID = info.entryIDs[1]
+                            if Secret(entryID) then entryID = nil end
+                        end
+                        local name, spellID, texture
+                        if entryID and C_Traits.GetEntryInfo then
+                            local entry = Try(C_Traits.GetEntryInfo, configID, entryID)
+                            if type(entry) == "table" and entry.definitionID and C_Traits.GetDefinitionInfo then
+                                local def = Try(C_Traits.GetDefinitionInfo, entry.definitionID)
+                                if type(def) == "table" then
+                                    spellID = Plain(def.spellID)
+                                    name = SpellName(spellID) or (def.overrideName and not Secret(def.overrideName) and tostring(def.overrideName))
+                                    if spellID and C_Spell and C_Spell.GetSpellTexture then
+                                        local tex = Try(C_Spell.GetSpellTexture, spellID)
+                                        if tex and not Secret(tex) then texture = tex end
+                                    end
+                                end
+                            end
+                        end
+
+                        local conditionIDs = {}
+                        if type(info.conditionIDs) == "table" then
+                            for _, cid in ipairs(info.conditionIDs) do
+                                local id = Plain(cid)
+                                if id then
+                                    conditionIDs[#conditionIDs + 1] = id
+                                    learnCondition(id)
+                                end
+                            end
+                        end
+                        local edges = {}
+                        if type(info.visibleEdges) == "table" then
+                            for _, e in ipairs(info.visibleEdges) do
+                                if type(e) == "table" then
+                                    local tid = Plain(e.targetNode) or Plain(e.targetNodeID)
+                                    if tid then
+                                        edges[#edges + 1] = { targetNode = tid, isActive = (e.isActive == true) }
+                                    end
+                                else
+                                    local tid = Plain(e)
+                                    if tid then edges[#edges + 1] = { targetNode = tid } end
+                                end
+                            end
+                        end
+
+                        local id = Plain(nodeID) or nodeID
+                        nodes[#nodes + 1] = {
+                            id = id, posX = posX, posY = posY,
+                            rank = rank, max = max,
+                            name = name or ("Node " .. tostring(id)),
+                            spellID = spellID, texture = texture,
+                            conditionIDs = conditionIDs, edges = edges,
+                        }
+                    end
+                end
+            end
+        end
+        local cur = TreeCurrency(configID, treeID)
+        if cur then
+            unspent = unspent + cur
+            sawCurrency = true
+        end
+    end
+    return nodes, conds, nil, spent, sawCurrency and unspent or 0
+end
+
+function M.StatusLine()
+    local ok, nodes, conds, err = pcall(M.ReadGrid)
+    if not ok then return "Talents: grid could not be read" end
+    if not nodes then return "Talents: " .. tostring(err or "no tree") end
+    local diag = M.Diagnose(nodes, conds)
+    local first = diag.lines and diag.lines[1] or "talent grid"
+    return "Talents: " .. first .. string.format("; %d gates", #(diag.gates or {}))
+end
+
+-- ─── SECTIONS ────────────────────────────────────────────────────────────
 
 local function RenderNoTraits(content, y, level)
     y = L:SectionHeader(content, y, "Talents")
@@ -275,16 +706,173 @@ local function RenderNoTraits(content, y, level)
     return y
 end
 
-local function RenderFooter(content, y)
-    y = L:Divider(content, y)
-    y = L:SectionHeader(content, y, "Not here yet")
-    y = L:Paragraph(content, y,
-        "Recommended builds need to know what a talent is worth in THIS game, "
-        .. "and no verified numbers exist for it. What can be built honestly is "
-        .. "measured rather than guessed: the recorder writes down what you and "
-        .. "other characters actually pick, and a recommendation grown from that "
-        .. "is observation, not invention.")
-    return y
+-- ─── DRAW ──────────────────────────────────────────────────────────────────
+-- talent_* art is pending. Each node is a bordered square; the spell icon
+-- sits inside it when the client has one. Lines are CreateLine at 2px.
+
+local EDGE = {
+    bgFile   = "Interface\\Buttons\\WHITE8X8",
+    edgeFile = "Interface\\Buttons\\WHITE8X8",
+    edgeSize = 1,
+}
+local EDGE_HOVER = {
+    bgFile   = "Interface\\Buttons\\WHITE8X8",
+    edgeFile = "Interface\\Buttons\\WHITE8X8",
+    edgeSize = 2,
+}
+
+local function PaintNode(btn)
+    local theme = M.Theme
+    local rgb = theme[btn.state] or theme.available
+    local hot = btn._hover or btn.id == M.selectedID
+    if hot then rgb = theme.gold end
+    btn:SetBackdrop(hot and EDGE_HOVER or EDGE)
+    btn:SetBackdropColor(0.06, 0.06, 0.07, btn.state == "locked" and 0.55 or 0.92)
+    btn:SetBackdropBorderColor(rgb[1], rgb[2], rgb[3], 1)
+    if btn.highlight then
+        if hot then btn.highlight:Show() else btn.highlight:Hide() end
+    end
+    if btn.glow then
+        if hot then btn.glow:Show() else btn.glow:Hide() end
+    end
+    if btn.icon then
+        btn.icon:SetAlpha(btn.state == "locked" and 0.45 or 1)
+        if btn.icon.SetDesaturated then btn.icon:SetDesaturated(btn.state == "locked") end
+    end
+end
+
+local function DrawGrid(content, y, plan)
+    local holder = CreateFrame("Frame", nil, content)
+    local width  = math.max(1, math.floor(plan.width + 0.5))
+    local height = math.max(1, math.floor(plan.height + 0.5))
+    holder:SetSize(width, height)
+    holder:SetPoint("TOPLEFT", content, "TOPLEFT", L.PAD, y)
+
+    local buttons = {}
+    for _, cell in ipairs(plan.cells) do
+        local btn = CreateFrame("Button", nil, holder, "BackdropTemplate")
+        btn:SetSize(math.floor(cell.w), math.floor(cell.h))
+        btn:SetPoint("TOPLEFT", holder, "TOPLEFT", math.floor(cell.x), -math.floor(cell.y))
+        btn.id = cell.id
+        btn.state = cell.state
+        btn._baseLevel = btn:GetFrameLevel()
+
+        local icon = btn:CreateTexture(nil, "ARTWORK")
+        icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -3)
+        icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
+        if cell.texture then
+            icon:SetTexture(cell.texture)
+        else
+            -- Placeholder until Media/frame/talent_* arrives.
+            icon:SetColorTexture(0.22, 0.24, 0.26, 1)
+        end
+        btn.icon = icon
+
+        local glow = CreateFrame("Frame", nil, holder)
+        glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -3, 3)
+        glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 3, -3)
+        glow:SetFrameLevel(btn._baseLevel)
+        local gtex = glow:CreateTexture(nil, "BACKGROUND")
+        gtex:SetAllPoints()
+        local gold = M.Theme.gold
+        gtex:SetColorTexture(gold[1], gold[2], gold[3], 0.35)
+        if gtex.SetBlendMode then gtex:SetBlendMode("ADD") end
+        glow:Hide()
+        btn.glow = glow
+
+        local hi = btn:CreateTexture(nil, "OVERLAY")
+        hi:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
+        hi:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
+        hi:SetHeight(1)
+        local h = M.Theme.highlight
+        hi:SetColorTexture(h[1], h[2], h[3], 0.9)
+        hi:Hide()
+        btn.highlight = hi
+
+        if cell.badge then
+            local badge = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            badge:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 2)
+            badge:SetText(cell.badge)
+            badge:SetTextColor(1, 1, 1, 1)
+        end
+
+        local function raise()
+            local top = (holder:GetFrameLevel() or 0) + 20
+            btn:SetFrameLevel(top)
+            glow:SetFrameLevel(top)
+        end
+        local function restore()
+            btn:SetFrameLevel(btn._baseLevel)
+            glow:SetFrameLevel(btn._baseLevel)
+        end
+
+        btn:SetScript("OnEnter", function(self)
+            self._hover = true
+            raise()
+            PaintNode(self)
+            if GameTooltip then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(cell.name or "Talent")
+                if cell.badge then GameTooltip:AddLine(cell.badge, 1, 1, 1) end
+                if cell.unmet then
+                    GameTooltip:AddLine("Requires " .. cell.unmet .. " points spent", 0.85, 0.75, 0.45)
+                end
+                GameTooltip:Show()
+            end
+        end)
+        btn:SetScript("OnLeave", function(self)
+            self._hover = false
+            restore()
+            PaintNode(self)
+            if GameTooltip then GameTooltip:Hide() end
+        end)
+        btn:SetScript("OnClick", function(self)
+            if M.selectedID == self.id then M.selectedID = nil else M.selectedID = self.id end
+            for _, other in pairs(buttons) do PaintNode(other) end
+        end)
+        PaintNode(btn)
+        buttons[cell.id] = btn
+    end
+
+    -- Lines sit under the nodes and use the node's own center, so a resize
+    -- of the button still meets in the middle. Thickness stays 2px.
+    if holder.CreateLine then
+        for _, ln in ipairs(plan.lines) do
+            local a, b = buttons[ln.a], buttons[ln.b]
+            if a and b then
+                local ok, line = pcall(holder.CreateLine, holder, nil, "BACKGROUND")
+                if ok and line then
+                    pcall(function()
+                        line:SetThickness(M.LINE_PX)
+                        local c = M.Theme.line
+                        if line.SetColorTexture then
+                            line:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
+                        end
+                        line:SetStartPoint("CENTER", a)
+                        line:SetEndPoint("CENTER", b)
+                    end)
+                end
+            end
+        end
+    end
+
+    for row, text in pairs(plan.rowLabels) do
+        local sample = nil
+        for _, cell in ipairs(plan.cells) do
+            if cell.row == row then sample = cell break end
+        end
+        if sample then
+            local fs = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, -math.floor(sample.y))
+            fs:SetSize(math.floor(plan.labelWidth), math.floor(sample.h))
+            fs:SetJustifyH("CENTER")
+            fs:SetJustifyV("MIDDLE")
+            fs:SetText(text)
+            fs:SetTextColor(0.62, 0.59, 0.55, 1)
+        end
+    end
+
+    return y - height - 8
 end
 
 -- ─── RENDER ────────────────────────────────────────────────────────────────
@@ -309,52 +897,30 @@ function M:Render(content, side)
     local level = Num(Try(UnitLevel, "player")) or 0
     local y = -8
 
-    local configID = ActiveConfig()
-    local cfg = configID and C_Traits and C_Traits.GetConfigInfo
-                and Try(C_Traits.GetConfigInfo, configID) or nil
-    local treeIDs = (type(cfg) == "table" and type(cfg.treeIDs) == "table") and cfg.treeIDs or nil
-
-    if not treeIDs or #treeIDs == 0 then
+    local nodes, conds, err, spent, unspent = M.ReadGrid()
+    if not nodes or #nodes == 0 then
         y = RenderNoTraits(content, y, level)
-        y = RenderFooter(content, y)
+        if err then
+            y = L:Paragraph(content, y, tostring(err), { color = L.C_DIM })
+        end
         L:Finish(content, y)
         return
     end
 
-    local names = TreeNames(#treeIDs)
-    local trees, totalSpent, unspent = {}, 0, nil
-    for i, treeID in ipairs(treeIDs) do
-        local ranked, available, spent = ReadTree(configID, treeID)
-        trees[#trees + 1] = {
-            name = names[i] or ("Tree " .. i),
-            ranked = ranked, available = available, spent = spent,
-        }
-        totalSpent = totalSpent + spent
-        local cur = TreeCurrency(configID, treeID)
-        if cur then unspent = (unspent or 0) + cur end
+    local windowW = 900
+    if TA.UI and TA.UI.frame and TA.UI.frame.GetWidth then
+        local w = TA.UI.frame:GetWidth()
+        if type(w) == "number" and w > 0 then windowW = w end
     end
+    local plan = M.Layout(nodes, conds, {
+        windowWidth = windowW,
+        availWidth = L:Width(content),
+        spent = spent,
+    })
+    M._report = plan.report
 
-    -- One combined tree: the spec sections are columns inside it, split by
-    -- C_Traits (points per section). Spellbook tabs are not those sections.
-    local headerTrees = trees
-    if #treeIDs == 1 and TA.Compat and TA.Compat.ReadTraitSections then
-        local sections = TA.Compat.ReadTraitSections()
-        if type(sections) == "table" and #sections > 1 then
-            headerTrees, totalSpent = {}, 0
-            for _, s in ipairs(sections) do
-                headerTrees[#headerTrees + 1] = {
-                    name = s.name or ("Section " .. s.index),
-                    spent = s.points or 0,
-                }
-                totalSpent = totalSpent + (s.points or 0)
-            end
-        end
-    end
-
-    y = RenderTrees(content, y, headerTrees, totalSpent, unspent)
-    y = RenderRanked(content, y, trees)
-    y = RenderAvailable(content, y, trees, unspent)
-    y = RenderFooter(content, y)
+    y = L:SectionHeader(content, y, M.Header(spent, unspent))
+    y = DrawGrid(content, y, plan)
     L:Finish(content, y)
 end
 

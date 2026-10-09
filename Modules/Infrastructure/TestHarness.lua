@@ -842,6 +842,30 @@ local function SuiteApi(S)
         end
     end
 
+    -- Forever talent grid. Logs whether posY grows downward and which nodes
+    -- each condition gates. Other versions do not ship this module.
+    do
+        local FT = TA.GetModule and TA:GetModule("ForeverTalents")
+        if not FT or type(FT.ReadGrid) ~= "function" or type(FT.Diagnose) ~= "function" then
+            S(INFO, "talent grid: not on this version")
+        else
+            local ok, nodes, conds, err = pcall(FT.ReadGrid)
+            if not ok then
+                S(WARN, "talent grid: " .. tostring(nodes))
+            elseif not nodes then
+                S(INFO, "talent grid: " .. tostring(err or "no tree"))
+            else
+                local diag = FT.Diagnose(nodes, conds)
+                for _, line in ipairs(diag.lines or {}) do
+                    S(INFO, line)
+                end
+                if diag.flipped then
+                    S(INFO, "talent grid: layout flipped so the cheaper gate is above the dearer one")
+                end
+            end
+        end
+    end
+
     -- Event-registration guard (TA:RegisterEvent arrived after the 2026-09-21
     -- builds; older installs skip this check instead of crashing the suite).
     local probe = "TOONAGE_SELFTEST_NOT_AN_EVENT"
