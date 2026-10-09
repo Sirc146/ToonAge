@@ -10,7 +10,7 @@
 --
 -- Usage
 --   /ta test              run every suite
---   /ta test <suite>      env | gate | api | tabs | settings | events | perf | state
+--   /ta test <suite>      env | gate | api | tabs | settings | events | perf | state | guides
 --   /ta test <suite> chat also echo FAIL/WARN lines to chat (capped)
 --   /ta test list         list suites
 --   "Self-test" button    title bar of the main window (dev builds, or /ta debug)
@@ -1301,12 +1301,50 @@ local function SuiteState(S)
     end
 end
 
+-- ── guides: every loaded guide, and no authored 0,0 coordinate ───────────
+local function SuiteGuides(S)
+    local GP = (TA.GetRegisteredModule and TA:GetRegisteredModule("GuideParser"))
+        or (TA.GetModule and TA:GetModule("GuideParser"))
+    if not GP or type(GP.AuditLoaded) ~= "function" then
+        S(TA.flavor == "retail" and FAIL or INFO, "GuideParser audit is not loaded")
+        return
+    end
+    local report = GP:AuditLoaded()
+    if #report.failed > 0 then
+        S(FAIL, format("%d guide(s) failed to load", #report.failed))
+        for i = 1, math.min(#report.failed, 8) do
+            S(FAIL, "did not load: " .. tostring(report.failed[i]))
+        end
+    else
+        S(PASS, format("%d guide(s) loaded", report.loaded))
+    end
+    if report.bad > 0 then
+        S(FAIL, format("%d authored guide(s) contain a 0,0 coordinate", report.bad))
+    else
+        S(PASS, "no authored guide has a 0,0 coordinate")
+    end
+    if report.stubs > 0 then
+        S(INFO, format("%d stub guide(s) still use 0,0 placeholders", report.stubs))
+    end
+    local expectMidnight = TA.flavor == "retail"
+    if expectMidnight then
+        if #report.midnight > 0 then
+            for i = 1, math.min(#report.midnight, 12) do
+                S(FAIL, tostring(report.midnight[i]))
+            end
+        else
+            S(PASS, "Midnight guides loaded with no 0,0 coordinates")
+        end
+    end
+end
+
 -- ── Registry ─────────────────────────────────────────────────────────────
 local SUITES = {
     { id = "env",      title = "Flavor detection",          fn = SuiteEnv      },
     { id = "gate",     title = "Dual gate (TOC + profile + ApiGuard)", fn = SuiteGate },
     { id = "api",      title = "API surface",               fn = SuiteApi      },
     { id = "state",    title = "SavedVariables",            fn = SuiteState    },
+    { id = "guides",   title = "Guide load and coordinates", fn = SuiteGuides  },
     { id = "events",   title = "Mock events",               fn = SuiteEvents   },
     { id = "tabs",     title = "Tabs: state, render, refresh", fn = SuiteTabs  },
     { id = "settings", title = "Settings drawer",           fn = SuiteSettings },

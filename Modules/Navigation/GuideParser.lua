@@ -16,6 +16,9 @@
 --     maxLevel  = number?,           -- maximum player level to show
 --     faction   = "Alliance"|"Horde"|nil,  -- faction restriction
 --     nextGuide = string?,           -- id of the guide to chain into after last step
+--     sideGuide = string?,           -- optional route offered alongside nextGuide
+--     order     = number?,           -- sort among guides that share a level
+--     optional  = boolean?,          -- side route, not the campaign chain
 --     steps     = { step, ... },     -- ordered step array (required, non-empty)
 --   }
 --
@@ -37,6 +40,7 @@
 --                                    -- The quest log's own item wins over it.
 --     reward         = number?,      -- preferred reward itemID for auto-quest
 --     noArrow        = boolean?,     -- suppress arrow for this step
+--     estimated      = boolean?,     -- hollow approximate marker
 --     optional       = boolean?,     -- skippable achievement/side step
 --     precondition   = {             -- gating conditions
 --       questID       = number?,     -- quest must be in log
@@ -230,6 +234,12 @@ local function ValidateGuide(id, guide)
     if guide.nextGuide ~= nil and type(guide.nextGuide) ~= "string" then
         LogError(id, nil, "'nextGuide' must be a string guide id")
     end
+    if guide.sideGuide ~= nil and type(guide.sideGuide) ~= "string" then
+        LogError(id, nil, "'sideGuide' must be a string guide id")
+    end
+    if guide.order ~= nil and type(guide.order) ~= "number" then
+        LogError(id, nil, "'order' must be a number")
+    end
     -- Validate faction
     if guide.faction ~= nil and guide.faction ~= "Alliance" and guide.faction ~= "Horde"
        and guide.faction ~= "Neutral" then
@@ -289,6 +299,12 @@ do
                 msg = "nextGuide '" .. guide.nextGuide .. "' not found (may load later)"
             })
         end
+        if guide.sideGuide and not TA.Guides[guide.sideGuide] then
+            table.insert(_errors, {
+                id = id, stepN = nil,
+                msg = "sideGuide '" .. guide.sideGuide .. "' not found (may load later)"
+            })
+        end
     end
 end
 
@@ -325,6 +341,144 @@ function GP:Init()
             "|cFFFFD100[TA]|r Guide '%s': %d step(s) use estimated coordinates (spot-check in game).",
             e.title, e.count))
     end
+end
+
+-- Midnight campaign catalog. Step counts are the Chronicler files.
+-- A guide that is entirely 0,0 is an unfilled stub. A guide that already
+-- has a real coordinate, or an explicit nil coordinate, must not also
+-- contain a 0,0 step.
+local MIDNIGHT_GUIDES = {
+    { id = "midnight_eversong_campaign", steps = 224, order = 10,
+      nextGuide = "midnight_harandar_campaign", sideGuide = "midnight_arators_journey" },
+    { id = "midnight_arators_journey", steps = 148, order = 15,
+      nextGuide = "midnight_harandar_campaign" },
+    { id = "midnight_harandar_campaign", steps = 225, order = 20,
+      nextGuide = "midnight_zulaman_campaign" },
+    { id = "midnight_zulaman_campaign", steps = 192, order = 30,
+      nextGuide = "midnight_voidstorm_campaign" },
+    { id = "midnight_darkening_sky", steps = 17, order = 35,
+      nextGuide = "midnight_voidstorm_campaign", optional = true },
+    { id = "midnight_voidstorm_campaign", steps = 175, order = 40 },
+}
+
+function GP:AuditLoaded()
+    local report = {
+        loaded = 0,
+        data = 0,
+        bad = 0,
+        stubs = 0,
+        failed = {},
+        problems = {},
+        midnight = {},
+        useItems = 0,
+        noArrow = 0,
+        nilCoord = 0,
+        saw14 = false,
+        saw2372 = false,
+        holokey = false,
+    }
+    local want = {}
+    for _, spec in ipairs(MIDNIGHT_GUIDES) do want[spec.id] = spec end
+
+    for id in pairs(TA.GuideData or {}) do
+        report.data = report.data + 1
+        if not (TA.Guides and TA.Guides[id]) then
+            report.failed[#report.failed + 1] = id
+            report.problems[#report.problems + 1] = "did not load: " .. id
+        end
+    end
+
+    for id, guide in pairs(TA.Guides or {}) do
+        report.loaded = report.loaded + 1
+        local real, zeros, nils = 0, 0, 0
+        local watched = want[id] ~= nil
+        for _, step in ipairs(guide.steps or {}) do
+            if type(step) == "table" then
+                local coord = step.coord
+                if coord == nil then
+                    nils = nils + 1
+                    if watched then
+                        report.nilCoord = report.nilCoord + 1
+                        if step.noArrow then report.noArrow = report.noArrow + 1 end
+                    end
+                elseif type(coord) == "table" then
+                    local x = tonumber(coord.x) or 0
+                    local y = tonumber(coord.y) or 0
+                    if x == 0 and y == 0 then zeros = zeros + 1
+                    else real = real + 1 end
+                    if watched and coord.map == 14 then report.saw14 = true end
+                    if watched and coord.map == 2372 then report.saw2372 = true end
+                end
+                if watched and step.useItem ~= nil then
+                    local itemID = step.useItem
+                    if type(itemID) == "table" then itemID = itemID.id or itemID.itemID end
+                    if type(itemID) == "number" and itemID > 0 then
+                        report.useItems = report.useItems + 1
+                    else
+                        report.midnight[#report.midnight + 1] = id .. " useItem is not an item id"
+                    end
+                end
+                if watched and step.questID == 86528 and step.type == "accept" then
+                    report.holokey = step.estimated == true
+                end
+                if watched and step.questID == 86528 and step.type ~= "accept" and step.estimated then
+                    report.midnight[#report.midnight + 1] = "86528 turn-in is marked approximate"
+                end
+            end
+        end
+        if zeros > 0 and (real > 0 or nils > 0) then
+            report.bad = report.bad + 1
+            report.problems[#report.problems + 1] = id .. " has a 0,0 coordinate"
+        elseif zeros > 0 then
+            report.stubs = report.stubs + 1
+        end
+        if watched and zeros > 0 then
+            report.midnight[#report.midnight + 1] = id .. " has a 0,0 coordinate"
+        end
+    end
+
+    for _, spec in ipairs(MIDNIGHT_GUIDES) do
+        local guide = TA.Guides and TA.Guides[spec.id]
+        if not guide then
+            report.midnight[#report.midnight + 1] = "missing " .. spec.id
+        else
+            if #(guide.steps or {}) ~= spec.steps then
+                report.midnight[#report.midnight + 1] =
+                    spec.id .. " has " .. #(guide.steps or {}) .. " steps"
+            end
+            if guide.order ~= spec.order then
+                report.midnight[#report.midnight + 1] = spec.id .. " order"
+            end
+            local nextID = guide.nextGuide
+            if spec.nextGuide == nil then
+                if nextID ~= nil then
+                    report.midnight[#report.midnight + 1] = spec.id .. " nextGuide"
+                end
+            elseif nextID ~= spec.nextGuide then
+                report.midnight[#report.midnight + 1] = spec.id .. " nextGuide"
+            end
+            if spec.sideGuide and guide.sideGuide ~= spec.sideGuide then
+                report.midnight[#report.midnight + 1] = spec.id .. " sideGuide"
+            end
+            if spec.optional and guide.optional ~= true then
+                report.midnight[#report.midnight + 1] = spec.id .. " optional"
+            end
+        end
+    end
+    if report.nilCoord ~= 13 or report.noArrow ~= 13 then
+        report.midnight[#report.midnight + 1] =
+            "nil steps " .. report.nilCoord .. ", noArrow " .. report.noArrow
+    end
+    if report.useItems ~= 19 then
+        report.midnight[#report.midnight + 1] = "useItem steps " .. report.useItems
+    end
+    if not report.holokey then
+        report.midnight[#report.midnight + 1] = "86528 A Cracked Holokey is not approximate"
+    end
+    if not report.saw14 or not report.saw2372 then
+        report.midnight[#report.midnight + 1] = "Arathi map 14 or 2372 is missing"
+    end
+    return report
 end
 
 -- ── Public API ────────────────────────────────────────────────────────
