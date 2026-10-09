@@ -184,4 +184,38 @@ Hv:RegisterPack{
     end,
 
     repair = Repair,
+
+    -- Skill lines for Scan now. No skill-line id is invented: a missing id
+    -- stays blank. The classic walker is only the fallback.
+    scanSkills = function()
+        local Try, Clean = Hv.Try, Hv.Clean
+        local rows = {}
+        local n = tonumber((Try("C_SkillInfo.GetNumSkillLines")))
+        if n and n > 0 then
+            for i = 1, n do
+                local info = Try("C_SkillInfo.GetSkillLineInfo", i)
+                if type(info) == "table" and type(info.name) == "string"
+                    and info.name ~= "" and info.name ~= "secret" and not info.isHeader then
+                    local id = info.skillID
+                    rows[tostring(id or i)] = table.concat({
+                        Clean(info.name), Clean(info.rank), Clean(info.maxRank), Clean(id),
+                    }, "\t")
+                end
+            end
+        end
+        if not next(rows) then
+            local legacy = tonumber((Try("GetNumSkillLines")))
+            if legacy and legacy > 0 then
+                for i = 1, legacy do
+                    local name, isHeader, _, rank, _, _, maxRank = Try("GetSkillLineInfo", i)
+                    if type(name) == "string" and name ~= "" and name ~= "secret" and not isHeader then
+                        rows[tostring(i)] = table.concat({
+                            Clean(name), Clean(rank), Clean(maxRank), "",
+                        }, "\t")
+                    end
+                end
+            end
+        end
+        return rows
+    end,
 }

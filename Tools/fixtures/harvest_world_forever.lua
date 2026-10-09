@@ -49,9 +49,17 @@ TA.Layout = {
         for _, b in ipairs(btns) do
             labels[#labels + 1] = b.label
             if b.danger then rec("ButtonDanger|" .. tostring(b.label)) end
+            if b.gold then rec("ButtonGold|" .. tostring(b.label)) end
+            if b.active then rec("ButtonActive|" .. tostring(b.label)) end
         end
         LAST_BUTTONS = btns
-        rec("ButtonRow|" .. table.concat(labels, ",") .. "|" .. tostring(o and o.label)); return y - 10 end,
+        ALL_BUTTONS = ALL_BUTTONS or {}
+        for _, b in ipairs(btns) do ALL_BUTTONS[#ALL_BUTTONS + 1] = b end
+        local line = "ButtonRow|" .. table.concat(labels, ",") .. "|" .. tostring(o and o.label)
+        if o and o.note then line = line .. "|" .. tostring(o.note) end
+        rec(line)
+        return y - 10
+    end,
     Divider = function(self, c, y) rec("Divider"); return y - 10 end,
     Finish = function(self, c, y) rec("Finish|" .. tostring(y)) end,
     RefreshUI = function() rec("RefreshUI") end,

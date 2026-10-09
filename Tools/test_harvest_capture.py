@@ -191,8 +191,77 @@ check("all probe exports include both characters",
       ("-- source Eramali · Mage · " in both) and ("-- source Huntsman · Hunter · " in both))
 check("hunter probe text is in the all-characters export", "hunt-probe" in both)
 
+chat = "\n".join(L.eval("CHAT_LOG")[i] for i in range(1, len(L.eval("CHAT_LOG")) + 1))
+check("trainer capture toasts the NPC and the spell count",
+      "Harvest: trainer saved (Aelthalyste, 4 spells)" in chat)
+check("login full scan toasts once", "Harvest: scan saved (Eramali)" in chat)
+check("skills capture replaced this character's entry",
+      L.eval("ToonAge.db.harvest.captures[KEY].skills.rows['1']").split("\t")[0], "Skill1")
+check("professions capture stored the client rows",
+      L.eval("ToonAge.db.harvest.captures[KEY].professions.rows['107']").split("\t")[0], "Prof7")
+check("heirlooms capture says this client has none",
+      L.eval("ToonAge.db.harvest.captures[KEY].heirlooms.note"), "not on this client")
+check("catalog capture is this character's ranked pass",
+      "Rank 1" in L.eval("ToonAge.db.harvest.captures[KEY].catalog.rows['133']"))
+
+# A second spellbook event inside 10 seconds waits; it still runs once the window ends.
+L.execute(r"""
+GT = 5000
+function GetTime() return GT end
+CHAT_LOG = {}
+TIMERS = {}
+ToonAge.modules.DataHarvester:OnEvent('SPELLS_CHANGED')
+FIRST_TOASTS = #CHAT_LOG
+QUEUED = #TIMERS
+SPELL[133][1] = "Fireball Later"
+GT = 5000
+ToonAge.modules.DataHarvester:OnEvent('SPELLS_CHANGED')
+SECOND_QUEUED = #TIMERS
+BEFORE = ToonAge.db.harvest.captures[KEY].spellbook.rows['133']
+FLUSH()
+AFTER = ToonAge.db.harvest.captures[KEY].spellbook.rows['133']
+""")
+check("the first spellbook event in a window saves immediately", L.eval("FIRST_TOASTS") >= 1)
+check("a second spellbook event inside 10 seconds is queued", L.eval("SECOND_QUEUED") > L.eval("QUEUED"))
+check("the queued spellbook scan is the later book",
+      L.eval("AFTER").split("\t")[0], "Fireball Later")
+
+L.execute(r"""
+function InCombatLockdown() return true end
+CHAT_LOG = {}
+TIMERS = {}
+ToonAge.Harvester:StartScan()
+QUEUED_FLAG = ToonAge.Harvester._scanQueued
+TIMERS_IN_COMBAT = #TIMERS
+function InCombatLockdown() return false end
+ToonAge.modules.DataHarvester:OnEvent('PLAYER_REGEN_ENABLED')
+TIMERS_AFTER = #TIMERS
+FLUSH()
+DONE = ToonAge.Harvester._scanRunning
+""")
+check("scan now waits out combat", L.eval("QUEUED_FLAG"), True)
+check("scan now does not start a frame while in combat", L.eval("TIMERS_IN_COMBAT"), 0)
+check("leaving combat starts the queued scan", L.eval("TIMERS_AFTER") >= 1)
+check("the queued scan finishes", L.eval("DONE"), False)
+check("combat queue says so",
+      "Harvest: scan queued until combat ends" in "\n".join(
+          L.eval("CHAT_LOG")[i] for i in range(1, len(L.eval("CHAT_LOG")) + 1)))
+
+L.execute(r"""
+ToonAge.db.harvestToast = false
+GT = GT + 20
+CHAT_LOG = {}
+ToonAge.modules.DataHarvester:OnEvent('SKILL_LINES_CHANGED')
+QUIET = table.concat(CHAT_LOG, "\n")
+ToonAge.db.harvestToast = nil
+""")
+check("notices off swallows the professions line", "Harvest:" not in L.eval("QUIET"))
+check("a skill-line change still saved professions",
+      L.eval("ToonAge.db.harvest.captures[KEY].professions ~= nil"), True)
+
 L.execute("""
 LAYOUT_LOG = {}
+ALL_BUTTONS = {}
 ToonAge.modules.DataHarvester:Render({}, nil)
 """)
 lay = [L.eval("LAYOUT_LOG")[i] for i in range(1, len(L.eval("LAYOUT_LOG")) + 1)]
@@ -200,6 +269,26 @@ check("reset offers a per-character clear and a full clear",
       ("Clear this character" in "\n".join(lay)) and ("Clear store" in "\n".join(lay)))
 check("both reset buttons use the danger style",
       ("ButtonDanger|Clear this character" in lay) and ("ButtonDanger|Clear store" in lay))
+check("the scope switch reads This character · All characters",
+      "ButtonRow|This character,All characters|This character · All characters" in lay)
+check("the scope switch defaults to this character", "ButtonActive|This character" in lay)
+check("scan now is the gold button", "ButtonGold|Scan now" in lay)
+check("a trainer this character has visited is counted",
+      "DataRow|Trainer ranks (open a class trainer)|4" in lay)
+check("last scanned sits on the scan row",
+      any(x.startswith("ButtonRow|Scan now,Notices on|") and x.endswith("|Last scanned 12:26 AM") for x in lay))
+L.execute("""
+for _, b in ipairs(ALL_BUTTONS) do
+    if b.label == "All characters" then b.onClick() end
+end
+""")
+check("the switch can show every character", L.eval("ToonAge.modules.DataHarvester:View()"), "all")
+L.execute("""
+for _, b in ipairs(ALL_BUTTONS) do
+    if b.label == "This character" then b.onClick() end
+end
+""")
+check("the switch returns to this character", L.eval("ToonAge.modules.DataHarvester:View()"), "character")
 L.execute("""
 for _, b in ipairs(LAST_BUTTONS) do
     if b.label == "Clear this character" then b.onClick() end

@@ -170,7 +170,8 @@ check("every event registered once", len(events), len(set(events)))
 check("the recorder's events, as before T4", sorted(events), sorted([
     "LOOT_OPENED", "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED", "SPELLS_CHANGED", "LEARNED_SPELL_IN_TAB",
     "LEARNED_SPELL_IN_SKILL_LINE", "CHARACTER_POINTS_CHANGED", "PLAYER_TALENT_UPDATE", "TRAIT_CONFIG_UPDATED",
-    "PLAYER_LEVEL_UP", "TRAINER_SHOW", "TRAINER_UPDATE"]))
+    "PLAYER_LEVEL_UP", "TRAINER_SHOW", "TRAINER_UPDATE",
+    "PLAYER_REGEN_ENABLED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE"]))
 labels = [e.label for e in lst(L, "ToonAge.Harvester:Exports()")]
 check("Copy row in the pack's order", labels,
       ["Items", "Spells", "Talents", "Characters", "Racials", "Trainer ranks", "Profession trainers", "Spell catalog"])
@@ -242,7 +243,7 @@ function UnitClass() return "Mage", "MAGE", 8 end
 lay_rogue = lst(L, "LAYOUT_LOG")
 exported = lst(L, "WINDOWS_LOG")[0].text.splitlines()
 check("trainer summary counts this class only",
-      "DataRow|Trainer ranks (open a class trainer)|none yet" in lay_rogue)
+      "DataRow|Trainer ranks (open a class trainer)|not visited yet" in lay_rogue)
 check("copy row offers every character's captures beside the current character",
       any(x.startswith("ButtonRow|") and "All characters" in x and x.endswith("|Copy:") for x in lay_rogue))
 check("spell catalog still has an all-classes button",

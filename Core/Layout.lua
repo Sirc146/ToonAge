@@ -1095,7 +1095,7 @@ function TA._ApplyBackdrop(frame, br, bg, bb, ba, er, eg, eb, ea)
     frame:SetBackdropBorderColor(er or 0.3, eg or 0.28, eb or 0.24, ea or 1)
 end
 
-local function StyleButton(btn, lbl, active, hover, danger)
+local function StyleButton(btn, lbl, active, hover, danger, gold)
     if danger then
         -- Same red as a danger action (L.C_DANGER text, dark red fill).
         if hover then
@@ -1104,6 +1104,15 @@ local function StyleButton(btn, lbl, active, hover, danger)
         else
             TA._ApplyBackdrop(btn, 0.10, 0.04, 0.04, 1, 0.90, 0.30, 0.25, 1)
             lbl:SetTextColor(L.C_DANGER[1], L.C_DANGER[2], L.C_DANGER[3], 1)
+        end
+    elseif gold then
+        -- Gilder gold (#E8B35A) for the one primary action on a tab.
+        if hover then
+            TA._ApplyBackdrop(btn, 0.22, 0.16, 0.06, 1, 0.910, 0.702, 0.353, 1)
+            lbl:SetTextColor(0.98, 0.94, 0.84, 1)
+        else
+            TA._ApplyBackdrop(btn, 0.16, 0.12, 0.04, 1, 0.910, 0.702, 0.353, 1)
+            lbl:SetTextColor(0.910, 0.702, 0.353, 1)
         end
     elseif active then
         TA._ApplyBackdrop(btn, 0.16, 0.13, 0.02, 1, 1.00, 0.82, 0.00, 1)
@@ -1123,8 +1132,9 @@ function L:RefreshUI()
 end
 
 --- A row of buttons that wraps onto new lines when it runs out of width.
---- buttons: array of { label, onClick, active, danger, tooltip = { title, lines... } }
+--- buttons: array of { label, onClick, active, danger, gold, tooltip = { title, lines... } }
 --- danger uses the red destructive style (Clear store, clear this character).
+--- gold is the primary action. opts.note is grey text on the same row.
 --- @return number y
 function L:ButtonRow(parent, y, buttons, opts)
     opts = opts or {}
@@ -1159,7 +1169,7 @@ function L:ButtonRow(parent, y, buttons, opts)
         btn:SetSize(bw, h)
         btn:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD + x, y)
         btn:EnableMouse(true)
-        StyleButton(btn, lbl, def.active, false, def.danger)
+        StyleButton(btn, lbl, def.active, false, def.danger, def.gold)
 
         btn:SetScript("OnClick", function()
             if def.onClick then
@@ -1168,7 +1178,7 @@ function L:ButtonRow(parent, y, buttons, opts)
             end
         end)
         btn:SetScript("OnEnter", function(self)
-            StyleButton(self, lbl, def.active, true, def.danger)
+            StyleButton(self, lbl, def.active, true, def.danger, def.gold)
             if def.tooltip then
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:SetText(def.tooltip[1], 1, 0.82, 0)
@@ -1179,11 +1189,16 @@ function L:ButtonRow(parent, y, buttons, opts)
             end
         end)
         btn:SetScript("OnLeave", function(self)
-            StyleButton(self, lbl, def.active, false, def.danger)
+            StyleButton(self, lbl, def.active, false, def.danger, def.gold)
             GameTooltip:Hide()
         end)
 
         x = x + bw + gap
+    end
+
+    if type(opts.note) == "string" and opts.note ~= "" then
+        local note = Text(parent, { text = opts.note, size = 9, color = L.C_DIM })
+        note:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD + x, y - 6)
     end
 
     return y - h - 6
