@@ -312,12 +312,36 @@ def test_offers_the_shared_button():
     check("the offer says an infused node is nearby", lua.eval("WHY"), "Infused node nearby")
 
 
+def test_gathering_spots():
+    lua = runtime()
+    check("the retail node list stays empty", lua.eval("#ToonAge.Data.Overloads.nodes"), 0)
+    lua.execute(read("Data/Retail/Midnight/gathering.lua"))
+    lua.execute(r"""
+        local OL = ToonAge.ProfessionOverload
+        local data = OL.Data()
+        local spot = OL.SpotFor(516964)
+        SPELL = spot and spot.spellID
+        local node = OL.Match(data, "Lightfused Lily", "GameObject-0-1-2-3-516964-9")
+        MATCH_SPELL = node and node.spellID
+        local deniedNode, _, denied = OL.Match(data, "Lush Lily", "GameObject-0-1-2-3-516964-9")
+        DENIED = denied
+        DENIED_NODE = deniedNode
+        STILL = #data.nodes
+    """)
+    check("an overload spot resolves to its spell", lua.eval("SPELL"), 1225128)
+    check("Match uses the spot spell", lua.eval("MATCH_SPELL"), 1225128)
+    check("a denied prefix still wins over a spot", lua.eval("DENIED"), "Lush")
+    check("a denied name is not a node", lua.eval("DENIED_NODE"), None)
+    check("spots are not copied into the node list", lua.eval("STILL"), 0)
+
+
 def main():
     test_sources_and_shipped_list()
     test_match_and_readiness()
     test_show_hide_and_diagnostics()
     test_infused_prefixes_and_charges()
     test_offers_the_shared_button()
+    test_gathering_spots()
     passed = sum(1 for ok in _results if ok)
     total = len(_results)
     print()

@@ -29,7 +29,7 @@ TA.GuideData = TA.GuideData or {}
 
 TA.GuideData["midnight_zulaman_campaign"] = {
     id = "midnight_zulaman_campaign", title = "Midnight: Zul'Aman (Campaign)", expansion = "midnight",
-    zone = 2437, minLevel = 80, maxLevel = 90, order = 30,
+    zone = 2437, minLevel = 80, maxLevel = 90,
     nextGuide = "midnight_voidstorm_campaign",
     steps = {
         -- (APR: grind/continue to level 83 before the next step - skipped when the warband has achievement 42045)
@@ -51,7 +51,7 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2395, x = 0.601, y = 0.815 } },  -- giver coord: ATT
         { type = "quest",  questID = 90749, text = "Our Mutual Enemy (objective 1)",
           coord = { map = 2536, x = 0.064, y = 0.473 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 90749, text = "Turn in: Our Mutual Enemy",
+        { type = "turnin", questID = 90749, text = "Turn in: Our Mutual Enemy", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.054, y = 0.470 } },  -- APR route coord (converted)
         { type = "accept", questID = 86868, text = "Goodwill Tour",
           coord = { map = 2536, x = 0.055, y = 0.470 } },  -- giver coord: ATT
@@ -65,9 +65,9 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2536, x = 0.360, y = 0.496 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86868, text = "Goodwill Tour (objective 1)",
           coord = { map = 2536, x = 0.342, y = 0.475 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86868, text = "Turn in: Goodwill Tour",
+        { type = "turnin", questID = 86868, text = "Turn in: Goodwill Tour", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.460, y = 0.484 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86711, text = "Turn in: Amani Clarion Call",
+        { type = "turnin", questID = 86711, text = "Turn in: Amani Clarion Call", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.463, y = 0.488 } },  -- APR route coord (converted)
         { type = "accept", questID = 86717, text = "Show Us Your Worth",
           coord = { map = 2536, x = 0.463, y = 0.488 } },  -- giver coord: ATT
@@ -85,9 +85,9 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2536, x = 0.171, y = 0.200 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86719, text = "Important Amani (objective 5)",
           coord = { map = 2536, x = 0.165, y = 0.207 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86717, text = "Turn in: Show Us Your Worth",
+        { type = "turnin", questID = 86717, text = "Turn in: Show Us Your Worth", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.166, y = 0.204 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86719, text = "Turn in: Important Amani",
+        { type = "turnin", questID = 86719, text = "Turn in: Important Amani", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.166, y = 0.204 } },  -- APR route coord (converted)
         { type = "accept", questID = 86716, text = "Armed by Light",
           coord = { map = 2536, x = 0.166, y = 0.205 } },  -- giver coord: ATT
@@ -105,9 +105,9 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2536, x = 0.220, y = 0.664 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86721, text = "Everything We Worked For (objective 2)",
           coord = { map = 2536, x = 0.226, y = 0.803 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86716, text = "Turn in: Armed by Light",
+        { type = "turnin", questID = 86716, text = "Turn in: Armed by Light", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.226, y = 0.799 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86721, text = "Turn in: Everything We Worked For",
+        { type = "turnin", questID = 86721, text = "Turn in: Everything We Worked For", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.226, y = 0.799 } },  -- APR route coord (converted)
         { type = "accept", questID = 86712, text = "The Amani Stand Strong",
           coord = { map = 2536, x = 0.226, y = 0.799 } },  -- giver coord: ATT
@@ -121,11 +121,11 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2536, x = 0.344, y = 0.686 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86715, text = "Rituals Cut Short (objective 1,2)",
           coord = { map = 2536, x = 0.344, y = 0.686 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86715, text = "Turn in: Rituals Cut Short",
+        { type = "turnin", questID = 86715, text = "Turn in: Rituals Cut Short", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.472, y = 0.469 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86718, text = "Turn in: Twilight Bled",
+        { type = "turnin", questID = 86718, text = "Turn in: Twilight Bled", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.475, y = 0.468 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86712, text = "Turn in: The Amani Stand Strong",
+        { type = "turnin", questID = 86712, text = "Turn in: The Amani Stand Strong", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2536, x = 0.491, y = 0.467 } },  -- APR route coord (converted)
         { type = "accept", questID = 86720, text = "Break the Blade",
           coord = { map = 2536, x = 0.475, y = 0.468 } },  -- giver coord: ATT
@@ -133,17 +133,17 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2536, x = 0.492, y = 0.471 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86720, text = "Break the Blade (objective 2)",
           coord = { map = 2536, x = 0.492, y = 0.471 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86720, text = "Turn in: Break the Blade",
+        { type = "turnin", questID = 86720, text = "Turn in: Break the Blade", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2536, x = 0.477, y = 0.478 } },  -- APR route coord (converted)
         { type = "accept", questID = 86722, text = "Heart of the Amani",
           coord = { map = 2536, x = 0.478, y = 0.478 } },  -- giver coord: ATT
-        { type = "turnin", questID = 86722, text = "Turn in: Heart of the Amani",
+        { type = "turnin", questID = 86722, text = "Turn in: Heart of the Amani", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2437, x = 0.426, y = 0.668 } },  -- APR route coord (converted)
         { type = "accept", questID = 86723, text = "Isolation",
           coord = { map = 2437, x = 0.427, y = 0.668 } },  -- giver coord: ATT
         { type = "quest",  questID = 86723, text = "Isolation (objective 1)",
           coord = { map = 2437, x = 0.457, y = 0.655 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86723, text = "Turn in: Isolation",
+        { type = "turnin", questID = 86723, text = "Turn in: Isolation", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2437, x = 0.457, y = 0.655 } },  -- APR route coord (converted)
         { type = "accept", questID = 86652, text = "Left in the Shadows",
           coord = { map = 2437, x = 0.457, y = 0.655 } },  -- giver coord: ATT
@@ -155,7 +155,7 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.440, y = 0.651 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86652, text = "Left in the Shadows (objective 4)",
           coord = { map = 2437, x = 0.438, y = 0.684 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86652, text = "Turn in: Left in the Shadows",
+        { type = "turnin", questID = 86652, text = "Turn in: Left in the Shadows", rep = { { factionID = 2696, amount = 1500 } },
           coord = { map = 2437, x = 0.438, y = 0.683 } },  -- APR route coord (converted)
         { type = "accept", questID = 86653, text = "The Path of the Amani",
           coord = { map = 2437, x = 0.438, y = 0.683 } },  -- giver coord: ATT
@@ -163,7 +163,7 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.438, y = 0.684 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86653, text = "The Path of the Amani (objective 1)",
           coord = { map = 2437, x = 0.516, y = 0.708 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86653, text = "Turn in: The Path of the Amani",
+        { type = "turnin", questID = 86653, text = "Turn in: The Path of the Amani", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.516, y = 0.708 } },  -- APR route coord (converted)
         { type = "accept", questID = 86655, text = "De Ancient Path",
           coord = { map = 2437, x = 0.516, y = 0.708 } },  -- giver coord: ATT
@@ -189,11 +189,11 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.544, y = 0.732 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86655, text = "De Ancient Path (objective 2)",
           coord = { map = 2437, x = 0.519, y = 0.760 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86654, text = "Turn in: Gnarldin Bashing",
+        { type = "turnin", questID = 86654, text = "Turn in: Gnarldin Bashing", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.520, y = 0.760 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86655, text = "Turn in: De Ancient Path",
+        { type = "turnin", questID = 86655, text = "Turn in: De Ancient Path", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2437, x = 0.519, y = 0.759 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 89334, text = "Turn in: Ahead of the Issue",
+        { type = "turnin", questID = 89334, text = "Turn in: Ahead of the Issue", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.519, y = 0.759 } },  -- APR route coord (converted)
         { type = "accept", questID = 86656, text = "Brutal Feast",
           coord = { map = 2437, x = 0.519, y = 0.759 } },  -- giver coord: ATT
@@ -207,7 +207,7 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.532, y = 0.807 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86656, text = "Brutal Feast (objective 4) [3/3]",
           coord = { map = 2437, x = 0.532, y = 0.811 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86656, text = "Turn in: Brutal Feast",
+        { type = "turnin", questID = 86656, text = "Turn in: Brutal Feast", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2437, x = 0.524, y = 0.810 } },  -- APR route coord (converted)
         { type = "accept", questID = 86809, text = "Test of Conviction",
           coord = { map = 2437, x = 0.524, y = 0.810 } },  -- giver coord: ATT
@@ -215,13 +215,13 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.511, y = 0.790 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86809, text = "Test of Conviction (objective 2)",
           coord = { map = 2437, x = 0.510, y = 0.789 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86809, text = "Turn in: Test of Conviction",
+        { type = "turnin", questID = 86809, text = "Turn in: Test of Conviction", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2437, x = 0.524, y = 0.810 } },  -- APR route coord (converted)
         { type = "accept", questID = 86657, text = "Shadebasin Watch",
           coord = { map = 2437, x = 0.524, y = 0.810 } },  -- giver coord: ATT
         { type = "quest",  questID = 86657, text = "Shadebasin Watch (objective 2)",
           coord = { map = 2437, x = 0.441, y = 0.345 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86657, text = "Turn in: Shadebasin Watch",
+        { type = "turnin", questID = 86657, text = "Turn in: Shadebasin Watch", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.441, y = 0.345 } },  -- APR route coord (converted)
         { type = "accept", questID = 86658, text = "The Crypt in the Mist",
           coord = { map = 2437, x = 0.441, y = 0.345 } },  -- giver coord: ATT
@@ -235,9 +235,9 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.379, y = 0.373 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86658, text = "The Crypt in the Mist (objective 3)",
           coord = { map = 2437, x = 0.375, y = 0.360 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86658, text = "Turn in: The Crypt in the Mist",
+        { type = "turnin", questID = 86658, text = "Turn in: The Crypt in the Mist", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.368, y = 0.350 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86660, text = "Turn in: Rescue from the Shadows",
+        { type = "turnin", questID = 86660, text = "Turn in: Rescue from the Shadows", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.368, y = 0.350 } },  -- APR route coord (converted)
         { type = "accept", questID = 86659, text = "Breaching the Mist",
           coord = { map = 2437, x = 0.368, y = 0.350 } },  -- giver coord: ATT
@@ -251,25 +251,25 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.348, y = 0.309 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86659, text = "Breaching the Mist (objective 3)",
           coord = { map = 2437, x = 0.328, y = 0.326 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86659, text = "Turn in: Breaching the Mist",
+        { type = "turnin", questID = 86659, text = "Turn in: Breaching the Mist", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2437, x = 0.324, y = 0.316 } },  -- APR route coord (converted)
         { type = "accept", questID = 92084, text = "Halazzi's Guile",
           coord = { map = 2437, x = 0.324, y = 0.316 } },  -- giver coord: ATT
         { type = "quest",  questID = 92084, text = "Halazzi's Guile (objective 1)",
           coord = { map = 2437, x = 0.322, y = 0.316 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 92084, text = "Turn in: Halazzi's Guile",
+        { type = "turnin", questID = 92084, text = "Turn in: Halazzi's Guile", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.324, y = 0.316 } },  -- APR route coord (converted)
         { type = "accept", questID = 86661, text = "Coals of a Dead Loa",
           coord = { map = 2437, x = 0.324, y = 0.316 } },  -- giver coord: ATT
         { type = "quest",  questID = 86661, text = "Coals of a Dead Loa (objective 1)",
           coord = { map = 2437, x = 0.386, y = 0.224 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86661, text = "Turn in: Coals of a Dead Loa",
+        { type = "turnin", questID = 86661, text = "Turn in: Coals of a Dead Loa", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.385, y = 0.225 } },  -- APR route coord (converted)
         { type = "accept", questID = 86808, text = "The Riddled Speaker",
           coord = { map = 2437, x = 0.385, y = 0.225 } },  -- giver coord: ATT
         { type = "quest",  questID = 86808, text = "The Riddled Speaker (objective 1)",
           coord = { map = 2437, x = 0.550, y = 0.184 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86808, text = "Turn in: The Riddled Speaker",
+        { type = "turnin", questID = 86808, text = "Turn in: The Riddled Speaker", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- APR route coord (converted)
         { type = "accept", questID = 86663, text = "Embers to a Flame",
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- giver coord: ATT
@@ -279,7 +279,7 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.533, y = 0.219 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86663, text = "Embers to a Flame (objective 4)",
           coord = { map = 2437, x = 0.551, y = 0.183 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86663, text = "Turn in: Embers to a Flame",
+        { type = "turnin", questID = 86663, text = "Turn in: Embers to a Flame", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- APR route coord (converted)
         { type = "accept", questID = 86664, text = "Seer or Sear",
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- giver coord: ATT
@@ -289,23 +289,23 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.529, y = 0.186 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86664, text = "Seer or Sear (objective 3)",
           coord = { map = 2437, x = 0.551, y = 0.182 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86664, text = "Turn in: Seer or Sear",
+        { type = "turnin", questID = 86664, text = "Turn in: Seer or Sear", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- APR route coord (converted)
         { type = "accept", questID = 86665, text = "Face in the Fire",
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- giver coord: ATT
         { type = "quest",  questID = 86665, text = "Face in the Fire (objective 1,2)",
           coord = { map = 2437, x = 0.551, y = 0.182 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86665, text = "Turn in: Face in the Fire",
+        { type = "turnin", questID = 86665, text = "Turn in: Face in the Fire", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- APR route coord (converted)
         { type = "accept", questID = 90772, text = "The Flames Rise Higher",
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- giver coord: ATT
         { type = "quest",  questID = 90772, text = "The Flames Rise Higher (objective 1)",
           coord = { map = 2437, x = 0.551, y = 0.183 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 90772, text = "Turn in: The Flames Rise Higher",
+        { type = "turnin", questID = 90772, text = "Turn in: The Flames Rise Higher", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- APR route coord (converted)
         { type = "accept", questID = 86666, text = "In the Shadow of Rebirth",
           coord = { map = 2437, x = 0.550, y = 0.183 } },  -- giver coord: ATT
-        { type = "turnin", questID = 86666, text = "Turn in: In the Shadow of Rebirth",
+        { type = "turnin", questID = 86666, text = "Turn in: In the Shadow of Rebirth", rep = { { factionID = 2696, amount = 1500 } },
           coord = { map = 2437, x = 0.438, y = 0.683 } },  -- APR route coord (converted)
         { type = "accept", questID = 86681, text = "Den of Nalorakk: A Taste of Vengeance",
           coord = { map = 2437, x = 0.438, y = 0.683 } },  -- giver coord: ATT
@@ -317,21 +317,21 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.437, y = 0.685 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86681, text = "Den of Nalorakk: A Taste of Vengeance (objective 2) [3/3]",
           coord = { map = 2437, x = 0.439, y = 0.687 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86681, text = "Turn in: Den of Nalorakk: A Taste of Vengeance",
+        { type = "turnin", questID = 86681, text = "Turn in: Den of Nalorakk: A Taste of Vengeance", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.438, y = 0.683 } },  -- APR route coord (converted)
         { type = "accept", questID = 86682, text = "Den of Nalorakk: Waking de Bear",
           coord = { map = 2437, x = 0.438, y = 0.683 } },  -- giver coord: ATT
         { type = "quest",  questID = 86682, text = "Den of Nalorakk: Waking de Bear (objective 1)",
           coord = { map = 2437, x = 0.336, y = 0.788 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86682, text = "Turn in: Den of Nalorakk: Waking de Bear",
+        { type = "turnin", questID = 86682, text = "Turn in: Den of Nalorakk: Waking de Bear", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.336, y = 0.788 } },  -- APR route coord (converted)
         { type = "accept", questID = 91958, text = "Den of Nalorakk: Unforgiven",
           coord = { map = 2437, x = 0.336, y = 0.788 } },  -- giver coord: ATT
         { type = "quest",  questID = 91958, text = "Den of Nalorakk: Unforgiven (objective 3)",
-          coord = nil, noArrow = true },  -- no coord: APR step has none; scenario/instance step
+          coord = nil },  -- no coord: APR step has none; scenario/instance step
         { type = "quest",  questID = 91958, text = "Den of Nalorakk: Unforgiven (objective 4)",
           coord = { map = 2437, x = 0.316, y = 0.839 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 91958, text = "Turn in: Den of Nalorakk: Unforgiven",
+        { type = "turnin", questID = 91958, text = "Turn in: Den of Nalorakk: Unforgiven", rep = { { factionID = 2696, amount = 1500 } },
           coord = { map = 2437, x = 0.316, y = 0.839 } },  -- APR route coord (converted)
         { type = "accept", questID = 86683, text = "Hash'ey Away",
           coord = { map = 2437, x = 0.316, y = 0.839 } },  -- giver coord: ATT
@@ -339,13 +339,13 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.439, y = 0.688 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86683, text = "Hash'ey Away (objective 2)",
           coord = { map = 2437, x = 0.438, y = 0.687 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86683, text = "Turn in: Hash'ey Away",
+        { type = "turnin", questID = 86683, text = "Turn in: Hash'ey Away", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.435, y = 0.688 } },  -- APR route coord (converted)
         { type = "accept", questID = 86684, text = "The Blade's Edge",
           coord = { map = 2437, x = 0.435, y = 0.688 } },  -- giver coord: ATT
         { type = "quest",  questID = 86684, text = "The Blade's Edge (objective 1)",
           coord = { map = 2437, x = 0.284, y = 0.774 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86684, text = "Turn in: The Blade's Edge",
+        { type = "turnin", questID = 86684, text = "Turn in: The Blade's Edge", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.284, y = 0.774 } },  -- APR route coord (converted)
         { type = "accept", questID = 86687, text = "Conduit Crisis",
           coord = { map = 2437, x = 0.284, y = 0.774 } },  -- giver coord: ATT
@@ -381,17 +381,17 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.262, y = 0.772 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86686, text = "Light Indiscriminate (objective 1)",
           coord = { map = 2437, x = 0.262, y = 0.772 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86686, text = "Turn in: Light Indiscriminate",
+        { type = "turnin", questID = 86686, text = "Turn in: Light Indiscriminate", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.257, y = 0.776 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86687, text = "Turn in: Conduit Crisis",
+        { type = "turnin", questID = 86687, text = "Turn in: Conduit Crisis", rep = { { factionID = 2696, amount = 50 } },
           coord = { map = 2437, x = 0.257, y = 0.776 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86685, text = "Turn in: Chip and Shatter",
+        { type = "turnin", questID = 86685, text = "Turn in: Chip and Shatter", rep = { { factionID = 2696, amount = 100 } },
           coord = { map = 2437, x = 0.257, y = 0.776 } },  -- APR route coord (converted)
         { type = "accept", questID = 91001, text = "Clear de Way",
           coord = { map = 2437, x = 0.257, y = 0.776 } },  -- giver coord: ATT
         { type = "quest",  questID = 91001, text = "Clear de Way (objective 1)",
           coord = { map = 2437, x = 0.225, y = 0.774 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 91001, text = "Turn in: Clear de Way",
+        { type = "turnin", questID = 91001, text = "Turn in: Clear de Way", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.225, y = 0.774 } },  -- APR route coord (converted)
         { type = "accept", questID = 86692, text = "Blade Shattered",
           coord = { map = 2437, x = 0.225, y = 0.774 } },  -- giver coord: ATT
@@ -399,23 +399,23 @@ TA.GuideData["midnight_zulaman_campaign"] = {
           coord = { map = 2437, x = 0.225, y = 0.774 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86692, text = "Blade Shattered (objective 2)",
           coord = { map = 2437, x = 0.214, y = 0.774 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86692, text = "Turn in: Blade Shattered",
+        { type = "turnin", questID = 86692, text = "Turn in: Blade Shattered", rep = { { factionID = 2696, amount = 1500 } },
           coord = { map = 2437, x = 0.214, y = 0.774 } },  -- APR route coord (converted)
         { type = "accept", questID = 86693, text = "De Legend of de Hash'ey",
           coord = { map = 2437, x = 0.214, y = 0.774 } },  -- giver coord: ATT
         { type = "quest",  questID = 86693, text = "De Legend of de Hash'ey (objective 1)",
           coord = { map = 2437, x = 0.453, y = 0.662 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86693, text = "Turn in: De Legend of de Hash'ey",
+        { type = "turnin", questID = 86693, text = "Turn in: De Legend of de Hash'ey", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.458, y = 0.655 } },  -- APR route coord (converted)
         { type = "accept", questID = 91062, text = "Broken Bridges",
           coord = { map = 2437, x = 0.457, y = 0.655 } },  -- giver coord: ATT
         { type = "quest",  questID = 91062, text = "Broken Bridges (objective 1)",
           coord = { map = 2437, x = 0.513, y = 0.544 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 91062, text = "Turn in: Broken Bridges",
+        { type = "turnin", questID = 91062, text = "Turn in: Broken Bridges", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2437, x = 0.508, y = 0.545 } },  -- APR route coord (converted)
         { type = "accept", questID = 91087, text = "Reports Returned",
           coord = { map = 2437, x = 0.508, y = 0.545 } },  -- giver coord: ATT
-        { type = "turnin", questID = 91087, text = "Turn in: Reports Returned",
+        { type = "turnin", questID = 91087, text = "Turn in: Reports Returned", rep = { { factionID = 2696, amount = 10 } },
           coord = { map = 2393, x = 0.454, y = 0.703 } },  -- APR route coord (converted)
     },
 }

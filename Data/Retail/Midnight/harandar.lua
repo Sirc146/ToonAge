@@ -29,7 +29,7 @@ TA.GuideData = TA.GuideData or {}
 
 TA.GuideData["midnight_harandar_campaign"] = {
     id = "midnight_harandar_campaign", title = "Midnight: Harandar (Campaign)", expansion = "midnight",
-    zone = 2413, minLevel = 80, maxLevel = 90, order = 20,
+    zone = 2413, minLevel = 80, maxLevel = 90,
     nextGuide = "midnight_zulaman_campaign",
     steps = {
         -- (APR: grind/continue to level 83 before the next step - skipped when the warband has achievement 42045)
@@ -75,7 +75,7 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2576, x = 0.438, y = 0.543 } },  -- giver coord: ATT
         { type = "accept", questID = 93416, text = "Delver's Call: The Gulf of Memory",
           coord = { map = 2413, x = 0.529, y = 0.517 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86907, text = "Turn in: The Den of Echoes",
+        { type = "turnin", questID = 86907, text = "Turn in: The Den of Echoes", rep = { { factionID = 2704, amount = 10 } },
           coord = { map = 2413, x = 0.388, y = 0.469 } },  -- APR route coord (converted)
         { type = "accept", questID = 86911, text = "Echoes and Memories",
           coord = { map = 2413, x = 0.388, y = 0.469 } },  -- giver coord: ATT
@@ -87,7 +87,7 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.376, y = 0.477 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86911, text = "Echoes and Memories (objective 4)",
           coord = { map = 2413, x = 0.362, y = 0.459 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86911, text = "Turn in: Echoes and Memories",
+        { type = "turnin", questID = 86911, text = "Turn in: Echoes and Memories", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.361, y = 0.443 } },  -- APR route coord (converted)
         { type = "accept", questID = 90094, text = "Echo of the Hunt",
           coord = { map = 2413, x = 0.361, y = 0.443 } },  -- giver coord: ATT
@@ -95,7 +95,7 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.362, y = 0.441 } },  -- APR route coord (converted)
         { type = "quest",  questID = 90094, text = "Echo of the Hunt (objective 3,2)",
           coord = { map = 2413, x = 0.355, y = 0.459 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 90094, text = "Turn in: Echo of the Hunt",
+        { type = "turnin", questID = 90094, text = "Turn in: Echo of the Hunt", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.349, y = 0.428 } },  -- APR route coord (converted)
         { type = "accept", questID = 90095, text = "Echo of the Call",
           coord = { map = 2413, x = 0.349, y = 0.428 } },  -- giver coord: ATT
@@ -103,7 +103,7 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.349, y = 0.427 } },  -- APR route coord (converted)
         { type = "quest",  questID = 90095, text = "Echo of the Call (objective 2)",
           coord = { map = 2413, x = 0.342, y = 0.437 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 90095, text = "Turn in: Echo of the Call",
+        { type = "turnin", questID = 90095, text = "Turn in: Echo of the Call", rep = { { factionID = 2704, amount = 100 } },
           coord = { map = 2413, x = 0.339, y = 0.448 } },  -- APR route coord (converted)
         { type = "accept", questID = 86912, text = "Down the Rootways",
           coord = { map = 2413, x = 0.339, y = 0.448 } },  -- giver coord: ATT
@@ -113,11 +113,11 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.392, y = 0.546 } },  -- APR route coord (converted); scenario/instance step
         { type = "quest",  questID = 86912, text = "Down the Rootways (objective 3)",
           coord = { map = 2413, x = 0.342, y = 0.431 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86912, text = "Turn in: Down the Rootways",
+        { type = "turnin", questID = 86912, text = "Turn in: Down the Rootways", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.348, y = 0.250 } },  -- APR route coord (converted)
         { type = "accept", questID = 86913, text = "A Hut in Har'mara",
           coord = { map = 2413, x = 0.348, y = 0.250 } },  -- giver coord: ATT
-        { type = "turnin", questID = 86913, text = "Turn in: A Hut in Har'mara",
+        { type = "turnin", questID = 86913, text = "Turn in: A Hut in Har'mara", rep = { { factionID = 2704, amount = 10 } },
           coord = { map = 2413, x = 0.349, y = 0.249 } },  -- APR route coord (converted)
         { type = "accept", questID = 86914, text = "Tending to Har'mara",
           coord = { map = 2413, x = 0.349, y = 0.250 } },  -- giver coord: ATT
@@ -157,15 +157,15 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.357, y = 0.275 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86956, text = "The Traveling Flowers (objective 3)",
           coord = { map = 2413, x = 0.349, y = 0.274 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86956, text = "Turn in: The Traveling Flowers",
+        { type = "turnin", questID = 86956, text = "Turn in: The Traveling Flowers", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.349, y = 0.251 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86914, text = "Turn in: Tending to Har'mara",
+        { type = "turnin", questID = 86914, text = "Turn in: Tending to Har'mara", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.349, y = 0.250 } },  -- APR route coord (converted)
         { type = "accept", questID = 86910, text = "Koozat's Trample",
           coord = { map = 2413, x = 0.349, y = 0.250 } },  -- giver coord: ATT
         { type = "quest",  questID = 86910, text = "Koozat's Trample (objective 1)",
           coord = { map = 2413, x = 0.356, y = 0.253 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86910, text = "Turn in: Koozat's Trample",
+        { type = "turnin", questID = 86910, text = "Turn in: Koozat's Trample", rep = { { factionID = 2704, amount = 10 } },
           coord = { map = 2413, x = 0.357, y = 0.253 } },  -- APR route coord (converted)
         { type = "accept", questID = 86973, text = "Halting Harm in Har'mara",
           coord = { map = 2413, x = 0.357, y = 0.253 } },  -- giver coord: ATT
@@ -183,11 +183,11 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.359, y = 0.256 } },  -- APR route coord (converted)
         { type = "quest",  questID = 89034, text = "Burning Bitterblooms (objective 1)",
           coord = { map = 2413, x = 0.359, y = 0.256 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 89034, text = "Turn in: Burning Bitterblooms",
+        { type = "turnin", questID = 89034, text = "Turn in: Burning Bitterblooms", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.357, y = 0.252 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86973, text = "Turn in: Halting Harm in Har'mara",
+        { type = "turnin", questID = 86973, text = "Turn in: Halting Harm in Har'mara", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.357, y = 0.253 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86942, text = "Turn in: Culling the Spread",
+        { type = "turnin", questID = 86942, text = "Turn in: Culling the Spread", rep = { { factionID = 2704, amount = 100 } },
           coord = { map = 2413, x = 0.357, y = 0.253 } },  -- APR route coord (converted)
         { type = "accept", questID = 86944, text = "Seeds of the Rift",
           coord = { map = 2413, x = 0.357, y = 0.253 } },  -- giver coord: ATT
@@ -197,13 +197,13 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.348, y = 0.251 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86944, text = "Seeds of the Rift (objective 3)",
           coord = { map = 2413, x = 0.349, y = 0.251 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86944, text = "Turn in: Seeds of the Rift",
+        { type = "turnin", questID = 86944, text = "Turn in: Seeds of the Rift", rep = { { factionID = 2704, amount = 10 } },
           coord = { map = 2413, x = 0.349, y = 0.249 } },  -- APR route coord (converted)
         { type = "accept", questID = 86930, text = "To Sow the Seed",
           coord = { map = 2413, x = 0.349, y = 0.249 } },  -- giver coord: ATT
         { type = "turnin", questID = 93416, text = "Turn in: Delver's Call: The Gulf of Memory",
           coord = { map = 2413, x = 0.542, y = 0.531 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86930, text = "Turn in: To Sow the Seed",
+        { type = "turnin", questID = 86930, text = "Turn in: To Sow the Seed", rep = { { factionID = 2704, amount = 1500 } },
           coord = { map = 2413, x = 0.508, y = 0.532 } },  -- APR route coord (converted)
         { type = "accept", questID = 86864, text = "Watch the Den",
           coord = { map = 2576, x = 0.442, y = 0.526 } },  -- giver coord: ATT
@@ -215,7 +215,7 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.509, y = 0.556 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86864, text = "Watch the Den (objective 4)",
           coord = { map = 2413, x = 0.543, y = 0.557 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86864, text = "Turn in: Watch the Den",
+        { type = "turnin", questID = 86864, text = "Turn in: Watch the Den", rep = { { factionID = 2704, amount = 10 } },
           coord = { map = 2413, x = 0.543, y = 0.557 } },  -- APR route coord (converted)
         { type = "accept", questID = 86836, text = "The Hunter Awaits",
           coord = { map = 2413, x = 0.543, y = 0.557 } },  -- giver coord: ATT
@@ -223,7 +223,7 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.543, y = 0.557 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86836, text = "The Hunter Awaits (objective 1)",
           coord = { map = 2413, x = 0.619, y = 0.541 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86836, text = "Turn in: The Hunter Awaits",
+        { type = "turnin", questID = 86836, text = "Turn in: The Hunter Awaits", rep = { { factionID = 2704, amount = 10 } },
           coord = { map = 2413, x = 0.620, y = 0.546 } },  -- APR route coord (converted)
         { type = "accept", questID = 86855, text = "Consequences of Our Duty",
           coord = { map = 2413, x = 0.620, y = 0.546 } },  -- giver coord: ATT
@@ -241,15 +241,15 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.626, y = 0.524 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86851, text = "The Foundation of Aln (objective 1)",
           coord = { map = 2413, x = 0.601, y = 0.533 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86851, text = "Turn in: The Foundation of Aln",
+        { type = "turnin", questID = 86851, text = "Turn in: The Foundation of Aln", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.619, y = 0.545 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86855, text = "Turn in: Consequences of Our Duty",
+        { type = "turnin", questID = 86855, text = "Turn in: Consequences of Our Duty", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.619, y = 0.545 } },  -- APR route coord (converted)
         { type = "accept", questID = 86856, text = "Dampening the Call",
           coord = { map = 2413, x = 0.619, y = 0.545 } },  -- giver coord: ATT
         { type = "quest",  questID = 86856, text = "Dampening the Call (objective 1)",
           coord = { map = 2413, x = 0.620, y = 0.545 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86856, text = "Turn in: Dampening the Call",
+        { type = "turnin", questID = 86856, text = "Turn in: Dampening the Call", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.619, y = 0.545 } },  -- APR route coord (converted)
         { type = "accept", questID = 86857, text = "Descent into the Rift",
           coord = { map = 2413, x = 0.619, y = 0.545 } },  -- giver coord: ATT
@@ -259,13 +259,13 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.640, y = 0.584 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86857, text = "Descent into the Rift (objective 3)",
           coord = { map = 2413, x = 0.617, y = 0.562 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86857, text = "Turn in: Descent into the Rift",
+        { type = "turnin", questID = 86857, text = "Turn in: Descent into the Rift", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.617, y = 0.561 } },  -- APR route coord (converted)
         { type = "accept", questID = 86858, text = "The Madness Roots Deep",
           coord = { map = 2413, x = 0.617, y = 0.561 } },  -- giver coord: ATT
         { type = "quest",  questID = 86858, text = "The Madness Roots Deep (objective 1)",
           coord = { map = 2413, x = 0.598, y = 0.574 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86858, text = "Turn in: The Madness Roots Deep",
+        { type = "turnin", questID = 86858, text = "Turn in: The Madness Roots Deep", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.611, y = 0.573 } },  -- APR route coord (converted)
         { type = "accept", questID = 86859, text = "Grinding Out a Solution",
           coord = { map = 2413, x = 0.611, y = 0.573 } },  -- giver coord: ATT
@@ -283,11 +283,11 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.651, y = 0.612 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86860, text = "Before They Grow (objective 2)",
           coord = { map = 2413, x = 0.651, y = 0.612 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86859, text = "Turn in: Grinding Out a Solution",
+        { type = "turnin", questID = 86859, text = "Turn in: Grinding Out a Solution", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.631, y = 0.568 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86860, text = "Turn in: Before They Grow",
+        { type = "turnin", questID = 86860, text = "Turn in: Before They Grow", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.631, y = 0.568 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86861, text = "Turn in: Herding Manifestations",
+        { type = "turnin", questID = 86861, text = "Turn in: Herding Manifestations", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.631, y = 0.568 } },  -- APR route coord (converted)
         { type = "accept", questID = 86862, text = "The Greater They Aln",
           coord = { map = 2413, x = 0.631, y = 0.568 } },  -- giver coord: ATT
@@ -295,13 +295,13 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.649, y = 0.573 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86862, text = "The Greater They Aln (objective 2)",
           coord = { map = 2413, x = 0.650, y = 0.574 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86862, text = "Turn in: The Greater They Aln",
+        { type = "turnin", questID = 86862, text = "Turn in: The Greater They Aln", rep = { { factionID = 2704, amount = 100 } },
           coord = { map = 2413, x = 0.631, y = 0.568 } },  -- APR route coord (converted)
         { type = "accept", questID = 86865, text = "In Search of the Problem",
           coord = { map = 2413, x = 0.631, y = 0.568 } },  -- giver coord: ATT
         { type = "quest",  questID = 86865, text = "In Search of the Problem (objective 1)",
           coord = { map = 2413, x = 0.631, y = 0.568 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86865, text = "Turn in: In Search of the Problem",
+        { type = "turnin", questID = 86865, text = "Turn in: In Search of the Problem", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.313, y = 0.649 } },  -- APR route coord (converted)
         { type = "accept", questID = 86866, text = "Can We Heal This?",
           coord = { map = 2413, x = 0.314, y = 0.649 } },  -- giver coord: ATT
@@ -315,9 +315,9 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.304, y = 0.675 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86866, text = "Can We Heal This? (objective 1)",
           coord = { map = 2413, x = 0.320, y = 0.612 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86866, text = "Turn in: Can We Heal This?",
+        { type = "turnin", questID = 86866, text = "Turn in: Can We Heal This?", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.320, y = 0.614 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 94677, text = "Turn in: The Missing Rootwarden",
+        { type = "turnin", questID = 94677, text = "Turn in: The Missing Rootwarden", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.320, y = 0.614 } },  -- APR route coord (converted)
         { type = "accept", questID = 86882, text = "Alndust in Right Hands",
           coord = { map = 2413, x = 0.320, y = 0.614 } },  -- giver coord: ATT
@@ -333,7 +333,7 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.322, y = 0.658 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86882, text = "Alndust in Right Hands (objective 2)",
           coord = { map = 2413, x = 0.332, y = 0.759 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86882, text = "Turn in: Alndust in Right Hands",
+        { type = "turnin", questID = 86882, text = "Turn in: Alndust in Right Hands", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.332, y = 0.760 } },  -- APR route coord (converted)
         { type = "accept", questID = 86867, text = "Into the Lightbloom",
           coord = { map = 2413, x = 0.332, y = 0.760 } },  -- giver coord: ATT
@@ -341,7 +341,7 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.333, y = 0.759 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86867, text = "Into the Lightbloom (objective 2,3)",
           coord = { map = 2413, x = 0.333, y = 0.759 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86867, text = "Turn in: Into the Lightbloom",
+        { type = "turnin", questID = 86867, text = "Turn in: Into the Lightbloom", rep = { { factionID = 2704, amount = 100 } },
           coord = { map = 2413, x = 0.306, y = 0.772 } },  -- APR route coord (converted)
         { type = "accept", questID = 86874, text = "Culling the Light",
           coord = { map = 2413, x = 0.306, y = 0.772 } },  -- giver coord: ATT
@@ -378,12 +378,12 @@ TA.GuideData["midnight_harandar_campaign"] = {
         { type = "quest",  questID = 86877, text = "Righteous Pruning (objective 1)",
           coord = { map = 2413, x = 0.318, y = 0.783 } },  -- APR route coord (converted)
         { type = "turnin", questID = 86874, text = "Turn in: Culling the Light",
-          coord = nil, noArrow = true },  -- no coord: APR step has none
-        { type = "turnin", questID = 86877, text = "Turn in: Righteous Pruning",
+          coord = nil },  -- no coord: APR step has none
+        { type = "turnin", questID = 86877, text = "Turn in: Righteous Pruning", rep = { { factionID = 2704, amount = 100 } },
           coord = { map = 2413, x = 0.306, y = 0.772 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86880, text = "Turn in: Our Beloved, Returned",
+        { type = "turnin", questID = 86880, text = "Turn in: Our Beloved, Returned", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.306, y = 0.772 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86881, text = "Turn in: At the Root",
+        { type = "turnin", questID = 86881, text = "Turn in: At the Root", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2413, x = 0.306, y = 0.772 } },  -- APR route coord (converted)
         { type = "accept", questID = 86890, text = "Tell the People What You Have Seen",
           coord = { map = 2413, x = 0.306, y = 0.772 } },  -- giver coord: ATT
@@ -391,13 +391,13 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2413, x = 0.501, y = 0.541 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86890, text = "Tell the People What You Have Seen (objective 2)",
           coord = { map = 2413, x = 0.501, y = 0.541 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86890, text = "Turn in: Tell the People What You Have Seen",
+        { type = "turnin", questID = 86890, text = "Turn in: Tell the People What You Have Seen", rep = { { factionID = 2704, amount = 1500 } },
           coord = { map = 2413, x = 0.532, y = 0.554 } },  -- APR route coord (converted)
         { type = "accept", questID = 86883, text = "The Frenzied March",
           coord = { map = 2413, x = 0.532, y = 0.555 } },  -- giver coord: ATT
         { type = "quest",  questID = 86883, text = "The Frenzied March (objective 1)",
           coord = { map = 2413, x = 0.534, y = 0.554 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86883, text = "Turn in: The Frenzied March",
+        { type = "turnin", questID = 86883, text = "Turn in: The Frenzied March", rep = { { factionID = 2704, amount = 10 } },
           coord = { map = 2395, x = 0.622, y = 0.595 } },  -- APR route coord (converted)
         { type = "accept", questID = 86884, text = "Cull and Burn",
           coord = { map = 2395, x = 0.622, y = 0.595 } },  -- giver coord: ATT
@@ -417,9 +417,9 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2395, x = 0.617, y = 0.600 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86884, text = "Cull and Burn (objective 1)",
           coord = { map = 2395, x = 0.610, y = 0.586 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86884, text = "Turn in: Cull and Burn",
+        { type = "turnin", questID = 86884, text = "Turn in: Cull and Burn", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2395, x = 0.622, y = 0.595 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86885, text = "Turn in: Stem the Tides",
+        { type = "turnin", questID = 86885, text = "Turn in: Stem the Tides", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2395, x = 0.623, y = 0.595 } },  -- APR route coord (converted)
         { type = "accept", questID = 86887, text = "Expeditious Retreat",
           coord = { map = 2395, x = 0.623, y = 0.595 } },  -- giver coord: ATT
@@ -437,9 +437,9 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2395, x = 0.605, y = 0.574 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86887, text = "Expeditious Retreat (objective 3)",
           coord = { map = 2395, x = 0.604, y = 0.569 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86887, text = "Turn in: Expeditious Retreat",
+        { type = "turnin", questID = 86887, text = "Turn in: Expeditious Retreat", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2395, x = 0.587, y = 0.572 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86891, text = "Turn in: A Last Resort",
+        { type = "turnin", questID = 86891, text = "Turn in: A Last Resort", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2395, x = 0.587, y = 0.572 } },  -- APR route coord (converted)
         { type = "accept", questID = 86892, text = "Survive",
           coord = { map = 2395, x = 0.587, y = 0.573 } },  -- giver coord: ATT
@@ -447,7 +447,7 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2395, x = 0.586, y = 0.571 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86892, text = "Survive (objective 2)",
           coord = { map = 2395, x = 0.588, y = 0.571 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86892, text = "Turn in: Survive",
+        { type = "turnin", questID = 86892, text = "Turn in: Survive", rep = { { factionID = 2704, amount = 100 } },
           coord = { map = 2395, x = 0.587, y = 0.573 } },  -- APR route coord (converted)
         { type = "accept", questID = 86894, text = "The Gift of Aln'hara",
           coord = { map = 2395, x = 0.587, y = 0.573 } },  -- giver coord: ATT
@@ -461,25 +461,25 @@ TA.GuideData["midnight_harandar_campaign"] = {
           coord = { map = 2395, x = 0.610, y = 0.557 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86896, text = "Light Finds a Way (objective 1)",
           coord = { map = 2395, x = 0.610, y = 0.557 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86896, text = "Turn in: Light Finds a Way",
+        { type = "turnin", questID = 86896, text = "Turn in: Light Finds a Way", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2395, x = 0.607, y = 0.568 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86894, text = "Turn in: The Gift of Aln'hara",
+        { type = "turnin", questID = 86894, text = "Turn in: The Gift of Aln'hara", rep = { { factionID = 2704, amount = 50 } },
           coord = { map = 2395, x = 0.608, y = 0.568 } },  -- APR route coord (converted)
         { type = "accept", questID = 86897, text = "Quelling the Frenzy",
           coord = { map = 2395, x = 0.608, y = 0.568 } },  -- giver coord: ATT
         { type = "quest",  questID = 86897, text = "Quelling the Frenzy (objective 1)",
           coord = { map = 2395, x = 0.628, y = 0.554 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86897, text = "Turn in: Quelling the Frenzy",
+        { type = "turnin", questID = 86897, text = "Turn in: Quelling the Frenzy", rep = { { factionID = 2704, amount = 100 } },
           coord = { map = 2395, x = 0.584, y = 0.554 } },  -- APR route coord (converted)
         { type = "accept", questID = 86898, text = "Rise of the Haranir",
           coord = { map = 2395, x = 0.584, y = 0.554 } },  -- giver coord: ATT
-        { type = "turnin", questID = 86898, text = "Turn in: Rise of the Haranir",
+        { type = "turnin", questID = 86898, text = "Turn in: Rise of the Haranir", rep = { { factionID = 2704, amount = 1500 } },
           coord = { map = 2393, x = 0.366, y = 0.685 } },  -- APR route coord (converted)
         { type = "accept", questID = 91084, text = "Looming Shadows",
           coord = { map = 2393, x = 0.366, y = 0.684 } },  -- giver coord: ATT
         { type = "accept", questID = 95324, text = "The War Beyond the Roots",
           coord = { map = 2393, x = 0.365, y = 0.685 } },  -- giver coord: ATT
-        { type = "turnin", questID = 91084, text = "Turn in: Looming Shadows",
+        { type = "turnin", questID = 91084, text = "Turn in: Looming Shadows", rep = { { factionID = 2704, amount = 10 } },
           coord = { map = 2393, x = 0.454, y = 0.703 } },  -- APR route coord (converted)
         { type = "turnin", questID = 95324, text = "Turn in: The War Beyond the Roots",
           coord = { map = 2393, x = 0.454, y = 0.703 } },  -- APR route coord (converted)

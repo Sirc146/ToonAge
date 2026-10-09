@@ -105,12 +105,15 @@ local PROFILES = {
             -- Shared spell/item button above the action bars. Overload is
             -- retail-only and is not on this TOC; the button still loads.
             ContextAction     = true,
+            -- Standing bar only. No Renown and no paragon on this client.
+            FactionTracker    = true,
         },
         -- Advisory-only product: no Guide (player uses Zygor), no Delves or
         -- Weekly (retail-only systems). Talents/Professions/Pets reuse the
         -- retail tab ids but point at the TBC modules.
         tabs      = {
             { id = "character",   label = "Character",   module = "Character"         },
+            { id = "reputations", label = "Reputation",  module = "FactionTracker"    },
             { id = "caps",        label = "Stat Caps",   module = "StatCaps"          },
             { id = "gear",        label = "Gear",        module = "Gear"              },
             { id = "talents",     label = "Talents",     module = "TalentBuilds"      },
@@ -172,12 +175,15 @@ local PROFILES = {
             ProfessionBoard = true,
             -- Per-version rotation list. Empty bands say there is no verified rotation.
             RotationBoard = true,
+            -- Standing bar only. No Renown and no paragon on this client.
+            FactionTracker = true,
         },
         -- Leveling companion: no Delves/Weekly. Professions is
         -- the shared skill-bar readout (one card, one bar), not retail advice.
         tabs      = {
             { id = "character",  label = "Character",  module = "Character"    },
             { id = "guide",      label = "Guide",      module = "QuestTracker" },
+            { id = "reputations", label = "Reputation", module = "FactionTracker" },
             { id = "gear",       label = "Gear",       module = "Gear"         },
             { id = "rotation",   label = "Rotation",   module = "RotationBoard" },
             { id = "professions", label = "Professions", module = "ProfessionBoard" },
@@ -205,18 +211,21 @@ local PROFILES = {
     vanilla = {
         label     = "Classic Era / Vanilla (scaffold)",
         allowAll  = false,
-        -- Still a scaffold: no advice, no gear scores. The one tab is the
-        -- shared profession readout (GetSkillLineInfo, single bar).
+        -- Still a scaffold: no advice, no gear scores. Profession bars, the
+        -- reputation standing bar, and the rotation list.
         modules   = {
             ProfessionBoard = true,
             -- Shared spell/item button. No guide and no Overload on Era, so
             -- the button stays hidden until something offers a candidate.
             ContextAction   = true,
+            -- Standing bar only. No Renown and no paragon on this client.
+            FactionTracker  = true,
             -- Era's own rotation list. The tab is the card until a band has spells.
             RotationBoard   = true,
         },
         tabs      = {
             { id = "professions", label = "Professions", module = "ProfessionBoard" },
+            { id = "reputations", label = "Reputation",  module = "FactionTracker" },
             { id = "rotation",    label = "Rotation",    module = "RotationBoard" },
         },
         data      = "Vanilla",
@@ -336,11 +345,15 @@ local PROFILES = {
             -- Shared profession cards. Forever's skill list is unverified;
             -- the reader uses C_SkillInfo only when those calls exist.
             ProfessionBoard  = true,
+            -- Guarded reputation reads. Unverified until Harvest probes them.
+            -- No guide stack: Run this faction does nothing without QuestTracker.
+            FactionTracker   = true,
         },
         tabs      = {
             { id = "character",  label = "Character",  module = "ForeverCharacter" },
             { id = "gear",       label = "Gear",       module = "ForeverGear"      },
             { id = "professions", label = "Professions", module = "ProfessionBoard" },
+            { id = "reputations", label = "Reputation", module = "FactionTracker" },
             { id = "talents",    label = "Talents",    module = "ForeverTalents"   },
             { id = "spells",     label = "Spells",     module = "ForeverRotation"  },
             { id = "pets",       label = "Pets",       module = "ForeverPets", condition = "hasPetClass" },

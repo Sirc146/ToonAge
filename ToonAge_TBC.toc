@@ -87,6 +87,7 @@ Modules\TBC\RaceAdvisor.lua
 Modules\TBC\ProfessionAdvisor.lua
 Modules\Character\ProfessionSkills.lua
 Modules\Character\ProfessionBoard.lua
+Modules\Progression\FactionTracker.lua
 Modules\TBC\TalentBuilds.lua
 Modules\TBC\Rotation.lua
 Modules\TBC\Spells.lua

@@ -159,7 +159,7 @@ def test_scaffolds_inert():
     # everything that needs Data/Forever stays denied above.
     tabs = list(ta.ProfileTabs(ta).values())
     check("forever tab order", [t.id for t in tabs],
-          ["character", "gear", "professions", "talents", "spells", "pets", "pvp",
+          ["character", "gear", "professions", "reputations", "talents", "spells", "pets", "pvp",
            "scrolls", "casts", "harvest"])
     # The readout registers as ForeverCharacter, not Character: Retail ships
     # both files in one TOC and RegisterModule is a flat overwrite, so sharing
@@ -184,7 +184,7 @@ def test_scaffolds_inert():
     check("vanilla allows ContextAction",
           era.ModuleInProfile(era, "ContextAction"), True)
     check("vanilla professions tab",
-          [t.id for t in era.ProfileTabs(era).values()], ["professions", "rotation"])
+          [t.id for t in era.ProfileTabs(era).values()], ["professions", "reputations", "rotation"])
     check("vanilla allows RotationBoard",
           era.ModuleInProfile(era, "RotationBoard"), True)
 

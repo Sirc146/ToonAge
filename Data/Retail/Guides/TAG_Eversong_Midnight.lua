@@ -1,2 +1,2 @@
--- Retired. The Midnight Eversong campaign is TAG_Midnight_Eversong_Woods.lua
--- (id midnight_eversong_campaign, map 2395, includes quest 90493).
+-- Retired. The Midnight Eversong route is Data/Retail/Midnight/eversong_woods_full.lua
+-- (id midnight_eversong_full).
