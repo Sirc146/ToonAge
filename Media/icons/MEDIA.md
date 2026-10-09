@@ -1,8 +1,8 @@
 # ToonAge icon media list (`Interface\AddOns\ToonAge\Media\icons\`)
 
-Shipped set, 2026-10-09. 95 TGA files are in this folder. The first 62 came from the three earlier archives: the original set, the redraw (`tab_caps`, `tab_weapons`, `tab_weekly` and their `_32` cuts), then the final archive over the top (`tab_delves`, `tab_delves_32`, replacement `tab_caps_32` and `tab_weekly_32`, and `util_pip_8`, `util_pip_8_ring`, `util_pip_8_charged`). Name aliases `tab_guide`, `tab_rotation` and `util_harvest` are byte-copies of `tab_scrolls`, `tab_casts` and `tab_harvest`.
+Shipped set, 2026-10-09. 96 TGA files are in this folder. The first 62 came from the three earlier archives: the original set, the redraw (`tab_caps`, `tab_weapons`, `tab_weekly` and their `_32` cuts), then the final archive over the top (`tab_delves`, `tab_delves_32`, replacement `tab_caps_32` and `tab_weekly_32`, and `util_pip_8`, `util_pip_8_ring`, `util_pip_8_charged`). Name aliases `tab_guide`, `tab_rotation` and `util_harvest` are byte-copies of `tab_scrolls`, `tab_casts` and `tab_harvest`.
 
-The waypoint and gear archive added nine more: `util_waypoint`, `util_waypoint_hollow`, `util_waypoint_arrived` (64, full colour), and `util_upgrade`, `util_downgrade`, `util_sidegrade` (32 masters plus `_16`). The last archive added the remaining nine: `tab_racials`, `tab_professions`, `tab_pets` (64 and `_32`) and `util_lock`, `util_lock_32`, `util_lock_16`. The named set is 95, and all 95 are in this folder. Gilder's 2026-10-09 list-glyph archive added fifteen 16×16 cuts: check, cross, warn, people, heart, herb, pick, diamond, star, menu, flight, square, and the left, up, and down chevrons.
+The waypoint and gear archive added nine more: `util_waypoint`, `util_waypoint_hollow`, `util_waypoint_arrived` (64, full colour), and `util_upgrade`, `util_downgrade`, `util_sidegrade` (32 masters plus `_16`). The last archive added the remaining nine: `tab_racials`, `tab_professions`, `tab_pets` (64 and `_32`) and `util_lock`, `util_lock_32`, `util_lock_16`. The named set is 96, and all 96 are in this folder. Gilder's 2026-10-09 list-glyph archive added fifteen 16×16 cuts: check, cross, warn, people, heart, herb, pick, diamond, star, menu, flight, square, and the left, up, and down chevrons. The options gear is `util_settings_16.tga`, white plus alpha.
 
 Final icon set, signed off by the art director (Gilder) on 2026-10-08. Specs: `toonage/style-guide.md` (rev 2) §9b–§11 and `toonage/prompt-sheet-2026-10-08.md` §4. This manifest is the per-file usage list. The style guide stays the source of truth for the design rules.
 
@@ -44,7 +44,8 @@ All files are 32-bit uncompressed TGA (type 2) with straight alpha and power-of-
 | `tab_harvest.tga` | 64×64 | Harvest (data harvester) tab: map pin with record dot and ground line | 32 |
 | `tab_harvest_32.tga` | 32×32 | Same, hinted | 20, 32 |
 | `util_settings.tga` | 64×64 | Settings cog (opens `TASettingsDrawer`) | master |
-| `util_settings_32.tga` | 32×32 | Same, hinted | 16 (icon button) |
+| `util_settings_32.tga` | 32×32 | Same, hinted | 16+ |
+| `util_settings_16.tga` | 16×16 | Settings cog, white plus alpha. Options button | 14 |
 | `util_close.tga` | 64×64 | Close ×, master | master |
 | `util_close_32.tga` | 32×32 | Close ×, icon-button glyph | 16 (icon button) |
 | `util_close_16.tga` | 16×16 | Close ×, red title-dot **hover** glyph (2 px) | 8 on 12 px dot (rule 3) |
