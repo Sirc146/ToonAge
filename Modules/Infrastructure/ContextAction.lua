@@ -6,10 +6,15 @@
 -- candidate is the one the button shows. Quest items use a higher priority
 -- than the gathering Overload reminder.
 --
--- Attributes, Show, Hide, and SetOverrideBindingClick run only out of combat.
--- A change that arrives during combat is stored and applied on
--- PLAYER_REGEN_ENABLED. This file names no C_ API: Forever and the classic
--- clients load it, and each feature supplies the icon and cooldown numbers.
+-- The slot is 44px with a gold frame and a steady glow. The icon is the
+-- spell or item texture the feature already has. The keybind is drawn on
+-- the slot, and the tooltip adds candidate.why (why the button appeared).
+-- Nothing here pulses, and combat does not move the slot or restyle it.
+--
+-- Attributes, Show, Hide, SetPoint, and SetOverrideBindingClick run only
+-- out of combat. A change that arrives during combat is stored and applied
+-- on PLAYER_REGEN_ENABLED. This file names no C_ API: Forever and the
+-- classic clients load it, and each feature supplies the icon and cooldown.
 
 local TA = ToonAge
 TA.modules = TA.modules or {}
@@ -21,14 +26,19 @@ TA:RegisterModule("ContextAction", CA)
 CA.QUEST_PRIORITY = 20
 CA.OVERLOAD_PRIORITY = 10
 CA.NEAR_YARDS = 15
-CA.BUTTON_SIZE = 40
+CA.BUTTON_SIZE = 44
 -- Just above the default action bar.
 CA.BAR_GAP = 72
-CA.GLOW_SECONDS = 0.6
-CA.FINISHER_GLOW = { 0.910, 0.702, 0.353 }
-CA.REST_GLOW = { 0.55, 0.40, 0.08 }
+-- Gold frame #E8B35A. Drawn once; combat never retints it.
+CA.FRAME_GOLD = { 0.910, 0.702, 0.353 }
+CA.GLOW_ALPHA = 0.40
+CA.GLOW_OUTSET = 6
+-- Keybind on the slot is #F5F7FA. The why-line is text_muted #8C939A.
+CA.KEY_COLOR = { 245 / 255, 247 / 255, 250 / 255 }
+CA.WHY_COLOR = { 140 / 255, 147 / 255, 154 / 255 }
 CA.PLACEHOLDER_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 CA.BUTTON_NAME = "TAContextActionButton"
+CA.KEY_MODS = { SHIFT = "S", CTRL = "C", ALT = "A" }
 
 function CA.Secret(v)
     if type(issecretvalue) ~= "function" then return false end
@@ -40,14 +50,30 @@ function CA.InCombat()
     return type(InCombatLockdown) == "function" and InCombatLockdown() and true or false
 end
 
-function CA.GlowColor(elapsed)
-    elapsed = tonumber(elapsed) or 0
-    if elapsed < CA.GLOW_SECONDS then
-        local g = CA.FINISHER_GLOW
-        return g[1], g[2], g[3], true
+--- Short label for the 44px slot. SHIFT-F is S-F. The saved binding stays full.
+function CA.KeyLabel(key)
+    if CA.Secret(key) or type(key) ~= "string" or key == "" then return "" end
+    local parts = {}
+    for part in string.gmatch(key, "[^%-]+") do
+        parts[#parts + 1] = CA.KEY_MODS[part] or part
     end
-    local g = CA.REST_GLOW
-    return g[1], g[2], g[3], false
+    return table.concat(parts, "-")
+end
+
+--- "Quest item for: <quest>". A secret or empty title adds no line.
+function CA.WhyForQuest(title)
+    if CA.Secret(title) or type(title) ~= "string" then return nil end
+    title = title:gsub("^%s+", ""):gsub("%s+$", "")
+    if title == "" then return nil end
+    return "Quest item for: " .. title
+end
+
+--- "<family> node nearby", for example "Infused node nearby".
+function CA.WhyForFamily(family)
+    if CA.Secret(family) or type(family) ~= "string" then return nil end
+    family = family:gsub("^%s+", ""):gsub("%s+$", "")
+    if family == "" then return nil end
+    return family .. " node nearby"
 end
 
 --- Yards to a guide coordinate. Missing numbers are not "near".
@@ -169,6 +195,7 @@ function CA.QuestCandidate(facts)
         itemID = itemID,
         icon = texture,
         label = label,
+        why = CA.WhyForQuest(facts.questTitle),
         priority = CA.QUEST_PRIORITY,
     }
 end
@@ -228,19 +255,32 @@ function CA:EnsureButton()
     if btn.RegisterForDrag then btn:RegisterForDrag("LeftButton") end
     if btn.RegisterForClicks then btn:RegisterForClicks("LeftButtonUp") end
     if btn.SetClampedToScreen then btn:SetClampedToScreen(true) end
+    local gold = CA.FRAME_GOLD
     if btn.SetBackdrop then
         btn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8X8",
             edgeFile = "Interface\\Buttons\\WHITE8X8",
-            edgeSize = 1,
+            edgeSize = 2,
         })
         btn:SetBackdropColor(0.04, 0.03, 0.00, 0.98)
-        local g = CA.REST_GLOW
-        btn:SetBackdropBorderColor(g[1], g[2], g[3], 0.70)
+        btn:SetBackdropBorderColor(gold[1], gold[2], gold[3], 1)
     end
+    -- Steady halo behind the icon. White texture, tinted once. No animation.
+    local glow = btn:CreateTexture(nil, "BACKGROUND")
+    local out = CA.GLOW_OUTSET
+    if glow.SetPoint then
+        glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -out, out)
+        glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", out, -out)
+    end
+    if glow.SetTexture then glow:SetTexture("Interface\\Buttons\\WHITE8X8") end
+    if glow.SetVertexColor then
+        glow:SetVertexColor(gold[1], gold[2], gold[3], CA.GLOW_ALPHA)
+    end
+    if glow.SetBlendMode then glow:SetBlendMode("ADD") end
+    btn.glow = glow
     local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
-    icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
+    icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -3)
+    icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
     if icon.SetTexCoord then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
     icon:SetTexture(CA.PLACEHOLDER_ICON)
     btn.icon = icon
@@ -254,12 +294,18 @@ function CA:EnsureButton()
         btn.cooldown = cd
     end
     local keyText = btn:CreateFontString(nil, "OVERLAY")
-    if keyText.SetFont and STANDARD_TEXT_FONT then
-        keyText:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    if keyText.SetFont then
+        local painted = keyText:SetFont("Fonts\\ARIALN.TTF", 11, "OUTLINE")
+        if not painted and STANDARD_TEXT_FONT then
+            keyText:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        end
     end
-    if keyText.SetPoint then keyText:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2) end
+    if keyText.SetPoint then keyText:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -3, -3) end
     if keyText.SetJustifyH then keyText:SetJustifyH("RIGHT") end
-    if keyText.SetTextColor then keyText:SetTextColor(1, 0.82, 0, 1) end
+    if keyText.SetTextColor then
+        local c = CA.KEY_COLOR
+        keyText:SetTextColor(c[1], c[2], c[3], 1)
+    end
     if keyText.SetText then keyText:SetText("") end
     btn.keyText = keyText
     btn:SetScript("OnDragStart", function(f)
@@ -285,19 +331,15 @@ function CA:EnsureButton()
         elseif tip.SetText then
             tip:SetText(plan and plan.label or "", 1, 0.82, 0)
         end
+        local why = plan and plan.why
+        if type(why) == "string" and why ~= "" and not CA.Secret(why) and tip.AddLine then
+            local c = CA.WHY_COLOR
+            tip:AddLine(why, c[1], c[2], c[3], true)
+        end
         if tip.Show then tip:Show() end
     end)
     btn:SetScript("OnLeave", function()
         if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
-    end)
-    btn:SetScript("OnUpdate", function(_, elapsed)
-        if not CA._glowing then return end
-        CA._glowElapsed = (CA._glowElapsed or 0) + (elapsed or 0)
-        local r, g, b, live = CA.GlowColor(CA._glowElapsed)
-        if btn.SetBackdropBorderColor then
-            btn:SetBackdropBorderColor(r, g, b, live and 1 or 0.70)
-        end
-        if not live then CA._glowing = false end
     end)
     self:Place(btn)
     self._button = btn
@@ -312,6 +354,11 @@ end
 
 function CA:Place(btn)
     if not btn or btn._placed or not btn.SetPoint then return end
+    if CA.InCombat() then
+        self._placeQueued = true
+        return
+    end
+    self._placeQueued = false
     btn._placed = true
     if btn.ClearAllPoints then btn:ClearAllPoints() end
     local saved = TA.charDB and TA.charDB.contextAction
@@ -396,8 +443,7 @@ function CA:Paint(plan)
     CA.Swipe(btn, plan.cooldown)
     if btn.keyText and btn.keyText.SetText then
         local key = TA.db and TA.db.contextActionKey
-        if type(key) ~= "string" then key = "" end
-        btn.keyText:SetText(key)
+        btn.keyText:SetText(CA.KeyLabel(key))
     end
     local changed = self._sig ~= sig
     if changed and btn.SetAttribute then
@@ -415,14 +461,6 @@ function CA:Paint(plan)
     local was = self._shown
     if not was and btn.Show then btn:Show() end
     self._shown = true
-    if not was or changed then
-        self._glowElapsed = 0
-        self._glowing = true
-        if btn.SetBackdropBorderColor then
-            local r, g, b = CA.GlowColor(0)
-            btn:SetBackdropBorderColor(r, g, b, 1)
-        end
-    end
 end
 
 function CA:Commit(plan)
@@ -468,7 +506,7 @@ function CA:ApplyBinding()
         self._boundKey = key
     end
     if btn.keyText and btn.keyText.SetText then
-        btn.keyText:SetText(key or "")
+        btn.keyText:SetText(CA.KeyLabel(key))
     end
 end
 
@@ -547,6 +585,9 @@ end
 
 function CA:OnEvent(event)
     if event ~= "PLAYER_REGEN_ENABLED" then return end
+    if self._placeQueued and self._button then
+        self:Place(self._button)
+    end
     if self._dirty then
         local plan = self._queued
         if plan == false then plan = nil end
