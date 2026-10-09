@@ -595,7 +595,7 @@ function AQS:PopulatePanel()
             if ok and dungeonName then
                 table.insert(actions, {
                     priority = 3,
-                    icon = ToonAge.Utils.Glyph("arrow", "1EBCFF"),
+                    icon = ToonAge.Utils.Glyph("arrowUp", "1EBCFF"),
                     text = "Best dungeon for upgrades: " .. dungeonName,
                     sub  = string.format("+%d%% potential gear improvement", upgradePct or 0),
                 })

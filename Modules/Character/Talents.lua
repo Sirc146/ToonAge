@@ -538,7 +538,7 @@ function Talents:RenderContent(content, activeSpecID)
                 if t then
                     found = found + 1
                     if lvl == playerLevel then
-                        pathLines[#pathLines + 1] = ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Lvl ") .. lvl .. ":|r |cFFFFD100" .. t .. ("|r  " .. ToonAge.Utils.Glyph("arrow") .. " take now")
+                        pathLines[#pathLines + 1] = ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Lvl ") .. lvl .. ":|r |cFFFFD100" .. t .. ("|r  " .. ToonAge.Utils.Glyph("arrowLeft") .. " take now")
                     else
                         pathLines[#pathLines + 1] = "|cFF888780  Lvl " .. lvl .. ":|r " .. t
                     end
@@ -829,7 +829,7 @@ function Talents:RenderContent(content, activeSpecID)
                     local sName = GetSpecNameByID(entry.id)
                     local isActive = (entry.id == activeSpecID)
                     local color = isActive and "|cFF4AFF7A" or "|cFFAAAAAA"
-                    local tag   = isActive and (" " .. ToonAge.Utils.Glyph("arrow") .. " active") or ""
+                    local tag   = isActive and (" " .. ToonAge.Utils.Glyph("arrowLeft") .. " active") or ""
                     local wpnTag = weaponNotes[entry.id] and " |cFF888780(no weapon)|r" or ""
                     AddText(color .. sName .. "|r: " .. U.FormatNumber(entry.score) .. " gear score" .. tag .. wpnTag, 9, 0.6, 0.6, 0.6)
                 end

@@ -6,11 +6,20 @@ via ToonAge.Utils.Glyph, not in the string. Comments are skipped. Libs/ is
 skipped. A UTF-8 sequence written as decimal escapes (\\226\\156\\147) is
 decoded before the check, so a smuggled symbol still fails.
 
-Allowed in string literals:
+Allowed in UI string literals:
   U+2014 EM DASH
   U+00B7 MIDDLE DOT
+
+Guide data under Data/ (Guides/ and Data/Retail/Midnight/) may also keep:
+  U+2026 ELLIPSIS
+  accented Latin letters, for names
+
+Every file named by U.Glyph must exist in Media/icons, at the pixel size
+the table declares.
 """
 
+import re
+import struct
 import sys
 from pathlib import Path
 
@@ -181,14 +190,40 @@ def recover_utf8(s):
     return "".join(out)
 
 
+def is_guide_data(rel):
+    """Guide routes, not the rest of Data (rotations, weights, spells)."""
+    parts = rel.parts
+    if not parts or parts[0] != "Data":
+        return False
+    if "Guides" in parts:
+        return True
+    return len(parts) >= 3 and parts[1] == "Retail" and parts[2] == "Midnight"
+
+
+def is_accented_latin(ch):
+    o = ord(ch)
+    if not ch.isalpha():
+        return False
+    return (0x00C0 <= o <= 0x024F) or (0x1E00 <= o <= 0x1EFF)
+
+
+def char_allowed(ch, guide):
+    if ch in ALLOW:
+        return True
+    if guide and (ch == "\u2026" or is_accented_latin(ch)):
+        return True
+    return False
+
+
 def offenders():
     found = []
     for rel, src in iter_lua():
+        guide = is_guide_data(rel)
         for a, b in lex_strings(src):
             raw = src[a:b]
             text = decode_long(raw) if raw.startswith("[") else decode_short(raw)
             text = recover_utf8(text)
-            bad = sorted({ch for ch in text if ord(ch) > 127 and ch not in ALLOW})
+            bad = sorted({ch for ch in text if ord(ch) > 127 and not char_allowed(ch, guide)})
             if bad:
                 line = src.count("\n", 0, a) + 1
                 shown = "".join(f"U+{ord(ch):04X}" for ch in bad)
@@ -198,7 +233,58 @@ def offenders():
 
 def test_no_plain_symbols():
     bad = offenders()
-    check("no non-ASCII UI symbols outside em dash and middle dot", bad, [])
+    check("no disallowed non-ASCII symbols in UI or guide strings", bad, [])
+    check("a guide name may keep an ellipsis", char_allowed("\u2026", True))
+    check("UI chrome may not keep an ellipsis", char_allowed("\u2026", False), False)
+    check("a guide name may keep an accented letter", char_allowed("é", True))
+    check("UI chrome may not keep an accented letter", char_allowed("é", False), False)
+    check("a star still fails in a guide string", char_allowed("★", True), False)
+
+
+def glyph_table():
+    src = (ROOT / "Core" / "Utils.lua").read_text(encoding="utf-8")
+    block = re.search(r"local GLYPH = \{(.+?)\n\}", src, re.S)
+    if not block:
+        return []
+    return re.findall(
+        r"(\w+)\s*=\s*\{\s*\"([^\"]+)\"\s*,\s*(\d+)\s*,\s*(\d+)\s*\}",
+        block.group(1),
+    )
+
+
+def tga_size(path):
+    hdr = path.read_bytes()[:18]
+    if len(hdr) < 18 or hdr[2] != 2:
+        return None
+    w, h = struct.unpack_from("<HH", hdr, 12)
+    return w, h
+
+
+def test_glyph_files():
+    rows = glyph_table()
+    check("U.Glyph table parsed", len(rows) >= 20)
+    by_name = {name: (filename, int(dim)) for name, filename, _h, dim in rows}
+    icons = ROOT / "Media" / "icons"
+    missing = []
+    wrong = []
+    for name, filename, _h, dim in rows:
+        path = icons / filename
+        if not path.is_file():
+            missing.append(filename)
+            continue
+        size = tga_size(path)
+        if size != (int(dim), int(dim)):
+            wrong.append(f"{filename} file {size} table {dim}")
+    check("every U.Glyph path has a file", missing, [])
+    check("every U.Glyph file matches its declared pixel size", wrong, [])
+    check("forward and collapsed use the right chevron",
+          by_name.get("arrow", (None,))[0], "util_chevron_16.tga")
+    check("back uses the left chevron",
+          by_name.get("arrowLeft", (None,))[0], "util_chevron_left_16.tga")
+    check("up uses the up chevron",
+          by_name.get("arrowUp", (None,))[0], "util_chevron_up_16.tga")
+    check("an open section uses the down chevron",
+          by_name.get("arrowDown", (None,))[0], "util_chevron_down_16.tga")
 
 
 def test_glyph_helper():
@@ -222,6 +308,7 @@ def test_glyph_helper():
 
 def main():
     test_glyph_helper()
+    test_glyph_files()
     test_no_plain_symbols()
     passed = sum(1 for ok in _results if ok)
     total = len(_results)

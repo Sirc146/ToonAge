@@ -283,7 +283,7 @@ function Character:BuildUI(content, sidebar)
                 end
             end
             if secSectionOpen then
-                secHeader:SetText((ToonAge.Utils.Glyph("arrow") .. " SECONDARY STATS"))
+                secHeader:SetText((ToonAge.Utils.Glyph("arrowDown") .. " SECONDARY STATS"))
             else
                 secHeader:SetText((ToonAge.Utils.Glyph("arrow") .. " SECONDARY STATS"))
             end
@@ -294,7 +294,7 @@ function Character:BuildUI(content, sidebar)
         hitbox:SetScript("OnLeave", function()
             secHeader:SetTextColor(0.62, 0.59, 0.55, 1)
         end)
-        secHeader:SetText((ToonAge.Utils.Glyph("arrow") .. " SECONDARY STATS"))
+        secHeader:SetText((ToonAge.Utils.Glyph("arrowDown") .. " SECONDARY STATS"))
     end
 
     self.widgets.secRows = {}
@@ -388,7 +388,7 @@ function Character:BuildUI(content, sidebar)
             scoreSectionOpen = not scoreSectionOpen
             if scoreSectionOpen then
                 scoreRow:Show()
-                Character.widgets.scoreDiv:SetText((ToonAge.Utils.Glyph("arrow") .. " WEIGHTED SCORE"))
+                Character.widgets.scoreDiv:SetText((ToonAge.Utils.Glyph("arrowDown") .. " WEIGHTED SCORE"))
             else
                 scoreRow:Hide()
                 Character.widgets.scoreDiv:SetText((ToonAge.Utils.Glyph("arrow") .. " WEIGHTED SCORE"))
@@ -400,7 +400,7 @@ function Character:BuildUI(content, sidebar)
         scoreHitbox:SetScript("OnLeave", function()
             Character.widgets.scoreDiv:SetTextColor(0.62, 0.59, 0.55, 1)
         end)
-        self.widgets.scoreDiv:SetText((ToonAge.Utils.Glyph("arrow") .. " WEIGHTED SCORE"))
+        self.widgets.scoreDiv:SetText((ToonAge.Utils.Glyph("arrowDown") .. " WEIGHTED SCORE"))
     end
 
     self.widgets.scoreLbl = scoreRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")

@@ -366,7 +366,7 @@ function Delves:Render(content, sidebar)
         local cy = -20 - (i - 1) * 20
         local mLabel = tCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         mLabel:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-        mLabel:SetText(tip.mode .. (tip.mode == mode and (" " .. ToonAge.Utils.Glyph("arrow")) or ""))
+        mLabel:SetText(tip.mode .. (tip.mode == mode and (" " .. ToonAge.Utils.Glyph("arrowLeft")) or ""))
         mLabel:SetTextColor(tip.color[1], tip.color[2], tip.color[3], tip.mode == mode and 1 or 0.50)
         mLabel:SetPoint("TOPLEFT", tCard, "TOPLEFT", 12, cy)
 

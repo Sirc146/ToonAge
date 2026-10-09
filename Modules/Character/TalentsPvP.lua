@@ -499,7 +499,7 @@ function TalentsPvP:RenderTreePanel(content, startY, w, padL, nodes, pvpData)
             if isRecommended and isActive then
                 badge:SetText(COL_GREEN .. (ToonAge.Utils.Glyph("check", "4AFF7A") .. " PvP") .. CLOSE)
             elseif isRecommended then
-                badge:SetText(COL_ORANGE .. (ToonAge.Utils.Glyph("arrow", "FF9A1A") .. " Take") .. CLOSE)
+                badge:SetText(COL_ORANGE .. (ToonAge.Utils.Glyph("arrowLeft", "FF9A1A") .. " Take") .. CLOSE)
             elseif isActive then
                 badge:SetText(COL_GREY .. "Active" .. CLOSE)
             else

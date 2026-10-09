@@ -1240,34 +1240,33 @@ end
 -- above 1, every channel is a byte (the quest-tracker pulse passes
 -- {0x1E, g, 0x30} with g in 140-255).
 --
--- Files that are not in Media/icons yet, for Gilder to draw at 16x16,
--- white plus alpha, same as the other util_*_16 cuts:
---   util_check_16, util_cross_16, util_warn_16, util_people_16,
---   util_heart_16, util_herb_16, util_pick_16, util_diamond_16,
---   util_star_16, util_menu_16, util_flight_16, util_square_16
--- Left, up, and the disclosure triangles share util_chevron_16. There is
--- no directional cut. Gear comparison marks stay on U.GearMark.
+-- arrow is the right chevron: forward, and a collapsed section.
+-- arrowDown is the open section. arrowLeft is back. arrowUp is up.
+-- Gear comparison marks stay on U.GearMark.
 local GLYPH_ICON = "Interface\\AddOns\\ToonAge\\Media\\icons\\"
 local GLYPH = {
-    check    = { "util_check_16.tga",    12, 16 },
-    cross    = { "util_cross_16.tga",    12, 16 },
-    pip      = { "util_pip_8.tga",        8, 32 },
-    pipRing  = { "util_pip_8_ring.tga",   8, 32 },
-    bullet   = { "util_pip_8.tga",        8, 32 },
-    arrow    = { "util_chevron_16.tga",  12, 16 },
-    minus    = { "util_minimize_16.tga", 12, 16 },
+    check    = { "util_check_16.tga",        12, 16 },
+    cross    = { "util_cross_16.tga",        12, 16 },
+    pip      = { "util_pip_8.tga",            8, 32 },
+    pipRing  = { "util_pip_8_ring.tga",       8, 32 },
+    bullet   = { "util_pip_8.tga",            8, 32 },
+    arrow    = { "util_chevron_16.tga",      12, 16 },
+    arrowLeft  = { "util_chevron_left_16.tga",  12, 16 },
+    arrowUp    = { "util_chevron_up_16.tga",    12, 16 },
+    arrowDown  = { "util_chevron_down_16.tga",  12, 16 },
+    minus    = { "util_minimize_16.tga",     12, 16 },
     swords   = { "tab_pvp_32.tga",       14, 32 },
     bolt     = { "tab_casts_32.tga",     14, 32 },
-    settings = { "util_settings_16.tga", 14, 16 },
+    settings = { "util_settings_32.tga", 14, 32 },
     warn     = { "util_warn_16.tga",     12, 16 },
-    people   = { "util_people_16.tga",   14, 16 },
+    people   = { "util_people_16.tga",   12, 16 },
     heart    = { "util_heart_16.tga",    12, 16 },
-    herb     = { "util_herb_16.tga",     14, 16 },
-    pick     = { "util_pick_16.tga",     14, 16 },
+    herb     = { "util_herb_16.tga",     12, 16 },
+    pick     = { "util_pick_16.tga",     12, 16 },
     diamond  = { "util_diamond_16.tga",  12, 16 },
     star     = { "util_star_16.tga",     12, 16 },
     menu     = { "util_menu_16.tga",     12, 16 },
-    flight   = { "util_flight_16.tga",   14, 16 },
+    flight   = { "util_flight_16.tga",   12, 16 },
     square   = { "util_square_16.tga",   12, 16 },
 }
 
@@ -1305,8 +1304,9 @@ local function GlyphRGB(color)
     return 255, 255, 255
 end
 
---- Inline |T glyph. `name` is a key of GLYPH. Missing art still returns
---- the path, so the call sites do not change when the TGA arrives.
+--- Inline |T glyph. `name` is a key of GLYPH.
+--- "arrow" points right. Collapsed sections use it; open sections use
+--- "arrowDown". Back uses "arrowLeft", forward uses "arrow".
 function U.Glyph(name, color)
     local spec = GLYPH[name]
     if not spec then return "" end

@@ -435,11 +435,11 @@ function M:CreateCollapsibleSection(parent, opts)
 
     local function UpdateVisual()
         if section.collapsed then
-            arrow:SetText(ToonAge.Utils.Glyph("arrow"))  -- right chevron; open and closed share this cut
+            arrow:SetText(ToonAge.Utils.Glyph("arrow"))
             content:Hide()
             container:SetHeight(HEADER_H)
         else
-            arrow:SetText(ToonAge.Utils.Glyph("arrow"))
+            arrow:SetText(ToonAge.Utils.Glyph("arrowDown"))
             content:Show()
             container:SetHeight(HEADER_H + section.contentHeight)
         end
@@ -474,7 +474,7 @@ function M:CreateCollapsibleSection(parent, opts)
         if self.collapsed then
             arrow:SetText(ToonAge.Utils.Glyph("arrow"))
         else
-            arrow:SetText(ToonAge.Utils.Glyph("arrow"))
+            arrow:SetText(ToonAge.Utils.Glyph("arrowDown"))
         end
     end
 
@@ -562,14 +562,14 @@ function M:InitDrawer()
     arrowLbl:SetJustifyH("CENTER")
     arrowLbl:SetJustifyV("MIDDLE")
     arrowLbl:SetTextColor(unpack(self.CLR_TEXT_ACCENT))
-    arrowLbl:SetText(("Show " .. ToonAge.Utils.Glyph("arrow")))
+    arrowLbl:SetText(("Show " .. ToonAge.Utils.Glyph("arrowUp")))
 
     local function UpdateArrowBtnLabel()
         local Arrow = TA:GetModule("Arrow")
         if Arrow and Arrow.frame and Arrow.frame:IsVisible() then
-            arrowLbl:SetText(("Hide " .. ToonAge.Utils.Glyph("arrow")))
+            arrowLbl:SetText(("Hide " .. ToonAge.Utils.Glyph("arrowUp")))
         else
-            arrowLbl:SetText(("Show " .. ToonAge.Utils.Glyph("arrow")))
+            arrowLbl:SetText(("Show " .. ToonAge.Utils.Glyph("arrowUp")))
         end
     end
 
@@ -625,9 +625,9 @@ function M:InitDrawer()
 
     local function UpdateToggleArrow()
         if isOpen then
-            toggleArrow:SetText(ToonAge.Utils.Glyph("arrow"))  -- drawer open
+            toggleArrow:SetText(ToonAge.Utils.Glyph("arrow"))
         else
-            toggleArrow:SetText(ToonAge.Utils.Glyph("arrow"))  -- drawer closed
+            toggleArrow:SetText(ToonAge.Utils.Glyph("arrowLeft"))
         end
     end
 
