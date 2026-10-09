@@ -25,8 +25,8 @@
 
     This script reproduces release.yml's layout from what the next commit would
     contain (tracked + new files, minus .gitignore'd ones), with the same
-    exclusions: .git .github Tools Docs .claude __pycache__ *.pyc *.py
-    CLAUDE.md .rules.md .gitignore.
+    exclusions: .git .github Art Data Tools Docs docs .claude __pycache__
+    *.pyc *.py CLAUDE.md .rules.md .gitignore.
 
     With -InstallTo it replaces that client's Interface\AddOns\ToonAge with the
     layout (SavedVariables are untouched -- they live under WTF\). Put the
@@ -65,7 +65,7 @@ $pkg = Join-Path $OutDir 'ToonAge'
 
 # Same exclusions as release.yml's rsync. rsync --exclude='Tools' drops any path
 # component named Tools, anywhere -- so this matches on every segment.
-$ExcludeDirs  = @('.git', '.github', 'Tools', 'Docs', '.claude', '__pycache__')
+$ExcludeDirs  = @('.git', '.github', 'Art', 'Data', 'Tools', 'Docs', 'docs', '.claude', '__pycache__')
 $ExcludeNames = @('CLAUDE.md', '.rules.md', '.gitignore')
 function Test-Excluded([string] $rel) {
     $parts = $rel -split '[\\/]'

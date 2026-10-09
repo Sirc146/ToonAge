@@ -40,8 +40,11 @@ jobs:
           # Copy only addon files (exclude dev-only folders)
           rsync -a --exclude='.git' \
                    --exclude='.github' \
+                   --exclude='Art' \
+                   --exclude='Data' \
                    --exclude='Tools' \
                    --exclude='Docs' \
+                   --exclude='docs' \
                    --exclude='.claude' \
                    --exclude='__pycache__' \
                    --exclude='*.pyc' \
