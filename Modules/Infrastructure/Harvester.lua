@@ -330,21 +330,52 @@ function Hv:Meta()
     }
 end
 
---- One page of a section, stamped. page 0 = every record. A section this
---- store has not written yet exports as a stamped header with 0 records, so
---- its Copy button always opens a window.
-function Hv:ExportLines(section, page)
+--- The player's class token and localized display name, or nil when the
+--- client has not answered. The formatter never calls this; exports pass the
+--- result in so the saved-file path can omit it.
+function Hv:PlayerClass()
+    if type(UnitClass) ~= "function" then return nil, nil end
+    local ok, display, token = pcall(UnitClass, "player")
+    if not ok or type(token) ~= "string" or token == "" then return nil, nil end
+    if type(display) ~= "string" or display == "" then
+        local F = TA.HarvestFormat
+        display = (F and F.ClassName) and F.ClassName(token) or token
+    end
+    return token, display
+end
+
+--- Stamp for an export. scope "class" limits a per-class section to the
+--- current character; anything else exports every class. The current
+--- character's display name is filled whenever the client answered.
+function Hv:StampMeta(scope)
+    local meta = self:Meta()
+    local token, display = self:PlayerClass()
+    if display then meta.currentClass = display end
+    if scope == "class" and token then meta.class = token end
+    return meta
+end
+
+--- One page of a section, stamped. page 0 = every record. scope "class"
+--- keeps only the current character's class (a class with no rows exports
+--- the empty sentence, not another class). A section this store has not
+--- written yet exports as a stamped header with 0 records, so its Copy
+--- button always opens a window.
+function Hv:ExportLines(section, page, scope)
     local s = self:Store()
     local F = TA.HarvestFormat
     if not (s and F) then return nil end
     local view = s
-    if type(s[section]) ~= "table" then view = { [section] = {} } end
-    return F.Lines(view, section, page or 1, self:Meta())
+    if type(s[section]) ~= "table" then
+        view = {}
+        for k, v in pairs(s) do view[k] = v end
+        view[section] = {}
+    end
+    return F.Lines(view, section, page or 1, self:StampMeta(scope))
 end
 
 --- Opens one page of a section in the copy window. Returns page, pages.
-function Hv:Export(section, page)
-    local out, p, pages = self:ExportLines(section, page)
+function Hv:Export(section, page, scope)
+    local out, p, pages = self:ExportLines(section, page, scope)
     if not out then return nil end
     if TA.ShowCopyWindow then
         TA:ShowCopyWindow(("ToonAge harvest — %s (%d/%d)"):format(tostring(section), p, pages),
@@ -367,6 +398,23 @@ end
 
 function Hv:Exports()
     return self._exports
+end
+
+--- Muted label when this section's saved rows are another class and the
+--- current character has none. Nil when the shown rows are theirs, or when
+--- the client has not said which class they are.
+function Hv:ForeignNote(section, store)
+    local F = TA.HarvestFormat
+    if not (F and F.ClassesIn and F.Scoped and F.Rows and F.SavedLabel) then return nil end
+    local token = self:PlayerClass()
+    if not token then return nil end
+    if #F.Rows(F.Scoped(store, section, token)) > 0 then return nil end
+    local others = {}
+    for _, cls in ipairs(F.ClassesIn(store, section)) do
+        if cls ~= token then others[#others + 1] = cls end
+    end
+    if #others == 0 then return nil end
+    return F.SavedLabel(others)
 end
 
 --- True when the store has at least one record in the section.
@@ -822,12 +870,18 @@ function Hv:RunAll()
     for _, k in ipairs(sections) do before[k] = Size(s[k] or {}) end
 
     -- The same stamp every export carries (client, build, interface, project,
-    -- channel, harvest range, report time, versions).
-    local stamp = TA.HarvestFormat and TA.HarvestFormat.Header(self:Meta(), "full report", 0, 1, 0, 0, 0) or {}
+    -- channel, source, harvest range, report time, versions). The full report
+    -- is every record, so its source is "all".
+    local meta = self:StampMeta("all")
+    local F = TA.HarvestFormat
+    if F and F.RecordedBy then meta.recordedBy = F.RecordedBy(s, "all") end
+    meta.source = "all"
+    local stamp = F and F.Header(meta, "full report", 0, 1, 0, 0, 0) or {}
     local out = {
         pack.reportTitle or "ToonAge -- full report",
         stamp[2] or "",
         stamp[3] or "",
+        stamp[4] or "",
         "",
         "== Rescan ==",
     }
@@ -871,7 +925,7 @@ function Hv:RunAll()
     for _, k in ipairs(sections) do
         out[#out + 1] = ""
         out[#out + 1] = "== Harvest: " .. k .. " =="
-        local lines = self:ExportLines(k, 0)
+        local lines = self:ExportLines(k, 0, "all")
         for _, l in ipairs(lines or { "(unavailable)" }) do out[#out + 1] = l end
     end
 
@@ -893,15 +947,24 @@ function H:BuildProbeLines() return Hv:BuildProbeLines() end
 function H:ScanCatalog(onDone) return Hv:ScanCatalog(onDone) end
 
 --- One page of a section as lines. page = 0 means every record, one block.
-function H:ExportLines(section, page)
-    return Hv:ExportLines(section or "items", page)
+function H:ExportLines(section, page, scope)
+    return Hv:ExportLines(section or "items", page, scope)
 end
 
-function H:Export(section, page)
+-- Copy buttons for these sections default to the current character's class.
+-- "all" is the shift-click / second button and is what the full report uses.
+local CLASS_EXPORT = { spells = true, talents = true, trainer = true, catalog = true }
+local ALL_LABEL = {
+    spells = "All spell classes", talents = "All talent classes",
+    trainer = "All trainer classes", catalog = "All catalog classes",
+}
+
+function H:Export(section, page, scope)
     section = section or "items"
-    local p, pages = Hv:Export(section, page)
+    if scope == nil and CLASS_EXPORT[section] then scope = "class" end
+    local p, pages = Hv:Export(section, page, scope)
     if not p then return end
-    self._page, self._pages, self._section = p, pages, section
+    self._page, self._pages, self._section, self._scope = p, pages, section, scope
 end
 
 H.SlashCommands = H.SlashCommands or {}
@@ -946,7 +1009,19 @@ function H:Render(content, side)
     for _, section in ipairs(pack.summaryOrder or {}) do
         local e = SummaryEntry(section)
         if e and (section ~= "catalog" or pack.catalogRanges) then
-            local value = e.value and e.value(s) or tostring(Size(s[section] or {}))
+            local value
+            if e.value then
+                value = e.value(s)
+            else
+                local Fmt = TA.HarvestFormat
+                local token = Hv:PlayerClass()
+                if token and Fmt and Fmt.CLASS_SECTIONS and Fmt.CLASS_SECTIONS[section] then
+                    local n = #Fmt.Rows(Fmt.Scoped(s, section, token))
+                    value = (n > 0) and tostring(n) or "none yet"
+                else
+                    value = tostring(Size(s[section] or {}))
+                end
+            end
             y = L:DataRow(content, y, { label = e.label, value = value })
             local note = e.note and e.note(s)
             if note then y = L:Paragraph(content, y, note, { color = L.C_DIM }) end
@@ -971,23 +1046,47 @@ function H:Render(content, side)
         .. "and is written when you log out or /reload. Use the buttons when "
         .. "that file cannot be reached.")
 
-    -- One button per registered section, in the pack's order. Each only opens
-    -- a copy window.
+    -- One button per registered section, in the pack's order. Per-class
+    -- sections copy the current character's class; shift-click, or the button
+    -- beside them, copies every class. Each only opens a copy window.
     do
-        local row = {}
+        local row, notes = {}, {}
+        local function shifted()
+            return type(IsShiftKeyDown) == "function" and IsShiftKeyDown()
+        end
         for _, e in ipairs(Hv:Exports()) do
             local section = e.section
-            row[#row + 1] = { label = e.label, onClick = function() H:Export(section, 1) end }
+            if CLASS_EXPORT[section] then
+                row[#row + 1] = {
+                    label = e.label,
+                    tooltip = { e.label, "Copies this character's class. Shift-click to copy every class." },
+                    onClick = function()
+                        H:Export(section, 1, shifted() and "all" or "class")
+                    end,
+                }
+                row[#row + 1] = {
+                    label = ALL_LABEL[section],
+                    tooltip = { ALL_LABEL[section], "Copies every class saved on this account." },
+                    onClick = function() H:Export(section, 1, "all") end,
+                }
+                local note = Hv:ForeignNote(section, s)
+                if note then notes[#notes + 1] = e.label .. ": " .. note end
+            else
+                row[#row + 1] = { label = e.label, onClick = function() H:Export(section, 1) end }
+            end
         end
         y = L:ButtonRow(content, y, row, { label = "Copy:" })
+        for _, note in ipairs(notes) do
+            y = L:Paragraph(content, y, note, { color = L.C_DIM })
+        end
     end
 
     if (self._pages or 1) > 1 then
         y = L:ButtonRow(content, y, {
             { label = "< Prev", onClick = function()
-                H:Export(H._section, math.max(1, (H._page or 1) - 1)) end },
+                H:Export(H._section, math.max(1, (H._page or 1) - 1), H._scope) end },
             { label = "Next >", onClick = function()
-                H:Export(H._section, math.min(H._pages or 1, (H._page or 1) + 1)) end },
+                H:Export(H._section, math.min(H._pages or 1, (H._page or 1) + 1), H._scope) end },
         }, { label = ("Page %d of %d:"):format(self._page or 1, self._pages or 1) })
     end
 

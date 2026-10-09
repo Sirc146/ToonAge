@@ -86,27 +86,33 @@ h = lua_list(F.Header(META, "trainer", 0, 1, 1, 2, 2))
 check("header line 1 names section and count", h[0], "-- ToonAge harvest · trainer · all 2 records")
 check("header line 2 carries client stamps",
       h[1], "-- client forever · 1.60.1 · build 70205 · interface 16001 · project 18 · channel beta")
-check("header line 3 carries dates and versions",
-      h[2], "-- harvested 2026-09-26 .. 2026-10-04 · exported 2026-10-04 15:10 · store v3 · ToonAge 2.0.0-dev.1")
+check("header line 3 names the source, and does not guess a class",
+      h[2], "-- source all trainer · recorded by unknown · current character unknown")
+check("header line 4 carries dates and versions",
+      h[3], "-- harvested 2026-09-26 .. 2026-10-04 · exported 2026-10-04 15:10 · store v3 · ToonAge 2.0.0-dev.1")
 empty = lua_list(F.Header(L.eval("{}"), "items", 1, 1, 1, 1, 1))
 check("unrecorded fields print unknown",
       empty[1], "-- client unknown · unknown · build unknown · interface unknown · project unknown · channel unknown")
+check("unrecorded source prints unknown, never a guessed class",
+      empty[2], "-- source all items · recorded by unknown · current character unknown")
 check("unrecorded dates print unknown",
-      empty[2], "-- harvested unknown .. unknown · exported unknown · store vunknown · ToonAge unknown")
+      empty[3], "-- harvested unknown .. unknown · exported unknown · store vunknown · ToonAge unknown")
 check("empty-string channel is unknown, not blank",
       "channel unknown" in lua_list(F.Header(L.eval('{ channel = "" }'), "x", 0, 1, 0, 0, 0))[1])
 
 # ── Rows / verbatim / flatten ────────────────────────────────────────────
 lines = lua_list(F.Lines(store, "trainer", 0, META))
 check("nested trainer flattens to CLASS:key, sorted",
-      lines[4:], ["MAGE:133\tFireball\tRank 1\t1\tused\t1791057815",
+      lines[5:], ["MAGE:133\tFireball\tRank 1\t1\tused\t1791057815",
                   "MAGE:143\tFireball\tRank 2\t6\tavailable\t1791057815"])
-check("blank line separates header and records", lines[3], "")
+check("blank line separates header and records", lines[4], "")
+check("unfiltered export records who is in chars, and has no current character",
+      lines[2], "-- source all trainer · recorded by Eramali, Malefice · current character unknown")
 items = lua_list(F.Lines(store, "items", 0, META))
 check("records are verbatim (stored line untouched)",
-      items[4], "118\tMinor Healing Potion\t5\t1\t1\t0\t1\tConsumable\tPotion\t\t0\t")
-check("keys sort by string form", [l.split("\t")[0] for l in items[4:]], ["118", "2589"])
-check("array sections export by index", lua_list(F.Lines(store, "catalogPasses", 0, META))[4],
+      items[5], "118\tMinor Healing Potion\t5\t1\t1\t0\t1\tConsumable\tPotion\t\t0\t")
+check("keys sort by string form", [l.split("\t")[0] for l in items[5:]], ["118", "2589"])
+check("array sections export by index", lua_list(F.Lines(store, "catalogPasses", 0, META))[5],
       "1\tpass 2: +3 ranks, 0 still blank")
 check("missing section returns nil", F.Lines(store, "nope", 0, META) in (None, (None,)), True)
 check("empty section exports a header and no rows",
@@ -120,13 +126,83 @@ big = L.eval("(function() local t = {} for i = 1, 401 do t[string.format('k%04d'
 out, page, pages = F.Lines(big, "s", 1, META)
 p1 = lua_list(out)
 check("401 records -> 2 pages", (page, pages), (1, 2))
-check("page 1 holds 400 records", len(p1) - 4, 400)
+check("page 1 holds 400 records", len(p1) - 5, 400)
 check("page 1 header range", p1[0], "-- ToonAge harvest · s · page 1/2 · records 1-400 of 401")
 out2, page2, _ = F.Lines(big, "s", 2, META)
-check("page 2 holds the last record", lua_list(out2)[4:], ["k0401\tv401"])
+check("page 2 holds the last record", lua_list(out2)[5:], ["k0401\tv401"])
 _, clamped, _ = F.Lines(big, "s", 9, META)
 check("a page past the end clamps to the last", clamped, 2)
-check("page 0 is every record", len(lua_list(F.Lines(big, "s", 0, META))) - 4, 401)
+check("page 0 is every record", len(lua_list(F.Lines(big, "s", 0, META))) - 5, 401)
+
+# ── Per-class default ────────────────────────────────────────────────────
+# Account-wide rows from two classes. A class with nothing stored must not
+# receive the other class's rows.
+L.globals().META = META
+L.execute(r"""
+function scoped(token, display)
+    local t = {}
+    for k, v in pairs(META) do t[k] = v end
+    t.class = token
+    t.currentClass = display
+    return t
+end
+CLASS_STORE = {
+  chars = {
+    ["Player-1-0A"] = "Eramali\tClassic Beta PvE\tMAGE\tScourge\t18\t3\t16001",
+    ["Player-1-0H"] = "Huntsman\tClassic Beta PvE\tHUNTER\tOrc\t20\t2\t16001",
+  },
+  trainer = {
+    MAGE = { ["133"] = "Fireball\tRank 1\t1\tused\t1" },
+    HUNTER = { ["1978"] = "Serpent Sting\tRank 1\t4\tavailable\t1",
+               ["3044"] = "Arcane Shot\tRank 1\t6\tavailable\t1" },
+  },
+  spells = {
+    ["MAGE:133"] = "Fireball\t1\tFire\tRank 1\t\t1",
+    ["HUNTER:1978"] = "Serpent Sting\t4\tMarksmanship\tRank 1\t\t4",
+  },
+  talents = { ["MAGE:T:1:1"] = "1\t1", ["HUNTER:T:2:1"] = "2\t1" },
+  catalog = { ["133"] = "Fireball\tRank 1\t1", ["1978"] = "Serpent Sting\tRank 1\t4",
+               ["145"] = "Fireball\tRank 2\t6" },
+}
+""")
+klass = L.eval("CLASS_STORE")
+
+def scoped_lines(section, token, display):
+    meta = L.eval("scoped(%r, %r)" % (token, display))
+    return lua_list(F.Lines(klass, section, 0, meta))
+
+rogue_tr = scoped_lines("trainer", "ROGUE", "Rogue")
+check("a class with no trainer rows says so, and does not dump other classes",
+      rogue_tr[-1], "No ROGUE trainer data yet. Open a rogue trainer to record it.")
+check("empty trainer export names that class and the current character",
+      rogue_tr[2], "-- source ROGUE trainer · recorded by unknown · current character Rogue")
+check("empty trainer export has no other class's keys",
+      any(l.startswith("HUNTER:") or l.startswith("MAGE:") for l in rogue_tr), False)
+hunter_tr = scoped_lines("trainer", "HUNTER", "Hunter")
+check("hunter trainer export is only that class, recorded by that character",
+      (hunter_tr[2], hunter_tr[5:]),
+      ("-- source HUNTER trainer · recorded by Huntsman · current character Hunter",
+       ["HUNTER:1978\tSerpent Sting\tRank 1\t4\tavailable\t1",
+        "HUNTER:3044\tArcane Shot\tRank 1\t6\tavailable\t1"]))
+check("spells default to the class",
+      scoped_lines("spells", "ROGUE", "Rogue")[-1],
+      "No ROGUE spell data yet. Open your spellbook to record it.")
+check("talents default to the class",
+      scoped_lines("talents", "MAGE", "Mage")[5:], ["MAGE:T:1:1\t1\t1"])
+mage_cat = scoped_lines("catalog", "MAGE", "Mage")
+check("catalog keeps spell IDs that class recorded, not the whole account",
+      mage_cat[5:], ["133\tFireball\tRank 1\t1"])
+check("catalog for a class with no recorded spell IDs is empty",
+      scoped_lines("catalog", "ROGUE", "Rogue")[-1],
+      "No ROGUE spell catalog data yet. Open a rogue trainer or your spellbook to record it.")
+check("no class filter still exports every trainer class",
+      [l.split("\t")[0] for l in lua_list(F.Lines(klass, "trainer", 0, META))[5:]],
+      ["HUNTER:1978", "HUNTER:3044", "MAGE:133"])
+check("saved-data label names the other class",
+      L.eval("ToonAge.HarvestFormat.SavedLabel({'HUNTER'})"), "Showing saved Hunter data")
+check("saved-data label joins several classes",
+      L.eval("ToonAge.HarvestFormat.SavedLabel({'HUNTER', 'MAGE'})"),
+      "Showing saved Hunter and Mage data")
 
 
 def run_exporter(*args):
@@ -190,8 +266,10 @@ with tempfile.TemporaryDirectory() as tmp:
     h3 = open(os.path.join(outdir3, "items.tsv"), encoding="utf-8").read().splitlines()
     check("v3 store: client block stamps the export",
           h3[1], "-- client tbc · 2.5.6 · build 69795 · interface 20506 · project 5 · channel live")
+    check("v3 store: source is the whole section, with no character to name",
+          h3[2], "-- source all items · recorded by unknown · current character unknown")
     check("v3 store: harvest range from times, store and ToonAge versions",
-          re.sub(r"exported [0-9: -]+ ·", "exported <t> ·", h3[2]),
+          re.sub(r"exported [0-9: -]+ ·", "exported <t> ·", h3[3]),
           "-- harvested 2026-09-21 .. 2026-10-04 · exported <t> · store v3 · ToonAge 2.0.0-dev.1")
     check("v3 store: client and times are not exported as sections",
           sorted(os.listdir(outdir3)), ["items.tsv"])
@@ -208,7 +286,7 @@ with tempfile.TemporaryDirectory() as tmp:
     run_exporter(sv, outdir4)
     h4 = open(os.path.join(outdir4, "items.tsv"), encoding="utf-8").read().splitlines()
     check("moved store: harvest range start is unknown, end is the last write",
-          re.match(r"-- harvested unknown \.\. 2026-10-04 · exported ", h4[2]) is not None)
+          re.match(r"-- harvested unknown \.\. 2026-10-04 · exported ", h4[3]) is not None)
 
 passed, total = sum(_res), len(_res)
 print(f"[{'PASS' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")

@@ -714,7 +714,8 @@ local function SuiteApi(S)
                 end
                 CountLeaves(store[sec])
                 local lines = HF.Lines(store, sec, 0, meta)
-                if not lines or (#lines - 4) ~= n then bad[#bad + 1] = tostring(sec) end
+                -- Four stamp lines plus the blank line, then one line per record.
+                if not lines or (#lines - 5) ~= n then bad[#bad + 1] = tostring(sec) end
                 sections, records = sections + 1, records + n
             end
         end
