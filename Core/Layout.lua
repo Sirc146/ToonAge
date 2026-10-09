@@ -569,6 +569,165 @@ function L:ProfessionColor(name)
     return L.PROFESSION_COLORS[name:lower()]
 end
 
+--- One profession. The chrome is the same on every version: icon, name, rank.
+--- The bar is the only part that changes. opts.segments with more than one
+--- entry draws equal-width expansion segments; the segment flagged current
+--- is gold. Anything else is one bar in the profession colour.
+---
+--- opts = { name, icon, rankText, rank, max, segments = { {rank, max, current, label} } }
+function L:ProfessionCard(parent, y, opts)
+    opts = opts or {}
+    y = math.floor(y)
+    local w = self:Width(parent)
+    local BAR_H = 14
+    local ROW_H = 58
+
+    local card = AcquireFrame("ProfessionCard", parent, function()
+        local f = CreateFrame("Frame", nil, HOLDER)
+        f.icon  = f:CreateTexture(nil, "ARTWORK")
+        f.name  = NewFS(f)
+        f.rank  = NewFS(f)
+        f.track = CreateFrame("Frame", nil, f)
+        f.fill  = f.track:CreateTexture(nil, "ARTWORK")
+        f.slots = {}
+        f.fills = {}
+        return f
+    end)
+    card:SetSize(w, ROW_H)
+    card:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
+
+    local icon = card.icon
+    local textX = 0
+    if opts.icon then
+        icon:ClearAllPoints()
+        icon:SetSize(32, 32)
+        icon:SetPoint("TOPLEFT", card, "TOPLEFT", 0, 0)
+        icon:SetTexture(opts.icon)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        icon:Show()
+        textX = 40
+    else
+        icon:Hide()
+    end
+
+    StyleText(card.name, { text = opts.name or "", size = 12, flags = "OUTLINE", color = L.C_PRIMARY })
+    card.name:ClearAllPoints()
+    card.name:SetPoint("TOPLEFT", card, "TOPLEFT", textX, -2)
+    card.name:SetWidth(math.max(w - textX, 40))
+    card.name:SetHeight(0)
+
+    local rankText = opts.rankText
+    if rankText == nil then
+        rankText = string.format("%d / %d", tonumber(opts.rank) or 0, tonumber(opts.max) or 0)
+    end
+    StyleText(card.rank, { text = rankText, size = 10, color = L.C_SECONDARY })
+    card.rank:ClearAllPoints()
+    card.rank:SetPoint("TOPLEFT", card, "TOPLEFT", textX, -18)
+    card.rank:SetWidth(math.max(w - textX, 40))
+    card.rank:SetHeight(0)
+
+    local track = card.track
+    track:ClearAllPoints()
+    track:SetSize(w, BAR_H)
+    track:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -36)
+    if TA._ApplyBackdrop then
+        TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
+    end
+
+    card.fill:Hide()
+    for _, tex in ipairs(card.slots) do tex:Hide() end
+    for _, tex in ipairs(card.fills) do tex:Hide() end
+
+    local segs = type(opts.segments) == "table" and opts.segments or nil
+    local hue = L:ProfessionColor(opts.name) or L.C_STAT_BASE
+    local function Paint(tex, rgb, alpha)
+        tex:SetColorTexture(rgb[1], rgb[2], rgb[3], alpha or 0.90)
+        tex._rgb = rgb
+    end
+
+    if segs and #segs > 1 then
+        local n = #segs
+        local inner = math.max(w - 2, n)
+        local gap = 1
+        local segW = math.max(math.floor((inner - gap * (n - 1)) / n), 1)
+        for i, seg in ipairs(segs) do
+            local slot = card.slots[i]
+            if not slot then
+                slot = track:CreateTexture(nil, "ARTWORK")
+                card.slots[i] = slot
+            end
+            local fill = card.fills[i]
+            if not fill then
+                fill = track:CreateTexture(nil, "OVERLAY")
+                card.fills[i] = fill
+            end
+            local x = 1 + (i - 1) * (segW + gap)
+            slot:ClearAllPoints()
+            slot:SetPoint("TOPLEFT", track, "TOPLEFT", x, -1)
+            slot:SetSize(segW, BAR_H - 2)
+            local current = seg.current and true or false
+            if current then
+                Paint(slot, { 0.45, 0.36, 0.08 }, 0.55)
+            else
+                Paint(slot, { 0.16, 0.15, 0.13 }, 0.80)
+            end
+            slot:Show()
+
+            local cap = tonumber(seg.max) or 0
+            local pct = 0
+            if cap > 0 then
+                pct = math.min(math.max((tonumber(seg.rank) or 0) / cap, 0), 1)
+            end
+            local fw = math.floor(segW * pct)
+            fill:ClearAllPoints()
+            if fw > 0 then
+                fill:SetPoint("TOPLEFT", track, "TOPLEFT", x, -1)
+                fill:SetSize(fw, BAR_H - 2)
+                Paint(fill, current and L.C_HEADER or hue, 0.95)
+                fill._current = current
+                fill:Show()
+            else
+                fill._current = current
+                fill:Hide()
+            end
+        end
+    else
+        local cap = tonumber(opts.max) or 0
+        local pct = 0
+        if cap > 0 then
+            pct = math.min(math.max((tonumber(opts.rank) or 0) / cap, 0), 1)
+        end
+        local fill = card.fill
+        fill:ClearAllPoints()
+        fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
+        fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
+        fill:SetWidth(math.max(math.floor((w - 2) * pct), 1))
+        Paint(fill, hue, 0.90)
+        fill._current = false
+        fill:Show()
+    end
+
+    if segs and #segs > 0 then
+        card:EnableMouse(true)
+        card:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(tostring(opts.name or ""), 1, 0.82, 0)
+            for _, seg in ipairs(segs) do
+                local label = tostring(seg.label or seg.name or "")
+                local value = string.format("%d / %d", tonumber(seg.rank) or 0, tonumber(seg.max) or 0)
+                if seg.current then label = label .. " (current)" end
+                GameTooltip:AddDoubleLine(label, value, 0.9, 0.9, 0.9, 1, 1, 1)
+            end
+            GameTooltip:Show()
+        end)
+        card:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    else
+        card:EnableMouse(false)
+    end
+
+    return y - ROW_H - L.RPAD, card
+end
+
 --- A stat bar split into the pieces that make it up.
 ---
 --- Same rules as StatBar -- fill is the real total, the faded remainder is

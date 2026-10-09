@@ -54,6 +54,7 @@ Data\TBC\ApiManifest.lua
 Data\TBC\TBCRaces.lua
 Data\TBC\TBCWeights.lua
 Data\TBC\TBCProfessions.lua
+Data\TBC\ProfessionSkills.lua
 Data\TBC\TBCTalentHit.lua
 Data\TBC\TBCTalentBuilds.lua
 Data\TBC\TBCSecondaryRoles.lua
@@ -81,6 +82,8 @@ Modules\TBC\StatCaps.lua
 Modules\TBC\WeaponSkill.lua
 Modules\TBC\RaceAdvisor.lua
 Modules\TBC\ProfessionAdvisor.lua
+Modules\Character\ProfessionSkills.lua
+Modules\Character\ProfessionBoard.lua
 Modules\TBC\TalentBuilds.lua
 Modules\TBC\Rotation.lua
 Modules\TBC\Spells.lua

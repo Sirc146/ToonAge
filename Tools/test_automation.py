@@ -105,8 +105,8 @@ check("legacy container API is kept", "Try(GetContainerItemInfo" in va)
 check("tbc ships AutoQuest", "AutoQuest         = true," in pf)
 check("tbc and mists ship VendorAssist", pf.count("VendorAssist") >= 2)
 
-# Mists draws without Core/Layout.lua, so it cannot host the shared tab; it
-# gets the vendor chores through its own Settings tab instead.
+# Mists lists Layout for the profession cards. Vendor chores still live on
+# its own Settings tab, not the shared automation drawer.
 mists_toc = read("ToonAge_Mists.toc")
 check("Mists ships VendorAssist", "Modules\\Automation\\VendorAssist.lua" in mists_toc)
 check("Mists does not ship AutoQuest", "Modules\\Automation\\AutoQuest.lua" not in mists_toc)

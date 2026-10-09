@@ -164,8 +164,8 @@ Hv:RegisterPack{
     -- 1293xxx, 1309950).
     catalogRanges = { { 1, 60000 }, { 400000, 440000 }, { 1220000, 1330000 } },
 
-    probeOrder = { "client", "professions", "sheet", "skillinfo", "talentGeometry",
-                   "spellRanks", "combat", "map", "scrolls" },
+    probeOrder = { "client", "professions", "professionLines", "sheet", "skillinfo",
+                   "talentGeometry", "spellRanks", "combat", "map", "scrolls" },
     probes = probes,
     probesBlurb = "Runs every open check from the Forever brief -- professions and "
         .. "Comprehension, weapon skill, spell power, combat recording, scroll "

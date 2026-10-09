@@ -135,7 +135,7 @@ def test_scaffolds_inert():
     # client has, and carry no expansion numbers of their own.
     for mod in ("ErrorLog", "Settings", "XPTracker", "GatherTracker",
                 "RestOptimizer", "DeathRecovery",
-                "ForeverScrolls", "ForeverCastLog"):
+                "ForeverScrolls", "ForeverCastLog", "ProfessionBoard"):
         check(f"forever allows {mod}",   ta.ModuleInProfile(ta, mod), True)
     # What does not: anything driven by Data/Retail values that are wrong for
     # Vanilla-era content.
@@ -159,7 +159,7 @@ def test_scaffolds_inert():
     # everything that needs Data/Forever stays denied above.
     tabs = list(ta.ProfileTabs(ta).values())
     check("forever tab order", [t.id for t in tabs],
-          ["character", "gear", "talents", "spells", "pets", "pvp",
+          ["character", "gear", "professions", "talents", "spells", "pets", "pvp",
            "scrolls", "casts", "harvest"])
     # The readout registers as ForeverCharacter, not Character: Retail ships
     # both files in one TOC and RegisterModule is a flat overwrite, so sharing
@@ -176,6 +176,13 @@ def test_scaffolds_inert():
     check("forever allows DataHarvester", ta.ModuleInProfile(ta, "DataHarvester"), True)
     check("forever still denies QuestTracker",
           ta.ModuleInProfile(ta, "QuestTracker"), False)
+    # Classic Era stays a scaffold (no advice) and ships the profession readout.
+    _, era = load_profile(2, 11507)
+    check("vanilla still a scaffold", era.GetProfile(era).scaffold, True)
+    check("vanilla allows ProfessionBoard",
+          era.ModuleInProfile(era, "ProfessionBoard"), True)
+    check("vanilla professions tab",
+          [t.id for t in era.ProfileTabs(era).values()], ["professions"])
 
 
 def test_unknown_fallback():
