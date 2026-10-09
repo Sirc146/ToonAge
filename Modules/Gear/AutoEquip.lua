@@ -308,7 +308,7 @@ local function EvaluateItem(itemLink)
     end
 
     local itemName = GetItemInfo(itemLink) or itemLink
-    TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r Auto-equipped |cFF1EFF00%s|r (ilvl %d → slot %d).",
+    TA:Raw(TA.LOG.OUTPUT, string.format(("|cFFFFD100[TA]|r Auto-equipped |cFF1EFF00%s|r (ilvl %d " .. ToonAge.Utils.Glyph("arrow") .. " slot %d)."),
         itemName, ilvl, targetSlot))
 end
 

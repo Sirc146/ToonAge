@@ -560,7 +560,7 @@ function GP:DumpGuides()
     local n = 0
     for id, g in pairs(TA.Guides) do
         n = n + 1
-        local chain = g.nextGuide and (" → " .. g.nextGuide) or ""
+        local chain = g.nextGuide and ((" " .. ToonAge.Utils.Glyph("arrow") .. " ") .. g.nextGuide) or ""
         TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA]|r  [%s] \"%s\"  lvl %d-%d  (%d steps)%s",
             id, g.title, g.minLevel or 1, g.maxLevel or 999, #g.steps, chain))
     end

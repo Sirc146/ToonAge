@@ -10,7 +10,7 @@ local U = TA.Utils
 -- WoW 12.0 marks many API return values as "secret" when addon execution is
 -- tainted. These cannot be used in arithmetic, comparisons, or as table keys.
 --
--- ⚠ THE CLAIM THAT USED TO BE HERE IS FALSE. This block previously read
+-- WARNING: THE CLAIM THAT USED TO BE HERE IS FALSE. This block previously read
 -- "SafeNum strips the taint via tonumber(tostring(x))". Measured on retail
 -- 12.0.7 with /ta secretprobe, it does not and cannot. Every route that pulls
 -- a number OUT of a secret errors outright:
@@ -26,7 +26,7 @@ local U = TA.Utils
 -- tostring(v) alone survives and renders the true number on screen, which is
 -- why a chat dump shows an ID a human can read while Lua cannot touch it.
 --
--- ⚠ BUT DO NOT PUT THAT STRING IN THE UI. Measured on Forever 2026-09-23:
+-- WARNING: BUT DO NOT PUT THAT STRING IN THE UI. Measured on Forever 2026-09-23:
 -- tostring(secret) is itself a SECRET STRING. A FontString holding one makes
 -- the frame's measured height secret, the scroll child's height secret, and
 -- Blizzard's own SecureScrollTemplates then raises on its own arithmetic:
@@ -1232,6 +1232,88 @@ function U.FormatTime(seconds)
     else
         return string.format("%ds", math.floor(seconds))
     end
+end
+
+-- ── Inline glyphs ─────────────────────────────────────────────────────
+-- |c colour codes do not tint a |T texture. Bake the vertex colour into
+-- the escape. `color` is "RRGGBB", or {r, g, b} in 0-1. If any channel is
+-- above 1, every channel is a byte (the quest-tracker pulse passes
+-- {0x1E, g, 0x30} with g in 140-255).
+--
+-- Files that are not in Media/icons yet, for Gilder to draw at 16x16,
+-- white plus alpha, same as the other util_*_16 cuts:
+--   util_check_16, util_cross_16, util_warn_16, util_people_16,
+--   util_heart_16, util_herb_16, util_pick_16, util_diamond_16,
+--   util_star_16, util_menu_16, util_flight_16, util_square_16
+-- Left, up, and the disclosure triangles share util_chevron_16. There is
+-- no directional cut. Gear comparison marks stay on U.GearMark.
+local GLYPH_ICON = "Interface\\AddOns\\ToonAge\\Media\\icons\\"
+local GLYPH = {
+    check    = { "util_check_16.tga",    12, 16 },
+    cross    = { "util_cross_16.tga",    12, 16 },
+    pip      = { "util_pip_8.tga",        8, 32 },
+    pipRing  = { "util_pip_8_ring.tga",   8, 32 },
+    bullet   = { "util_pip_8.tga",        8, 32 },
+    arrow    = { "util_chevron_16.tga",  12, 16 },
+    minus    = { "util_minimize_16.tga", 12, 16 },
+    swords   = { "tab_pvp_32.tga",       14, 32 },
+    bolt     = { "tab_casts_32.tga",     14, 32 },
+    settings = { "util_settings_16.tga", 14, 16 },
+    warn     = { "util_warn_16.tga",     12, 16 },
+    people   = { "util_people_16.tga",   14, 16 },
+    heart    = { "util_heart_16.tga",    12, 16 },
+    herb     = { "util_herb_16.tga",     14, 16 },
+    pick     = { "util_pick_16.tga",     14, 16 },
+    diamond  = { "util_diamond_16.tga",  12, 16 },
+    star     = { "util_star_16.tga",     12, 16 },
+    menu     = { "util_menu_16.tga",     12, 16 },
+    flight   = { "util_flight_16.tga",   14, 16 },
+    square   = { "util_square_16.tga",   12, 16 },
+}
+
+local function GlyphChannel(n, asBytes)
+    if type(n) ~= "number" then return 255 end
+    if asBytes then
+        n = math.floor(n + 0.5)
+    else
+        n = math.floor(n * 255 + 0.5)
+    end
+    if n < 0 then n = 0 end
+    if n > 255 then n = 255 end
+    return n
+end
+
+local function GlyphRGB(color)
+    if color == nil then return 255, 255, 255 end
+    if type(color) == "string" then
+        local hex = color:gsub("^#", ""):gsub("^0[xX]", "")
+        if #hex == 8 then hex = hex:sub(3) end
+        if #hex ~= 6 or not hex:match("^%x%x%x%x%x%x$") then
+            return 255, 255, 255
+        end
+        return tonumber(hex:sub(1, 2), 16),
+               tonumber(hex:sub(3, 4), 16),
+               tonumber(hex:sub(5, 6), 16)
+    end
+    if type(color) == "table" then
+        local r = color[1] or color.r or 1
+        local g = color[2] or color.g or 1
+        local b = color[3] or color.b or 1
+        local asBytes = (r > 1) or (g > 1) or (b > 1)
+        return GlyphChannel(r, asBytes), GlyphChannel(g, asBytes), GlyphChannel(b, asBytes)
+    end
+    return 255, 255, 255
+end
+
+--- Inline |T glyph. `name` is a key of GLYPH. Missing art still returns
+--- the path, so the call sites do not change when the TGA arrives.
+function U.Glyph(name, color)
+    local spec = GLYPH[name]
+    if not spec then return "" end
+    local r, g, b = GlyphRGB(color)
+    local path, h, dim = GLYPH_ICON .. spec[1], spec[2], spec[3]
+    return string.format("|T%s:%d:%d:0:0:%d:%d:0:%d:0:%d:%d:%d:%d|t",
+        path, h, h, dim, dim, dim, dim, r, g, b)
 end
 
 -- ── Texture path helper ───────────────────────────────────────────────

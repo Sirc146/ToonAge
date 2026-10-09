@@ -217,7 +217,7 @@ function AQ:OnQuestComplete()
           :format(numChoices)
           .. ("Best for you looks like |cFF4AFF7A%s|r."):format(tostring(name)))
     TA:Raw(TA.LOG.OUTPUT, "  |cFF888780Pick one to finish the turn-in. "
-          .. "Automation → Auto-pick quest rewards makes ToonAge choose instead.|r")
+          .. ("Automation " .. ToonAge.Utils.Glyph("arrow") .. " Auto-pick quest rewards makes ToonAge choose instead.|r"))
 end
 
 function AQ:OnGossip()

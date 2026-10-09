@@ -527,7 +527,7 @@ function Arrow:ParseWayCommand(args)
     end
 
     if xRaw < 0 or xRaw > 100 or yRaw < 0 or yRaw > 100 then
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Coordinates must be 0–100 (e.g. 45.2 67.8).")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Coordinates must be 0-100 (e.g. 45.2 67.8).")
         return
     end
 

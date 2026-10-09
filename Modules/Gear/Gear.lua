@@ -1039,7 +1039,7 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
 
         local eaLbl = equipAllBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         eaLbl:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
-        eaLbl:SetText("\226\156\147 Equip All Upgrades (" .. #pendingUpgrades .. ")")
+        eaLbl:SetText((ToonAge.Utils.Glyph("check") .. " Equip All Upgrades (") .. #pendingUpgrades .. ")")
         eaLbl:SetTextColor(0.30, 0.92, 0.40, 1)
         eaLbl:SetAllPoints(equipAllBtn)
         eaLbl:SetJustifyH("CENTER")

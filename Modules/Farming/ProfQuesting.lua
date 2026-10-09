@@ -89,7 +89,7 @@ function PQ:GetGatheringTip()
         for i = 1, numTracking do
             local info = C_Minimap.GetTrackingInfo(i)
             if info and info.name and (info.name:find("Herb") or info.name:find("Flower")) and not info.active then
-                return "|cFF4AFF7A🌿 Enable herb tracking on minimap — nodes show on NavHud!|r"
+                return ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("herb", "4AFF7A") .. " Enable herb tracking on minimap — nodes show on NavHud!|r")
             end
         end
     end
@@ -98,7 +98,7 @@ function PQ:GetGatheringTip()
         for i = 1, numTracking do
             local info = C_Minimap.GetTrackingInfo(i)
             if info and info.name and info.name:find("Mining") and not info.active then
-                return "|cFFFFD100⛏ Enable mining tracking — ore nodes show on NavHud!|r"
+                return ("|cFFFFD100" .. ToonAge.Utils.Glyph("pick", "FFD100") .. " Enable mining tracking — ore nodes show on NavHud!|r")
             end
         end
     end

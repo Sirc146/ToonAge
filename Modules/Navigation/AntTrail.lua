@@ -280,7 +280,7 @@ AntTrail.SlashCommands = {
         end
         TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge Trail]|r " .. #wp .. " waypoints in current trail:")
         for i, w in ipairs(wp) do
-            local prefix = w.isCurrent and "|cFF4AFF7A→|r " or "  "
+            local prefix = w.isCurrent and (ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " ") or "  "
             TA:Raw(TA.LOG.OUTPUT, string.format("  %s#%d [%s] %s (%.2f, %.2f) via %s",
                 prefix, w.stepIdx, w.type, w.text:sub(1, 30), w.x, w.y, w.source or "?"))
         end

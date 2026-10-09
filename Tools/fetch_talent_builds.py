@@ -315,7 +315,7 @@ def main():
             else:
                 print(f"  [{done}/{total}] {label}...", end=" ", flush=True)
                 s = fetch_build(spec_id, spec_info, ctype, session)
-                print("✓" if s else "✗")
+                print("OK" if s else "NO")
                 time.sleep(1.0)  # rate limit between requests
             
             results[spec_id][ctype] = s

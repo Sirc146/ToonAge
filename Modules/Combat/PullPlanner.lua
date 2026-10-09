@@ -173,7 +173,7 @@ function PP:ShowClusterIndicators()
             ind:SetParent(plate)
             ind:ClearAllPoints()
             ind:SetPoint("TOP", plate, "TOP", 0, 18)
-            ind.text:SetText(string.format("|cFF1EBCFF⚔ Pull %d|r", #cluster))
+            ind.text:SetText(string.format(("|cFF1EBCFF" .. ToonAge.Utils.Glyph("swords", "1EBCFF") .. " Pull %d|r"), #cluster))
             ind:Show()
         end
     end

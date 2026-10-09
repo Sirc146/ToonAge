@@ -201,7 +201,7 @@ State.SlashCommands = {
             return
         end
 
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge State (" .. #keys .. " keys) ━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100--- ToonAge State (" .. #keys .. " keys) ---|r")
         for _, key in ipairs(keys) do
             local reg = registry[key]
             local e   = entries[key]
@@ -212,12 +212,12 @@ State.SlashCommands = {
             local trigger = #events > 0 and table.concat(events, ", ") or "manual only"
 
             if e then
-                TA:Raw(TA.LOG.OUTPUT, ("  |cFF4AFF7A●|r %s |cFF888780(%s, %.1fs old)|r"):format(key, reg.owner, GetTime() - e.stamp))
+                TA:Raw(TA.LOG.OUTPUT, (("  " .. ToonAge.Utils.Glyph("pip", "4AFF7A") .. " %s |cFF888780(%s, %.1fs old)|r")):format(key, reg.owner, GetTime() - e.stamp))
             else
-                TA:Raw(TA.LOG.OUTPUT, ("  |cFF888780○ %s (%s, empty)|r"):format(key, reg.owner))
+                TA:Raw(TA.LOG.OUTPUT, (("  |cFF888780" .. ToonAge.Utils.Glyph("pipRing", "888780") .. " %s (%s, empty)|r")):format(key, reg.owner))
             end
             TA:Raw(TA.LOG.OUTPUT, ("     |cFF888780cleared by: %s|r"):format(trigger))
         end
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100--------------------------------------|r")
     end,
 }

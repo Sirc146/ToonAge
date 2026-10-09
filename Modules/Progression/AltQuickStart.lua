@@ -327,7 +327,7 @@ function AQS:PopulatePanel()
 
         local impLbl = importBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         impLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        impLbl:SetText("\226\154\161 Load This Build")
+        impLbl:SetText((ToonAge.Utils.Glyph("bolt") .. " Load This Build"))
         impLbl:SetTextColor(0.29, 1.00, 0.48, 1)
         impLbl:SetAllPoints(importBtn)
         impLbl:SetJustifyH("CENTER")
@@ -345,9 +345,9 @@ function AQS:PopulatePanel()
                 if configID then
                     local ok, err = pcall(C_ClassTalents.ImportLoadout, capturedString)
                     if ok then
-                        impLbl:SetText("\226\156\147 Loaded!")
+                        impLbl:SetText((ToonAge.Utils.Glyph("check") .. " Loaded!"))
                         impLbl:SetTextColor(0.29, 1.00, 0.48, 1)
-                        C_Timer.After(2, function() impLbl:SetText("\226\154\161 Load This Build") end)
+                        C_Timer.After(2, function() impLbl:SetText((ToonAge.Utils.Glyph("bolt") .. " Load This Build")) end)
                     else
                         -- Fallback: copy to clipboard
                         AQS:CopyStringToClipboard(capturedString)
@@ -473,7 +473,7 @@ function AQS:PopulatePanel()
             names[#names + 1] = entry.name or "?"
         end
     end
-    nameRow:SetText("|cFF888780" .. table.concat(names, "  →  ") .. "|r")
+    nameRow:SetText("|cFF888780" .. table.concat(names, ("  " .. ToonAge.Utils.Glyph("arrow") .. "  ")) .. "|r")
     nameRow:SetPoint("TOPLEFT", f, "TOPLEFT", padL, y)
     nameRow:SetWidth(w)
     nameRow:SetJustifyH("LEFT")
@@ -538,14 +538,14 @@ function AQS:PopulatePanel()
         local stepText = step and step.text or "Continue your guide"
         table.insert(actions, {
             priority = 1,
-            icon = "|cFF4AFF7A→|r",
+            icon = ToonAge.Utils.Glyph("arrow", "4AFF7A"),
             text = "Guide: " .. (guide.title or ""),
             sub  = stepText,
         })
     elseif spec.level < gear.maxLevel then
         table.insert(actions, {
             priority = 1,
-            icon = "|cFF4AFF7A→|r",
+            icon = ToonAge.Utils.Glyph("arrow", "4AFF7A"),
             text = "Level to " .. gear.maxLevel,
             sub  = "Open the Guide tab to pick a leveling guide.",
         })
@@ -574,14 +574,14 @@ function AQS:PopulatePanel()
             if vaultDone < 3 and vaultNeeded then
                 table.insert(actions, {
                     priority = 2,
-                    icon = "|cFFFFD100★|r",
+                    icon = ToonAge.Utils.Glyph("star", "FFD100"),
                     text = "Weekly Vault: " .. vaultDone .. "/3 slots filled",
                     sub  = vaultNeeded,
                 })
             elseif vaultDone >= 3 then
                 table.insert(actions, {
                     priority = 10,
-                    icon = "|cFF4AFF7A✓|r",
+                    icon = ToonAge.Utils.Glyph("check", "4AFF7A"),
                     text = "Weekly Vault: All 3 slots earned!",
                     sub  = "Check vault on reset day.",
                 })
@@ -595,7 +595,7 @@ function AQS:PopulatePanel()
             if ok and dungeonName then
                 table.insert(actions, {
                     priority = 3,
-                    icon = "|cFF1EBCFF↑|r",
+                    icon = ToonAge.Utils.Glyph("arrow", "1EBCFF"),
                     text = "Best dungeon for upgrades: " .. dungeonName,
                     sub  = string.format("+%d%% potential gear improvement", upgradePct or 0),
                 })
@@ -662,9 +662,9 @@ function AQS:PopulatePanel()
     if Rotation and TA.charDB and TA.charDB.predictBar and not TA.charDB.predictBar.visible then
         table.insert(actions, {
             priority = 8,
-            icon = "|cFF888780⚡|r",
+            icon = ToonAge.Utils.Glyph("bolt", "888780"),
             text = "Rotation helper is hidden",
-            sub  = "Right-click tracker → Show Arrow for combat guidance.",
+            sub  = ("Right-click tracker " .. ToonAge.Utils.Glyph("arrow") .. " Show Arrow for combat guidance."),
         })
     end
 
@@ -702,7 +702,7 @@ function AQS:PopulatePanel()
     if shownActions == 0 then
         local noAction = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         noAction:SetFont(STANDARD_TEXT_FONT, 10, "")
-        noAction:SetText("|cFF4AFF7A→|r " .. gear.nextGoal)
+        noAction:SetText((ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " ") .. gear.nextGoal)
         noAction:SetTextColor(0.92, 0.90, 0.87, 1)
         noAction:SetPoint("TOPLEFT", f, "TOPLEFT", padL, y)
         y = y - 16

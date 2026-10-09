@@ -169,7 +169,7 @@ function GB:RefreshBrowser()
                 titleText:SetFont(STANDARD_TEXT_FONT, 10, "")
                 local displayTitle = g.title
                 if #displayTitle > 35 then displayTitle = displayTitle:sub(1, 32) .. "..." end
-                titleText:SetText((isActive and "|cFF4AFF7A► " or "  ") .. displayTitle .. "|r")
+                titleText:SetText((isActive and ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " ") or "  ") .. displayTitle .. "|r")
                 titleText:SetPoint("LEFT", row, "LEFT", 6, 0)
                 titleText:SetWidth(w - 120)
                 titleText:SetJustifyH("LEFT")

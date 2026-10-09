@@ -101,7 +101,7 @@ local function CreatePin(index, parent)
             end
         end
         if self.isCurrent then
-            GameTooltip:AddLine("|cFF4AFF7A← Current Step|r")
+            GameTooltip:AddLine(("|cFF4AFF7A" .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Current Step|r"))
         end
         if U and U.AddEstimatedTip then U.AddEstimatedTip(GameTooltip, self.stepData) end
         GameTooltip:Show()

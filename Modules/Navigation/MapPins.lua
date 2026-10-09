@@ -207,7 +207,7 @@ function TAMapPinMixin:OnMouseEnter()
     end
 
     if self.isCurrent then
-        GameTooltip:AddLine("|cFF4AFF7A← Current Step|r")
+        GameTooltip:AddLine(("|cFF4AFF7A" .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Current Step|r"))
     end
     U.AddEstimatedTip(GameTooltip, self.step)
 

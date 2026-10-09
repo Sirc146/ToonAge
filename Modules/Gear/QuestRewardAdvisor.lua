@@ -129,11 +129,11 @@ local function GetOverlayFrame(index)
     overlay.pctText:SetPoint("TOP", overlay, "TOP", 0, -2)
     overlay.pctText:SetFont(overlay.pctText:GetFont(), 10)
 
-    -- "★ BEST" label
+    -- "star BEST" label
     overlay.bestLabel = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     overlay.bestLabel:SetPoint("TOP", overlay, "TOP", 0, 12)
     overlay.bestLabel:SetTextColor(GREEN_COLOR.r, GREEN_COLOR.g, GREEN_COLOR.b)
-    overlay.bestLabel:SetText("\226\152\133 BEST")
+    overlay.bestLabel:SetText((ToonAge.Utils.Glyph("star") .. " BEST"))
     overlay.bestLabel:Hide()
 
     -- Green glow border (highlight texture)

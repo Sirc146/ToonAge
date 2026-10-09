@@ -394,7 +394,7 @@ function TA:InitUI()
     versionHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local optIcon = optionsBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     optIcon:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
-    optIcon:SetText("\226\154\153")  -- gear glyph
+    optIcon:SetText(ToonAge.Utils.Glyph("settings"))  -- gear glyph
     optIcon:SetTextColor(0.62, 0.59, 0.55, 1)
     optIcon:SetAllPoints(optionsBtn)
     optIcon:SetJustifyH("CENTER")

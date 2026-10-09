@@ -326,7 +326,7 @@ function Rotation:RenderSidebar(parent, specID, level, groupType)
 
     local predictLbl = predictBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     predictLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-    predictLbl:SetText((isBarVisible and "|cFF4AFF7A●|r " or "|cFF666666●|r ") .. "Next 3 Bar")
+    predictLbl:SetText((isBarVisible and (ToonAge.Utils.Glyph("pip", "4AFF7A") .. " ") or (ToonAge.Utils.Glyph("pip", "666666") .. " ")) .. "Next 3 Bar")
     predictLbl:SetPoint("LEFT", predictBtn, "LEFT", 8, 0)
     predictLbl:SetTextColor(
         isBarVisible and 0.92 or 0.55,
@@ -423,7 +423,7 @@ function Rotation:RenderSpellRow(parent, y, w, padL, entry, isCD, isNext)
     if isNext then
         local nextLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         nextLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-        nextLbl:SetText("|cFF4AFF7ANEXT ►|r")
+        nextLbl:SetText(("|cFF4AFF7ANEXT " .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. "|r"))
         nextLbl:SetPoint("RIGHT", row, "RIGHT", -8, 0)
     end
 

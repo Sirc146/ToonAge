@@ -283,9 +283,9 @@ function Character:BuildUI(content, sidebar)
                 end
             end
             if secSectionOpen then
-                secHeader:SetText("\226\150\188 SECONDARY STATS")
+                secHeader:SetText((ToonAge.Utils.Glyph("arrow") .. " SECONDARY STATS"))
             else
-                secHeader:SetText("\226\150\182 SECONDARY STATS")
+                secHeader:SetText((ToonAge.Utils.Glyph("arrow") .. " SECONDARY STATS"))
             end
         end)
         hitbox:SetScript("OnEnter", function()
@@ -294,7 +294,7 @@ function Character:BuildUI(content, sidebar)
         hitbox:SetScript("OnLeave", function()
             secHeader:SetTextColor(0.62, 0.59, 0.55, 1)
         end)
-        secHeader:SetText("\226\150\188 SECONDARY STATS")
+        secHeader:SetText((ToonAge.Utils.Glyph("arrow") .. " SECONDARY STATS"))
     end
 
     self.widgets.secRows = {}
@@ -388,10 +388,10 @@ function Character:BuildUI(content, sidebar)
             scoreSectionOpen = not scoreSectionOpen
             if scoreSectionOpen then
                 scoreRow:Show()
-                Character.widgets.scoreDiv:SetText("\226\150\188 WEIGHTED SCORE")
+                Character.widgets.scoreDiv:SetText((ToonAge.Utils.Glyph("arrow") .. " WEIGHTED SCORE"))
             else
                 scoreRow:Hide()
-                Character.widgets.scoreDiv:SetText("\226\150\182 WEIGHTED SCORE")
+                Character.widgets.scoreDiv:SetText((ToonAge.Utils.Glyph("arrow") .. " WEIGHTED SCORE"))
             end
         end)
         scoreHitbox:SetScript("OnEnter", function()
@@ -400,7 +400,7 @@ function Character:BuildUI(content, sidebar)
         scoreHitbox:SetScript("OnLeave", function()
             Character.widgets.scoreDiv:SetTextColor(0.62, 0.59, 0.55, 1)
         end)
-        self.widgets.scoreDiv:SetText("\226\150\188 WEIGHTED SCORE")
+        self.widgets.scoreDiv:SetText((ToonAge.Utils.Glyph("arrow") .. " WEIGHTED SCORE"))
     end
 
     self.widgets.scoreLbl = scoreRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")

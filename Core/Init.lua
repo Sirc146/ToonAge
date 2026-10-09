@@ -1469,7 +1469,7 @@ local function Dispatch(self, msg)
                 if win then win:Add(text) else TA:Raw(TA.LOG.OUTPUT, text) end
             end
 
-            Say("━━━ ToonAge Module Health ━━━")
+            Say("--- ToonAge Module Health ---")
             Say(("client: %s · profile: %s · build %s (interface %s)"):format(
                 tostring(TA.flavor),
                 tostring((TA.GetProfile and TA:GetProfile() or {}).label or "?"),
@@ -1481,7 +1481,7 @@ local function Dispatch(self, msg)
                     loaded = loaded + 1
                 elseif entry.status == "errored" then
                     errored = errored + 1
-                    Say(("  ✗ %s — init failed: %s"):format(entry.name, tostring(entry.error)))
+                    Say((("  " .. ToonAge.Utils.Glyph("cross") .. " %s — init failed: %s")):format(entry.name, tostring(entry.error)))
                 else
                     off = off + 1
                     -- Distinguish the three ways a module ends up off. "Disabled"
@@ -1498,7 +1498,7 @@ local function Dispatch(self, msg)
                         -- Not a fault: e.g. a retail-only module on a TBC client.
                         why = mod._profileReason or "not in this flavor's profile"
                     end
-                    Say(("  ○ %s — %s"):format(entry.name, why))
+                    Say((("  " .. ToonAge.Utils.Glyph("pipRing") .. " %s — %s")):format(entry.name, why))
                 end
             end
 
@@ -1570,7 +1570,7 @@ local function Dispatch(self, msg)
             if talents and talents.StatusLine then
                 Say("  " .. talents.StatusLine())
             end
-            Say("━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            Say("---------------------------")
 
             -- "copy" opens the same report in a selectable window; without it,
             -- point at that, because this list scrolls out of chat instantly.

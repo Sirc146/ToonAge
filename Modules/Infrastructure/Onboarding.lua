@@ -13,16 +13,16 @@ TA:RegisterModule("Onboarding", Onboarding)
 -- ── Welcome message content ───────────────────────────────────────────────────
 
 local WELCOME_LINES = {
-    "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r",
+    "|cFFFFD100----------------------------------------|r",
     "|cFFFFD100ToonAge|r — Your all-in-one character advisor",
     "",
-    "|cFF4AFF7A✓|r  Guide Tracker  — auto-syncs to your quest log",
-    "|cFF4AFF7A✓|r  Navigation Arrow  — points to your next objective",
-    "|cFF4AFF7A✓|r  NavHud  — transparent FarmHud-style overlay (|cFFFFD100/ta hud|r)",
-    "|cFF4AFF7A✓|r  Gear Advisor  — stat-weight upgrade detection",
-    "|cFF4AFF7A✓|r  Talent Builds  — recommended specs with import strings",
-    "|cFF4AFF7A✓|r  Rotation Helper  — combat priority with live highlighting",
-    "|cFF4AFF7A✓|r  Weekly & Delves  — endgame tracking that stays relevant",
+    (ToonAge.Utils.Glyph("check", "4AFF7A") .. "  Guide Tracker  — auto-syncs to your quest log"),
+    (ToonAge.Utils.Glyph("check", "4AFF7A") .. "  Navigation Arrow  — points to your next objective"),
+    (ToonAge.Utils.Glyph("check", "4AFF7A") .. "  NavHud  — transparent FarmHud-style overlay (|cFFFFD100/ta hud|r)"),
+    (ToonAge.Utils.Glyph("check", "4AFF7A") .. "  Gear Advisor  — stat-weight upgrade detection"),
+    (ToonAge.Utils.Glyph("check", "4AFF7A") .. "  Talent Builds  — recommended specs with import strings"),
+    (ToonAge.Utils.Glyph("check", "4AFF7A") .. "  Rotation Helper  — combat priority with live highlighting"),
+    (ToonAge.Utils.Glyph("check", "4AFF7A") .. "  Weekly & Delves  — endgame tracking that stays relevant"),
     "",
     "|cFFFFD100Key commands:|r",
     "  |cFFFFD100/ta|r — open the main panel",
@@ -32,7 +32,7 @@ local WELCOME_LINES = {
     "  |cFFFFD100/ta options|r — open settings (auto-quest, layout, etc.)",
     "",
     "|cFF888780Right-click quests to start following them.|r",
-    "|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━|r",
+    "|cFFFFD100----------------------------------------|r",
 }
 
 -- ── Init ──────────────────────────────────────────────────────────────────────
@@ -282,12 +282,12 @@ function Onboarding:ShowPopup()
     features:SetWidth(360)
     features:SetJustifyH("LEFT")
     features:SetText(
-        "|cFF4AFF7A●|r Auto-accept & turn-in quests\n" ..
-        "|cFF4AFF7A●|r Skip cutscenes automatically\n" ..
-        "|cFF4AFF7A●|r Next 3 abilities combat bar\n" ..
-        "|cFF4AFF7A●|r Nameplate kill/loot markers\n" ..
-        "|cFF4AFF7A●|r Tooltip upgrade percentages\n" ..
-        "|cFF4AFF7A●|r Smart arrow to Flight Masters"
+        (ToonAge.Utils.Glyph("pip", "4AFF7A") .. " Auto-accept & turn-in quests\n") ..
+        (ToonAge.Utils.Glyph("pip", "4AFF7A") .. " Skip cutscenes automatically\n") ..
+        (ToonAge.Utils.Glyph("pip", "4AFF7A") .. " Next 3 abilities combat bar\n") ..
+        (ToonAge.Utils.Glyph("pip", "4AFF7A") .. " Nameplate kill/loot markers\n") ..
+        (ToonAge.Utils.Glyph("pip", "4AFF7A") .. " Tooltip upgrade percentages\n") ..
+        (ToonAge.Utils.Glyph("pip", "4AFF7A") .. " Smart arrow to Flight Masters")
     )
     features:SetTextColor(0.80, 0.78, 0.72, 1)
     features:SetPoint("TOP", desc, "BOTTOM", 0, -10)
@@ -301,7 +301,7 @@ function Onboarding:ShowPopup()
     btnAuto:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.9)
     local autoLbl = btnAuto:CreateFontString(nil, "OVERLAY")
     autoLbl:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
-    autoLbl:SetText("|cFF4AFF7A⚡|r Full Auto")
+    autoLbl:SetText((ToonAge.Utils.Glyph("bolt", "4AFF7A") .. " Full Auto"))
     autoLbl:SetAllPoints(btnAuto)
     autoLbl:SetJustifyH("CENTER")
     local autoSub = f:CreateFontString(nil, "OVERLAY")
@@ -325,7 +325,7 @@ function Onboarding:ShowPopup()
     btnManual:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.7)
     local manLbl = btnManual:CreateFontString(nil, "OVERLAY")
     manLbl:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
-    manLbl:SetText("|cFFFFD100◆|r Manual")
+    manLbl:SetText((ToonAge.Utils.Glyph("diamond", "FFD100") .. " Manual"))
     manLbl:SetAllPoints(btnManual)
     manLbl:SetJustifyH("CENTER")
     local manSub = f:CreateFontString(nil, "OVERLAY")

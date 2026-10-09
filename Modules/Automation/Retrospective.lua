@@ -108,7 +108,7 @@ function Retro:ShowMissedContent()
         return
     end
 
-    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ What Did I Miss? ━━━|r")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100--- What Did I Miss? ---|r")
     for _, entry in ipairs(missed) do
         local color = entry.pct < 50 and "|cFFFF6666" or "|cFFFFD100"
         TA:Raw(TA.LOG.OUTPUT, string.format("  %s%s|r — %d/%d quests done (%.0f%%), %d skipped",

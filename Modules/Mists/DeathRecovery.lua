@@ -123,16 +123,16 @@ function DR:ShowDeathAdvice()
 
     local advice = self:Analyze()
 
-    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge Death Recovery ━━━|r")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100--- ToonAge Death Recovery ---|r")
 
     if advice.recommendation == "spiritres" then
-        TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A  ► Spirit Resurrect (recommended)|r")
+        TA:Raw(TA.LOG.OUTPUT, ("|cFF4AFF7A  " .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Spirit Resurrect (recommended)|r"))
         TA:Raw(TA.LOG.OUTPUT, "    " .. advice.reason)
     elseif advice.recommendation == "consider_spirit" then
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100  ► Consider Spirit Res:|r " .. advice.reason)
-        TA:Raw(TA.LOG.OUTPUT, "|cFF888780  ► Or run back to corpse (free, but slower)|r")
+        TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100  " .. ToonAge.Utils.Glyph("arrow", "FFD100") .. " Consider Spirit Res:|r ") .. advice.reason)
+        TA:Raw(TA.LOG.OUTPUT, ("|cFF888780  " .. ToonAge.Utils.Glyph("arrow", "888780") .. " Or run back to corpse (free, but slower)|r"))
     else
-        TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A  ► Run back to corpse (recommended)|r")
+        TA:Raw(TA.LOG.OUTPUT, ("|cFF4AFF7A  " .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Run back to corpse (recommended)|r"))
         TA:Raw(TA.LOG.OUTPUT, "    " .. advice.reason)
     end
 

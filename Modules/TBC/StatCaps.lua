@@ -501,7 +501,7 @@ function M:Render(content, side)
                     text = text .. " |cFFFF4444· rank above expected maximum, value clamped|r"
                 end
             end
-            y = L:Bullet(content, y, text, { color = L.C_SECONDARY, marker = "›" })
+            y = L:Bullet(content, y, text, { color = L.C_SECONDARY, marker = ToonAge.Utils.Glyph("bullet", L.C_SECONDARY) })
         end
 
         if TA.charDB and (TA.charDB.hitBonusMelee or TA.charDB.hitBonusSpell) then
@@ -531,7 +531,7 @@ end
 
 M.SlashCommands = {
     dumpme = function(self)
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge API checks ━━━|r  |cFF888780run these and paste the output back|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100--- ToonAge API checks ---|r  |cFF888780run these and paste the output back|r")
         for _, line in ipairs(TA.TBCStats:DumpLines()) do
             TA:Raw(TA.LOG.OUTPUT, "  " .. line)
         end
@@ -557,7 +557,7 @@ M.SlashCommands = {
     caps = function(self)
         local data = self:Collect()
         TA:Raw(TA.LOG.OUTPUT, string.format(
-            "|cFFFFD100━━━ Stat caps vs %s ━━━|r  |cFF888780role %s, weapon skill %d|r",
+            "|cFFFFD100--- Stat caps vs %s ---|r  |cFF888780role %s, weapon skill %d|r",
             data.context.label, data.role, data.weaponSkill))
 
         if data.noCaps then
@@ -568,9 +568,9 @@ M.SlashCommands = {
         local function Line(name, cap, unit)
             if not cap then return end
             if cap.capped then
-                TA:Raw(TA.LOG.OUTPUT, string.format("  |cFF4AFF7A✓|r %s — capped", name))
+                TA:Raw(TA.LOG.OUTPUT, string.format(("  " .. ToonAge.Utils.Glyph("check", "4AFF7A") .. " %s — capped"), name))
             else
-                TA:Raw(TA.LOG.OUTPUT, string.format("  |cFFFF9A1A→|r %s — need %s more",
+                TA:Raw(TA.LOG.OUTPUT, string.format(("  " .. ToonAge.Utils.Glyph("arrow", "FF9A1A") .. " %s — need %s more"),
                     name, unit == "pct" and U.Pct(cap.needed) or tostring(cap.needed)))
             end
         end

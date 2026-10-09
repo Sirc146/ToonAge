@@ -962,7 +962,8 @@ function L:Bullet(parent, y, text, opts)
     y = math.floor(y)
     local w = self:Width(parent) - 12
 
-    local dot = Text(parent, { text = opts.marker or "•", size = 10, color = opts.color or "dim" })
+    local marker = opts.marker or U.Glyph("bullet", Colour(opts.color or "dim"))
+    local dot = Text(parent, { text = marker, size = 10, color = opts.color or "dim" })
     dot:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
 
     local fs = Text(parent, { text = text, size = 10, color = opts.color or L.C_PRIMARY })

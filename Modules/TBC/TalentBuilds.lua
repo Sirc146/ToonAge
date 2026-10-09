@@ -101,7 +101,7 @@ function M:Render(content, side)
         headerColor .. (pvpMode and "PvP mode is ON" or "PvE mode") .. "|r"
         .. " — every viable spec for this class is listed below, not a single pick, grouped so your "
         .. "current role (" .. (ROLE_TAG[myRoleGroup] or myRoleGroup) .. ") comes first. "
-        .. "|cFF4AFF7A✓|r marks the one matching your CURRENT talents; the rest are alternatives, "
+        .. (ToonAge.Utils.Glyph("check", "4AFF7A") .. " marks the one matching your CURRENT talents; the rest are alternatives, ")
         .. "not a suggestion to respec. |cFF4AFF7AGreen|r confidence = confirmed by 2+ sources, "
         .. "|cFFFF9A1Aorange|r = single source or approximate, |cFFFF6E6Ered|r = sources genuinely "
         .. "disagree — see notes below each.")
@@ -121,7 +121,7 @@ function M:Render(content, side)
         local roleTag = ROLE_TAG[b.role] or b.role
 
         y = L:DataRow(content, y, {
-            label = (isCurrent and "|cFF4AFF7A✓ |r" or "") .. b.label
+            label = (isCurrent and (ToonAge.Utils.Glyph("check", "4AFF7A") .. " ") or "") .. b.label
                 .. "  |cFF555049[" .. tostring(roleTag) .. "]|r",
             value = (isCurrent and "|cFF4AFF7AYOUR SPEC|r  " or "") .. b.confidence,
             status = CONFIDENCE_STATUS[b.confidence] or "neutral",
@@ -141,7 +141,7 @@ function M:Render(content, side)
 
         if b.verifyPoints then
             y = L:Paragraph(content, y,
-                "|cFFFF9A1A⚠|r Some secondary talent point costs here came from guide prose, "
+                (ToonAge.Utils.Glyph("warn", "FF9A1A") .. " Some secondary talent point costs here came from guide prose, ")
                 .. "not a scraped calculator — spot-check before treating them as exact.",
                 { color = L.C_WARNING, size = 9 })
         end

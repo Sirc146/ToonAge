@@ -26,7 +26,7 @@ M.SlashCommands = {
     profs = function(self)
         local Scan = TA.SkillScan
         local mine = Scan and Scan:GetProfessions() or {}
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ Professions ━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100--- Professions ---|r")
         if #mine == 0 then
             TA:Raw(TA.LOG.OUTPUT, "  None found.")
             return

@@ -125,7 +125,7 @@ R[1468] = {
         priorities = {
             {
                 spellID = 364343,
-                name = "Echo → Reversion",
+                name = ("Echo " .. ToonAge.Utils.Glyph("arrow") .. " Reversion"),
                 priority = 1,
                 why = "Core combo — Echo a player, immediately Reversion them for doubled HoT. In Mythic+ any of Verdant Embrace/Dream Breath/Reversion is a fine Echo consumer, unlike raid.",
                 tags = { "core" },
@@ -172,7 +172,7 @@ R[1468] = {
             },
             {
                 spellID = 370553,
-                name = "Tip the Scales → Dream Breath",
+                name = ("Tip the Scales " .. ToonAge.Utils.Glyph("arrow") .. " Dream Breath"),
                 priority = nil,
                 isCd = true,
                 why = "Instant full empower — use on burst damage. Unlocks at 85. Chronowarden-flavored (that tree builds around Tip the Scales/Temporal Burst); still usable either way.",
@@ -1531,7 +1531,7 @@ R[71] = { -- Arms
         },
     },
     aoe = {
-        tip = "Arms AoE: Sweeping Strikes + Cleave → Mortal Strike, cleaved by SS. Colossus's Ravager (spin before Colossus Smash) and Demolish (channel during CS) beat Slayer's Bladestorm here; keep Avatar and CS on cooldown.",
+        tip = ("Arms AoE: Sweeping Strikes + Cleave " .. ToonAge.Utils.Glyph("arrow") .. " Mortal Strike, cleaved by SS. Colossus's Ravager (spin before Colossus Smash) and Demolish (channel during CS) beat Slayer's Bladestorm here; keep Avatar and CS on cooldown."),
         chain = {
             { spellID = 260708, name = "Sweeping Strikes" },
             { spellID = 845, name = "Cleave" },
@@ -1830,7 +1830,7 @@ R[72] = { -- Fury
         },
     },
     aoe = {
-        tip = "Fury AoE: Whirlwind (enables Meat Cleaver) → Rampage → Bloodthirst/Crushing Blow, weaving Thunder Blast procs. Odyn's Fury as an opener, Recklessness on large pulls.",
+        tip = ("Fury AoE: Whirlwind (enables Meat Cleaver) " .. ToonAge.Utils.Glyph("arrow") .. " Rampage " .. ToonAge.Utils.Glyph("arrow") .. " Bloodthirst/Crushing Blow, weaving Thunder Blast procs. Odyn's Fury as an opener, Recklessness on large pulls."),
         chain = {
             { spellID = 190411, name = "Whirlwind" },
             { spellID = 184367, name = "Rampage" },
@@ -3897,7 +3897,7 @@ R[577] = { -- Havoc
             },
             {
                 spellID = 198793,
-                name = "Vengeful Retreat → Eye Beam",
+                name = ("Vengeful Retreat " .. ToonAge.Utils.Glyph("arrow") .. " Eye Beam"),
                 priority = 3,
                 why = "Vengeful Retreat grants Initiative/Exergy — immediately follow with Eye Beam to spend the buff at full value.",
                 tags = { "core" },
@@ -3914,7 +3914,7 @@ R[577] = { -- Havoc
                 name = "Essence Break",
                 priority = nil,
                 isCd = true,
-                why = "Hold if Eye Beam has ≤4 sec left on its cooldown so the amplify window covers it. Boosted by the 2pc (+12%) and 4pc (Cycle of Hatred proc, +35% initial hit, +2 sec duration).",
+                why = "Hold if Eye Beam has <=4 sec left on its cooldown so the amplify window covers it. Boosted by the 2pc (+12%) and 4pc (Cycle of Hatred proc, +35% initial hit, +2 sec duration).",
                 tags = { "cd" },
             },
             {
@@ -6305,7 +6305,7 @@ R[256] = { -- Discipline
                 spellID = 585,
                 name = "Smite",
                 priority = 5,
-                why = "Filler damage → heals when Entropic Rift isn't active.",
+                why = ("Filler damage " .. ToonAge.Utils.Glyph("arrow") .. " heals when Entropic Rift isn't active."),
                 tags = { "core" },
                 talentAlt = "Void Blast (Voidweaver, while Entropic Rift is active)",
             },
@@ -7151,7 +7151,7 @@ R[261] = { -- Subtlety
     -- with the set (swap it for Dark Shadow if you don't have 4pc) and
     -- shifting damage later into the Shadow Blades window.
     solo = {
-        tip = "Subtlety leveling: Shadow Dance → Shadowstrike for CP, Eviscerate at 5+ CP, Backstab outside Dance, Symbols of Death on CD. Goremaw's Bite and the hero-talent capstones unlock at 71.",
+        tip = ("Subtlety leveling: Shadow Dance " .. ToonAge.Utils.Glyph("arrow") .. " Shadowstrike for CP, Eviscerate at 5+ CP, Backstab outside Dance, Symbols of Death on CD. Goremaw's Bite and the hero-talent capstones unlock at 71."),
         priorities = {
             {
                 spellID = 185438,
@@ -7278,7 +7278,7 @@ R[261] = { -- Subtlety
                 spellID = 185313,
                 name = "Shadow Dance",
                 priority = 2,
-                why = "At 6+ CP (or ≤2 CP to dump into a fresh builder chain) whenever Secret Technique is ready or Shadow Blades is active. Always fit 2 casts inside every Shadow Blades window; never open one with under 10s of Shadow Blades left.",
+                why = "At 6+ CP (or <=2 CP to dump into a fresh builder chain) whenever Secret Technique is ready or Shadow Blades is active. Always fit 2 casts inside every Shadow Blades window; never open one with under 10s of Shadow Blades left.",
                 tags = { "core" },
             },
             {

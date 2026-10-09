@@ -157,7 +157,7 @@ function BW:ReportBlocks(force, wantStack)
     -- This is the deepest detail for pinning a block whose function name WoW
     -- did not report.
     if wantStack then
-        say("━━━ Blocked Action — full stack ━━━")
+        say("--- Blocked Action — full stack ---")
         local e = self.blocks[#self.blocks]
         if not e then
             say("Nothing captured this session.")
@@ -169,12 +169,12 @@ function BW:ReportBlocks(force, wantStack)
             say("")
             say(e.stack ~= "" and e.stack or "(no stack captured)")
         end
-        say("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        say("------------------------------")
         if r then r:Finish() end
         return
     end
 
-    say("━━━ ToonAge Blocked Actions ━━━")
+    say("--- ToonAge Blocked Actions ---")
     if #self.blocks == 0 then
         say("Nothing blocked this session.")
         say("If the popup appeared before login this session, reproduce it and run this again,")
@@ -206,7 +206,7 @@ function BW:ReportBlocks(force, wantStack)
         say("When function is 'not reported' and there is no source, WoW handed us nothing")
         say("useful -- use |cFFFFD100/ta taintlog|r, which records the real call in WoW's own log.")
     end
-    say("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    say("------------------------------")
 
     if r then r:Finish() end
 end
@@ -217,7 +217,7 @@ function BW:Doctor()
     -- Always opens the window: this is a paste-into-a-bug-report command.
     local r, say = NewReport("ToonAge Doctor", true)
 
-    say("━━━ ToonAge Doctor ━━━")
+    say("--- ToonAge Doctor ---")
     say(("client %s · interface %s · build %s"):format(
         tostring(TA.flavor),
         tostring(select(1, GetBuildInfo())),
@@ -225,7 +225,7 @@ function BW:Doctor()
     say("")
 
     -- 1. Module health
-    say("── Modules ──")
+    say("-- Modules --")
     if TA.GetHealthReport then
         local entries = TA:GetHealthReport()
         local loaded, off, errored = 0, 0, 0
@@ -246,7 +246,7 @@ function BW:Doctor()
     say("")
 
     -- 2. API probe
-    say("── API probe ──")
+    say("-- API probe --")
     local Guard = TA.GetRegisteredModule and TA:GetRegisteredModule("ApiGuard")
     if Guard and Guard.Probe then
         if not Guard.hasRun then Guard:Probe() end
@@ -278,7 +278,7 @@ function BW:Doctor()
     say("")
 
     -- 3. Action-taking features -- the ones that can trip the block
-    say("── Action features (protected) ──")
+    say("-- Action features (protected) --")
     if #ACTION_FEATURES == 0 then
         say("  none — ToonAge ships no features that take a protected action.")
     else
@@ -297,7 +297,7 @@ function BW:Doctor()
     say("")
 
     -- 4. Captured blocks
-    say("── Blocked actions this session ──")
+    say("-- Blocked actions this session --")
     if #self.blocks == 0 then
         say("  none captured")
     else
@@ -313,7 +313,7 @@ function BW:Doctor()
     say("")
 
     -- 5. Recent errors (from the same log /ta errors shows)
-    say("── Recent errors ──")
+    say("-- Recent errors --")
     if TA.ErrorLog and TA.ErrorLog.GetLog then
         local log = TA.ErrorLog:GetLog()
         if #log == 0 then
@@ -330,7 +330,7 @@ function BW:Doctor()
     else
         say("  (error log unavailable)")
     end
-    say("━━━━━━━━━━━━━━━━━━━━━━━")
+    say("-----------------------")
 
     if r then r:Finish() end
 end
@@ -344,7 +344,7 @@ end
 
 function BW:DontPanic()
     local r, say = NewReport("ToonAge — Don't Panic", true)
-    say("━━━ Don't Panic ━━━")
+    say("--- Don't Panic ---")
 
     local saved = {}
     local turnedOff = 0
@@ -361,26 +361,26 @@ function BW:DontPanic()
 
     if turnedOff == 0 then
         say("  Nothing was on. All protected features are already off.")
-        say("━━━━━━━━━━━━━━━━━━")
+        say("------------------")
         if r then r:Finish() end
         return
     end
 
     say(("  %d feature(s) off. Saved so |cFFFFD100/ta restore|r can put them back."):format(turnedOff))
-    say("  Reloading the UI to apply…")
-    say("━━━━━━━━━━━━━━━━━━")
+    say("  Reloading the UI to apply...")
+    say("------------------")
     if r then r:Finish() end
     C_Timer.After(0.5, function() ReloadUI() end)
 end
 
 function BW:Restore()
     local r, say = NewReport("ToonAge — Restore", true)
-    say("━━━ Restore ━━━")
+    say("--- Restore ---")
 
     local saved = TA.db and TA.db.blockWatchRestore
     if not saved or not next(saved) then
         say("  Nothing to restore — /ta dontpanic has not turned anything off.")
-        say("━━━━━━━━━━━━━━")
+        say("--------------")
         if r then r:Finish() end
         return
     end
@@ -396,8 +396,8 @@ function BW:Restore()
 
     if TA.db then TA.db.blockWatchRestore = nil end
 
-    say(("  %d feature(s) restored. Reloading the UI to apply…"):format(turnedOn))
-    say("━━━━━━━━━━━━━━")
+    say(("  %d feature(s) restored. Reloading the UI to apply..."):format(turnedOn))
+    say("--------------")
     if r then r:Finish() end
     C_Timer.After(0.5, function() ReloadUI() end)
 end
@@ -411,7 +411,7 @@ end
 
 function BW:TaintLog()
     local r, say = NewReport("ToonAge — Taint Log", true)
-    say("━━━ WoW Taint Log ━━━")
+    say("--- WoW Taint Log ---")
 
     local ok = pcall(function() SetCVar("taintLog", "1") end)
     if ok then
@@ -432,7 +432,7 @@ function BW:TaintLog()
     say("  named there is the source.")
     say("")
     say("  Turn it back off with |cFFFFD100/console taintLog 0|r when done (it is verbose).")
-    say("━━━━━━━━━━━━━━━━━━━━")
+    say("--------------------")
     if r then r:Finish() end
 end
 

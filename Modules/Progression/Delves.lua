@@ -296,7 +296,7 @@ function Delves:Render(content, sidebar)
     -- Current tier info
     local curLbl = pCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     curLbl:SetFont(STANDARD_TEXT_FONT, 10)
-    curLbl:SetText("Current:  " .. tier.label .. (tier.bountiful and "  ★ Bountiful" or ""))
+    curLbl:SetText("Current:  " .. tier.label .. (tier.bountiful and ("  " .. ToonAge.Utils.Glyph("star") .. " Bountiful") or ""))
     curLbl:SetTextColor(tc[1], tc[2], tc[3], 1)
     curLbl:SetPoint("TOPLEFT", pCard, "TOPLEFT", 12, -22)
 
@@ -333,7 +333,7 @@ function Delves:Render(content, sidebar)
 
         local bHdr = bount:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         bHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        bHdr:SetText("\226\152\133  BOUNTIFUL DELVES ACTIVE")
+        bHdr:SetText((ToonAge.Utils.Glyph("star") .. "  BOUNTIFUL DELVES ACTIVE"))
         bHdr:SetTextColor(0.29, 1.00, 0.38, 1)
         bHdr:SetPoint("TOPLEFT", bount, "TOPLEFT", 12, -8)
 
@@ -366,7 +366,7 @@ function Delves:Render(content, sidebar)
         local cy = -20 - (i - 1) * 20
         local mLabel = tCard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         mLabel:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-        mLabel:SetText(tip.mode .. (tip.mode == mode and " \226\134\144" or ""))
+        mLabel:SetText(tip.mode .. (tip.mode == mode and (" " .. ToonAge.Utils.Glyph("arrow")) or ""))
         mLabel:SetTextColor(tip.color[1], tip.color[2], tip.color[3], tip.mode == mode and 1 or 0.50)
         mLabel:SetPoint("TOPLEFT", tCard, "TOPLEFT", 12, cy)
 
@@ -445,7 +445,7 @@ function Delves:RenderSidebar(sidebar, mode, mc, tier, tc, iLvl)
 
     local bountifulLbl = tierStrip:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     bountifulLbl:SetFont(STANDARD_TEXT_FONT, 8)
-    bountifulLbl:SetText(tier.bountiful and "\226\152\133 Bountiful unlocked" or "Bountiful: Tier 4+")
+    bountifulLbl:SetText(tier.bountiful and (ToonAge.Utils.Glyph("star") .. " Bountiful unlocked") or "Bountiful: Tier 4+")
     bountifulLbl:SetTextColor(tier.bountiful and 0.29 or 0.40, tier.bountiful and 1.00 or 0.40, tier.bountiful and 0.38 or 0.40, 1)
     bountifulLbl:SetPoint("BOTTOMLEFT", tierStrip, "BOTTOMLEFT", 8, 6)
 
@@ -465,8 +465,8 @@ function Delves:RenderSidebar(sidebar, mode, mc, tier, tc, iLvl)
 
         local row = TrackSide(sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
         row:SetFont(STANDARD_TEXT_FONT, 9, current and "OUTLINE" or "")
-        local prefix = current and "\226\134\146 " or (done and "\226\156\147 " or "\226\150\161 ")
-        row:SetText(prefix .. t.label .. (t.bountiful and "  \226\152\133" or ""))
+        local prefix = current and (ToonAge.Utils.Glyph("arrow") .. " ") or (done and (ToonAge.Utils.Glyph("check") .. " ") or (ToonAge.Utils.Glyph("pipRing") .. " "))
+        row:SetText(prefix .. t.label .. (t.bountiful and ("  " .. ToonAge.Utils.Glyph("star")) or ""))
         row:SetTextColor(
             current and 1 or (done and tcc[1] or 0.30),
             current and 1 or (done and tcc[2] or 0.30),

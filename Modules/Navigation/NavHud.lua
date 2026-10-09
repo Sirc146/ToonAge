@@ -572,7 +572,7 @@ local function PrintHudSettings()
         TA:Raw(TA.LOG.OUTPUT, "")
         TA:Raw(TA.LOG.OUTPUT, "  Change: |cFFFFD100/ta hud set <key> <value>|r")
         TA:Raw(TA.LOG.OUTPUT, "  Example: |cFFFFD100/ta hud set showCoords false|r")
-        TA:Raw(TA.LOG.OUTPUT, "  Keybind: Key Bindings → Addons → ToonAge → Toggle NavHud")
+        TA:Raw(TA.LOG.OUTPUT, ("  Keybind: Key Bindings " .. ToonAge.Utils.Glyph("arrow") .. " Addons " .. ToonAge.Utils.Glyph("arrow") .. " ToonAge " .. ToonAge.Utils.Glyph("arrow") .. " Toggle NavHud"))
 end
 
 local function ApplyHudSetting(msg)

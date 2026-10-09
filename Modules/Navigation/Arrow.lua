@@ -491,7 +491,7 @@ function Arrow:Tick(f)
                 if fmX and fmY then
                     coordMap = currentMap
                     cx, cy = fmX, fmY
-                    f.titleF:SetText("|cFF55CCFF✈|r " .. (fmName or "Flight Master"))
+                    f.titleF:SetText((ToonAge.Utils.Glyph("flight", "55CCFF") .. " ") .. (fmName or "Flight Master"))
                 else
                     U.RevealWaypoint(f, true)
                     HideArrowArt(f)
@@ -834,7 +834,7 @@ function Arrow:ParseWayCommand(args)
 
     -- Validate coordinate ranges (TomTom format: 0–100 percentage display values)
     if xRaw < 0 or xRaw > 100 or yRaw < 0 or yRaw > 100 then
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Coordinates must be 0–100 (e.g. 45.2 67.8).")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Coordinates must be 0-100 (e.g. 45.2 67.8).")
         return
     end
 

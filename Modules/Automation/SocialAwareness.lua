@@ -79,10 +79,10 @@ function Social:GetSuggestion()
 
     if #self.nearbyFriends == 1 then
         local f = self.nearbyFriends[1]
-        return string.format("|cFF55CCFF👥 %s (%s, lvl %d) is in %s — party up?|r",
+        return string.format(("|cFF55CCFF" .. ToonAge.Utils.Glyph("people", "55CCFF") .. " %s (%s, lvl %d) is in %s — party up?|r"),
             f.name, f.source, f.level, f.zone)
     else
-        return string.format("|cFF55CCFF👥 %d friends/guildmates nearby in %s!|r",
+        return string.format(("|cFF55CCFF" .. ToonAge.Utils.Glyph("people", "55CCFF") .. " %d friends/guildmates nearby in %s!|r"),
             #self.nearbyFriends, GetRealZoneText())
     end
 end

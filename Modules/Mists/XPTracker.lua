@@ -232,7 +232,7 @@ XP.SlashCommands = {
         local s = self:GetSessionSummary()
         local mins = math.floor(s.sessionTime / 60)
 
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ ToonAge XP Dashboard ━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100--- ToonAge XP Dashboard ---|r")
         TA:Raw(TA.LOG.OUTPUT, string.format("  Level: |cFFFFFFFF%d|r  (%.1f%%)", s.level, s.pct))
         TA:Raw(TA.LOG.OUTPUT, string.format("  XP/Hour: |cFF4AFF7A%s|r",
             U.FormatNumber and U.FormatNumber(s.xpPerHour) or string.format("%.0f", s.xpPerHour)))

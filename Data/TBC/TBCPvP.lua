@@ -30,8 +30,8 @@ TA.Data = TA.Data or {}
 -- ─── RESILIENCE (EXACT — effects computed in Core/TBCStats.lua) ──────────────
 
 TA.Data.ResilienceNotes = {
-    "One percent of resilience does three things at once: −1% chance to be crit, "
-        .. "−2% damage from crits that still land, and −1% damage from every "
+    "One percent of resilience does three things at once: -1% chance to be crit, "
+        .. "-2% damage from crits that still land, and -1% damage from every "
         .. "damage-over-time effect on you.",
     "There is no cap and no breakpoint. Anyone quoting a magic resilience number "
         .. "is describing a comfort level, not a mechanic.",

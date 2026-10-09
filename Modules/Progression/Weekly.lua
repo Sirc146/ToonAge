@@ -437,7 +437,7 @@ function Weekly:Render(content, sidebar)
     if HasVaultReward() then
         local badge = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
         badge:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        badge:SetText(COL_GREEN .. "⬛ Vault Open — claim your reward!" .. CLOSE)
+        badge:SetText(COL_GREEN .. (ToonAge.Utils.Glyph("square", "4AFF7A") .. " Vault Open — claim your reward!") .. CLOSE)
         badge:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
     end
 
@@ -518,7 +518,7 @@ function Weekly:Render(content, sidebar)
                 -- Status icon
                 local statusF = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 statusF:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-                statusF:SetText(unlocked and (COL_GREEN .. "✓" .. CLOSE) or (COL_GREY .. "○" .. CLOSE))
+                statusF:SetText(unlocked and (COL_GREEN .. ToonAge.Utils.Glyph("check", "4AFF7A") .. CLOSE) or (COL_GREY .. ToonAge.Utils.Glyph("pipRing", "888780") .. CLOSE))
                 statusF:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -8)
 
                 -- Tier label
@@ -676,7 +676,7 @@ function Weekly:Render(content, sidebar)
                 -- Checkbox indicator
                 local check = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 check:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-                check:SetText(task.done and (COL_GREEN .. "✓" .. CLOSE) or (COL_GREY .. "○" .. CLOSE))
+                check:SetText(task.done and (COL_GREEN .. ToonAge.Utils.Glyph("check", "4AFF7A") .. CLOSE) or (COL_GREY .. ToonAge.Utils.Glyph("pipRing", "888780") .. CLOSE))
                 check:SetPoint("LEFT", row, "LEFT", 8, 0)
 
                 -- Task text
@@ -712,7 +712,7 @@ function Weekly:Render(content, sidebar)
                     for _, t in ipairs(TA.charDB.tasks.list or {}) do
                         if t.id == taskID then nowDone = t.done; break end
                     end
-                    check:SetText(nowDone and (COL_GREEN .. "✓" .. CLOSE) or (COL_GREY .. "○" .. CLOSE))
+                    check:SetText(nowDone and (COL_GREEN .. ToonAge.Utils.Glyph("check", "4AFF7A") .. CLOSE) or (COL_GREY .. ToonAge.Utils.Glyph("pipRing", "888780") .. CLOSE))
                     textF:SetText(nowDone and (COL_GREY .. task.text .. CLOSE) or task.text)
                     if nowDone then
                         MkBackdrop(row, 0.02, 0.06, 0.02, 1, 0.15, 0.40, 0.15, 0.6)
@@ -976,7 +976,7 @@ Weekly.SlashCommands = {
         for cat, tasks in pairs(cats) do
             TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100" .. cat .. ":|r")
             for _, t in ipairs(tasks) do
-                local status = t.done and "|cFF4AFF7A✓|r" or "|cFFFF4444○|r"
+                local status = t.done and ToonAge.Utils.Glyph("check", "4AFF7A") or ToonAge.Utils.Glyph("pipRing", "FF4444")
                 TA:Raw(TA.LOG.OUTPUT, "    " .. status .. " " .. t.text)
             end
         end
