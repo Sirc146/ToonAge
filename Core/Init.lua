@@ -1654,18 +1654,24 @@ local function Dispatch(self, msg)
     -- Skips modules that are not running on this client, and says so rather
     -- than failing silently: typing a command that belongs to a module the
     -- flavor does not ship should explain itself, not throw from inside it.
-    for name, mod in pairs(self.modules) do
-        if mod.SlashCommands and mod.SlashCommands[cmd]
-           and (mod._disabled or mod._profileSkipped) then
-            TA:Print(TA.LOG.OUTPUT, nil, ("/ta %s belongs to %s, which is not running here (%s)."):format(
-                cmd, name, mod._profileReason or "switched off"))
-            return
+    -- Abbreviated commands (below) call this same gate. A prefix such as
+    -- "mis" must not reach a handler whose module is off, skipped by Safe
+    -- Mode, or absent from this client's profile.
+    local function RunModuleSlash(command)
+        for name, mod in pairs(self.modules) do
+            if mod.SlashCommands and mod.SlashCommands[command] then
+                if mod._disabled or mod._profileSkipped then
+                    TA:Print(TA.LOG.OUTPUT, nil, ("/ta %s belongs to %s, which is not running here (%s)."):format(
+                        command, name, mod._profileReason or "switched off"))
+                    return true
+                end
+                mod.SlashCommands[command](mod, args)
+                return true
+            end
         end
-        if mod.SlashCommands and not mod._disabled and not mod._profileSkipped then
-            local fn = mod.SlashCommands[cmd]
-            if fn then fn(mod, args); return end
-        end
+        return false
     end
+    if RunModuleSlash(cmd) then return end
 
     -- ── Prefix / fuzzy match ──────────────────────────────────────────
     -- Try prefix matching: "mis" → "missed", "farm" → "farmhud", etc.
@@ -1689,13 +1695,9 @@ local function Dispatch(self, msg)
             BUILTIN[matchedCmd]()
             return
         end
-        -- Check module commands
-        for _, mod in pairs(self.modules) do
-            if mod.SlashCommands and mod.SlashCommands[matchedCmd] then
-                mod.SlashCommands[matchedCmd](mod, args)
-                return
-            end
-        end
+        -- Same gate as an exact command: a disabled, safe-skipped, or
+        -- wrong-client module explains itself and does not run.
+        if RunModuleSlash(matchedCmd) then return end
     end
 
     -- Multiple prefix matches or fuzzy matches: suggest them as clickable links
