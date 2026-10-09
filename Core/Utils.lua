@@ -1071,6 +1071,158 @@ function U.FormatETA(yards, speed)
     end
 end
 
+-- ── Spell rank chains ─────────────────────────────────────────────────
+-- Rank order never comes from C_Spell.GetSpellSubtext. On Forever that
+-- string is "Rank 1" once spell data has loaded and "" before it has, for
+-- the same spell ID. The rank is the 1-based position in the per-flavor
+-- chain (Data/<Flavor>/SpellRanks.lua). A spell ID that is not in the file
+-- is ordered with the other missing IDs of that name by trained level
+-- (C_Spell.GetSpellLevelLearned). Subtext is display text only.
+
+local SPELL_RANK_TABLE = {
+    forever = "ForeverSpellRanks",
+    tbc     = "TBCSpellRanks",
+    mists   = "MistsSpellRanks",
+    vanilla = "VanillaSpellRanks",
+    wrath   = "WrathSpellRanks",
+    cata    = "CataSpellRanks",
+}
+
+--- Data-table name for this flavor's rank chains. nil when that flavor has none.
+function U.SpellRankTableName(flavor)
+    return SPELL_RANK_TABLE[flavor]
+end
+
+--- Digits in a subtext string ("Rank 3" -> 3). nil when the text has no number
+--- or has not loaded. Display and the self-test only; not a rank source.
+function U.RankNumberFromSubtext(text)
+    if type(text) ~= "string" then return nil end
+    return tonumber(text:match("(%d+)"))
+end
+
+--- spellID -> { name=, n=, learned= } using each chain's position as n.
+function U.SpellRankIndex(chains)
+    local byID = {}
+    if type(chains) ~= "table" then return byID end
+    for name, list in pairs(chains) do
+        if type(list) == "table" then
+            for i, r in ipairs(list) do
+                if type(r) == "table" and type(r.id) == "number" then
+                    byID[r.id] = { name = name, n = i, learned = r.learned }
+                end
+            end
+        end
+    end
+    return byID
+end
+
+--- Set .n and .fromChain on each spell. .n is the chain position when the
+--- spell ID is in `chains`. Otherwise, when every missing ID of that name has
+--- a trained level and there are at least two, .n is the position after
+--- sorting those IDs by trained level (spell ID breaks a tie so the order is
+--- stable; it is not itself a rank). A lone ID with no chain has no rank.
+function U.AssignSpellRanks(spells, chains)
+    local byID = U.SpellRankIndex(chains)
+    local missing = {}
+    for _, sp in ipairs(spells or {}) do
+        if type(sp) == "table" then
+            local id = sp.spellID
+            if type(id) ~= "number" then id = sp.id end
+            if type(id) == "number" then sp.spellID = id end
+            local hit = id and byID[id]
+            if hit then
+                sp.n = hit.n
+                sp.fromChain = true
+                if not sp.learned and hit.learned then sp.learned = hit.learned end
+                if (type(sp.name) ~= "string" or sp.name == "") and hit.name then
+                    sp.name = hit.name
+                end
+            else
+                sp.n = nil
+                sp.fromChain = nil
+                local name = sp.name
+                if type(name) == "string" and name ~= "" then
+                    missing[name] = missing[name] or {}
+                    table.insert(missing[name], sp)
+                end
+            end
+        end
+    end
+    for _, list in pairs(missing) do
+        if #list >= 2 then
+            local ok = true
+            for _, sp in ipairs(list) do
+                if type(sp.learned) ~= "number" or sp.learned <= 0 then ok = false end
+            end
+            if ok then
+                table.sort(list, function(a, b)
+                    if a.learned ~= b.learned then return a.learned < b.learned end
+                    return (a.spellID or 0) < (b.spellID or 0)
+                end)
+                for i, sp in ipairs(list) do sp.n = i end
+            end
+        end
+    end
+end
+
+--- True when a is a higher rank than b. Chain position wins when both IDs are
+--- in the chain. Otherwise a higher trained level wins. Subtext is not read.
+function U.SpellRankHigher(a, b)
+    if type(a) ~= "table" or type(b) ~= "table" then return false end
+    if a.fromChain and b.fromChain and a.n and b.n then return a.n > b.n end
+    if type(a.learned) == "number" and type(b.learned) == "number" and a.learned ~= b.learned then
+        return a.learned > b.learned
+    end
+    if a.n and b.n and not a.fromChain and not b.fromChain then return a.n > b.n end
+    return false
+end
+
+--- Data-file position against loaded subtext. Empty subtext is not a
+--- disagreement (the text has not loaded). Returns the list, how many
+--- subtexts were loaded, and how many were not.
+---   list[i] = { name=, id=, file=, sub=, got= }
+function U.SpellRankDisagreements(chains, subtextFor)
+    local out, checked, unloaded = {}, 0, 0
+    if type(chains) ~= "table" or type(subtextFor) ~= "function" then
+        return out, checked, unloaded
+    end
+    for name, list in pairs(chains) do
+        if type(list) == "table" then
+            for i, r in ipairs(list) do
+                if type(r) == "table" and type(r.id) == "number" then
+                    local ok, sub = pcall(subtextFor, r.id)
+                    local n
+                    if ok and type(sub) == "string" and sub ~= "" then
+                        local okN
+                        okN, n = pcall(U.RankNumberFromSubtext, sub)
+                        if not okN then n = nil end
+                    else
+                        sub = nil
+                    end
+                    if type(sub) == "string" and sub ~= "" then
+                        checked = checked + 1
+                        -- A loaded subtext with no rank number, or a different
+                        -- number than the chain position, is a disagreement.
+                        if n ~= i then
+                            out[#out + 1] = {
+                                name = tostring(name), id = r.id, file = i,
+                                sub = sub, got = n,
+                            }
+                        end
+                    else
+                        unloaded = unloaded + 1
+                    end
+                end
+            end
+        end
+    end
+    table.sort(out, function(a, b)
+        if a.id ~= b.id then return a.id < b.id end
+        return a.name < b.name
+    end)
+    return out, checked, unloaded
+end
+
 -- ── Time formatting ───────────────────────────────────────────────────
 function U.FormatTime(seconds)
     if seconds >= 3600 then

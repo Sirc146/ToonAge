@@ -28,10 +28,12 @@
 -- deliberate downrank for mana, so the tab LISTS it -- it does not call it an
 -- error. Each spell row in the list carries the note inline ("Lower rank in
 -- use: Rank 2 on Bar 1 button 3"), and a summary above counts them.
--- Ranks come from the rank text the client reports ("Rank 2"), or, when that
--- is blank, from C_Spell.GetSpellLevelLearned (the level each rank is trained);
--- spell IDs are never used to guess an order. If the client reports neither
--- text, the check says so and makes no claim.
+-- The rank is that spell's position in the chain in Data/Forever/SpellRanks.lua.
+-- A spell the file does not list is ordered by C_Spell.GetSpellLevelLearned.
+-- GetSpellSubtext is display text only: the same ID returned "Rank 1" in one
+-- probe and "" in another, because the text is not always loaded yet. Empty
+-- text asks C_Spell.RequestLoadSpellData and the tab redraws on
+-- SPELL_DATA_LOAD_RESULT. Spell IDs are never used to guess an order.
 -- ══════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
@@ -50,21 +52,57 @@ local function Try(fn, ...)
     return select(2, unpack(res))
 end
 
---- Rank number from rank text such as "Rank 3". nil when there is none.
+--- Rank number from display text such as "Rank 3". The self-test uses this
+--- to compare the data file with loaded subtext. Rank order does not.
 local function RankNumber(text)
-    if type(text) ~= "string" then return nil end
-    return tonumber(text:match("(%d+)"))
+    return U.RankNumberFromSubtext(text)
 end
 M._RankNumber = RankNumber
 
---- Rank text for a spell ID, from the spellbook entry first, then the client.
-local function RankText(subName, spellID)
-    if subName and subName ~= "" then return tostring(subName) end
+--- Subtext for display. Spellbook subName first, then GetSpellSubtext.
+--- Empty means the client has not loaded the text yet: ask once, and redraw
+--- when SPELL_DATA_LOAD_RESULT fires. Never a source of rank order.
+local function DisplaySubtext(subName, spellID)
+    if type(subName) == "string" and subName ~= "" then return subName end
+    local sub
     if spellID and C_Spell and C_Spell.GetSpellSubtext then
-        local sub = Try(C_Spell.GetSpellSubtext, spellID)
-        if sub and sub ~= "" then return tostring(sub) end
+        sub = Try(C_Spell.GetSpellSubtext, spellID)
+    end
+    if type(sub) == "string" and sub ~= "" then
+        if spellID and M._loadAsked then M._loadAsked[spellID] = nil end
+        return sub
+    end
+    if spellID and C_Spell and C_Spell.RequestLoadSpellData then
+        M._loadAsked = M._loadAsked or {}
+        if not M._loadAsked[spellID] then
+            M._loadAsked[spellID] = true
+            Try(C_Spell.RequestLoadSpellData, spellID)
+        end
     end
     return nil
+end
+
+--- The flavor's shipped rank chains. Forever's module defaults to its own
+--- file when a test has not set TA.flavor.
+local function ActiveChains()
+    local data = TA.Data
+    if type(data) ~= "table" or not U.SpellRankTableName then return nil end
+    local key = U.SpellRankTableName(TA.flavor or "forever")
+    local t = key and data[key]
+    if type(t) == "table" then return t end
+    return nil
+end
+
+local CatalogByName
+
+--- Chain used to number ranks: the live catalog when this install has one
+--- (it extends the shipped file), otherwise the shipped file alone.
+local function ChainsForRanks()
+    if TA.Harvester and TA.Harvester.Store and type(UnitClass) == "function" then
+        local ok, cat = pcall(CatalogByName)
+        if ok and type(cat) == "table" then return cat end
+    end
+    return ActiveChains()
 end
 
 --- Level a spell ID is learned at, from the client. nil when unanswered.
@@ -109,7 +147,7 @@ local function ReadSpellbook()
                             group.spells[#group.spells + 1] = {
                                 name    = tostring(item.name),
                                 spellID = item.spellID,
-                                rank    = RankText(item.subName, item.spellID),
+                                rank    = DisplaySubtext(item.subName, item.spellID),
                                 learned = LearnedLevel(item.spellID),
                             }
                         end
@@ -133,7 +171,7 @@ local function ReadSpellbook()
                 group.spells[#group.spells + 1] = {
                     name    = tostring(name),
                     spellID = spellID,
-                    rank    = RankText(rank, spellID),
+                    rank    = DisplaySubtext(rank, spellID),
                     learned = LearnedLevel(spellID),
                 }
             end
@@ -153,8 +191,9 @@ end
 --
 -- A bar spell is resolved by ID. The spellbook is asked first; if the
 -- spellbook does not list that exact rank (a Mainline-style spellbook may show
--- only the top rank), the spell's own name and rank text are read from
--- C_Spell. A bar spell whose rank cannot be read makes no claim.
+-- only the top rank), the spell's name is read from C_Spell. Its rank is the
+-- chain position, not the subtext. A spell with no chain and no trained
+-- level makes no claim.
 
 -- Action slots 1-180 cover every bar the Mainline UI can show, including the
 -- extra bars; empty and non-spell slots are skipped.
@@ -192,7 +231,7 @@ local function SpellNameRank(spellID)
         if type(info) == "table" then name = info.name end
     end
     if type(name) ~= "string" or name == "" then return nil end
-    return name, RankText(nil, spellID)
+    return name, DisplaySubtext(nil, spellID)
 end
 
 --- Spell IDs placed on action bars.
@@ -211,91 +250,90 @@ local function ReadBarSpells()
     return out
 end
 
---- How one spell's ranks are ordered: by rank text when EVERY copy has it,
---- else by learned level when every copy has that, else not at all.
---- @return string|nil mode "rank" | "level"
-local function GroupMode(entries)
-    local allRank, allLevel = true, true
-    for _, e in ipairs(entries) do
-        if not e.n then allRank = false end
-        if not e.learned then allLevel = false end
-    end
-    if allRank then return "rank" end
-    if allLevel then return "level" end
-    return nil
-end
-
-local function Key(e, mode) if mode == "rank" then return e.n end return e.learned end
-
---- Human label for one copy of a spell under a mode.
-local function Label(e, mode)
-    if mode == "rank" then return "Rank " .. e.n end
-    return "the level " .. e.learned .. " rank"
+--- Human label for one copy. Chain position when we have one, else the
+--- trained level. The client's subtext is not part of this label: it may
+--- still be unloaded, and the row itself shows it once it arrives.
+local function Label(e)
+    if e.n then return "Rank " .. e.n end
+    if e.learned then return "the level " .. e.learned .. " rank" end
+    return "a rank"
 end
 M._Label = Label
 
 --- Compare bar spells against the highest rank known per spell name.
---- Pure: takes the spellbook groups and the bar list, touches no API.
+--- Rank numbers come from the chain (data file, or the catalog built from
+--- it). Subtext on the spell rows is ignored. Touches no client API except
+--- through ChainsForRanks, which reads the harvest store when one exists.
 --- @return table outdated { { slot=, name=, have=, best=, haveLabel=, bestLabel= } } by slot
 --- @return boolean ranked  false when no spell could be ordered at all
 --- @return table byName   name -> { outdated entries for that spell }
 --- @return table onBar    name -> true when the best copy is also on a bar
 local function FindOutdated(lines, bars)
-    -- Every copy of every spell, book and bar, grouped by name.
-    local groups, byID = {}, {}
-    local function add(name, e)
-        groups[name] = groups[name] or { book = {}, all = {} }
-        table.insert(groups[name].all, e)
-        return groups[name]
-    end
+    local flat, bookOf, barCopies = {}, {}, {}
     for _, group in ipairs(lines or {}) do
-        for _, sp in ipairs(group.spells) do
-            local e = { id = sp.spellID, n = RankNumber(sp.rank), learned = sp.learned }
-            table.insert(add(sp.name, e).book, e)
-            if sp.spellID then byID[sp.spellID] = { name = sp.name, e = e } end
+        for _, sp in ipairs(group.spells or {}) do
+            local e = {
+                spellID = sp.spellID, name = sp.name, learned = sp.learned, book = true,
+            }
+            flat[#flat + 1] = e
+            if sp.spellID then bookOf[sp.spellID] = e end
         end
     end
-    local barCopies = {}
     for _, b in ipairs(bars or {}) do
-        local known = byID[b.spellID]
-        local name = known and known.name or b.name
-        if name and groups[name] then
-            local e = known and known.e
-                or { id = b.spellID, n = RankNumber(b.rank), learned = b.learned }
-            if not known then add(name, e) end
-            barCopies[#barCopies + 1] = { slot = b.slot, name = name, e = e }
+        local known = b.spellID and bookOf[b.spellID]
+        if known then
+            if not known.learned and b.learned then known.learned = b.learned end
+            barCopies[#barCopies + 1] = { slot = b.slot, e = known }
+        else
+            local e = { spellID = b.spellID, name = b.name, learned = b.learned }
+            flat[#flat + 1] = e
+            barCopies[#barCopies + 1] = { slot = b.slot, e = e }
+        end
+    end
+    U.AssignSpellRanks(flat, ChainsForRanks())
+
+    local groups = {}
+    for _, e in ipairs(flat) do
+        if type(e.name) == "string" and e.name ~= "" then
+            local g = groups[e.name]
+            if not g then
+                g = { book = {}, all = {} }
+                groups[e.name] = g
+            end
+            table.insert(g.all, e)
+            if e.book then table.insert(g.book, e) end
         end
     end
 
-    -- Per name: ordering mode and the best copy in the spellbook.
-    local ranked, best, mode = false, {}, {}
+    local ranked, best = false, {}
     for name, g in pairs(groups) do
-        local m = GroupMode(g.all)
-        if m and #g.all > 0 then
-            mode[name] = m
-            for _, e in ipairs(g.book) do
-                if Key(e, m) and (not best[name] or Key(e, m) > Key(best[name], m)) then
-                    best[name] = e
-                end
+        local keys = 0
+        for _, e in ipairs(g.all) do
+            if e.n or (type(e.learned) == "number" and e.learned > 0) then keys = keys + 1 end
+        end
+        if keys >= 2 then ranked = true end
+        for _, e in ipairs(g.book) do
+            if e.n or (type(e.learned) == "number" and e.learned > 0) then
+                if not best[name] or U.SpellRankHigher(e, best[name]) then best[name] = e end
             end
-            if #g.book > 1 or #g.all > 1 then ranked = true end
         end
     end
 
     local outdated, byName, onBar = {}, {}, {}
     for _, c in ipairs(barCopies) do
-        local m, top = mode[c.name], best[c.name]
-        if m and top then
-            if Key(c.e, m) >= Key(top, m) then
-                onBar[c.name] = true
-            else
-                local o = { slot = c.slot, name = c.name,
-                            have = Key(c.e, m), best = Key(top, m),
-                            haveLabel = Label(c.e, m), bestLabel = Label(top, m) }
-                outdated[#outdated + 1] = o
-                byName[c.name] = byName[c.name] or {}
-                table.insert(byName[c.name], o)
-            end
+        local name = c.e.name
+        local top = name and best[name]
+        if top and U.SpellRankHigher(top, c.e) then
+            local o = { slot = c.slot, name = name,
+                        have = c.e.n, best = top.n,
+                        haveLabel = Label(c.e), bestLabel = Label(top) }
+            outdated[#outdated + 1] = o
+            byName[name] = byName[name] or {}
+            table.insert(byName[name], o)
+        elseif top and not U.SpellRankHigher(c.e, top) then
+            -- Same rank, or not distinguishable. A higher bar rank is not
+            -- "outdated"; mark the name current only when it is not lower.
+            if c.e.n or c.e.fromChain or c.e.learned then onBar[name] = true end
         end
     end
     table.sort(outdated, function(a, b) return a.slot < b.slot end)
@@ -338,35 +376,30 @@ local function RenderIntro(content, y, total)
 end
 
 --- Collapse a group to one row per spell name, keeping the highest rank
---- (by rank text, else by learned level). `count` is how many ranks you know.
+--- (chain position, else trained level). `count` is how many ranks you know.
+--- `rank` stays the subtext of that highest rank, which may still be empty.
 local function Collapse(spells)
+    if U.AssignSpellRanks then U.AssignSpellRanks(spells, ChainsForRanks()) end
     local out, at = {}, {}
     for _, sp in ipairs(spells) do
-        local n = RankNumber(sp.rank)
         local i = at[sp.name]
         if not i then
-            out[#out + 1] = { name = sp.name, rank = sp.rank, n = n,
-                              learned = sp.learned, topLearned = sp.learned, count = 1 }
+            out[#out + 1] = { name = sp.name, rank = sp.rank, n = sp.n,
+                              learned = sp.learned, topLearned = sp.learned,
+                              fromChain = sp.fromChain, spellID = sp.spellID, count = 1 }
             at[sp.name] = #out
         else
             local r = out[i]
             r.count = r.count + 1
             -- Highest trained level among the ranks you know: the anchor for
-            -- "next rank", independent of whether rank text has loaded.
+            -- "next rank", independent of whether subtext has loaded.
             if sp.learned and (not r.topLearned or sp.learned > r.topLearned) then
                 r.topLearned = sp.learned
             end
-            local better
-            if n and r.n then better = n > r.n
-            elseif not n and not r.n and sp.learned and r.learned then better = sp.learned > r.learned
-            else better = (n ~= nil and r.n == nil) end
-            if better then r.rank, r.n, r.learned = sp.rank, n, sp.learned end
-        end
-    end
-    -- Rank text blank but several ranks known: say which one this row is.
-    for _, r in ipairs(out) do
-        if not r.rank and r.count > 1 and r.learned then
-            r.rank = string.format("%d ranks · top learned at %d", r.count, r.learned)
+            if U.SpellRankHigher(sp, r) then
+                r.rank, r.n, r.learned = sp.rank, sp.n, sp.learned
+                r.fromChain, r.spellID = sp.fromChain, sp.spellID
+            end
         end
     end
     return out
@@ -375,36 +408,59 @@ M._Collapse = Collapse
 
 -- ─── TRAINING (from the spell catalog) ──────────────────────────────────
 --
--- Every trainable rank of every spell, read from the client by ID: shipped as
--- Data/Forever/SpellRanks.lua, or taken live from the harvest store when the
--- Harvest tab's "Scan spell catalog" has run on this install. Matched by NAME
--- against your own spellbook, so it only ever talks about spells your class
--- has; a new spell you have never learned stays out of it (the catalog cannot
--- say which class owns a spell).
+-- Every trainable rank of every spell. The chain is Data/Forever/SpellRanks.lua.
+-- A harvest (trainer visit or spell catalog) adds ranks that file does not
+-- list, ordered by trained level; it does not renumber the file. Matched by
+-- NAME against your own spellbook, so it only ever talks about spells your
+-- class has; a new spell you have never learned stays out of it (the catalog
+-- cannot say which class owns a spell).
 
---- name -> { { id=, n=, learned= }, ... } sorted by trained level. nil when
---- no catalog. `n` (the rank number) is nil when the client had not loaded the
---- rank text yet: measured 2026-09-29, C_Spell.GetSpellSubtext returned "" for
---- every Mage spell right after login and "Rank 2" later. The TRAINED LEVEL is
---- answered either way, so ranks are ordered by it, and the rank number is
---- only a label when present.
-local function CatalogByName()
-    -- This install's own scan wins over the shipped file: it is newer, and
-    -- it was taken on this client build.
-    local shipped = TA.Data and TA.Data.ForeverSpellRanks
-    -- The harvest store (TA.db.harvest since harvest spec T3), via the core.
+--- name -> { { id=, n=, learned= }, ... }. `n` is the position in the chain.
+--- The shipped file is the chain. Trainer and catalog rows add spells the
+--- file does not list, ordered by trained level, and may extend a shipped
+--- chain with a higher trained level. Subtext is not read: a blank
+--- GetSpellSubtext used to drop real ranks and keep the number unstable.
+-- Assigned (not `local function`) so ChainsForRanks, defined above, calls this.
+CatalogByName = function()
+    -- Shipped chains stay authoritative for the IDs they list. A harvest adds
+    -- ranks the file does not have; it does not renumber the file.
+    local function CopyChains(src)
+        local copy, seen = {}, {}
+        if type(src) ~= "table" then return copy, seen end
+        for name, list in pairs(src) do
+            if type(list) == "table" then
+                local rows = {}
+                for i, r in ipairs(list) do
+                    if type(r) == "table" and type(r.id) == "number" then
+                        rows[#rows + 1] = { id = r.id, learned = r.learned, n = i }
+                        seen[r.id] = true
+                    end
+                end
+                if #rows > 0 then copy[name] = rows end
+            end
+        end
+        return copy, seen
+    end
+
     local harvest = TA.Harvester and TA.Harvester:Store() or nil
     local store = harvest and harvest.catalog
     -- Trainer ranks (2026-10-03): one trainer visit records every rank the
     -- class trainer teaches, with the level each needs and its spell ID --
     -- including ranks you are too low for (measured on Forever 70205: 35
     -- "unavailable" rows up to level 60 on a level-17 Mage). Format 2 only.
-    local _, class = UnitClass("player")
+    local class
+    if type(UnitClass) == "function" then
+        local okU, _, token = pcall(UnitClass, "player")
+        if okU then class = token end
+    end
     local trainer = harvest and harvest.trainerFormat == 2 and harvest.trainer
         and class and harvest.trainer[class]
     local hasStore = type(store) == "table" and next(store) ~= nil
     local hasTrainer = type(trainer) == "table" and next(trainer) ~= nil
-    if not hasStore and not hasTrainer then return shipped end
+    if not hasStore and not hasTrainer then
+        local copy = CopyChains(ActiveChains())
+        return next(copy) and copy or nil
+    end
     -- Rows are added to the same trainer table on each visit, so identity
     -- alone would keep a stale cache: the row count is part of the stamp.
     local stamp = hasStore and 1 or 0
@@ -413,43 +469,60 @@ local function CatalogByName()
        and M._catalogStamp == stamp then
         return M._catalogCache
     end
-    local out = {}
-    local seenID = {}
+    local out, seenID = CopyChains(ActiveChains())
+    local extra = {}
+    local function add(name, id, learned)
+        if not name or name == "" or not id or not learned or learned <= 0 or seenID[id] then
+            return
+        end
+        seenID[id] = true
+        extra[name] = extra[name] or {}
+        table.insert(extra[name], { id = id, learned = learned })
+    end
     if hasTrainer then
         for id, line in pairs(trainer) do
-            local name, rankText, req = tostring(line):match("^([^\t]*)\t([^\t]*)\t([^\t]*)")
-            req = tonumber(req)
-            id = tonumber(id)
-            if name and name ~= "" and req then
-                out[name] = out[name] or {}
-                table.insert(out[name], { id = id, n = RankNumber(rankText), learned = req })
-                if id then seenID[id] = true end
-            end
+            local name, _, req = tostring(line):match("^([^\t]*)\t([^\t]*)\t([^\t]*)")
+            add(name, tonumber(id), tonumber(req))
         end
     end
-    store = hasStore and store or {}
-    for id, line in pairs(store) do
-        local name, rank, learned = tostring(line):match("^([^\t]*)\t([^\t]*)\t([^\t]*)")
-        learned = tonumber(learned)
-        -- Only entries with "Rank N" text. Measured 2026-09-29: the client
-        -- reports a trained level for NPC copies too (Fireball 9053, 20823 --
-        -- "learned" 20, no rank text), so rank text is what separates the
-        -- player's ranks from them. The catalog scan re-asks blanks until
-        -- the text loads.
-        if name and name ~= "" and learned and RankNumber(rank) and not seenID[tonumber(id)] then
-            out[name] = out[name] or {}
-            table.insert(out[name], { id = tonumber(id), n = RankNumber(rank), learned = learned })
+    if hasStore then
+        for id, line in pairs(store) do
+            local name, _, learned = tostring(line):match("^([^\t]*)\t([^\t]*)\t([^\t]*)")
+            -- Trained level only. NPC copies that also report a level used to
+            -- be dropped by requiring "Rank N" text; names the shipped file
+            -- already covers are not renumbered by those rows (see below).
+            add(name, tonumber(id), tonumber(learned))
         end
     end
-    for _, list in pairs(out) do
+    for name, list in pairs(extra) do
         table.sort(list, function(a, b)
             if a.learned ~= b.learned then return a.learned < b.learned end
             return (a.id or 0) < (b.id or 0)
         end)
+        local base = out[name]
+        if not base then
+            out[name] = {}
+            for i, r in ipairs(list) do
+                out[name][i] = { id = r.id, learned = r.learned, n = i }
+            end
+        else
+            -- Keep the file's positions. Only a rank trained above the whole
+            -- chain is appended, so a mid-chain NPC copy cannot shift them.
+            local maxL = 0
+            for _, r in ipairs(base) do
+                if type(r.learned) == "number" and r.learned > maxL then maxL = r.learned end
+            end
+            for _, r in ipairs(list) do
+                if r.learned > maxL then
+                    base[#base + 1] = { id = r.id, learned = r.learned, n = #base + 1 }
+                    maxL = r.learned
+                end
+            end
+        end
     end
     M._catalogCache, M._catalogSrc = out, (hasStore and harvest.catalog or nil)
     M._catalogTrainer, M._catalogStamp = trainer, stamp
-    return out
+    return next(out) and out or nil
 end
 
 M._CatalogByName = function() return CatalogByName() end
@@ -458,6 +531,8 @@ M._CatalogByName = function() return CatalogByName() end
 --- the trained level of your top rank. A spell with one entry (unranked) has
 --- no next rank.
 local function RankLabel(r)
+    local sub = DisplaySubtext(nil, r.id)
+    if sub and sub ~= "" then return sub end
     return r.n and ("Rank " .. r.n) or ("the level " .. r.learned .. " rank")
 end
 
@@ -539,7 +614,9 @@ local function RenderLines(content, y, lines, check, catalog, level)
                 or  string.format("Next: %s at level %d", RankLabel(nxt), nxt.learned))
             local note = barNote
             if trainNote then note = note and (trainNote .. ". " .. note) or trainNote end
-            local value = sp.rank or ""
+            local value = (sp.rank and sp.rank ~= "" and sp.rank)
+                or (sp.n and ("Rank " .. sp.n))
+                or ""
             if barNote then value = value .. "  |cFFFFA633(bar: lower)|r" end
             if trainNow then value = value .. "  |cFFFFA633(train)|r" end
             local warn = barNote or trainNow
@@ -555,7 +632,7 @@ local function RenderLines(content, y, lines, check, catalog, level)
             y = L:DataRow(content, y, {
                 label     = sp.name,
                 value     = value,
-                status    = warn and "warn" or (sp.rank and "dim" or "neutral"),
+                status    = warn and "warn" or (value ~= "" and "dim" or "neutral"),
                 note      = note or nil,
                 noteColor = warn and "warn" or nil,
                 tooltipTitle = tip and sp.name or nil,
@@ -627,8 +704,9 @@ local function RenderRankCheck(content, y, lines)
     if not ranked then
         y = L:SectionHeader(content, y, "Action bar ranks")
         return L:Paragraph(content, y,
-            "The client reported neither rank text nor learned levels for your "
-            .. "spells, so ranks cannot be compared. Nothing is guessed from spell IDs."), nil
+            "No rank chain in the data files, and no trained levels, so ranks "
+            .. "cannot be compared. Nothing is guessed from spell IDs or from "
+            .. "rank text."), nil
     end
     if #outdated == 0 then
         y = L:SectionHeader(content, y, "Action bar ranks", "all current")
@@ -704,7 +782,12 @@ function M:Render(content, side)
     L:Finish(content, y)
 end
 
-function M:OnEvent(event)
+function M:OnEvent(event, spellID)
+    -- Spell data loads one ID at a time. Redraw only for an ID this tab asked
+    -- for, so an unrelated load does not rebuild the window.
+    if event == "SPELL_DATA_LOAD_RESULT" then
+        if not (spellID and M._loadAsked and M._loadAsked[spellID]) then return end
+    end
     if TA.QueueUIRefresh then TA:QueueUIRefresh(event) end
 end
 
@@ -737,6 +820,7 @@ M.Events = {
     "PLAYER_LEVEL_UP",
     "SKILL_LINES_CHANGED",
     "ACTIONBAR_SLOT_CHANGED",
+    "SPELL_DATA_LOAD_RESULT",
 }
 
 return M
