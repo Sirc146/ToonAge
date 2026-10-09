@@ -855,12 +855,18 @@ local function SuiteApi(S)
             elseif not nodes then
                 S(INFO, "talent grid: " .. tostring(err or "no tree"))
             else
-                local diag = FT.Diagnose(nodes, conds)
-                for _, line in ipairs(diag.lines or {}) do
-                    S(INFO, line)
+                local groups = { nodes }
+                if type(FT.GroupByTree) == "function" then
+                    groups = FT.GroupByTree(nodes)
                 end
-                if diag.flipped then
-                    S(INFO, "talent grid: layout flipped so the cheaper gate is above the dearer one")
+                for _, group in ipairs(groups) do
+                    local diag = FT.Diagnose(group, conds)
+                    for _, line in ipairs(diag.lines or {}) do
+                        S(INFO, line)
+                    end
+                    if diag.flipped then
+                        S(INFO, "talent grid: layout flipped so the cheaper gate is above the dearer one")
+                    end
                 end
             end
         end
