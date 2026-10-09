@@ -47,3 +47,22 @@ TA.Data.ProfessionGear = {
     --   source = "Craft"|"Buy", expansion = "<label of the current expansion>" }
     items = {},
 }
+
+-- Gathering Overload reminder. The button only appears for a node the
+-- player is moused over or has as the soft target. Nothing here is a
+-- distance scan.
+--
+-- `nodes` is the list of node types that can be overloaded. Match by the
+-- name the client reports, or by the object id in the game object's GUID.
+-- `spells` is the Overload spell for each gathering profession. Both are
+-- unverified for Midnight: do not treat an empty list as "no overloads
+-- exist". Chronicler fills the ids.
+TA.Data.Overloads = {
+    unverified = true,
+    spells = {
+        { profession = 182, name = "Herbalism", spellID = nil },
+        { profession = 186, name = "Mining",    spellID = nil },
+    },
+    -- { name = "<node name>", objectID = <id>, profession = <skill line>, spellID = <optional> }
+    nodes = {},
+}

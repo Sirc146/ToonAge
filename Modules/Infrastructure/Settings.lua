@@ -463,6 +463,18 @@ function Settings:Render(content, sidebar)
             if Rot then Rot:TogglePredictBar() end
         end)
 
+        if Has("ProfessionOverload") then
+            y = MakeToggleRow(content, y, w, "Gathering Overload reminder (button by the ability tray)", function()
+                return not (TA.db and TA.db.overloadReminder == false)
+            end, function()
+                if not TA.db then return end
+                local on = not (TA.db.overloadReminder == false)
+                TA.db.overloadReminder = not on
+                local mod = TA:GetModule("ProfessionOverload")
+                if mod and mod.Refresh then mod:Refresh() end
+            end)
+        end
+
         y = MakeToggleRow(content, y, w, "Nameplate Quest Markers (X on kill targets, ★ on loot targets)", function()
             return TA.db and TA.db.modules and TA.db.modules.NameplateObjectives ~= false
         end, function()

@@ -134,6 +134,7 @@ Modules\Character\TalentsPvP.lua
 Modules\Character\ProfessionSkills.lua
 Modules\Character\ProfessionBoard.lua
 Modules\Character\ProfessionGear.lua
+Modules\Character\ProfessionOverload.lua
 Modules\Character\Professions.lua
 Modules\Character\Pets.lua
 
