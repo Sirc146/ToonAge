@@ -107,6 +107,50 @@ local function SlotFor(index)
     return PROFESSION_SLOTS[index] or PROFESSION_SLOTS[1]
 end
 
+local function PlayerToken()
+    if type(UnitClass) ~= "function" then return nil end
+    local ok, _, token = pcall(UnitClass, "player")
+    if ok and type(token) == "string" and token ~= "" then return token end
+    return nil
+end
+
+local function PlayerLevel()
+    if type(UnitLevel) ~= "function" then return nil end
+    local ok, level = pcall(UnitLevel, "player")
+    if not ok then return nil end
+    return Num(level)
+end
+
+--- A line the data file names as absent is not shown, whatever the client
+--- reports. Class and level gates are also read from the line. A missing
+--- class or level does not hide the row: we only hide when the client says
+--- the character fails the gate.
+local function Keep(data, spec, name, id)
+    local absent = data and data.absent
+    if type(absent) == "table" then
+        for _, item in ipairs(absent) do
+            if type(item) == "string" and type(name) == "string"
+                and item:lower() == name:lower() then
+                return false
+            end
+            if type(item) == "number" and id ~= nil and item == id then
+                return false
+            end
+        end
+    end
+    if type(spec) == "table" then
+        if type(spec.class) == "string" then
+            local token = PlayerToken()
+            if token and token ~= spec.class then return false end
+        end
+        if type(spec.minLevel) == "number" then
+            local level = PlayerLevel()
+            if level and level < spec.minLevel then return false end
+        end
+    end
+    return true
+end
+
 --- Known professions from GetProfessions / GetProfessionInfo. `children`
 --- is true only for the segmented reader, which then asks for each expansion.
 local function ReadProfessionSlots(data, children)
@@ -168,7 +212,9 @@ local function ReadProfessionSlots(data, children)
                     end
                     card.segments = segs
                 end
-                cards[#cards + 1] = card
+                if Keep(data, spec, card.name, card.id) then
+                    cards[#cards + 1] = card
+                end
             end
         end
     end
@@ -264,14 +310,16 @@ local function ReadSkillLines(data)
             local spec = byName[row.name]
             local secondaryName = data.headers and data.headers[2]
             local secondary = (spec and spec.secondary) or (secondaryName ~= nil and row.header == secondaryName)
-            cards[#cards + 1] = {
-                id        = spec and spec.id or nil,
-                name      = row.name,
-                rank      = row.rank,
-                max       = Ceiling(row.max, data.cap),
-                header    = row.header,
-                secondary = secondary and true or false,
-            }
+            if Keep(data, spec, row.name, spec and spec.id) then
+                cards[#cards + 1] = {
+                    id        = spec and spec.id or nil,
+                    name      = row.name,
+                    rank      = row.rank,
+                    max       = Ceiling(row.max, data.cap),
+                    header    = row.header,
+                    secondary = secondary and true or false,
+                }
+            end
         end
     end
     return cards
@@ -297,7 +345,7 @@ local function ReadSkillInfo(data)
                 local id = Num(info.skillID)
                 local spec = (id and byId[id]) or byName[tostring(info.name)]
                 local under = header and headers[header]
-                if spec or under then
+                if (spec or under) and Keep(data, spec, tostring(info.name), id or (spec and spec.id)) then
                     local rank = Num(info.rank) or 0
                     local rawMax = Num(info.maxRank)
                     -- A zero ceiling with no points is not a learned profession.

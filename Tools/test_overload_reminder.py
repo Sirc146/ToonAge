@@ -102,12 +102,28 @@ def test_sources_and_shipped_list():
     lua = runtime()
     check("midnight node list is unverified",
           lua.eval("ToonAge.Data.Overloads.unverified"), True)
-    check("shipped node list is empty",
+    check("exact node list stays empty",
           lua.eval("#ToonAge.Data.Overloads.nodes"), 0)
-    check("herbalism spell id is not invented",
-          lua.eval("ToonAge.Data.Overloads.spells[1].spellID"), None)
-    check("mining spell id is not invented",
-          lua.eval("ToonAge.Data.Overloads.spells[2].spellID"), None)
+    check("herbalism overload spell is the data-file id",
+          lua.eval("ToonAge.Data.Overloads.spells[1].spellID"), 1223014)
+    check("mining overload spell is the data-file id",
+          lua.eval("ToonAge.Data.Overloads.spells[2].spellID"), 1225392)
+    check("the module does not bake the herbalism spell", "1223014" in src, False)
+    check("the module does not bake a prefix", "Lightfused" in src, False)
+    check("charges are read from C_Spell.GetSpellCharges",
+          "C_Spell.GetSpellCharges" in src, True)
+    check("infused is the data-file family",
+          lua.eval("ToonAge.Data.Overloads.family"), "Infused")
+    check("one charge is the base",
+          lua.eval("ToonAge.Data.Overloads.charges.base"), 1)
+    check("recharge is 12 hours",
+          lua.eval("ToonAge.Data.Overloads.charges.rechargeHours"), 12)
+    check("the second charge is at 40 points",
+          lua.eval("ToonAge.Data.Overloads.charges.secondAtPoints"), 40)
+    check("skinning has no overload spell",
+          lua.eval("ToonAge.Data.Overloads.spells[3]"), None)
+    check("skinning is listed as skipped",
+          lua.eval("ToonAge.Data.Overloads.skipped[1].name"), "Skinning")
 
 
 def test_match_and_readiness():
@@ -205,6 +221,72 @@ def test_show_hide_and_diagnostics():
     check("the flash ends after one interval", lua.eval("REST[4]"), False)
 
 
+def test_infused_prefixes_and_charges():
+    lua = runtime()
+    lua.execute(r"""
+        local OL = ToonAge.ProfessionOverload
+        local D = ToonAge.Data.Overloads
+        local function knownHerb(id) return id == D.spells[1].spellID end
+        local function knownBoth() return true end
+        HERB_NODE, HERB_PREFIX = OL.Match(D, "Lightfused Lily", nil)
+        HERB_SPELL = OL.SpellFor(D, HERB_NODE, knownHerb)
+        BOTH = OL.SpellFor(D, HERB_NODE, knownBoth)
+        WILD_NODE = OL.Match(D, "Wild Iron Deposit", nil)
+        WILDERNESS = OL.Match(D, "Wilderness", nil)
+        local _, _, lush = OL.Match(D, "Lush Rose", "GameObject-0-1-2-3-1-1")
+        local _, _, rich = OL.Match(D, "rich ore", nil)
+        local _, _, moved = OL.Match(D, "Transplanted Lily", nil)
+        local _, primal = OL.Match(D, "Primal Herb", nil)
+        local _, voided = OL.Match(D, "Voidbound Deposit", nil)
+        LUSH, RICH, MOVED, PRIMAL, VOIDED = lush, rich, moved, primal, voided
+        PLAN = OL.Consider(D, { name = "Lightfused Lily", guid = "GameObject-0-1-2-3-9-1" },
+            { name = "Lush Rose" }, knownHerb, function() return "ready" end, { enabled = true })
+        EXCLUDED = OL.Consider(D, { name = "Lush Rose" }, { name = "Lightfused Lily" },
+            knownHerb, function() return "ready" end, { enabled = true })
+        C_Spell = { GetSpellCharges = function()
+            return { currentCharges = 1, maxCharges = 1 }
+        end }
+        CHARGE_STATE, CHARGE_INFO = OL.ReadCharges(D.spells[1].spellID)
+        CHARGE_TEXT = OL.ChargeText(CHARGE_INFO, D)
+        C_Spell.GetSpellCharges = function() return 0, 2, 10, 100 end
+        ZERO_STATE = OL.ReadCharges(D.spells[2].spellID)
+        SECRET = {}
+        function issecretvalue(v) return v == SECRET end
+        C_Spell.GetSpellCharges = function() return { currentCharges = SECRET, maxCharges = 2 } end
+        SECRET_STATE = OL.ReadCharges(D.spells[1].spellID)
+        PLAN.charges = CHARGE_TEXT
+        NOTE = OL.Note(PLAN)
+        OL:Remember(NOTE)
+        OL._lastNode = PLAN.label
+        OL._lastCooldown = "ready"
+        LINE = OL:StatusLine()
+    """)
+    check("Lightfused is an Infused prefix", lua.eval("HERB_PREFIX"), "Lightfused")
+    check("a single known overload is the herbalism spell", lua.eval("HERB_SPELL"), 1223014)
+    check("two known overloads are not guessed", lua.eval("BOTH"), None)
+    check("Wild starts a mining node", lua.eval("WILD_NODE.name"), "Wild Iron Deposit")
+    check("Wilderness is not the Wild prefix", lua.eval("WILDERNESS"), None)
+    check("Lush is excluded", lua.eval("LUSH"), "Lush")
+    check("Rich is excluded", lua.eval("RICH"), "Rich")
+    check("Transplanted is excluded", lua.eval("MOVED"), "Transplanted")
+    check("Primal is allowed", lua.eval("PRIMAL"), "Primal")
+    check("Voidbound is allowed", lua.eval("VOIDED"), "Voidbound")
+    check("an allowed node offers the button", lua.eval("PLAN.show"), True)
+    check("a Lush soft target does not fall through to a real node",
+          lua.eval("EXCLUDED.show"), False)
+    check("one charge is ready", lua.eval("CHARGE_STATE"), "ready")
+    check("the charge line names the second-charge point cost",
+          lua.eval("CHARGE_TEXT"), "1/1 (second at 40 points)")
+    check("zero charges is a cooldown", lua.eval("ZERO_STATE"), "cooldown")
+    check("a secret charge count is not compared", lua.eval("SECRET_STATE"), "secret")
+    check("diagnostics record the prefix match",
+          "matched Infused Lightfused Lily via prefix Lightfused spell 1223014" in lua.eval("NOTE"),
+          True)
+    check("the health line keeps the match and the unverified flag",
+          lua.eval("LINE").endswith("(unverified)") and "prefix Lightfused" in lua.eval("LINE"),
+          True)
+
+
 def test_offers_the_shared_button():
     src = read("Modules/Character/ProfessionOverload.lua")
     check("overload does not create its own button", "TAOverloadButton" in src, False)
@@ -232,6 +314,7 @@ def main():
     test_sources_and_shipped_list()
     test_match_and_readiness()
     test_show_hide_and_diagnostics()
+    test_infused_prefixes_and_charges()
     test_offers_the_shared_button()
     passed = sum(1 for ok in _results if ok)
     total = len(_results)

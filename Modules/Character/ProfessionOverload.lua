@@ -3,9 +3,11 @@
 --
 -- The only nodes this can see are the soft target and the mouseover. The
 -- client does not expose gathering nodes at a distance, so this file never
--- goes looking for them. Node types and Overload spell ids live in
--- Data/Retail/professions_retail.lua (TA.Data.Overloads). That list is not
--- verified for Midnight.
+-- goes looking for them. Which names can be overloaded, which cannot, and
+-- the spell ids live in Data/Retail/professions_retail.lua
+-- (TA.Data.Overloads). That list is not verified for Midnight. Charges are
+-- read with C_Spell.GetSpellCharges. A match is written into the diagnostics
+-- line.
 --
 -- The reminder does not own a button. It offers a spell candidate to the
 -- shared context-action button (TA.ContextAction). That button queues
@@ -61,28 +63,66 @@ function OL.ObjectID(guid)
     return id
 end
 
+--- The name starts with one of the data-file words, as its own word.
+--- "Wild Iron" matches "Wild". "Wilderness" does not.
+function OL.Leading(name, list)
+    if OL.Secret(name) or type(name) ~= "string" or type(list) ~= "table" then return nil end
+    local lower = name:lower()
+    for _, prefix in ipairs(list) do
+        if type(prefix) == "string" and prefix ~= "" then
+            local word = prefix:lower()
+            if lower:sub(1, #word) == word then
+                local nxt = lower:sub(#word + 1, #word + 1)
+                if nxt == "" or not nxt:match("%a") then return prefix end
+            end
+        end
+    end
+    return nil
+end
+
+--- node, prefix, denied. A denied name is never a node, even if an object
+--- id is listed. A prefix hit is used when the exact list does not name it.
 function OL.Match(data, name, guid)
     if type(data) ~= "table" then return nil end
+    local denied = OL.Leading(name, data.denyPrefixes)
+    if denied then return nil, nil, denied end
     local objectID = OL.ObjectID(guid)
     local lname = (not OL.Secret(name) and type(name) == "string") and name:lower() or nil
     for _, node in ipairs(data.nodes or {}) do
         if type(node) == "table" then
             local idHit = node.objectID ~= nil and objectID ~= nil and node.objectID == objectID
             local nameHit = lname and type(node.name) == "string" and node.name:lower() == lname
-            if idHit or nameHit then return node end
+            if idHit or nameHit then return node, nil, nil end
         end
+    end
+    local allowed = OL.Leading(name, data.allowPrefixes)
+    if allowed and not OL.Secret(name) and type(name) == "string" then
+        return { name = name, prefix = allowed }, allowed, nil
     end
     return nil
 end
 
-function OL.SpellFor(data, node)
+--- Spell id from the node, else from the profession row. A prefix match has
+--- no profession, so the spell is used only when the character knows exactly
+--- one Overload. Two known Overloads is ambiguous and returns nil.
+function OL.SpellFor(data, node, knownFn)
     if type(node) ~= "table" then return nil end
     if node.spellID ~= nil then return node.spellID end
+    local hits = {}
     for _, row in ipairs(data and data.spells or {}) do
-        if type(row) == "table" and row.profession == node.profession and row.spellID ~= nil then
-            return row.spellID
+        if type(row) == "table" and row.spellID ~= nil then
+            local profOk = node.profession == nil or row.profession == node.profession
+            if profOk then
+                local known = true
+                if node.profession == nil and knownFn then
+                    known = knownFn(row.spellID) and true or false
+                end
+                if known then hits[#hits + 1] = row.spellID end
+            end
         end
     end
+    if node.profession ~= nil then return hits[1] end
+    if #hits == 1 then return hits[1] end
     return nil
 end
 
@@ -169,13 +209,85 @@ function OL.ReadToken(token)
 end
 
 function OL.BestMatch(data, soft, mouse)
-    if type(soft) == "table" then
-        local node = OL.Match(data, soft.name, soft.guid)
-        if node then return node, soft, "soft" end
+    local function One(sight, via)
+        if type(sight) ~= "table" then return nil end
+        local node, prefix, denied = OL.Match(data, sight.name, sight.guid)
+        if denied then return nil, sight, via, denied end
+        if node then return node, sight, via, nil, prefix or node.prefix end
+        return nil
     end
-    if type(mouse) == "table" then
-        local node = OL.Match(data, mouse.name, mouse.guid)
-        if node then return node, mouse, "mouse" end
+    local node, sight, via, denied, prefix = One(soft, "soft")
+    if denied or node then return node, sight, via, denied, prefix end
+    return One(mouse, "mouse")
+end
+
+function OL.NormalizeCharges(ok, first, maxCharges, start, duration)
+    if not ok or first == nil or OL.Secret(first) then return nil end
+    if type(first) == "table" then return first end
+    if type(first) == "number" then
+        return {
+            currentCharges = first,
+            maxCharges = maxCharges,
+            cooldownStartTime = start,
+            cooldownDuration = duration,
+        }
+    end
+    return nil
+end
+
+--- "ready" when a charge is available, "cooldown" when the count is zero,
+--- "secret" when a field must not be compared, "unknown" when the call is
+--- missing. currentCharges is read before any numeric comparison.
+function OL.ChargeState(info)
+    if info == nil or OL.Secret(info) or type(info) ~= "table" then return "unknown" end
+    local cur = info.currentCharges
+    if cur == nil then cur = info.charges end
+    local maxc = info.maxCharges
+    if OL.Secret(cur) or OL.Secret(maxc) then return "secret" end
+    cur = tonumber(cur)
+    if not cur then return "unknown" end
+    if cur > 0 then return "ready" end
+    return "cooldown"
+end
+
+function OL.ChargeText(info, data)
+    if info == nil or OL.Secret(info) or type(info) ~= "table" then return nil end
+    local cur = info.currentCharges
+    if cur == nil then cur = info.charges end
+    local maxc = info.maxCharges
+    if OL.Secret(cur) or OL.Secret(maxc) then return "secret" end
+    cur, maxc = tonumber(cur), tonumber(maxc)
+    if not cur or not maxc then return nil end
+    local text = tostring(cur) .. "/" .. tostring(maxc)
+    local points = data and data.charges and data.charges.secondAtPoints
+    if maxc < 2 and type(points) == "number" then
+        text = text .. " (second at " .. tostring(points) .. " points)"
+    end
+    return text
+end
+
+function OL.ReadCharges(spellID)
+    if not spellID or OL.Secret(spellID) then return "unknown", nil end
+    local fn = C_Spell and C_Spell.GetSpellCharges
+    if type(fn) ~= "function" then return "unknown", nil end
+    local packed = { pcall(fn, spellID) }
+    local info = OL.NormalizeCharges(unpack(packed))
+    return OL.ChargeState(info), info
+end
+
+--- One diagnostics sentence for a consider result. Nil when nothing was seen.
+function OL.Note(result)
+    if type(result) ~= "table" then return nil end
+    if result.excluded then
+        local family = result.family and (result.family .. " ") or ""
+        return string.format("excluded %s%s (%s)", family, result.label or "node", result.excluded)
+    end
+    if result.node then
+        local how = result.prefix and ("prefix " .. result.prefix) or "listed"
+        local charges = result.charges and (", charges " .. result.charges) or ""
+        local family = result.family and (result.family .. " ") or ""
+        return string.format("matched %s%s via %s spell %s%s",
+            family, result.label or "node", how, tostring(result.spellID or "?"), charges)
     end
     return nil
 end
@@ -196,30 +308,37 @@ end
 
 function OL.Consider(data, soft, mouse, knownFn, cdFn, opts)
     opts = opts or {}
-    local node, sight, via = OL.BestMatch(data, soft, mouse)
-    local spellID = OL.SpellFor(data, node)
+    local node, sight, via, denied, prefix = OL.BestMatch(data, soft, mouse)
+    local spellID = OL.SpellFor(data, node, knownFn)
     local cd = (spellID and cdFn and cdFn(spellID)) or "unknown"
     local known = spellID and knownFn and knownFn(spellID) or false
     local same = opts.pending and type(sight) == "table" and sight.guid == opts.pendingGuid
     local held = same and cd == "ready"
     if opts.pending and not same then held = false end
     if opts.pending and cd ~= "ready" then held = false end
+    local label = node and OL.NodeLabel(node, sight) or nil
+    if not label and type(sight) == "table" and not OL.Secret(sight.name) then
+        label = sight.name
+    end
     return {
-        show = OL.Decide({
+        show = (not denied) and OL.Decide({
             enabled = opts.enabled ~= false,
             combat = opts.combat and true or false,
             node = node,
             known = known and true or false,
             cooldown = cd,
             held = held and true or false,
-        }),
+        }) or false,
         node = node,
         sight = sight,
         via = via,
         spellID = spellID,
         cooldown = cd,
         known = known and true or false,
-        label = node and OL.NodeLabel(node, sight) or nil,
+        label = label,
+        prefix = prefix,
+        excluded = denied,
+        family = data and data.family or nil,
         held = held and true or false,
         clearPending = (opts.pending and (not same or cd ~= "ready")) and true or false,
     }
@@ -236,12 +355,22 @@ function OL.GlowColor(elapsed)
     return g[1], g[2], g[3], false
 end
 
+function OL:Remember(text)
+    if type(text) ~= "string" or text == "" then return end
+    self._matches = self._matches or {}
+    if self._matches[#self._matches] == text then return end
+    self._matches[#self._matches + 1] = text
+    if #self._matches > 12 then table.remove(self._matches, 1) end
+    self._lastNote = text
+end
+
 function OL:StatusLine()
     local data = OL.Data()
     local node = self._lastNode or "none"
     local cd = self._lastCooldown or "unknown"
     local head = self:Enabled() and "Overload" or "Overload off"
     local line = string.format("%s: last node %s, cooldown %s", head, node, cd)
+    if self._lastNote then line = line .. "; " .. self._lastNote end
     if data and data.unverified then line = line .. " (unverified)" end
     return line
 end
@@ -280,12 +409,19 @@ end
 
 function OL:Refresh()
     local data = OL.Data()
+    local chargeInfo
+    local function Availability(spellID)
+        local state, info = OL.ReadCharges(spellID)
+        if info then chargeInfo = info end
+        if state == "unknown" then return OL.ReadCooldown(spellID) end
+        return state
+    end
     local result = OL.Consider(
         data,
         OL.ReadToken("softinteract"),
         OL.ReadToken("mouseover"),
         OL.SpellKnown,
-        OL.ReadCooldown,
+        Availability,
         {
             enabled = self:Enabled(),
             combat = OL.InCombat(),
@@ -293,6 +429,9 @@ function OL:Refresh()
             pendingGuid = self._pendingGuid,
         }
     )
+    if result then result.charges = OL.ChargeText(chargeInfo, data) end
+    local note = OL.Note(result)
+    if note then self:Remember(note) end
     if result.clearPending then
         self._pending = false
         self._pendingGuid = nil
@@ -322,6 +461,7 @@ OL.Events = {
     "PLAYER_SOFT_INTERACT_CHANGED",
     "UPDATE_MOUSEOVER_UNIT",
     "SPELL_UPDATE_COOLDOWN",
+    "SPELL_UPDATE_CHARGES",
     "UNIT_SPELLCAST_SUCCEEDED",
     "PLAYER_REGEN_DISABLED",
     "PLAYER_REGEN_ENABLED",

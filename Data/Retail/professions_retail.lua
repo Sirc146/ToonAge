@@ -52,16 +52,27 @@ TA.Data.ProfessionGear = {
 -- player is moused over or has as the soft target. Nothing here is a
 -- distance scan.
 --
--- `nodes` is the list of node types that can be overloaded. Match by the
--- name the client reports, or by the object id in the game object's GUID.
--- `spells` is the Overload spell for each gathering profession. Both are
--- unverified for Midnight: do not treat an empty list as "no overloads
--- exist". Chronicler fills the ids.
+-- Midnight calls the overloadable nodes Infused. A name that starts with
+-- an allowPrefixes word can be overloaded. A name that starts with a
+-- denyPrefixes word cannot, even when it also looks Infused. Skinning is
+-- listed under `skipped` and has no spell. Charges come from
+-- C_Spell.GetSpellCharges: one charge, a 12-hour recharge, and a second
+-- charge once the profession has secondAtPoints. All of this is unverified.
+--
+-- `nodes` is an optional exact list (name or object id). The prefix rules
+-- apply when that list does not name the object.
 TA.Data.Overloads = {
     unverified = true,
+    family = "Infused",
+    charges = { base = 1, rechargeHours = 12, secondAtPoints = 40 },
+    allowPrefixes = { "Lightfused", "Primal", "Voidbound", "Wild" },
+    denyPrefixes = { "Lush", "Transplanted", "Rich" },
     spells = {
-        { profession = 182, name = "Herbalism", spellID = nil },
-        { profession = 186, name = "Mining",    spellID = nil },
+        { profession = 182, name = "Herbalism", spellID = 1223014 },
+        { profession = 186, name = "Mining",    spellID = 1225392 },
+    },
+    skipped = {
+        { profession = 393, name = "Skinning" },
     },
     -- { name = "<node name>", objectID = <id>, profession = <skill line>, spellID = <optional> }
     nodes = {},
