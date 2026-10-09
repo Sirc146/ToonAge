@@ -134,7 +134,14 @@ function D:ScanSpellbook()
 end
 
 function D:OnEvent(event)
-    self:ScanSpellbook()
+    -- SPELLS_CHANGED and LEARNED_SPELL_IN_SKILL_LINE, at most once per 10s.
+    -- PLAYER_LEVEL_UP is included so the first call still runs here; the
+    -- full scan on that event replaces the book again once combat allows.
+    Hv:Request("spellbook", function()
+        D:ScanSpellbook()
+        local n = Hv:CaptureCount("spellbook")
+        Hv:Toast(("Harvest: spellbook saved (%d spell%s)"):format(n, n == 1 and "" or "s"))
+    end)
 end
 
 function D:OnEnterWorld()

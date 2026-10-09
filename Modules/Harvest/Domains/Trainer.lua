@@ -99,7 +99,7 @@ function D:ScanTrainer()
         -- TRAINER_UPDATE also fires as the window closes, with 0 services.
         -- Recording that would overwrite the real visit's status line and
         -- this character's trainer capture.
-        return
+        return nil
     end
     local unavailShown = Try("GetTrainerServiceTypeFilter", "unavailable")
     -- Record format 2 (2026-10-03). Format 1 keyed rows by name + the 2nd
@@ -164,8 +164,9 @@ function D:ScanTrainer()
 
     -- Class visits only. A profession trainer must not replace the class
     -- trainer capture. The NPC is whoever the client says is open.
+    local npcName
     if rows > 0 and not profession then
-        local npcName = Try("UnitName", "npc")
+        npcName = Try("UnitName", "npc")
         if type(npcName) ~= "string" or npcName == "" or npcName == "secret" then
             npcName = Try("UnitName", "target")
         end
@@ -187,6 +188,8 @@ function D:ScanTrainer()
     s.trainerApi = table.concat(api, " ")
         .. (" | %s%s: services=%d recorded=%d unavailable=%d noSpellID=%d filter(unavailable)=%s")
         :format(profession and "profession trainer " or "", where, n, rows, unavailable, noID, tostring(unavailShown))
+    if profession or rows == 0 then return nil end
+    return rows, npcName
 end
 
 --- One time: rows a profession trainer left under a class (before T4) move to
@@ -224,23 +227,41 @@ function D:Migrate(s)
 end
 
 function D:OnEvent(event)
-    -- TRAINER_UPDATE fires on every filter click; one scan per second.
-    Hv:Once("trainer", 1, function() pcall(self.ScanTrainer, self) end)
+    -- TRAINER_SHOW and TRAINER_UPDATE. At most once every 10 seconds; the
+    -- NPC name is whoever the client says is open.
+    Hv:Request("trainer", function()
+        local rows, npc = D:ScanTrainer()
+        if rows and rows > 0 then
+            local who = (type(npc) == "string" and npc ~= "") and npc or "trainer"
+            Hv:Toast(("Harvest: trainer saved (%s, %d spell%s)"):format(
+                who, rows, rows == 1 and "" or "s"))
+        end
+    end)
 end
 
 D.summary = {
     { section = "trainer", label = "Trainer ranks (open a class trainer)",
       value = function(s)
-          local token = Hv.PlayerClass and Hv:PlayerClass()
-          if token then
-              local t = s.trainer and s.trainer[token]
-              local n = (type(t) == "table") and Size(t) or 0
-              return (n > 0) and tostring(n) or "none yet"
+          -- A class pool from someone else is not a visit. "not visited yet"
+          -- until this view has a trainer capture.
+          local function visited(entry)
+              local scan = type(entry) == "table" and entry.trainer or nil
+              if type(scan) ~= "table" or type(scan.rows) ~= "table" then return 0 end
+              return Size(scan.rows)
           end
-          local classes, rows = 0, 0
-          for _, t in pairs(s.trainer or {}) do classes = classes + 1; rows = rows + Size(t) end
-          return (rows > 0) and string.format("%d from %d class%s", rows, classes,
-              classes == 1 and "" or "es") or "none yet"
+          if Hv.module and Hv.module.View and Hv.module:View() == "all" then
+              local n, seen = 0, 0
+              for _, entry in pairs(s.captures or {}) do
+                  local rows = visited(entry)
+                  if rows > 0 then seen = seen + 1; n = n + rows end
+              end
+              if seen == 0 then return "not visited yet" end
+              return tostring(n)
+          end
+          local key = Hv.CharacterKey and Hv:CharacterKey()
+          local rows = key and visited(s.captures and s.captures[key]) or 0
+          if rows == 0 then return "not visited yet" end
+          return tostring(rows)
       end,
       note = function(s)
           return s.trainerApi and ("Last trainer visit: " .. s.trainerApi) or nil

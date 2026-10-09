@@ -174,7 +174,11 @@ function D:ScanTraitTree()
 end
 
 function D:OnEvent(event)
-    self:ScanTraitTree()
+    Hv:Request("talents", function()
+        D:ScanTraitTree()
+        local n = Hv:CaptureCount("talents")
+        Hv:Toast(("Harvest: talents saved (%d node%s)"):format(n, n == 1 and "" or "s"))
+    end)
 end
 
 function D:OnEnterWorld()

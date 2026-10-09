@@ -299,6 +299,230 @@ function Hv:Once(key, delay, fn)
     end)
 end
 
+-- Automatic captures run at most once every 10 seconds per type. The first
+-- request in a window runs now. A later one is kept and runs once the window
+-- ends, so a spell learned a second later is not dropped.
+local THROTTLE_SEC = 10
+Hv._throttleAt = Hv._throttleAt or {}
+Hv._throttlePending = Hv._throttlePending or {}
+Hv._throttleWaiting = Hv._throttleWaiting or {}
+
+function Hv:Clock()
+    if type(GetTime) == "function" then
+        local ok, t = pcall(GetTime)
+        if ok and type(t) == "number" then return t end
+    end
+    return 0
+end
+
+function Hv:InCombat()
+    return type(InCombatLockdown) == "function" and InCombatLockdown() and true or false
+end
+
+--- One line, e.g. "Harvest: trainer saved (Solm Hargrin, 12 spells)".
+--- TA.db.harvestToast == false turns every notice off. A scan in progress
+--- stays quiet and reports once when it finishes.
+function Hv:Toast(line)
+    if self._quiet then return end
+    if type(line) ~= "string" or line == "" then return end
+    if TA.db and TA.db.harvestToast == false then return end
+    if TA.Raw then TA:Raw(TA.LOG.OUTPUT, line) end
+end
+
+function Hv:NoticesOn()
+    return not (TA.db and TA.db.harvestToast == false)
+end
+
+function Hv:Request(kind, fn)
+    if type(fn) ~= "function" then return end
+    local now = self:Clock()
+    local last = self._throttleAt[kind]
+    if last and (now - last) < THROTTLE_SEC then
+        self._throttlePending[kind] = fn
+        if not self._throttleWaiting[kind] then
+            self._throttleWaiting[kind] = true
+            local wait = THROTTLE_SEC - (now - last)
+            if wait < 0 then wait = 0 end
+            Hv.After(wait, function()
+                self._throttleWaiting[kind] = nil
+                local pending = self._throttlePending[kind]
+                self._throttlePending[kind] = nil
+                if pending then
+                    self._throttleAt[kind] = self:Clock()
+                    pending()
+                end
+            end)
+        end
+        return
+    end
+    self._throttleAt[kind] = now
+    fn()
+end
+
+function Hv:CaptureCount(kind)
+    local s = self:Store()
+    local key = self:CharacterKey()
+    local scan = s and key and s.captures and s.captures[key] and s.captures[key][kind]
+    if type(scan) ~= "table" or type(scan.rows) ~= "table" then return 0 end
+    local n = 0
+    for _ in pairs(scan.rows) do n = n + 1 end
+    return n
+end
+
+--- 12-hour clock, "6:18 AM". Nil when this character has no capture yet.
+function Hv:LastScannedLabel()
+    local s = self:Store()
+    local key = self:CharacterKey()
+    local entry = s and key and s.captures and s.captures[key]
+    if type(entry) ~= "table" or type(date) ~= "function" then return "Not scanned yet" end
+    local best
+    for _, scan in pairs(entry) do
+        if type(scan) == "table" and type(scan.timestamp) == "number" then
+            if not best or scan.timestamp > best then best = scan.timestamp end
+        end
+    end
+    if not best then return "Not scanned yet" end
+    local ok, formatted = pcall(date, "%I:%M %p", best)
+    if not ok or type(formatted) ~= "string" or formatted == "" then return "Not scanned yet" end
+    return "Last scanned " .. (formatted:gsub("^0", ""))
+end
+
+--- Skill lines the client reports. The pack reads them (Forever's skill
+--- API is not a shared assumption). The character's previous entry is replaced.
+function Hv:ScanSkills()
+    local pack = self._pack
+    local rows = {}
+    if pack and type(pack.scanSkills) == "function" then
+        local got = pack.scanSkills()
+        if type(got) == "table" then rows = got end
+    end
+    self:SaveCapture("skills", { rows = rows })
+    return self:CaptureCount("skills")
+end
+
+--- Professions from GetProfessions, plus the open trade-skill list when the
+--- client has one. Replaces this character's professions entry.
+function Hv:ScanProfessions()
+    local rows = {}
+    local a, b, c, d, e, f = self.Try("GetProfessions")
+    local slots = { a, b, c, d, e, f }
+    for i = 1, 6 do
+        local idx = tonumber(slots[i])
+        if idx then
+            local name, _, rank, maxRank, _, _, skillLine = self.Try("GetProfessionInfo", idx)
+            if type(name) == "string" and name ~= "" and name ~= "secret" then
+                rows[tostring(skillLine or idx)] = concat({
+                    self.Clean(name), self.Clean(rank), self.Clean(maxRank), self.Clean(skillLine),
+                }, "\t")
+            end
+        end
+    end
+    local listed = tonumber((self.Try("GetNumTradeSkills")))
+    if listed and listed > 0 then
+        local title = self.Try("GetTradeSkillLine")
+        if type(title) == "string" and title ~= "" and title ~= "secret" then
+            rows.trade = concat({ self.Clean(title), self.Clean(listed) }, "\t")
+        end
+    end
+    self:SaveCapture("professions", { rows = rows })
+    return self:CaptureCount("professions")
+end
+
+--- Heirlooms, when that module is loaded. Forever does not ship it until
+--- heirlooms are confirmed, so the capture records that instead of a guess.
+function Hv:ScanHeirlooms()
+    local rows = {}
+    local note = "not on this client"
+    local mod = TA.GetModule and TA:GetModule("Heirlooms")
+    if mod and type(mod.HarvestRows) == "function" then
+        local list, why = mod:HarvestRows()
+        if type(list) == "table" then
+            note = nil
+            for i, line in ipairs(list) do
+                if type(line) == "string" and line ~= "" then rows[tostring(i)] = line end
+            end
+        elseif type(why) == "string" and why ~= "" then
+            note = why
+        end
+    end
+    self:SaveCapture("heirlooms", { rows = rows, note = note })
+    return note, self:CaptureCount("heirlooms")
+end
+
+--- Scan now: probe, spellbook, catalog, skills, talents, professions,
+--- heirlooms. Each step replaces that character's previous entry. One step
+--- per frame. In combat the scan waits for PLAYER_REGEN_ENABLED.
+function Hv:StartScan()
+    if self._scanRunning then
+        self._scanQueued = true
+        return
+    end
+    if self:InCombat() then
+        self._scanQueued = true
+        self:Toast("Harvest: scan queued until combat ends")
+        return
+    end
+    self._scanQueued = false
+    local steps = {}
+    steps[#steps + 1] = { run = function()
+        local lines = self:BuildProbeLines()
+        self:SaveCapture("probe", { text = concat(lines, "\n") })
+    end }
+    steps[#steps + 1] = { run = function()
+        local d = self:Domain("spellbook")
+        if d and d.ScanSpellbook then d:ScanSpellbook() end
+    end }
+    steps[#steps + 1] = { async = true, run = function(done)
+        self:ScanCatalog(done)
+    end }
+    steps[#steps + 1] = { run = function() self:ScanSkills() end }
+    steps[#steps + 1] = { run = function()
+        local d = self:Domain("traitTree") or self:Domain("talentTrees")
+        if d and d.ScanTraitTree then d:ScanTraitTree()
+        elseif d and d.ScanTalents then d:ScanTalents() end
+    end }
+    steps[#steps + 1] = { run = function() self:ScanProfessions() end }
+    steps[#steps + 1] = { run = function() self:ScanHeirlooms() end }
+    self._scanQueue = steps
+    self._scanStep = 1
+    self._scanRunning = true
+    Hv.After(0, function() self:RunScanStep() end)
+end
+
+function Hv:RunScanStep()
+    if not self._scanRunning then return end
+    if self:InCombat() then
+        self._scanRunning = false
+        self._scanQueued = true
+        self._quiet = false
+        self:Toast("Harvest: scan queued until combat ends")
+        return
+    end
+    local step = self._scanQueue and self._scanQueue[self._scanStep]
+    if not step then
+        self._scanRunning = false
+        self._quiet = false
+        local id = self:CharacterIdentity()
+        self:Toast("Harvest: scan saved (" .. ((id and id.name) or "this character") .. ")")
+        if TA.Layout and TA.Layout.RefreshUI then TA.Layout:RefreshUI() end
+        if self._scanQueued and not self:InCombat() then self:StartScan() end
+        return
+    end
+    self._scanStep = self._scanStep + 1
+    local function Next()
+        self._quiet = false
+        Hv.After(0, function() self:RunScanStep() end)
+    end
+    self._quiet = true
+    if step.async then
+        local ok = pcall(step.run, Next)
+        if not ok then Next() end
+    else
+        pcall(step.run)
+        Next()
+    end
+end
+
 -- ── Export ────────────────────────────────────────────────────────────────
 
 --- The stamp an export carries (R9). Built from the store's client block and
@@ -664,15 +888,19 @@ function Hv:ScanCatalog(onDone)
     local s = self:Store()
     local pack = self._pack
     local ranges = pack and pack.catalogRanges
-    if not (s and ranges) or self._catalogRunning then return end
+    if not (s and ranges) or self._catalogRunning then
+        if onDone then onDone(0, 0, 0, 0) end
+        return
+    end
     local Caps = TA.Caps
     local getName    = Caps and Caps.Fn("C_Spell.GetSpellName")
     local getLearned = Caps and Caps.Fn("C_Spell.GetSpellLevelLearned")
     if not (getName and getLearned) then
-        if TA.Raw then
+        if TA.Raw and not self._quiet then
             TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[ToonAge]|r Spell catalog: C_Spell.GetSpellName / "
                 .. "GetSpellLevelLearned are missing on this client.")
         end
+        if onDone then onDone(0, 0, 0, 0) end
         return
     end
     local getSub      = Caps.Fn("C_Spell.GetSpellSubtext")
@@ -790,7 +1018,15 @@ function Hv:ScanCatalog(onDone)
         s.catalog = merged
         self:AdoptSection("catalog", merged)
         if added + changed > 0 then self:Touch("catalog") end
-        if TA.Raw then
+        -- This character's catalog entry is this pass only. The shared
+        -- catalog above stays additive so a blank session cannot drop ranks
+        -- another character already stored.
+        local mine = {}
+        for k, line in pairs(fresh) do
+            if type(line) == "string" and line:find("\tRank %d+\t") then mine[k] = line end
+        end
+        self:SaveCapture("catalog", { rows = mine })
+        if TA.Raw and not self._quiet then
             TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100[ToonAge]|r Spell catalog: %d spells, %d with rank text this pass. "
                 .. "Catalog holds %d (+%d new, %d changed, none removed)."):format(
                 found, ranked, Size(merged), added, changed))
@@ -798,7 +1034,7 @@ function Hv:ScanCatalog(onDone)
         if TA.Layout and TA.Layout.RefreshUI then TA.Layout:RefreshUI() end
         if onDone then onDone(found, ranked, added, changed) end
     end
-    if TA.Raw then
+    if TA.Raw and not self._quiet then
         TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Spell catalog: scanning spell IDs (a few seconds)...")
     end
     Hv.After(0, Step)
@@ -985,13 +1221,32 @@ local function RunEach(list, method, ...)
     if firstErr then error(firstErr, 0) end
 end
 
+function H:View()
+    if self._view == "all" then return "all" end
+    return "character"
+end
+
 function H:OnEvent(event, ...)
+    if event == "PLAYER_REGEN_ENABLED" then
+        if Hv._scanQueued then Hv:StartScan() end
+        return
+    end
+    if event == "SKILL_LINES_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then
+        Hv:Request("professions", function()
+            local n = Hv:ScanProfessions()
+            Hv:Toast(("Harvest: professions saved (%d profession%s)"):format(n, n == 1 and "" or "s"))
+        end)
+    end
     local route = Hv._routes and Hv._routes[event]
     if route then RunEach(route, "OnEvent", event, ...) end
+    if event == "PLAYER_LEVEL_UP" then
+        Hv:Request("full", function() Hv:StartScan() end)
+    end
 end
 
 function H:OnEnterWorld()
     RunEach(Hv:ActiveDomains(), "OnEnterWorld")
+    Hv:Request("full", function() Hv:StartScan() end)
 end
 
 -- ── Run all ───────────────────────────────────────────────────────────────
@@ -1151,6 +1406,33 @@ function H:Render(content, side)
     local s = Hv:Store()
     local pack = Hv._pack or {}
     local y = -14
+    local view = self:View()
+
+    y = L:ButtonRow(content, y, {
+        { label = "This character", active = view ~= "all",
+          onClick = function()
+              H._view = "character"
+              if L.RefreshUI then L:RefreshUI() end
+          end },
+        { label = "All characters", active = view == "all",
+          onClick = function()
+              H._view = "all"
+              if L.RefreshUI then L:RefreshUI() end
+          end },
+    }, { label = "This character · All characters" })
+    y = L:ButtonRow(content, y, {
+        { label = Hv._scanRunning and "Scanning..." or "Scan now", gold = true,
+          tooltip = { "Scan now", "Probe, spellbook, catalog, skills, talents, professions and heirlooms for this character. Spread across frames. Waits until you leave combat." },
+          onClick = function() Hv:StartScan() end },
+        { label = Hv:NoticesOn() and "Notices on" or "Notices off",
+          tooltip = { "Harvest notices", "One line when a capture is saved, such as Harvest: trainer saved (Solm Hargrin, 12 spells)." },
+          onClick = function()
+              TA.db = TA.db or {}
+              if TA.db.harvestToast == false then TA.db.harvestToast = nil
+              else TA.db.harvestToast = false end
+              if L.RefreshUI then L:RefreshUI() end
+          end },
+    }, { note = Hv:LastScannedLabel() })
 
     y = L:SectionHeader(content, y, "Harvested so far",
         "Everything below is what the client said, recorded verbatim. Nothing "
@@ -1217,7 +1499,9 @@ function H:Render(content, side)
                     label = e.label,
                     tooltip = { e.label, "Copies this character's latest scan. Shift-click to copy every character." },
                     onClick = function()
-                        H:Export(section, 1, shifted() and "all" or "character")
+                        local scope = "character"
+                        if shifted() or H:View() == "all" then scope = "all" end
+                        H:Export(section, 1, scope)
                     end,
                 }
                 row[#row + 1] = {
@@ -1370,6 +1654,12 @@ function H:Init()
         return
     end
     Hv:Activate()
+
+    -- Combat end resumes a scan that was queued. Skill and trade-skill
+    -- updates rescan professions. Login and level-up use the full scan.
+    for _, ev in ipairs({ "PLAYER_REGEN_ENABLED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE" }) do
+        TA:RegisterEvent(ev)
+    end
 
     -- Event fan-out: every running domain's events, registered once, each
     -- routed back to the domains that asked for it (pack order).
