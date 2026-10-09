@@ -62,6 +62,34 @@ function Arrow.TokenIsMapID(n)
     return false
 end
 
+--- uiMap id for a zone name the player typed, such as "Stormwind City".
+--- Prefers a zone map (mapType 3) and, among those, the lowest id.
+function Arrow.MapIDForZone(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    local want = name:lower()
+    local bestId, bestZone = nil, false
+    local function consider(id, infoName, mapType)
+        if type(id) ~= "number" or type(infoName) ~= "string" then return end
+        if infoName:lower() ~= want then return end
+        local isZone = mapType == 3
+        if bestId == nil or (isZone and not bestZone) or (isZone == bestZone and id < bestId) then
+            bestId, bestZone = id, isZone
+        end
+    end
+    if Arrow.MAP_NAMES then
+        for id, n in pairs(Arrow.MAP_NAMES) do consider(id, n, 3) end
+    end
+    if C_Map and type(C_Map.GetMapInfo) == "function" then
+        for id = 1, 2500 do
+            local ok, info = pcall(C_Map.GetMapInfo, id)
+            if ok and type(info) == "table" then
+                consider(id, info.name, info.mapType)
+            end
+        end
+    end
+    return bestId
+end
+
 local function ParentMatches(startMap, targetMap)
     if not (C_Map and C_Map.GetMapInfo) then return false end
     local checkMap = startMap
@@ -748,7 +776,7 @@ end
 ---   /ta way 45.2 67.8              — current map, TomTom coords (divided by 100)
 ---   /ta way 45.2 67.8 My Place     — with description
 ---   /ta way 2393 45.2 67.8         — explicit mapID + coords
----   /ta way 2393 45.2 67.8 My Spot — mapID + coords + description
+---   /ta way Stormwind City 45.2 67.8 Bank — zone name, or a mapID, plus a label
 ---   /ta way clear                  — remove manual waypoint
 function Arrow:ParseWayCommand(args)
     if not args or args == "" then
@@ -820,10 +848,32 @@ function Arrow:ParseWayCommand(args)
             yRaw = n2
             descStart = 3
         else
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Invalid format. Examples:")
-            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 45.2 67.8|r")
-            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 2393 45.2 67.8 My Spot|r")
-            return
+            -- "Stormwind City 45.2 67.8 The Bank": the first two coordinates
+            -- are x y, the words before them are the zone, the rest is the label.
+            local zx, zy, zi
+            for i = 1, #tokens - 1 do
+                local a = tonumber(tokens[i])
+                local b = tonumber(tokens[i + 1])
+                if a and b and a >= 0 and a <= 100 and b >= 0 and b <= 100 then
+                    zx, zy, zi = a, b, i
+                    break
+                end
+            end
+            if zx and zi and zi > 1 then
+                local zone = table.concat(tokens, " ", 1, zi - 1)
+                mapID = Arrow.MapIDForZone(zone)
+                if not mapID then
+                    TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Unknown zone: " .. zone)
+                    return
+                end
+                xRaw, yRaw = zx, zy
+                descStart = zi + 2
+            else
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Invalid format. Examples:")
+                TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 45.2 67.8|r")
+                TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 2393 45.2 67.8 My Spot|r")
+                return
+            end
         end
     end
 
@@ -890,6 +940,8 @@ function Arrow:Init()
     TA:RegisterEvent("UNIT_EXITED_VEHICLE")
     TA:RegisterEvent("PET_BATTLE_OPENING_START")
     TA:RegisterEvent("PET_BATTLE_OVER")
+
+    self:RegisterBareWay()
 end
 
 function Arrow:OnEvent(event, ...)
@@ -906,6 +958,49 @@ function Arrow:OnEvent(event, ...)
     end
 end
 
+--- True when TomTom is already loaded. Either API may be missing; a throw
+--- must not become a false "not loaded", which would let us take /way.
+function Arrow.TomTomLoaded()
+    local function ask(fn)
+        if type(fn) ~= "function" then return false end
+        local ok, loaded = pcall(fn, "TomTom")
+        return ok and not not loaded
+    end
+    if C_AddOns and ask(C_AddOns.IsAddOnLoaded) then return true end
+    if ask(IsAddOnLoaded) then return true end
+    return false
+end
+
+--- Another addon already bound /way. Our own SLASH_TOONAGEWAY does not count.
+function Arrow.ForeignWaySlash()
+    for key, value in pairs(_G) do
+        if type(key) == "string" and key:match("^SLASH_")
+           and key:sub(1, 16) ~= "SLASH_TOONAGEWAY"
+           and type(value) == "string" and value:lower() == "/way" then
+            return true
+        end
+    end
+    return false
+end
+
+--- Bare /way, only when TomTom does not own it. /ta way is unaffected.
+function Arrow:RegisterBareWay()
+    local function clearOurs()
+        _G.SLASH_TOONAGEWAY1 = nil
+        if type(SlashCmdList) == "table" then SlashCmdList["TOONAGEWAY"] = nil end
+    end
+    if Arrow.TomTomLoaded() or Arrow.ForeignWaySlash() then
+        clearOurs()
+        return
+    end
+    if type(SlashCmdList) ~= "table" then return end
+    _G.SLASH_TOONAGEWAY1 = "/way"
+    SlashCmdList["TOONAGEWAY"] = function(msg)
+        self:ParseWayCommand(msg)
+    end
+end
+
 Arrow.SlashCommands = {
     arrow = function(self) self:Toggle() end,
+    way   = function(self, args) self:ParseWayCommand(args) end,
 }
