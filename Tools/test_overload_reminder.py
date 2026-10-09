@@ -169,7 +169,7 @@ def test_show_hide_and_diagnostics():
         MINING = OL.Consider(DATA, nil, MOUSE, known, ready, { enabled = true })
     """)
     check("ready known node shows", lua.eval("SHOW.show"), True)
-    check("combat hides the button", lua.eval("COMBAT.show"), False)
+    check("combat still offers a ready node", lua.eval("COMBAT.show"), True)
     check("the option hides the button", lua.eval("OFF.show"), False)
     check("the same node stays hidden just after the cast", lua.eval("HELD.show"), False)
     check("cast hold stays until the cooldown or the target changes",
@@ -205,60 +205,34 @@ def test_show_hide_and_diagnostics():
     check("the flash ends after one interval", lua.eval("REST[4]"), False)
 
 
-def test_button_locks_in_combat():
+def test_offers_the_shared_button():
+    src = read("Modules/Character/ProfessionOverload.lua")
+    check("overload does not create its own button", "TAOverloadButton" in src, False)
+    check("overload publishes onto the shared button", ':Set("overload"' in src, True)
     lua = runtime()
+    lua.execute(read("Modules/Infrastructure/ContextAction.lua"))
     lua.execute(r"""
-        local function Mock(name)
-            local f = { _name = name, _shown = false }
-            function f:SetSize() end
-            function f:SetFrameStrata() end
-            function f:RegisterForClicks() end
-            function f:Hide() self._shown = false end
-            function f:Show() self._shown = true end
-            function f:IsShown() return self._shown end
-            function f:SetBackdrop() end
-            function f:SetBackdropColor() end
-            function f:SetBackdropBorderColor(r, g, b) self._rgb = { r, g, b } end
-            function f:SetPoint() end
-            function f:ClearAllPoints() end
-            function f:SetScript(which, fn) self[which] = fn end
-            function f:CreateTexture()
-                return { SetPoint = function() end, SetTexCoord = function() end,
-                         SetTexture = function(_, path) f._icon = path end }
-            end
-            function f:SetAttribute(k, v) self._attrs = self._attrs or {}; self._attrs[k] = v; self._set = true end
-            return f
-        end
-        UIParent = Mock("parent")
-        CreateFrame = function() return Mock("button") end
-        GameTooltip = Mock("tip")
-        InCombatLockdown = function() return true end
         local OL = ToonAge.ProfessionOverload
-        OL:Apply({ show = true, spellID = 9001 })
-        SET = OL._button and OL._button._set
-        SHOWN = OL._button and OL._button._shown
-        InCombatLockdown = function() return false end
-        OL._shown = false
-        OL:Apply({ show = true, spellID = 9001 })
-        ATTR = OL._button._attrs.spell
-        KIND = OL._button._attrs.type
-        ICON = OL._button._icon
-        GOLD = OL._button._rgb[1]
+        OL:Publish({ show = true, spellID = 9001, label = "Lush Rose" })
+        LINE = ToonAge.ContextAction:StatusLine()
+        KIND = ToonAge.ContextAction._offers.overload.kind
+        ACTION = ToonAge.ContextAction._offers.overload.action
+        ICON = ToonAge.ContextAction._offers.overload.icon
+        PRIORITY = ToonAge.ContextAction._offers.overload.priority
     """)
-    check("combat does not arm the spell", lua.eval("SET"), None)
-    check("combat keeps the button hidden", lua.eval("SHOWN"), False)
-    check("out of combat the button casts the data-file spell", lua.eval("ATTR"), 9001)
-    check("the secure button type is spell", lua.eval("KIND"), "spell")
+    check("diagnostics follow the shared button", lua.eval("LINE"), "Context action: overload")
+    check("the offer is a spell", lua.eval("KIND"), "spell")
+    check("the offer casts the data-file spell", lua.eval("ACTION"), 9001)
     check("the icon is the placeholder", lua.eval("ICON"),
           "Interface\\Icons\\INV_Misc_QuestionMark")
-    check("showing the button starts the gold border", lua.eval("GOLD"), 0.910)
+    check("overload priority is below a quest item", lua.eval("PRIORITY"), 10)
 
 
 def main():
     test_sources_and_shipped_list()
     test_match_and_readiness()
     test_show_hide_and_diagnostics()
-    test_button_locks_in_combat()
+    test_offers_the_shared_button()
     passed = sum(1 for ok in _results if ok)
     total = len(_results)
     print()

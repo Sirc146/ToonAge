@@ -60,6 +60,7 @@ Modules\Automation\VendorAssist.lua
 
 Modules\Mists\DevHelpers.lua
 Modules\Infrastructure\ErrorLog.lua
+Modules\Infrastructure\ContextAction.lua
 
 # ── Modules: Character / Gear ──────────────────────────────────────────
 Modules\Mists\Character.lua
@@ -76,6 +77,7 @@ Modules\Mists\GuideImporter.lua
 Modules\Mists\GuideBrowser.lua
 Modules\Mists\GuideContextMenu.lua
 Modules\Mists\QuestTracker.lua
+Modules\Navigation\QuestContext.lua
 Modules\Mists\Arrow.lua
 Modules\Mists\CoordResolver.lua
 Modules\Mists\AntTrail.lua

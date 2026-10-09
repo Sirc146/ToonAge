@@ -154,6 +154,15 @@ function Settings:Render(content, sidebar)
     local y = -10
     local w = content:GetWidth()
 
+    local CA = TA.ContextAction
+    if CA and CA.DrawKeybindRow and not CA._profileSkipped and not CA._disabled then
+        y = MakeSection(content, y, w, "CONTEXT ACTION")
+        y = CA:DrawKeybindRow(content, y, w, function(f)
+            table.insert(Settings.frames, f)
+        end)
+        y = y - 8
+    end
+
     -- ═══════════════════════════════════════════════════════════════════
     -- NAVIGATION & HUD
     -- ═══════════════════════════════════════════════════════════════════

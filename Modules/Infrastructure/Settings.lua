@@ -441,6 +441,17 @@ function Settings:Render(content, sidebar)
     end
 
 
+    if Has("ContextAction") then
+        y = MakeSection(content, y, w, "CONTEXT ACTION")
+        local CA = TA.ContextAction
+        if CA and CA.DrawKeybindRow then
+            y = CA:DrawKeybindRow(content, y, w, function(f)
+                self.frames[#self.frames + 1] = f
+            end)
+        end
+        y = y - 8
+    end
+
     -- Combat: rotation prediction and nameplate markers.
     if Has("CombatState", "SpecAdaptive", "NameplateObjectives", "TooltipScorer") then
         -- ═══════════════════════════════════════════════════════════════════
@@ -464,7 +475,7 @@ function Settings:Render(content, sidebar)
         end)
 
         if Has("ProfessionOverload") then
-            y = MakeToggleRow(content, y, w, "Gathering Overload reminder (button by the ability tray)", function()
+            y = MakeToggleRow(content, y, w, "Gathering Overload reminder (context action button above the action bars)", function()
                 return not (TA.db and TA.db.overloadReminder == false)
             end, function()
                 if not TA.db then return end

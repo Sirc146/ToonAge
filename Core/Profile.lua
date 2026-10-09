@@ -102,6 +102,9 @@ local PROFILES = {
             -- Shared drawer, self-gating per section (G9, 2026-10-04). Shipped
             -- by ToonAge_TBC.toc; without it the gear button opened nothing.
             Settings          = true,
+            -- Shared spell/item button above the action bars. Overload is
+            -- retail-only and is not on this TOC; the button still loads.
+            ContextAction     = true,
         },
         -- Advisory-only product: no Guide (player uses Zygor), no Delves or
         -- Weekly (retail-only systems). Talents/Professions/Pets reuse the
@@ -146,6 +149,9 @@ local PROFILES = {
             GuideBrowser = true,
             GuideContextMenu = true,
             QuestTracker = true,
+            QuestContext = true,
+            -- Shared spell/item button. Quest items offer through QuestContext.
+            ContextAction = true,
             Arrow        = true,
             CoordResolver = true,
             AntTrail     = true,
@@ -200,6 +206,9 @@ local PROFILES = {
         -- shared profession readout (GetSkillLineInfo, single bar).
         modules   = {
             ProfessionBoard = true,
+            -- Shared spell/item button. No guide and no Overload on Era, so
+            -- the button stays hidden until something offers a candidate.
+            ContextAction   = true,
         },
         tabs      = {
             { id = "professions", label = "Professions", module = "ProfessionBoard" },
@@ -251,6 +260,9 @@ local PROFILES = {
             -- Infrastructure — no game-rule content at all
             ErrorLog         = true,
             Settings         = true,
+            -- Shared spell/item button. No Overload and no guide on this client,
+            -- so nothing offers a candidate until another feature calls Set.
+            ContextAction    = true,
             ChatCopy         = true,
             CoordHarvester   = true,
             -- No guide stack here. Forever ships no guides, none of the

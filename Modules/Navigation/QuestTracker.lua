@@ -1738,81 +1738,8 @@ function QT:InitWindow()
         self:CheckProximityAdvance()
     end)
 
-    -- ── Quest Item Button ─────────────────────────────────────────────────────
-    -- A floating, click-to-use button that appears when the current guide step
-    -- specifies a questItem (itemID).  Mirrors WoW-Pro's "quest item button"
-    -- feature: the player clicks it instead of hunting for the item in bags.
-    --
-    -- The button is parented to UIParent (not the tracker window) so it can be
-    -- independently positioned and remains visible even if the tracker is closed.
-    -- Saved position: charDB.questItem.x / .y (TOPLEFT relative to BOTTOMLEFT).
-    -- SecureActionButtonTemplate is required so the actual "use item" action
-    -- survives combat lockdown. type/item attributes may only be written
-    -- outside combat (guarded in UpdateQuestItemButton below) — but once
-    -- set, the click-to-use itself works in or out of combat since Blizzard's
-    -- own secure click handling performs it, not our Lua OnClick.
-    local qib = CreateFrame("Button", "TAQuestItemButton", UIParent, "SecureActionButtonTemplate, BackdropTemplate")
-    qib:SetSize(46, 46)
-    qib:SetFrameStrata("HIGH")
-    qib:SetMovable(true)
-    qib:EnableMouse(true)
-    qib:RegisterForDrag("LeftButton")
-    qib:SetClampedToScreen(true)
-    qib:SetAttribute("type", "item")
-    qib:SetScript("OnDragStart", qib.StartMoving)
-    qib:SetScript("OnDragStop", function(f)
-        f:StopMovingOrSizing()
-        TA.charDB.questItem = TA.charDB.questItem or {}
-        TA.charDB.questItem.x = f:GetLeft()
-        TA.charDB.questItem.y = f:GetTop()
-    end)
-
-    -- Restore saved position or default below the tracker.
-    local qibSaved = TA.charDB and TA.charDB.questItem
-    if qibSaved and qibSaved.x and qibSaved.y then
-        qib:ClearAllPoints()
-        qib:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", qibSaved.x, qibSaved.y)
-    else
-        qib:SetPoint("CENTER", UIParent, "CENTER", 0, -120)
-    end
-
-    ApplyBD(qib, 0.05, 0.04, 0.02, 0.97, 0.55, 0.40, 0.08)
-
-    local qibTex = qib:CreateTexture(nil, "ARTWORK")
-    qibTex:SetPoint("TOPLEFT",  qib, "TOPLEFT",  3, -3)
-    qibTex:SetPoint("BOTTOMRIGHT", qib, "BOTTOMRIGHT", -3, 3)
-    qib.iconTex = qibTex
-
-    -- Cooldown overlay (standard WoW cooldown swipe)
-    local qibCD = CreateFrame("Cooldown", nil, qib, "CooldownFrameTemplate")
-    qibCD:SetAllPoints(qibTex)
-    qibCD:SetDrawEdge(true)
-    qib.cooldownFrame = qibCD
-
-    -- Count / stack text
-    local qibCount = qib:CreateFontString(nil, "OVERLAY")
-    qibCount:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-    qibCount:SetTextColor(1, 1, 1, 1)
-    qibCount:SetPoint("BOTTOMRIGHT", qib, "BOTTOMRIGHT", -3, 3)
-    qibCount:SetJustifyH("RIGHT")
-    qib.countF = qibCount
-
-    qib:SetScript("OnEnter", function(f)
-        if not f._itemID then return end
-        GameTooltip:SetOwner(f, "ANCHOR_RIGHT")
-        GameTooltip:SetItemByID(f._itemID)
-        GameTooltip:Show()
-    end)
-    qib:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-    -- No OnClick script: this is a secure "type=item" button now, so
-    -- Blizzard's own protected click handling performs the actual item use
-    -- based on the "item" attribute set in UpdateQuestItemButton. Adding a
-    -- manual OnClick that calls UseContainerItem here would reintroduce the
-    -- combat-taint problem this change exists to avoid.
-
-    qib:Hide()
-    win.questItemBtn = qib
+    -- Quest items are drawn by the shared context-action button
+    -- (Modules/Navigation/QuestContext.lua). This window does not keep a second one.
 
     -- Dismissible campaign-skip card, docked on top of the tracker.
     -- The button is secondary. Mark Done below stays the gold primary.
@@ -1873,85 +1800,12 @@ function QT:InitWindow()
     self:UpdateWindow()
 end
 
--- ── UpdateQuestItemButton ─────────────────────────────────────────────────────
--- Called on the OnUpdate throttle. Shows the quest-item button when the current
--- step has a questItem field AND that item exists in the player's bags.
+-- Called on the tracker throttle. The shared button decides whether the
+-- current step's quest item is near or targeted.
 
 function QT:UpdateQuestItemButton()
-    local win = self.window
-    if not (win and win.questItemBtn) then return end
-    local qib = win.questItemBtn
-
-    local _, steps, idx = self:View()
-    local step  = steps and steps[idx]
-    local itemID = step and step.questItem
-
-    if not itemID then
-        qib:Hide()
-        qib._itemID = nil
-        return
-    end
-
-    -- Count how many we have in bags
-    local count = 0
-    for bag = 0, 4 do
-        local slots = C_Container and C_Container.GetContainerNumSlots(bag)
-                   or GetContainerNumSlots(bag)
-        for slot = 1, (slots or 0) do
-            local id
-            if C_Container and C_Container.GetContainerItemID then
-                id = C_Container.GetContainerItemID(bag, slot)
-            else
-                id = GetContainerItemID(bag, slot)
-            end
-            if id == itemID then
-                if C_Container and C_Container.GetContainerItemInfo then
-                    local info = C_Container.GetContainerItemInfo(bag, slot)
-                    count = count + (info and info.stackCount or 1)
-                else
-                    local _, itemCount = GetContainerItemInfo(bag, slot)
-                    count = count + (itemCount or 1)
-                end
-            end
-        end
-    end
-
-    if count == 0 then
-        qib:Hide()
-        qib._itemID = nil
-        return
-    end
-
-    qib._itemID = itemID
-
-    -- Set icon from item cache (may require a server round-trip on first call)
-    local itemName, _, _, _, _, _, _, _, _, itemTexture = GetItemInfo(itemID)
-    if itemTexture then
-        qib.iconTex:SetTexture(itemTexture)
-    else
-        qib.iconTex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-    end
-
-    -- Secure "item" attribute drives the actual click-to-use action and can
-    -- only be written outside combat. If the step changes mid-combat before
-    -- the name is known, the button stays on whatever item it last pointed
-    -- at until combat ends and this runs again — a known secure-button
-    -- limitation, not a bug.
-    if itemName and not InCombatLockdown() and qib:GetAttribute("item") ~= itemName then
-        qib:SetAttribute("item", itemName)
-    end
-
-    qib.countF:SetText(count > 1 and tostring(count) or "")
-
-    -- Cooldown sweep
-    local start, duration = GetItemCooldown(itemID)
-    if start and start > 0 then
-        qib.cooldownFrame:SetCooldown(start, duration)
-    else
-        qib.cooldownFrame:SetCooldown(0, 0)
-    end
-
-    qib:Show()
+    local QC = TA.QuestContext
+    if QC and QC.Refresh then QC:Refresh() end
 end
 
 -- ── UpdateWindow ──────────────────────────────────────────────────────────────

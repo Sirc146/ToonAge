@@ -133,7 +133,7 @@ def test_scaffolds_inert():
     check("forever label",               fp.label, "WoW Forever (beta)")
     # What runs: engine-only modules that read the world through APIs this
     # client has, and carry no expansion numbers of their own.
-    for mod in ("ErrorLog", "Settings", "XPTracker", "GatherTracker",
+    for mod in ("ErrorLog", "Settings", "ContextAction", "XPTracker", "GatherTracker",
                 "RestOptimizer", "DeathRecovery",
                 "ForeverScrolls", "ForeverCastLog", "ProfessionBoard"):
         check(f"forever allows {mod}",   ta.ModuleInProfile(ta, mod), True)
@@ -181,6 +181,8 @@ def test_scaffolds_inert():
     check("vanilla still a scaffold", era.GetProfile(era).scaffold, True)
     check("vanilla allows ProfessionBoard",
           era.ModuleInProfile(era, "ProfessionBoard"), True)
+    check("vanilla allows ContextAction",
+          era.ModuleInProfile(era, "ContextAction"), True)
     check("vanilla professions tab",
           [t.id for t in era.ProfileTabs(era).values()], ["professions"])
 

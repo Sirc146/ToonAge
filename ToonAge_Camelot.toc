@@ -113,6 +113,8 @@ Data\Forever\ApiManifest.lua
 # ── Infrastructure ────────────────────────────────────────────────────
 Modules\Infrastructure\ErrorLog.lua
 Modules\Infrastructure\Settings.lua
+# Shared spell/item button. Nothing on this client offers a candidate yet.
+Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\ChatCopy.lua
 Modules\Infrastructure\CoordHarvester.lua
 # Harvest export formatter (harvest spec T2): the one formatter for the in-game
