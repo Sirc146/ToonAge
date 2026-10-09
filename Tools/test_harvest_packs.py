@@ -125,7 +125,7 @@ end
 function COUNTS(s)
     local o = {}
     for k, v in pairs(s) do
-        if type(v) == "table" and k ~= "client" and k ~= "times" then
+        if type(v) == "table" and k ~= "client" and k ~= "times" and k ~= "captures" then
             local n = 0
             local function w(t) for _, x in pairs(t) do if type(x) == "table" then w(x) else n = n + 1 end end end
             w(v); o[k] = n
@@ -242,14 +242,18 @@ lay_rogue = lst(L, "LAYOUT_LOG")
 exported = lst(L, "WINDOWS_LOG")[0].text.splitlines()
 check("trainer summary counts this class only",
       "DataRow|Trainer ranks (open a class trainer)|none yet" in lay_rogue)
-check("copy row has an all-classes button beside the class exports",
-      any(x.startswith("ButtonRow|") and "All trainer classes" in x and x.endswith("|Copy:") for x in lay_rogue))
+check("copy row offers every character's captures beside the current character",
+      any(x.startswith("ButtonRow|") and "All characters" in x and x.endswith("|Copy:") for x in lay_rogue))
+check("spell catalog still has an all-classes button",
+      any(x.startswith("ButtonRow|") and "All catalog classes" in x and x.endswith("|Copy:") for x in lay_rogue))
 check("muted label names the saved class that is not this character",
       "Paragraph|Trainer ranks: Showing saved Hunter data|dim" in lay_rogue)
-check("the trainer button exports the empty sentence, not the hunter rows",
-      exported[-1], "No ROGUE trainer data yet. Open a rogue trainer to record it.")
-check("that export's source line names the current character",
-      "-- source ROGUE trainer · recorded by unknown · current character Rogue" in exported)
+check("the trainer button exports this character's empty capture, not the hunter rows",
+      exported[-1], "No trainer data yet for Eramali (Rogue). Open a trainer to record it.")
+check("that export starts with this character's source line",
+      exported[0], "-- source Eramali · Rogue · level 18 · build 70205 · captured unknown")
+check("the hunter rows are not in this character's export",
+      "Serpent Sting" not in lst(L, "WINDOWS_LOG")[0].text)
 
 # Export of a section not written yet still opens a stamped window.
 L.execute("WINDOWS_LOG = {}; ToonAge.modules.DataHarvester:Export('trainerProf', 1)")

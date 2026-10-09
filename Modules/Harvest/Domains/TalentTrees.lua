@@ -35,23 +35,31 @@ function D:ScanTalents()
     local _, class = Try("UnitClass", "player")
     class = class or "UNKNOWN"
     local n = 0
+    local rawTabs = Try("GetNumTalentTabs")
+    if rawTabs == nil then return 0 end
+    local rows = {}
 
-    local numTabs = tonumber((Try("GetNumTalentTabs"))) or 0
+    local numTabs = tonumber(rawTabs) or 0
     for tab = 1, numTabs do
         local tabName = Try("GetTalentTabInfo", tab)
         local numTalents = tonumber((Try("GetNumTalents", tab))) or 0
         for i = 1, numTalents do
             local name, _, tier, column, _, maxRank = Try("GetTalentInfo", tab, i)
             if name then
-                if Put(s.talents, class .. ":" .. tab .. ":" .. i,
-                       table.concat({ Clean(tabName), Clean(name), Clean(tier),
-                                      Clean(column), Clean(maxRank) }, "\t"),
-                       MAX_TALENTS) then
+                local key = class .. ":" .. tab .. ":" .. i
+                local rec = table.concat({ Clean(tabName), Clean(name), Clean(tier),
+                                      Clean(column), Clean(maxRank) }, "\t")
+                rows[key] = rec
+                if s.talents[key] ~= nil then
+                    s.talents[key] = rec
+                    Hv:Touch("talents")
+                elseif Put(s.talents, key, rec, MAX_TALENTS) then
                     n = n + 1
                 end
             end
         end
     end
+    Hv:SaveCapture("talents", { rows = rows })
     return n
 end
 

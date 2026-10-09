@@ -19,7 +19,7 @@
 local TA = ToonAge
 local Hv, Caps = TA.Harvester, TA.Caps
 
-local Try, PutOrUpgrade, Clean, Fields = Hv.Try, Hv.PutOrUpgrade, Hv.Clean, Hv.Fields
+local Try, Put, Clean = Hv.Try, Hv.Put, Hv.Clean
 
 local MAX_SPELLS = 6000   -- the spell set is small and finite by nature
 
@@ -45,83 +45,90 @@ function D:ScanSpellbook()
     local level = Try("UnitLevel", "player") or 0
     local n = 0
     local racials = Hv:Domain("racials")
+    -- Every spell read this run, including ones the class catalog already
+    -- holds. The character capture is this table, replaced wholesale.
+    local rows = {}
+    local modernRead, legacyRead = false, false
+
+    local function Keep(key, spellID, line)
+        rows[tostring(spellID)] = line
+        if s.spells[key] ~= nil then
+            s.spells[key] = line
+            Hv:Touch("spells")
+        elseif Put(s.spells, key, line, MAX_SPELLS) then
+            n = n + 1
+        end
+    end
 
     if Caps.State("C_SpellBook.GetNumSpellBookSkillLines") == "present"
        and Caps.State("C_SpellBook.GetSpellBookItemInfo") == "present" then
-        local bank = Caps.Get("Enum.SpellBookSpellBank.Player")
-        local lines = tonumber((Try("C_SpellBook.GetNumSpellBookSkillLines"))) or 0
-        for line = 1, lines do
-            local info = Try("C_SpellBook.GetSpellBookSkillLineInfo", line)
-            if type(info) == "table" and info.numSpellBookItems then
-                for i = info.itemIndexOffset + 1,
-                        info.itemIndexOffset + info.numSpellBookItems do
-                    local item = Try("C_SpellBook.GetSpellBookItemInfo", i, bank)
-                    if type(item) == "table" and item.spellID then
-                        -- Rank text ("Rank 2"), the same source the Spells tab
-                        -- reads: the item's own subName, else C_Spell.GetSpellSubtext.
-                        local rank = item.subName
-                        if not rank or rank == "" then
-                            rank = Try("C_Spell.GetSpellSubtext", item.spellID)
-                        end
-                        local key = class .. ":" .. item.spellID
-                        -- An upgraded record keeps the level it was first seen at.
-                        local old = s.spells[key]
-                        local seen = old and old:match("^[^\t]*\t([^\t]*)") or level
-                        -- Trainer level for this rank (C_Spell.GetSpellLevelLearned,
-                        -- measured working on Forever 2026-09-29: Fireball 1/6/12).
-                        local learned = Try("C_Spell.GetSpellLevelLearned", item.spellID) or nil
-                        local line = table.concat({ Clean(item.name), Clean(seen),
-                                              Clean(info.name), Clean(rank),
-                                              Clean(item.isPassive and "passive" or ""),
-                                              Clean(learned) }, "\t")
-                        -- Rank text can come back blank when spell data is not
-                        -- loaded yet (the first v2 scans stored "" for every
-                        -- rank, although GetSpellSubtext answers "Rank 2" later).
-                        -- So a record with a blank rank or learned level is
-                        -- rewritten once the client has the value.
-                        local oldRank, oldLearned
-                        if old then
-                            local f = Fields(old)
-                            oldRank, oldLearned = f[4] or "", f[6] or ""
-                        end
-                        local better = old and (
-                               (oldRank == "" and Clean(rank) ~= "")
-                            or (oldLearned == "" and Clean(learned) ~= ""))
-                        if racials and tostring(rank or ""):find("Racial") then
-                            racials:Record(item.spellID, item.name, rank, item.isPassive)
-                        end
-                        if better then
-                            s.spells[key] = line
-                            Hv:Touch("spells")
-                            n = n + 1
-                        elseif PutOrUpgrade(s.spells, key, line, MAX_SPELLS, 6) then
-                            n = n + 1
+        local rawLines = Try("C_SpellBook.GetNumSpellBookSkillLines")
+        if rawLines ~= nil then
+            modernRead = true
+            local bank = Caps.Get("Enum.SpellBookSpellBank.Player")
+            local lines = tonumber(rawLines) or 0
+            for line = 1, lines do
+                local info = Try("C_SpellBook.GetSpellBookSkillLineInfo", line)
+                if type(info) == "table" and info.numSpellBookItems then
+                    for i = info.itemIndexOffset + 1,
+                            info.itemIndexOffset + info.numSpellBookItems do
+                        local item = Try("C_SpellBook.GetSpellBookItemInfo", i, bank)
+                        if type(item) == "table" and item.spellID then
+                            -- Rank text ("Rank 2"), the same source the Spells tab
+                            -- reads: the item's own subName, else C_Spell.GetSpellSubtext.
+                            local rank = item.subName
+                            if not rank or rank == "" then
+                                rank = Try("C_Spell.GetSpellSubtext", item.spellID)
+                            end
+                            local key = class .. ":" .. item.spellID
+                            -- An updated record keeps the level it was first seen at.
+                            local old = s.spells[key]
+                            local seen = old and old:match("^[^\t]*\t([^\t]*)") or level
+                            -- Trainer level for this rank (C_Spell.GetSpellLevelLearned,
+                            -- measured working on Forever 2026-09-29: Fireball 1/6/12).
+                            local learned = Try("C_Spell.GetSpellLevelLearned", item.spellID) or nil
+                            local rec = table.concat({ Clean(item.name), Clean(seen),
+                                                  Clean(info.name), Clean(rank),
+                                                  Clean(item.isPassive and "passive" or ""),
+                                                  Clean(learned) }, "\t")
+                            if racials and tostring(rank or ""):find("Racial") then
+                                racials:Record(item.spellID, item.name, rank, item.isPassive)
+                            end
+                            Keep(key, item.spellID, rec)
                         end
                     end
                 end
             end
         end
-        if n > 0 then return n end
+        -- A book that answered is this character's scan. Do not also walk
+        -- the legacy API, which would replace the capture with a second read.
+        if modernRead and next(rows) ~= nil then
+            Hv:SaveCapture("spellbook", { rows = rows })
+            return n
+        end
     end
 
-    -- Legacy path.
-    local numTabs = tonumber((Try("GetNumSpellTabs"))) or 0
-    for tab = 1, numTabs do
-        local tabName, _, offset, numSpells = Try("GetSpellTabInfo", tab)
-        for i = (offset or 0) + 1, (offset or 0) + (numSpells or 0) do
-            local spellName, subName = Try("GetSpellBookItemName", i, "spell")
-            local _, spellID = Try("GetSpellBookItemInfo", i, "spell")
-            if spellID and spellName then
-                local key = class .. ":" .. spellID
-                local seen = s.spells[key] and s.spells[key]:match("^[^\t]*\t([^\t]*)") or level
-                if PutOrUpgrade(s.spells, key,
-                       table.concat({ Clean(spellName), Clean(seen),
-                                      Clean(tabName), Clean(subName), "" }, "\t"),
-                       MAX_SPELLS, 5) then
-                    n = n + 1
+    -- Legacy path. Used when the modern book is absent or came back empty.
+    local rawTabs = Try("GetNumSpellTabs")
+    if rawTabs ~= nil then
+        legacyRead = true
+        local numTabs = tonumber(rawTabs) or 0
+        for tab = 1, numTabs do
+            local tabName, _, offset, numSpells = Try("GetSpellTabInfo", tab)
+            for i = (offset or 0) + 1, (offset or 0) + (numSpells or 0) do
+                local spellName, subName = Try("GetSpellBookItemName", i, "spell")
+                local _, spellID = Try("GetSpellBookItemInfo", i, "spell")
+                if spellID and spellName then
+                    local key = class .. ":" .. spellID
+                    local seen = s.spells[key] and s.spells[key]:match("^[^\t]*\t([^\t]*)") or level
+                    Keep(key, spellID, table.concat({ Clean(spellName), Clean(seen),
+                                   Clean(tabName), Clean(subName), "" }, "\t"))
                 end
             end
         end
+    end
+    if modernRead or legacyRead then
+        Hv:SaveCapture("spellbook", { rows = rows })
     end
     return n
 end

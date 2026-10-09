@@ -682,6 +682,44 @@ local function SuiteApi(S)
                 c.migratedFrom and (" (moved from " .. tostring(c.migratedFrom) .. ")") or "",
                 tostring(c.flavor), tostring(c.build), tostring(c.interface), tostring(c.channel)))
         end
+
+        -- A second run on this character must replace the saved scan. A
+        -- scratch kind is used so the player's probe, trainer, spellbook
+        -- and talents stay as they were. Another character's entry stays.
+        if type(Hv.SaveCapture) == "function" and type(hs) == "table" then
+            hs.captures = hs.captures or {}
+            local key = Hv:CharacterKey()
+            if not key then
+                S(FAIL, "harvest capture: this character has no realm/name/class key")
+            else
+                local other = "selftest\tOther\tMAGE"
+                local kept = hs.captures[other]
+                local created = hs.captures[key] == nil
+                local prev = (not created) and hs.captures[key].selftest or nil
+                hs.captures[other] = { name = "Other", class = "MAGE", className = "Mage",
+                    probe = { marker = "keep" } }
+                Hv:SaveCapture("selftest", { marker = "one" })
+                local a = hs.captures[key] and hs.captures[key].selftest
+                Hv:SaveCapture("selftest", { marker = "two" })
+                local b = hs.captures[key] and hs.captures[key].selftest
+                local otherStill = hs.captures[other] and hs.captures[other].probe
+                    and hs.captures[other].probe.marker == "keep"
+                if created then
+                    hs.captures[key] = nil
+                elseif hs.captures[key] then
+                    hs.captures[key].selftest = prev
+                end
+                if kept == nil then hs.captures[other] = nil else hs.captures[other] = kept end
+                if a and a.marker == "one" and b and b.marker == "two" and otherStill
+                    and type(b.timestamp) == "number" and b.level ~= nil
+                    and b.build ~= nil and b.version ~= nil then
+                    S(PASS, format("harvest capture overwrites this character (level %s, build %s) and keeps other characters",
+                        tostring(b.level), tostring(b.build)))
+                else
+                    S(FAIL, "harvest capture did not overwrite a second run on this character")
+                end
+            end
+        end
     end
 
     -- Harvest export formatter (Modules/Infrastructure/HarvestFormat.lua, harvest
