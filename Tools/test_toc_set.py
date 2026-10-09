@@ -369,6 +369,28 @@ def test_forever_toc_carries_no_retail_content():
     check("no unread ToonAge_Forever.toc",
           (ROOT / "ToonAge_Forever.toc").exists(), False)
 
+# Distribution ids the packager reads. Empty used to mean "publish nowhere".
+CURSE_PROJECT_ID = "1734520"
+WAGO_ID = "56ndnjG9"
+
+
+def toc_field(p, key):
+    prefix = "## %s:" % key
+    for ln in read_lines(p):
+        s = ln.strip()
+        if s.startswith(prefix):
+            return s.split(":", 1)[1].strip()
+    return ""
+
+
+def test_distribution_ids():
+    for toc in all_tocs():
+        check(f"{toc.name}: CurseForge project id",
+              toc_field(toc, "X-Curse-Project-ID"), CURSE_PROJECT_ID)
+        check(f"{toc.name}: Wago id",
+              toc_field(toc, "X-Wago-ID"), WAGO_ID)
+
+
 def test_titles_name_the_flavor():
     """Every flavor TOC names its game version in the addon list, so the client
     itself tells you which build loaded."""
@@ -414,6 +436,7 @@ def main():
     test_no_duplicate_module_names()
     test_forever_toc_carries_no_retail_content()
     test_titles_name_the_flavor()
+    test_distribution_ids()
 
     passed = sum(1 for ok, *_ in _results if ok)
     total = len(_results)

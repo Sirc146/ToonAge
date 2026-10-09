@@ -6,7 +6,7 @@
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB, ToonAgeGuard
 ## X-Flavor: Forever
-## X-Curse-Project-ID:
+## X-Curse-Project-ID: 1734520
 ## X-Wago-ID: 56ndnjG9
 ## OptionalDependencies: WagoAnalytics
 
@@ -59,9 +59,11 @@
 #   Every advisor      Gear, Rotation, Talents, Professions, Pets, Delves,
 #                      Weekly: all of them rank things using Data/Retail.
 #
-# ToonAge_Mainline.toc still carries 16001 as a fallback. If this file is ever
-# not read, the addon still loads there, and Core/Profile.lua's allow-list is
-# the second gate that keeps the retail modules from initializing.
+# ToonAge_Mainline.toc must NOT list 16001. It did, once, and that was the
+# bug: a Forever client that missed this file loaded the entire retail
+# product. If this TOC is not read, Environment.lua reports the mismatch
+# and Init.lua starts only the engine modules. Do not put 16001 back on
+# the Mainline TOC to "keep a fallback".
 
 # ── Libraries ─────────────────────────────────────────────────────────
 Libs\LibStub.lua
