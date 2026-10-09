@@ -1,6 +1,7 @@
 -- ToonAge/Modules/Arrow.lua (Classic — MoP 50504)
 -- Draggable, scroll-to-resize, right-click-lockable HUD arrow.
--- Layout: gold arrow -> white distance -> grey ETA -> gold objective title
+-- Layout: arrow -> white distance -> grey ETA -> gold objective title.
+-- A typed /way label sits 2px under the distance, in body text, and hides on arrival.
 --
 -- Classic adaptation:
 --   - Removed C_QuestLog.GetNextWaypoint (doesn't exist in MoP Classic)
@@ -212,6 +213,24 @@ local speedSamples = { 0, 0 }
 local lastDist     = nil
 local lastTime     = 0
 
+-- Guide titles stay under the ETA. A typed /way label is 2px under the
+-- distance line, and the ETA moves below that label so the two do not stack.
+local function AnchorWayCaption(f, belowDistance)
+    if belowDistance and f.distF and f.titleF and f.titleF.SetPoint then
+        f.titleF:SetPoint("TOP", f.distF, "BOTTOM", 0, -2)
+        if f.etaF and f.etaF.SetPoint then
+            f.etaF:SetPoint("TOP", f.titleF, "BOTTOM", 0, -2)
+        end
+    else
+        if f.etaF and f.etaF.SetPoint and f.distF then
+            f.etaF:SetPoint("TOP", f.distF, "BOTTOM", 0, -2)
+        end
+        if f.titleF and f.titleF.SetPoint and f.etaF then
+            f.titleF:SetPoint("TOP", f.etaF, "BOTTOM", 0, -4)
+        end
+    end
+end
+
 -- ── Per-tick update ───────────────────────────────────────────────────────
 
 function Arrow:Tick(f)
@@ -219,6 +238,7 @@ function Arrow:Tick(f)
     if f.titleF and f.titleF.SetTextColor then
         f.titleF:SetTextColor(1, 0.82, 0, 1)
     end
+    AnchorWayCaption(f, false)
     if U.InInstance() then
         U.RevealWaypoint(f, false)
         return
@@ -285,6 +305,7 @@ function Arrow:Tick(f)
     if #label > 35 then label = label:sub(1, 32) .. "..." end
     if isManualWP and self.manualWaypoint.labeled then
         f.titleF:SetTextColor(0.92, 0.90, 0.87, 1)
+        AnchorWayCaption(f, true)
     else
         f.titleF:SetTextColor(1, 0.82, 0, 1)
     end
@@ -382,7 +403,6 @@ function Arrow:Tick(f)
     U.PaintQuestArrow(f.arrowTex, f.arrivedTex, {
         yards = yards, angle = targetAngle, hollow = hollow, size = f._arrowSize,
     })
-    f.distF:SetText(U.FormatDistance(yards, hollow))
 
     if arrived then
         if not self._arrived then
@@ -390,7 +410,10 @@ function Arrow:Tick(f)
             self._arrivedTime = GetTime()
             self.currentAngle = nil
         end
+        -- Arrived ring only. Distance and the caption go away together.
+        f.distF:SetText("")
         f.etaF:SetText("")
+        if f.titleF then f.titleF:SetText("") end
         if isManualWP and self._arrivedTime and (GetTime() - self._arrivedTime > 3) then
             self.manualWaypoint = nil
             self._arrived = false
@@ -399,6 +422,8 @@ function Arrow:Tick(f)
         end
         return
     end
+
+    f.distF:SetText(U.FormatDistance(yards, hollow))
 
     self._arrived = false
 
@@ -694,7 +719,7 @@ function Arrow:Init()
     self:InitFrame()
     local saved = TA.charDB and TA.charDB.arrow
     if saved and saved.visible then self.frame:Show() end
-    self:RegisterBareWay()
+    -- /way is claimed on PLAYER_LOGIN, not here. Setup runs later.
 end
 
 --- True when TomTom is already loaded. Either API may be missing; a throw
@@ -710,26 +735,48 @@ function Arrow.TomTomLoaded()
     return false
 end
 
---- Another addon already bound /way. Our own SLASH_TOONAGEWAY does not count.
+--- Another SlashCmdList entry already bound /way. Only that entry's
+--- SLASH_<KEY>n globals are checked. Our own TOONAGEWAY key does not count.
 function Arrow.ForeignWaySlash()
-    for key, value in pairs(_G) do
-        if type(key) == "string" and key:match("^SLASH_")
-           and key:sub(1, 16) ~= "SLASH_TOONAGEWAY"
-           and type(value) == "string" and value:lower() == "/way" then
-            return true
+    if type(SlashCmdList) ~= "table" then return false end
+    for key in pairs(SlashCmdList) do
+        if type(key) == "string" and key ~= "TOONAGEWAY" then
+            local i = 1
+            while true do
+                local cmd = _G["SLASH_" .. key .. i]
+                if type(cmd) ~= "string" then break end
+                if cmd:lower() == "/way" then return true end
+                i = i + 1
+            end
         end
     end
     return false
 end
 
---- Bare /way, only when TomTom does not own it. /ta way is unaffected.
-function Arrow:RegisterBareWay()
-    local function clearOurs()
-        _G.SLASH_TOONAGEWAY1 = nil
-        if type(SlashCmdList) == "table" then SlashCmdList["TOONAGEWAY"] = nil end
+--- True once this module has bound /way. A nil SlashCmdList is not ours.
+function Arrow.OwnsBareWay()
+    if type(_G.SLASH_TOONAGEWAY1) == "string" and _G.SLASH_TOONAGEWAY1:lower() == "/way" then
+        return true
     end
+    return type(SlashCmdList) == "table" and SlashCmdList["TOONAGEWAY"] ~= nil
+end
+
+--- Drop our /way binding. The chat hash is cleared only when it exists:
+--- ImportListToHash stores the uppercased tag, so the key is "/WAY".
+function Arrow.ClearBareWay()
+    _G.SLASH_TOONAGEWAY1 = nil
+    if type(SlashCmdList) == "table" then
+        SlashCmdList["TOONAGEWAY"] = nil
+    end
+    if hash_SlashCmdList then
+        hash_SlashCmdList["/WAY"] = nil
+    end
+end
+
+--- Bare /way, only when nobody else owns it at login. /ta way is unaffected.
+function Arrow:RegisterBareWay()
     if Arrow.TomTomLoaded() or Arrow.ForeignWaySlash() then
-        clearOurs()
+        if Arrow.OwnsBareWay() then Arrow.ClearBareWay() end
         return
     end
     if type(SlashCmdList) ~= "table" then return end
@@ -740,7 +787,35 @@ function Arrow:RegisterBareWay()
     end
 end
 
+--- A later addon claimed /way. Give the command back, including the hash.
+function Arrow:GiveUpBareWay()
+    if not Arrow.OwnsBareWay() then return end
+    if not (Arrow.TomTomLoaded() or Arrow.ForeignWaySlash()) then return end
+    Arrow.ClearBareWay()
+end
+
+function Arrow:OnWayWatch(event)
+    if event == "PLAYER_LOGIN" then
+        self:RegisterBareWay()
+    elseif event == "ADDON_LOADED" then
+        self:GiveUpBareWay()
+    end
+end
+
 Arrow.SlashCommands = {
     arrow = function(self) self:Toggle() end,
     way   = function(self, args) self:ParseWayCommand(args) end,
 }
+
+-- File load is before PLAYER_LOGIN, so this runs after every login addon.
+-- Arrow:Init is later (PLAYER_ENTERING_WORLD) and must not register /way.
+-- The private frame keeps ADDON_LOADED: core unregisters that event on its
+-- own frame once ToonAge itself has loaded.
+if type(CreateFrame) == "function" then
+    local wayWatch = CreateFrame("Frame")
+    wayWatch:RegisterEvent("PLAYER_LOGIN")
+    wayWatch:RegisterEvent("ADDON_LOADED")
+    wayWatch:SetScript("OnEvent", function(_, event)
+        Arrow:OnWayWatch(event)
+    end)
+end

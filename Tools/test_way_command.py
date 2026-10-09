@@ -3,8 +3,10 @@
 
 Players type coordinates on a 0-100 scale. The arrow stores 0-1. A zone name
 or a mapID may precede the pair, and a label may follow it. Bare /way is
-registered only when TomTom is not loaded and nobody else already owns the
-command. /ta talentsync calls Data/Retail/Talents.lua SyncFromBetterTalents.
+registered on PLAYER_LOGIN, and only when TomTom is not loaded and no other
+SlashCmdList entry already owns the command. A later ADDON_LOADED that claims
+/way clears our binding, including hash_SlashCmdList['/WAY'] when that table
+exists. /ta talentsync calls Data/Retail/Talents.lua SyncFromBetterTalents.
 """
 import sys
 from pathlib import Path
@@ -81,6 +83,12 @@ function BootArrow()
     A.InitFrame = function() end
     A:Init()
 end
+function LoginArrow()
+    ToonAge.modules.Arrow:OnWayWatch("PLAYER_LOGIN")
+end
+function AddonLoaded()
+    ToonAge.modules.Arrow:OnWayWatch("ADDON_LOADED")
+end
 """
 
 
@@ -145,7 +153,11 @@ def check_arrow(rel, label):
     check(f"{label} unknown zone is reported", "Unknown zone: Nopeville" in g(lua, "WAY_TEXT"))
 
     lua.execute("BootArrow()")
-    check(f"{label} bare /way is registered", g(lua, "SLASH_TOONAGEWAY1"), "/way")
+    check(f"{label} arrow setup does not register /way", g(lua, "SLASH_TOONAGEWAY1") is None)
+    check(f"{label} arrow setup leaves no handler", g(lua, "SlashCmdList.TOONAGEWAY") is None)
+    lua.execute("LoginArrow()")
+    check(f"{label} PLAYER_LOGIN registers /way", g(lua, "SLASH_TOONAGEWAY1"), "/way")
+    check(f"{label} PLAYER_LOGIN installs the handler", g(lua, "type(SlashCmdList.TOONAGEWAY)"), "function")
     lua.execute('ToonAge.modules.Arrow:ClearWaypoint(); SlashCmdList.TOONAGEWAY("10 20 Bare")')
     wp = g(lua, "ToonAge.modules.Arrow.manualWaypoint")
     check(f"{label} bare /way divides by 100",
@@ -172,10 +184,11 @@ def check_arrow(rel, label):
     claimed.execute(r"""
         C_AddOns = { IsAddOnLoaded = function(name) return name == "TomTom" end }
         BootArrow()
+        LoginArrow()
         TOMTOM_STILL = SLASH_TOONAGEWAY1
         TOMTOM_HANDLER = SlashCmdList.TOONAGEWAY
     """)
-    check(f"{label} C_AddOns.IsAddOnLoaded blocks /way", g(claimed, "TOMTOM_STILL") is None)
+    check(f"{label} PLAYER_LOGIN skips /way when TomTom is loaded", g(claimed, "TOMTOM_STILL") is None)
     check(f"{label} TomTom leaves no ToonAge handler", g(claimed, "TOMTOM_HANDLER") is None)
 
     classic = load_arrow(rel)
@@ -183,41 +196,109 @@ def check_arrow(rel, label):
         C_AddOns = nil
         IsAddOnLoaded = function(name) return name == "TomTom" end
         BootArrow()
+        LoginArrow()
         CLASSIC_WAY = SLASH_TOONAGEWAY1
     """)
-    check(f"{label} IsAddOnLoaded blocks /way", g(classic, "CLASSIC_WAY") is None)
+    check(f"{label} IsAddOnLoaded blocks /way at login", g(classic, "CLASSIC_WAY") is None)
 
     thrown = load_arrow(rel)
     thrown.execute(r"""
         C_AddOns = { IsAddOnLoaded = function() error("missing") end }
         IsAddOnLoaded = function(name) return name == "TomTom" end
         BootArrow()
+        LoginArrow()
         THROWN_WAY = SLASH_TOONAGEWAY1
     """)
     check(f"{label} a throwing C_AddOns check still honors IsAddOnLoaded", g(thrown, "THROWN_WAY") is None)
 
     foreign = load_arrow(rel)
     foreign.execute(r"""
-        SLASH_TOMTOMWAY1 = "/way"
         SlashCmdList.TOMTOM_WAY = function() end
+        SLASH_TOMTOM_WAY1 = "/way"
         BootArrow()
+        LoginArrow()
         FOREIGN_OURS = SLASH_TOONAGEWAY1
         FOREIGN_THEIRS = SlashCmdList.TOMTOM_WAY
     """)
-    check(f"{label} an existing /way is not replaced", g(foreign, "FOREIGN_OURS") is None)
+    check(f"{label} an existing /way is not replaced at login", g(foreign, "FOREIGN_OURS") is None)
     check(f"{label} the other handler is left in place", g(foreign, "type(FOREIGN_THEIRS)"), "function")
+
+    orphan = load_arrow(rel)
+    orphan.execute(r"""
+        SLASH_ORPHAN1 = "/way"
+        BootArrow()
+        LoginArrow()
+        ORPHAN_OURS = SLASH_TOONAGEWAY1
+    """)
+    check(f"{label} a stray SLASH_ global does not block /way", g(orphan, "ORPHAN_OURS"), "/way")
+
+    cheap = load_arrow(rel)
+    cheap.execute(r"""
+        local A = ToonAge.modules.Arrow
+        SlashCmdList.OTHER = function() end
+        SLASH_OTHER1 = "/other"
+        SLASH_OTHER2 = "/WAY"
+        SLASH_UNRELATED1 = "/way"
+        CHEAP_ALIAS = A.ForeignWaySlash()
+        SlashCmdList.OTHER = nil
+        SLASH_OTHER1, SLASH_OTHER2 = nil, nil
+        CHEAP_STRAY = A.ForeignWaySlash()
+    """)
+    check(f"{label} the cheap scan sees SLASH_<KEY>2", g(cheap, "CHEAP_ALIAS"), True)
+    check(f"{label} the cheap scan ignores a SLASH_ global with no list key", g(cheap, "CHEAP_STRAY"), False)
 
     later = load_arrow(rel)
     later.execute(r"""
         BootArrow()
+        LoginArrow()
+        hash_SlashCmdList = { ["/WAY"] = SlashCmdList.TOONAGEWAY }
         C_AddOns = { IsAddOnLoaded = function(name) return name == "TomTom" end }
-        SLASH_TOMTOMWAY1 = "/way"
-        ToonAge.modules.Arrow:RegisterBareWay()
+        SLASH_TOMTOM_WAY1 = "/way"
+        SlashCmdList.TOMTOM_WAY = function() end
+        AddonLoaded()
         LATER_OURS = SLASH_TOONAGEWAY1
-        LATER_THEIRS = SLASH_TOMTOMWAY1
+        LATER_HANDLER = SlashCmdList.TOONAGEWAY
+        LATER_HASH = hash_SlashCmdList["/WAY"]
+        LATER_THEIRS = SLASH_TOMTOM_WAY1
     """)
-    check(f"{label} drops /way once TomTom is loaded", g(later, "LATER_OURS") is None)
+    check(f"{label} ADDON_LOADED gives /way up once TomTom loads", g(later, "LATER_OURS") is None)
+    check(f"{label} ADDON_LOADED clears the ToonAge handler", g(later, "LATER_HANDLER") is None)
+    check(f"{label} ADDON_LOADED clears hash_SlashCmdList['/WAY']", g(later, "LATER_HASH") is None)
     check(f"{label} TomTom's /way stays", g(later, "LATER_THEIRS"), "/way")
+
+    quiet = load_arrow(rel)
+    quiet.execute(r"""
+        BootArrow()
+        LoginArrow()
+        AddonLoaded()
+        QUIET_OURS = SLASH_TOONAGEWAY1
+        QUIET_HANDLER = SlashCmdList.TOONAGEWAY
+    """)
+    check(f"{label} an unrelated ADDON_LOADED keeps /way", g(quiet, "QUIET_OURS"), "/way")
+    check(f"{label} an unrelated ADDON_LOADED keeps the handler", g(quiet, "type(QUIET_HANDLER)"), "function")
+
+    yielded = load_arrow(rel)
+    yielded.execute(r"""
+        BootArrow()
+        LoginArrow()
+        hash_SlashCmdList = nil
+        SlashCmdList.LATE = function() end
+        SLASH_LATE1 = "/way"
+        local ok, err = pcall(function() AddonLoaded() end)
+        YIELD_OK = ok
+        YIELD_ERR = err
+        YIELD_OURS = SLASH_TOONAGEWAY1
+        YIELD_HANDLER = SlashCmdList.TOONAGEWAY
+        YIELD_THEIRS = SLASH_LATE1
+    """)
+    check(f"{label} giving /way up with no hash does not error", g(yielded, "YIELD_OK"), True)
+    check(f"{label} a later addon takes /way back", g(yielded, "YIELD_OURS") is None and g(yielded, "YIELD_HANDLER") is None)
+    check(f"{label} the later addon's slash stays", g(yielded, "YIELD_THEIRS"), "/way")
+
+    src = read(rel)
+    check(f"{label} ForeignWaySlash does not scan _G", "pairs(_G)" not in src)
+    check(f"{label} the hash clear is guarded", "if hash_SlashCmdList then" in src)
+    check(f"{label} the hash key is /WAY", 'hash_SlashCmdList["/WAY"]' in src)
 
 
 def check_label_case():
@@ -278,7 +359,9 @@ def check_arrow_paint(rel, label):
             function p:Hide() self.shown = false end
             function p:SetText(t) self.text = t end
             function p:SetTextColor(r, g, b, a) self.r, self.g, self.b, self.a = r, g, b, a end
-            function p:SetPoint() end
+            function p:SetPoint(point, rel, relPoint, x, y)
+                self.anchor = { point, rel, relPoint, x, y }
+            end
             function p:IsVisible() return self.shown end
             function p:IsShown() return self.shown end
             return p
@@ -318,15 +401,24 @@ def check_arrow_paint(rel, label):
         FAR_ARRIVED = f.arrivedTex.shown
         FAR_TITLE = f.titleF.text
         FAR_R, FAR_G, FAR_B = f.titleF.r, f.titleF.g, f.titleF.b
+        FAR_DIST = f.distF.text
+        local a = f.titleF.anchor
+        FAR_POINT, FAR_TO, FAR_X, FAR_Y = a[1], a[3], a[4], a[5]
+        FAR_ON_DIST = a[2] == f.distF
         A:SetWaypoint(84, 0.10, 0.20, "The Bank")
         A:Tick(f)
         NEAR_TEX = f.arrivedTex.tex
         NEAR_ARROW = f.arrowTex.shown
         NEAR_ARRIVED = f.arrivedTex.shown
+        NEAR_DIST = f.distF.text
+        NEAR_TITLE = f.titleF.text
         A:ClearWaypoint()
         A:Tick(f)
         IDLE_TITLE = f.titleF.text
         IDLE_R, IDLE_G, IDLE_B = f.titleF.r, f.titleF.g, f.titleF.b
+        local idle = f.titleF.anchor
+        IDLE_ON_ETA = idle[2] == f.etaF
+        IDLE_Y = idle[5]
     """)
     far = g(lua, "FAR_TEX") or ""
     near = g(lua, "NEAR_TEX") or ""
@@ -337,12 +429,20 @@ def check_arrow_paint(rel, label):
     check(f"{label} /way label is body text, not gold",
           (round(g(lua, "FAR_R"), 2), round(g(lua, "FAR_G"), 2), round(g(lua, "FAR_B"), 2)),
           (0.92, 0.90, 0.87))
+    check(f"{label} distance is showing on the way", g(lua, "FAR_DIST") not in (None, ""))
+    check(f"{label} the typed label is 2px under the distance",
+          g(lua, "FAR_ON_DIST") and g(lua, "FAR_POINT") == "TOP" and g(lua, "FAR_TO") == "BOTTOM"
+          and g(lua, "FAR_X") == 0 and g(lua, "FAR_Y") == -2)
     check(f"{label} arrival uses util_waypoint_arrived", "util_waypoint_arrived.tga" in near)
     check(f"{label} arrival hides the pointing arrow", g(lua, "NEAR_ARROW"), False)
     check(f"{label} arrival shows the ring", g(lua, "NEAR_ARRIVED"), True)
+    check(f"{label} arrival hides the distance text", g(lua, "NEAR_DIST"), "")
+    check(f"{label} arrival hides the typed label", g(lua, "NEAR_TITLE"), "")
     check(f"{label} a guide step with no waypoint stays gold",
           g(lua, "IDLE_TITLE") == "No Waypoint"
           and (round(g(lua, "IDLE_R"), 2), round(g(lua, "IDLE_G"), 2), round(g(lua, "IDLE_B"), 2)) == (1.0, 0.82, 0.0))
+    check(f"{label} a guide title stays under the ETA",
+          g(lua, "IDLE_ON_ETA") and g(lua, "IDLE_Y") == -4)
 
 
 def check_talents():
