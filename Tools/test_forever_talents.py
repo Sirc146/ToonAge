@@ -8,6 +8,7 @@ tab-bar widths, then the grid shrinks to the content width.
 
 Usage:  python3 Tools/test_forever_talents.py [-v]
 """
+import struct
 import sys
 from pathlib import Path
 
@@ -30,6 +31,58 @@ def check(name, got, want):
             print(f"        got:  {got!r}")
             print(f"        want: {want!r}")
     return ok
+
+
+# The 13 talent frames. Masters are 64, the small cuts are 32, the badge is
+# a wide chip, and the line texture is a short strip. All are white plus alpha.
+TALENT_TGA = {
+    "talent_square.tga": (64, 64),
+    "talent_square_32.tga": (32, 32),
+    "talent_circle.tga": (64, 64),
+    "talent_circle_32.tga": (32, 32),
+    "talent_square_focus.tga": (64, 64),
+    "talent_square_focus_32.tga": (32, 32),
+    "talent_circle_focus.tga": (64, 64),
+    "talent_circle_focus_32.tga": (32, 32),
+    "talent_glow_circle.tga": (64, 64),
+    "talent_badge_fill.tga": (32, 16),
+    "talent_badge_border.tga": (32, 16),
+    "talent_edge.tga": (16, 8),
+    "talent_arrow.tga": (32, 32),
+}
+
+
+def audit_textures():
+    frame = ROOT / "Media" / "frame"
+    icons = ROOT / "Media" / "icons"
+    present = sorted(p.name for p in frame.glob("talent_*.tga"))
+    check("Media/frame holds the 13 talent textures", present, sorted(TALENT_TGA))
+    for name, (w, h) in TALENT_TGA.items():
+        check(f"{name} stays out of Media/icons", (icons / name).is_file(), False)
+        path = frame / name
+        if not path.is_file():
+            check(f"{name} is type 2 {w}x{h} 32-bit", None, (2, w, h, 32))
+            check(f"{name} is white with alpha", False, True)
+            continue
+        data = path.read_bytes()
+        hdr = data[:18]
+        got_w, got_h = struct.unpack_from("<HH", hdr, 12)
+        bpp = hdr[16]
+        check(f"{name} is type 2 {w}x{h} 32-bit", (hdr[2], got_w, got_h, bpp), (2, w, h, 32))
+        white = False
+        if hdr[2] == 2 and bpp == 32 and got_w and got_h and len(data) >= 18 + hdr[0] + got_w * got_h * 4:
+            pix = data[18 + hdr[0]:]
+            white = True
+            saw_alpha = False
+            for i in range(got_w * got_h):
+                b, g, r, a = pix[i * 4:i * 4 + 4]
+                if a:
+                    saw_alpha = True
+                    if r != 255 or g != 255 or b != 255:
+                        white = False
+                        break
+            white = white and saw_alpha
+        check(f"{name} is white with alpha", white, True)
 
 
 def load():
@@ -108,6 +161,7 @@ end
 
 
 def main():
+    audit_textures()
     lua = load()
     M = lua.globals().ToonAge.modules.ForeverTalents
     check("full window uses 40px nodes", M.NodePx(900), 40)
