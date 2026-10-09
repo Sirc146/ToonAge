@@ -176,6 +176,57 @@ def test_talent_tabs():
     check("retail tab info -> nil", C.GetTalentTabInfo(1), None)
 
 
+def test_spec_from_talents():
+    section("spec from talent tabs: most points, nil under 10, forever skips tabs")
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute(r"""
+ToonAge = {}
+GetNumTalentTabs = function() return 3 end
+pts = { 0, 16, 5 }
+names = { "Arcane", "Fire", "Frost" }
+GetTalentTabInfo = function(i) return names[i], "icon", pts[i] end
+""")
+    lua.execute(_read("Core/Compat/API.lua"))
+    C = lua.globals().ToonAge.Compat
+    idx, name = C.SpecFromTalentTabs()
+    check("most points is Fire", name, "Fire")
+    check("tab index 2", idx, 2)
+
+    lua.execute("pts[1], pts[2], pts[3] = 0, 4, 3")
+    check("under 10 points is nil", C.SpecFromTalentTabs(), None)
+
+    lua.execute("pts[1], pts[2], pts[3] = 0, 12, 12")
+    check("tie is nil", C.SpecFromTalentTabs(), None)
+
+    lua.execute("ToonAge.IsForever = true")
+    called = {"n": 0}
+    lua.execute("""
+GetNumTalentTabs = function() called = (called or 0) + 1; error("tabs") end
+""")
+    # rebind after the previous execute replaced the function; call and ensure no error
+    check("forever does not use talent tabs", C.SpecFromTalentTabs(), None)
+
+
+def test_pickup_container_item():
+    section("pickup prefers C_Container and never calls a nil global")
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute(r"""
+ToonAge = {}
+picked = nil
+C_Container = { PickupContainerItem = function(b, s) picked = b .. ":" .. s end }
+""")
+    lua.execute(_read("Core/Compat/API.lua"))
+    C = lua.globals().ToonAge.Compat
+    check("pickup returns true", C.PickupContainerItem(2, 4), True)
+    check("pickup recorded", lua.eval("picked"), "2:4")
+
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute("ToonAge = {}")
+    lua.execute(_read("Core/Compat/API.lua"))
+    C = lua.globals().ToonAge.Compat
+    check("no pickup API returns false", C.PickupContainerItem(1, 1), False)
+
+
 def test_missing_api_degrades():
     section("missing API degrades safely, does not error")
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
@@ -194,6 +245,8 @@ def main():
     test_classic_spell_shape()
     test_item_and_addon()
     test_talent_tabs()
+    test_spec_from_talents()
+    test_pickup_container_item()
     test_missing_api_degrades()
 
     passed = sum(1 for ok, *_ in _results if ok)

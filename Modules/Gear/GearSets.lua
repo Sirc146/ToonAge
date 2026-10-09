@@ -159,13 +159,12 @@ function GS:EquipSet(name)
             local bag, slot = FindInBags(itemLink)
             if bag and slot then
                 -- Pickup from bag, then place into equipment slot
-                if C_Container and C_Container.PickupContainerItem then
-                    C_Container.PickupContainerItem(bag, slot)
+                if U.PickupContainerItem and U.PickupContainerItem(bag, slot) then
+                    EquipCursorItem(slotID)
+                    equipped = equipped + 1
                 else
-                    PickupContainerItem(bag, slot)
+                    skipped = skipped + 1
                 end
-                EquipCursorItem(slotID)
-                equipped = equipped + 1
             else
                 -- Item not in bags — it might be equipped in a different slot,
                 -- or not in inventory at all. Skip silently.
