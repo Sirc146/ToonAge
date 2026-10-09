@@ -728,6 +728,102 @@ function L:ProfessionCard(parent, y, opts)
     return y - ROW_H - L.RPAD, card
 end
 
+--- Three profession gear slots under a card: tool, then accessories.
+--- opts.slots = { { label, equipped, empty, suggestion, why, equip } }
+--- `suggestion` is the display string (upgrade marker already appended).
+--- `why` is the tooltip lines. `equip` is the secure-button setup, or nil.
+--- The row is only asked for when the client has profession gear slots.
+function L:ProfessionGearRow(parent, y, opts)
+    opts = opts or {}
+    local slots = opts.slots or {}
+    local n = #slots
+    if n == 0 then return y, nil end
+    y = math.floor(y)
+    local w = self:Width(parent)
+    local ROW_H = 76
+    local gap = 8
+    local colW = math.max(math.floor((w - gap * (n - 1)) / n), 40)
+
+    local row = AcquireFrame("ProfessionGear", parent, function()
+        local f = CreateFrame("Frame", nil, HOLDER)
+        f.cols = {}
+        return f
+    end)
+    row:SetSize(w, ROW_H)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
+    row._count = n
+
+    for i = n + 1, #(row.cols or {}) do
+        local extra = row.cols[i]
+        extra._equip = nil
+        extra._why = nil
+        extra:Hide()
+    end
+
+    for i, slot in ipairs(slots) do
+        local col = row.cols[i]
+        if not col then
+            col = CreateFrame("Frame", nil, row)
+            col.label = col:CreateFontString(nil, "OVERLAY")
+            col.equipped = col:CreateFontString(nil, "OVERLAY")
+            col.suggest = col:CreateFontString(nil, "OVERLAY")
+            row.cols[i] = col
+        end
+        col:Show()
+        col:SetSize(colW, ROW_H)
+        col:ClearAllPoints()
+        col:SetPoint("TOPLEFT", row, "TOPLEFT", (i - 1) * (colW + gap), 0)
+
+        StyleText(col.label, { text = slot.label or "", size = 9, color = L.C_DIM })
+        col.label:ClearAllPoints()
+        col.label:SetPoint("TOPLEFT", col, "TOPLEFT", 0, 0)
+        col.label:SetWidth(colW)
+        col.label:SetHeight(0)
+
+        local eqColor = slot.empty and L.C_DIM or L.C_PRIMARY
+        StyleText(col.equipped, { text = slot.equipped or "", size = 10, color = eqColor })
+        col.equipped:ClearAllPoints()
+        col.equipped:SetPoint("TOPLEFT", col, "TOPLEFT", 0, -14)
+        col.equipped:SetWidth(colW)
+        col.equipped:SetHeight(0)
+
+        StyleText(col.suggest, { text = slot.suggestion or "", size = 10, color = L.C_PRIMARY })
+        col.suggest:ClearAllPoints()
+        col.suggest:SetPoint("TOPLEFT", col, "TOPLEFT", 0, -30)
+        col.suggest:SetWidth(colW)
+        col.suggest:SetHeight(0)
+        col.suggest._text = slot.suggestion
+
+        col._equip = slot.equip
+        col._why = slot.why
+        -- Locals, not the loop variable: Lua 5.1 closures share the for-index,
+        -- so a tooltip built from `slot` would show the last column on every hover.
+        local why = slot.why
+        local titleText = slot.suggestionPlain or slot.equipped or ""
+        if type(why) == "table" and #why > 0 then
+            col:EnableMouse(true)
+            col:SetScript("OnEnter", function(self)
+                if not GameTooltip or not GameTooltip.SetOwner then return end
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(titleText, 1, 0.82, 0)
+                for _, line in ipairs(why) do
+                    GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
+                end
+                GameTooltip:Show()
+            end)
+            col:SetScript("OnLeave", function()
+                if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+            end)
+        else
+            col:EnableMouse(false)
+            col:SetScript("OnEnter", nil)
+            col:SetScript("OnLeave", nil)
+        end
+    end
+
+    return y - ROW_H - L.RPAD, row
+end
+
 --- A stat bar split into the pieces that make it up.
 ---
 --- Same rules as StatBar -- fill is the real total, the faded remainder is

@@ -801,9 +801,9 @@ end
 -- a module that handles the event (a module must name an event to filter on it).
 -- BEGIN GENERATED EVENT_ROUTES (Tools/gen_event_routes.py)
 local EVENT_ROUTES = {
-    BAG_UPDATE = { "Gear", "Heirlooms" },
-    UNIT_INVENTORY_CHANGED = { "Character", "ForeverGear", "Gear" },
-    GET_ITEM_INFO_RECEIVED = { "ForeverGear", "Gear", "Heirlooms" },
+    BAG_UPDATE = { "Gear", "Heirlooms", "ProfessionGear" },
+    UNIT_INVENTORY_CHANGED = { "Character", "ForeverGear", "Gear", "ProfessionGear" },
+    GET_ITEM_INFO_RECEIVED = { "ForeverGear", "Gear", "Heirlooms", "ProfessionGear" },
     QUEST_LOG_UPDATE = { "CoordHarvester", "NameplateObjectives", "PullPlanner", "QuestTracker", "TargetMarker" },
     UNIT_AURA = { "CombatState" },
     UNIT_STATS = { "ForeverCharacter", "ForeverScrolls" },

@@ -22,6 +22,10 @@ function B:Render(content, side)
     local L = TA.Layout
     if not L then return end
     if L.CharacterSidebar then L:CharacterSidebar(side) end
+    -- Retail gear lives in its own file. Older clients never load it, and a
+    -- client without profession slot calls draws no row.
+    local gear = TA.ProfessionGear
+    if gear and gear.Begin then gear:Begin() end
 
     local y = -8
     y = L:SectionHeader(content, y, "Professions")
@@ -57,6 +61,9 @@ function B:Render(content, side)
             max      = max,
             segments = card.segments,
         })
+        if gear and gear.Draw then
+            y = gear:Draw(content, y, card)
+        end
     end
     L:Finish(content, y)
 end

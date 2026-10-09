@@ -52,6 +52,7 @@ Data\Retail\RotationConditions.lua
 Data\Retail\Rotations.lua
 Data\Retail\Professions.lua
 Data\Retail\ProfessionSkills.lua
+Data\Retail\professions_retail.lua
 Data\Retail\ItemLevels.lua
 Data\Retail\Pets.lua
 Data\Retail\Enchants.lua
@@ -126,6 +127,7 @@ Modules\Character\Talents.lua
 Modules\Character\TalentsPvP.lua
 Modules\Character\ProfessionSkills.lua
 Modules\Character\ProfessionBoard.lua
+Modules\Character\ProfessionGear.lua
 Modules\Character\Professions.lua
 Modules\Character\Pets.lua
 
