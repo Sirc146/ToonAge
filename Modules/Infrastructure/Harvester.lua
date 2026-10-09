@@ -910,6 +910,25 @@ local CORE_PROBES = {
     map = { title = "Map", run = function(P, L)
         P.Call(L, "C_Map.GetBestMapForUnit(player)", "C_Map.GetBestMapForUnit", "player")
     end },
+
+    -- One line per profession skill line the running client can read:
+    -- id, name, rank, max rank, header. ProfessionSkills picks the reader
+    -- from the data file's prefer list and the calls that exist.
+    professionLines = { title = "Professions", run = function(P, L)
+        local PS = TA.ProfessionSkills
+        if not PS or not PS.ProbeLines then
+            L[#L + 1] = "profession reader not loaded"
+            return
+        end
+        local ok, lines = pcall(PS.ProbeLines)
+        if not ok then
+            L[#L + 1] = "error: " .. tostring(lines)
+            return
+        end
+        for _, line in ipairs(lines or {}) do
+            L[#L + 1] = line
+        end
+    end },
 }
 Hv.CORE_PROBES = CORE_PROBES
 

@@ -102,6 +102,9 @@ Data\Forever\Spells.lua
 Data\Forever\Talents.lua
 Data\Forever\Items.lua
 Data\Forever\SpellRanks.lua
+# Unverified profession caps and skill lines. The tab says so until a probe
+# confirms them. Comprehension (3012) is the one id a probe has already seen.
+Data\Forever\ProfessionSkills.lua
 
 # ── Measured API surface ──────────────────────────────────────────────
 # Not game data: generated from the file list below. See the note above.
@@ -155,6 +158,10 @@ Modules\Farming\GatherTracker.lua
 
 
 # ── Forever's own ─────────────────────────────────────────────────────
+# Shared profession cards. Forever's data file picks C_SkillInfo; the reader
+# still checks that those calls exist before using them.
+Modules\Character\ProfessionSkills.lua
+Modules\Character\ProfessionBoard.lua
 Modules\Forever\Character.lua
 Modules\Forever\Gear.lua
 Modules\Forever\Talents.lua

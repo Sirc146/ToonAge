@@ -212,8 +212,9 @@ check("report dumps the same five sections as before",
       re.findall(r"== Harvest: (\w+) ==", report), ["items", "spells", "talents", "chars", "racials"])
 probes = re.findall(r"^== (.+) ==$", report[report.index("== Probes =="):report.index("== Harvest:")], re.M)
 check("probe sections in Forever's order", probes,
-      ["Probes", "Client", "Professions and skills", "Character sheet", "Skill lines: C_SkillInfo",
-       "Talent tree geometry", "Spell ranks", "Combat", "Map", "Scroll tooltips in your bags"])
+      ["Probes", "Client", "Professions and skills", "Professions", "Character sheet",
+       "Skill lines: C_SkillInfo", "Talent tree geometry", "Spell ranks", "Combat", "Map",
+       "Scroll tooltips in your bags"])
 check("a missing API probes as 'missing', not an error",
       "UnitDefense(player)  ->  missing" in report)
 check("scroll probe reads the bag scroll's tooltip", "  2: \"Use: armor up.\"" in report)

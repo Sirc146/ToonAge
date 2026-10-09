@@ -1,6 +1,6 @@
 ## Interface: 11509
 ## Title: |cFFFFD100ToonAge|r |cFF888780Classic Era|r
-## Notes: Classic Era / Vanilla edition — core engine only while Vanilla content is built.
+## Notes: Classic Era edition — profession skill bars, no advice.
 ## Author: Sirc
 ## Version: 2.0.0-dev.1
 ## DefaultState: enabled
@@ -11,12 +11,10 @@
 ## OptionalDependencies: WagoAnalytics
 # ── Classic Era (Vanilla) TOC ──
 # SCAFFOLD. This flavor is recognized by Core/Environment.lua and has its own
-# profile in Core/Profile.lua, but no researched Data/<Flavor> content yet, so
-# this TOC lists the shared Core engine and ErrorLog ONLY. The addon loads,
-# reports its own state and captures errors; it gives no advice at all rather
-# than applying another expansion's numbers to this one. Add the flavor's
-# Data/ and Modules/ files here at the same time its profile stops being a
-# scaffold — the TOC is the packaging backstop, the profile the runtime one.
+# profile in Core/Profile.lua. It still gives no advice. The one piece of
+# content is the shared profession readout: GetSkillLineInfo filtered to the
+# profession headers, drawn as one card per profession. Layout.lua is listed
+# because those cards draw through it.
 #
 # Interface 11509 = Classic Era / Hardcore / Fresh realms.
 
@@ -36,6 +34,12 @@ Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
 Core\Analytics.lua
+Core\Layout.lua
+
+# ── Profession skill lines (single bar; no advice) ─────────────────────
+Data\Vanilla\ProfessionSkills.lua
+Modules\Character\ProfessionSkills.lua
+Modules\Character\ProfessionBoard.lua
 
 # ── Shared infrastructure (no game-rule content) ───────────────────────
 Modules\Infrastructure\ErrorLog.lua

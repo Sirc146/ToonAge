@@ -81,6 +81,9 @@ local PROFILES = {
             WeaponSkill       = true,
             RaceAdvisor       = true,
             ProfessionAdvisor = true,
+            -- Shared profession cards. The tab points here; ProfessionAdvisor
+            -- keeps /ta profs and stays listed because its file is on the TOC.
+            ProfessionBoard   = true,
             TalentBuilds      = true,
             Rotation          = true,
             Spells            = true,
@@ -112,7 +115,7 @@ local PROFILES = {
             { id = "spells",      label = "Spells",      module = "Spells"            },
             { id = "weapons",     label = "Weapons",     module = "WeaponSkill"       },
             { id = "racials",     label = "Racials",     module = "RaceAdvisor"       },
-            { id = "professions", label = "Professions", module = "ProfessionAdvisor" },
+            { id = "professions", label = "Professions", module = "ProfessionBoard" },
             -- Hidden for classes with no pet (N5): Hunter/Warlock, or a pet out.
             { id = "pets",        label = "Pets",        module = "PetCare",
               condition = "hasPetClass" },
@@ -159,12 +162,16 @@ local PROFILES = {
             AutoMount    = true,
             CutsceneSkip = true,
             VendorAssist = true,
+            -- Shared profession cards. One bar from GetProfessions.
+            ProfessionBoard = true,
         },
-        -- Leveling companion: no Delves/Weekly/Talents/Rotation/Professions.
+        -- Leveling companion: no Delves/Weekly/Talents/Rotation. Professions is
+        -- the shared skill-bar readout (one card, one bar), not retail advice.
         tabs      = {
             { id = "character",  label = "Character",  module = "Character"    },
             { id = "guide",      label = "Guide",      module = "QuestTracker" },
             { id = "gear",       label = "Gear",       module = "Gear"         },
+            { id = "professions", label = "Professions", module = "ProfessionBoard" },
             -- Hidden for classes with no pet (N5): Hunter/Warlock, Frost Mage,
             -- Unholy DK, or any pet out. See TabConditions in Core/UI.lua.
             { id = "pets",       label = "Pets",       module = "PetCare",
@@ -175,9 +182,9 @@ local PROFILES = {
     },
 
     -- ── Tested inert scaffolds (Tasks 8/9) ────────────────────────────────
-    -- Declared so the flavor is a first-class citizen the engine recognizes,
-    -- but with no modules and no shipped Data. Loading on one of these clients
-    -- initializes nothing harmful and prints no wrong advice.
+    -- Declared so the flavor is a first-class citizen the engine recognizes.
+    -- Cata and Wrath ship no modules and no data. Vanilla ships only the
+    -- shared profession readout. None of them prints advice.
     cata = {
         label     = "Cataclysm Classic (scaffold)",
         allowAll  = false,
@@ -189,7 +196,14 @@ local PROFILES = {
     vanilla = {
         label     = "Classic Era / Vanilla (scaffold)",
         allowAll  = false,
-        modules   = {},
+        -- Still a scaffold: no advice, no gear scores. The one tab is the
+        -- shared profession readout (GetSkillLineInfo, single bar).
+        modules   = {
+            ProfessionBoard = true,
+        },
+        tabs      = {
+            { id = "professions", label = "Professions", module = "ProfessionBoard" },
+        },
         data      = "Vanilla",
         statRules = "vanilla-trees",
         scaffold  = true,
@@ -216,9 +230,11 @@ local PROFILES = {
     -- world through APIs this client has and carry no expansion numbers of
     -- their own: waypoints, coordinates, XP, gathering, rest, guide parsing and
     -- tracking. Everything left out — gear scoring, rotations, talents,
-    -- professions, pets, Delves, Weekly, world quests, travel routing — is
+    -- pets, Delves, Weekly, world quests, travel routing — is
     -- driven by Data/Retail values that are wrong for Vanilla-era content, and
-    -- stays out until Data/Forever exists.
+    -- stays out until Data/Forever exists. Professions is the shared skill
+    -- readout, and its Forever skill list stays unverified until a probe
+    -- confirms it.
     --
     -- partial (not scaffold): the addon does real work here, but only part of
     -- the product. ApiGuard stays quiet about the missing manifest, and the UI
@@ -299,10 +315,14 @@ local PROFILES = {
             -- Beta "world will refresh in N minutes" notice: countdown bar,
             -- 60s/10s warnings, and a log (/ta refreshlog). No tab.
             ForeverWorldRefresh = true,
+            -- Shared profession cards. Forever's skill list is unverified;
+            -- the reader uses C_SkillInfo only when those calls exist.
+            ProfessionBoard  = true,
         },
         tabs      = {
             { id = "character",  label = "Character",  module = "ForeverCharacter" },
             { id = "gear",       label = "Gear",       module = "ForeverGear"      },
+            { id = "professions", label = "Professions", module = "ProfessionBoard" },
             { id = "talents",    label = "Talents",    module = "ForeverTalents"   },
             { id = "spells",     label = "Spells",     module = "ForeverRotation"  },
             { id = "pets",       label = "Pets",       module = "ForeverPets", condition = "hasPetClass" },

@@ -57,6 +57,7 @@ Data\Retail\TalentsPvP.lua
 Data\Retail\RotationConditions.lua
 Data\Retail\Rotations.lua
 Data\Retail\Professions.lua
+Data\Retail\ProfessionSkills.lua
 Data\Retail\ItemLevels.lua
 Data\Retail\Pets.lua
 Data\Retail\Enchants.lua
@@ -129,6 +130,8 @@ Modules\Combat\SpecAdaptive.lua
 Modules\Character\Character.lua
 Modules\Character\Talents.lua
 Modules\Character\TalentsPvP.lua
+Modules\Character\ProfessionSkills.lua
+Modules\Character\ProfessionBoard.lua
 Modules\Character\Professions.lua
 Modules\Character\Pets.lua
 

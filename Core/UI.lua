@@ -250,6 +250,18 @@ local function IsTabEnabled(tabID)
     return not (TA.db and TA.db.disabledTabs and TA.db.disabledTabs[tabID])
 end
 
+--- Character when this flavor has it, otherwise the first tab that is on.
+--- A scaffold that ships only Professions must not open onto a missing
+--- Character tab and draw nothing.
+local function FallbackTab(preferred)
+    if preferred and IsTabEnabled(preferred) then return preferred end
+    if IsTabEnabled("character") then return "character" end
+    for _, t in ipairs(GetTabs()) do
+        if IsTabEnabled(t.id) then return t.id end
+    end
+    return preferred or "character"
+end
+
 --- Tab exists on this client (flavor tab set + module loaded).
 function TA:IsTabAvailable(tabID) return FindTab(tabID) ~= nil end
 --- Tab exists AND the player hasn't switched it off in options.
@@ -438,7 +450,7 @@ function TA:InitUI()
     function frame:SetTab(tabID)
         -- A saved lastTab may point at a tab the player has since disabled
         -- (e.g. from a previous session) -- fall back to the always-on tab.
-        if not IsTabEnabled(tabID) then tabID = "character" end
+        tabID = FallbackTab(tabID)
 
         -- Keep the reader's place.
         --
@@ -883,8 +895,7 @@ function TA:InitUI()
 
         -- Re-select the previously active tab, falling back to "character"
         -- if it was just disabled.
-        local tabToShow = self.activeTab or "character"
-        if not IsTabEnabled(tabToShow) then tabToShow = "character" end
+        local tabToShow = FallbackTab(self.activeTab or "character")
         self:SetTab(tabToShow)
     end
 
