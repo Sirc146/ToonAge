@@ -166,10 +166,10 @@ end
 --   window >= 676  -> 36 px   (Compact)
 --   below 676      -> 28 px   (Glyph; the window itself stops at 568)
 --
--- Available, partial, and maxed colours live in M.Theme only. Gold, with the
--- white highlight, is hover and selection. A gated talent carries its own
--- lock; the row does not. Gilder's talent_* textures are not in Media/frame
--- yet, so the node is a flat square until they arrive.
+-- Available, partial, and maxed colours live in M.Theme only. The frame art
+-- in Media/frame is white with alpha, so SetVertexColor applies the state.
+-- Hover and selection swap in the _focus frame and talent_glow_circle, both
+-- tinted gold. A gated talent carries its own lock.
 
 -- Same window cuts as the tab bar.
 local BREAK_FULL    = 740
@@ -182,20 +182,78 @@ local NODE_GLYPH    = 28
 local GRID_GAP = 8
 
 M.LINE_PX = 2
-M.RING_PX = 3          -- hover and selection; idle frames stay 1px
-M.GLOW_OUTSET = 6      -- soft gold halo until talent_glow arrives
+M.RING_PX = 3          -- the focus frame is this much heavier than the idle ring
+M.GLOW_OUTSET = 6
 M.LOCK_TEXTURE = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_lock_16.tga"
 M.LOCK_ALPHA = 0.5
 
+-- White frame art. Masters at 40 and 36; the _32 cut below 32px (the 28px
+-- glyph node, and anything the 568px window scales smaller than that).
+local FRAME = "Interface\\AddOns\\ToonAge\\Media\\frame\\"
+M.TEX = {
+    square        = FRAME .. "talent_square.tga",
+    square32      = FRAME .. "talent_square_32.tga",
+    circle        = FRAME .. "talent_circle.tga",
+    circle32      = FRAME .. "talent_circle_32.tga",
+    squareFocus   = FRAME .. "talent_square_focus.tga",
+    squareFocus32 = FRAME .. "talent_square_focus_32.tga",
+    circleFocus   = FRAME .. "talent_circle_focus.tga",
+    circleFocus32 = FRAME .. "talent_circle_focus_32.tga",
+    glow          = FRAME .. "talent_glow_circle.tga",
+    badgeFill     = FRAME .. "talent_badge_fill.tga",
+    badgeBorder   = FRAME .. "talent_badge_border.tga",
+    edge          = FRAME .. "talent_edge.tga",
+    arrow         = FRAME .. "talent_arrow.tga",
+}
+
 M.Theme = {
-    available = { 70 / 255, 200 / 255, 106 / 255 },   -- green frame
-    partial   = { 1, 1, 1 },                           -- white frame
-    maxed     = { 251 / 255, 224 / 255, 143 / 255 },   -- #FBE08F pale yellow
-    locked    = { 0.45, 0.43, 0.40 },                  -- dimmed
-    gold      = { 232 / 255, 179 / 255, 90 / 255 },    -- #E8B35A hover and selection
-    highlight = { 1, 0.957, 0.745 },                   -- white highlight on gold
+    available = { 70 / 255, 200 / 255, 106 / 255 },    -- #46C86A
+    partial   = { 245 / 255, 247 / 255, 250 / 255 },   -- #F5F7FA
+    maxed     = { 251 / 255, 224 / 255, 143 / 255 },   -- #FBE08F
+    locked    = { 122 / 255, 130 / 255, 140 / 255 },   -- #7A828C
+    gold      = { 232 / 255, 179 / 255, 90 / 255 },    -- #E8B35A hover, selection, glow
+    highlight = { 1, 0.957, 0.745 },
     line      = { 0.62, 0.58, 0.48, 0.90 },
 }
+
+--- Master frame at 32px and above; the _32 cut underneath.
+function M.UsesSmallFrame(px)
+    return (tonumber(px) or 40) < 32
+end
+
+--- Square only for the entry types Blizzard draws with a square template.
+--- SpendSquare is 1 and SpendCapstoneSquare is 14 in Enum.TraitNodeEntryType.
+--- A missing type, and every other entry type, is the circle that template
+--- table falls back to.
+function M.Shape(entryType)
+    local E = Enum and Enum.TraitNodeEntryType
+    local square = E and E.SpendSquare or 1
+    local capSquare = E and E.SpendCapstoneSquare or 14
+    if entryType == square or entryType == capSquare then return "square" end
+    return "circle"
+end
+
+--- Idle or focus frame for this shape and drawn size.
+function M.FrameFile(shape, hot, px)
+    local small = M.UsesSmallFrame(px)
+    local square = shape == "square"
+    if hot then
+        if square then return small and M.TEX.squareFocus32 or M.TEX.squareFocus end
+        return small and M.TEX.circleFocus32 or M.TEX.circleFocus
+    end
+    if square then return small and M.TEX.square32 or M.TEX.square end
+    return small and M.TEX.circle32 or M.TEX.circle
+end
+
+--- A prerequisite edge points one way. Visual-only connections stay lines.
+--- SufficientForAvailability is 2 and RequiredForAvailability is 3.
+function M.EdgeArrow(edgeType)
+    if type(edgeType) ~= "number" then return false end
+    local E = Enum and Enum.TraitEdgeType
+    local sufficient = E and E.SufficientForAvailability or 2
+    local required = E and E.RequiredForAvailability or 3
+    return edgeType == sufficient or edgeType == required
+end
 
 local function Secret(v)
     if v == nil then return false end
@@ -505,6 +563,7 @@ function M.Layout(nodes, conditions, opts)
             name = n.name,
             spellID = n.spellID,
             texture = n.texture,
+            shape = n.shape or M.Shape(n.entryType),
         }
     end
     table.sort(cells, function(a, b)
@@ -518,27 +577,45 @@ function M.Layout(nodes, conditions, opts)
         if cell.id ~= nil and not byID[cell.id] then byID[cell.id] = cell end
     end
     local lines, seen = {}, {}
+    local function note(srcId, dstId, arrow)
+        if not byID[srcId] or not byID[dstId] or dstId == srcId then return end
+        local a, b = srcId, dstId
+        if tostring(b) < tostring(a) then a, b = b, a end
+        local key = tostring(a) .. ":" .. tostring(b)
+        local prev = seen[key]
+        if not prev then
+            seen[key] = { src = srcId, dst = dstId, arrow = arrow and true or false }
+        elseif arrow and not prev.arrow then
+            prev.src, prev.dst, prev.arrow = srcId, dstId, true
+        end
+    end
     for _, n in ipairs(usable) do
-        if type(n.edges) == "table" and byID[n.id] then
+        if type(n.edges) == "table" then
             for _, e in ipairs(n.edges) do
-                local tid = type(e) == "table" and (e.targetNode or e.targetNodeID) or e
-                local other = byID[tid]
-                if other and tid ~= n.id then
-                    local a, b = n.id, tid
-                    if tostring(b) < tostring(a) then a, b = b, a end
-                    local key = tostring(a) .. ":" .. tostring(b)
-                    if not seen[key] then
-                        seen[key] = true
-                        local from, to = byID[a], byID[b]
-                        lines[#lines + 1] = {
-                            a = a, b = b,
-                            x1 = from.x + draw / 2, y1 = from.y + draw / 2,
-                            x2 = to.x + draw / 2,   y2 = to.y + draw / 2,
-                        }
-                    end
+                local tid, arrow
+                if type(e) == "table" then
+                    tid = e.targetNode or e.targetNodeID
+                    arrow = M.EdgeArrow(e.type)
+                else
+                    tid = e
                 end
+                if tid ~= nil then note(n.id, tid, arrow) end
             end
         end
+    end
+    local keys = {}
+    for key in pairs(seen) do keys[#keys + 1] = key end
+    table.sort(keys)
+    for _, key in ipairs(keys) do
+        local e = seen[key]
+        local from, to = byID[e.src], byID[e.dst]
+        lines[#lines + 1] = {
+            a = e.src, b = e.dst,
+            x1 = from.x + draw / 2, y1 = from.y + draw / 2,
+            x2 = to.x + draw / 2,   y2 = to.y + draw / 2,
+            arrow = e.arrow,
+            texture = e.arrow and M.TEX.arrow or M.TEX.edge,
+        }
     end
 
     return {
@@ -609,17 +686,20 @@ function M.ReadGrid()
                             entryID = info.entryIDs[1]
                             if Secret(entryID) then entryID = nil end
                         end
-                        local name, spellID, texture
+                        local name, spellID, texture, entryType
                         if entryID and C_Traits.GetEntryInfo then
                             local entry = Try(C_Traits.GetEntryInfo, configID, entryID)
-                            if type(entry) == "table" and entry.definitionID and C_Traits.GetDefinitionInfo then
-                                local def = Try(C_Traits.GetDefinitionInfo, entry.definitionID)
-                                if type(def) == "table" then
-                                    spellID = Plain(def.spellID)
-                                    name = SpellName(spellID) or (def.overrideName and not Secret(def.overrideName) and tostring(def.overrideName))
-                                    if spellID and C_Spell and C_Spell.GetSpellTexture then
-                                        local tex = Try(C_Spell.GetSpellTexture, spellID)
-                                        if tex and not Secret(tex) then texture = tex end
+                            if type(entry) == "table" then
+                                entryType = Plain(entry.type)
+                                if entry.definitionID and C_Traits.GetDefinitionInfo then
+                                    local def = Try(C_Traits.GetDefinitionInfo, entry.definitionID)
+                                    if type(def) == "table" then
+                                        spellID = Plain(def.spellID)
+                                        name = SpellName(spellID) or (def.overrideName and not Secret(def.overrideName) and tostring(def.overrideName))
+                                        if spellID and C_Spell and C_Spell.GetSpellTexture then
+                                            local tex = Try(C_Spell.GetSpellTexture, spellID)
+                                            if tex and not Secret(tex) then texture = tex end
+                                        end
                                     end
                                 end
                             end
@@ -641,7 +721,11 @@ function M.ReadGrid()
                                 if type(e) == "table" then
                                     local tid = Plain(e.targetNode) or Plain(e.targetNodeID)
                                     if tid then
-                                        edges[#edges + 1] = { targetNode = tid, isActive = (e.isActive == true) }
+                                        edges[#edges + 1] = {
+                                            targetNode = tid,
+                                            isActive = (e.isActive == true),
+                                            type = Plain(e.type),
+                                        }
                                     end
                                 else
                                     local tid = Plain(e)
@@ -656,6 +740,7 @@ function M.ReadGrid()
                             rank = rank, max = max,
                             name = name or ("Node " .. tostring(id)),
                             spellID = spellID, texture = texture,
+                            entryType = entryType, shape = M.Shape(entryType),
                             conditionIDs = conditionIDs, edges = edges,
                         }
                     end
@@ -702,35 +787,33 @@ local function RenderNoTraits(content, y, level)
 end
 
 -- ─── DRAW ──────────────────────────────────────────────────────────────────
--- talent_* art is pending. Each node is a bordered square; the spell icon
--- sits inside it when the client has one. Lines are CreateLine at 2px.
+-- Frame art is white with alpha. The state colour is a vertex tint. Hover
+-- and selection use the focus cut of the same shape plus talent_glow_circle,
+-- both in gold. Lines are CreateLine at 2px: talent_edge, or talent_arrow
+-- when the edge is a prerequisite.
 
-local EDGE = {
-    bgFile   = "Interface\\Buttons\\WHITE8X8",
-    edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 1,
-}
-local EDGE_HOVER = {
-    bgFile   = "Interface\\Buttons\\WHITE8X8",
-    edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = M.RING_PX,
-}
+local function Tint(tex, rgb, alpha)
+    if tex and tex.SetVertexColor then
+        tex:SetVertexColor(rgb[1], rgb[2], rgb[3], alpha or 1)
+    end
+end
 
 local function PaintNode(btn)
     local theme = M.Theme
     local rgb = theme[btn.state] or theme.available
     local hot = btn._hover or btn.id == M.selectedID
     local dim = btn.state == "locked" and not hot
+    local alpha = dim and M.LOCK_ALPHA or 1
     if hot then rgb = theme.gold end
-    btn:SetBackdrop(hot and EDGE_HOVER or EDGE)
-    btn:SetBackdropColor(0.06, 0.06, 0.07, dim and M.LOCK_ALPHA or 0.92)
-    btn:SetBackdropBorderColor(rgb[1], rgb[2], rgb[3], dim and M.LOCK_ALPHA or 1)
-    if btn.highlight then
-        if hot then btn.highlight:Show() else btn.highlight:Hide() end
+    if btn.frame and btn.frame.SetTexture then
+        btn.frame:SetTexture(M.FrameFile(btn.shape, hot, btn._px))
+        Tint(btn.frame, rgb, alpha)
     end
     if btn.glow then
         if hot then btn.glow:Show() else btn.glow:Hide() end
     end
+    Tint(btn.badgeFill, rgb, alpha)
+    Tint(btn.badgeBorder, rgb, alpha)
     if btn.icon then
         btn.icon:SetAlpha(dim and M.LOCK_ALPHA or 1)
         if btn.icon.SetDesaturated then btn.icon:SetDesaturated(btn.state == "locked") end
@@ -749,52 +832,61 @@ local function DrawGrid(content, y, plan)
 
     local buttons = {}
     for _, cell in ipairs(plan.cells) do
-        local btn = CreateFrame("Button", nil, holder, "BackdropTemplate")
+        local btn = CreateFrame("Button", nil, holder)
         btn:SetSize(math.floor(cell.w), math.floor(cell.h))
         btn:SetPoint("TOPLEFT", holder, "TOPLEFT", math.floor(cell.x), -math.floor(cell.y))
         btn.id = cell.id
         btn.state = cell.state
+        btn.shape = cell.shape
+        btn._px = cell.w
         btn._locked = cell.locked
         btn._baseLevel = btn:GetFrameLevel()
 
+        local frame = btn:CreateTexture(nil, "BORDER")
+        frame:SetAllPoints()
+        btn.frame = frame
+
+        local inset = math.max(2, math.floor(cell.w * 0.12))
         local icon = btn:CreateTexture(nil, "ARTWORK")
-        icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -3)
-        icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -3, 3)
+        icon:SetPoint("TOPLEFT", btn, "TOPLEFT", inset, -inset)
+        icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -inset, inset)
         if cell.texture then
             icon:SetTexture(cell.texture)
         else
-            -- Placeholder until Media/frame/talent_* arrives.
-            icon:SetColorTexture(0.22, 0.24, 0.26, 1)
+            icon:SetColorTexture(0.08, 0.08, 0.09, 1)
         end
         btn.icon = icon
 
-        -- Placeholder halo. talent_glow is not in Media/frame yet, so this is
-        -- a soft gold square set behind the node. It stays under this node
-        -- and, while the pointer is here, above the neighbours.
+        -- talent_glow_circle sits under this node. Hover lifts the node and
+        -- the glow above the neighbours; the glow stays one level behind
+        -- its own button so it does not cover the icon.
         local glow = CreateFrame("Frame", nil, holder)
         glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -M.GLOW_OUTSET, M.GLOW_OUTSET)
         glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", M.GLOW_OUTSET, -M.GLOW_OUTSET)
         glow:EnableMouse(false)
         local gtex = glow:CreateTexture(nil, "BACKGROUND")
         gtex:SetAllPoints()
+        gtex:SetTexture(M.TEX.glow)
         local gold = M.Theme.gold
-        gtex:SetColorTexture(gold[1], gold[2], gold[3], 0.22)
+        Tint(gtex, gold, 1)
         if gtex.SetBlendMode then gtex:SetBlendMode("ADD") end
         glow:Hide()
         btn.glow = glow
 
-        local hi = btn:CreateTexture(nil, "OVERLAY")
-        hi:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
-        hi:SetPoint("TOPRIGHT", btn, "TOPRIGHT", -2, -2)
-        hi:SetHeight(1)
-        local h = M.Theme.highlight
-        hi:SetColorTexture(h[1], h[2], h[3], 0.9)
-        hi:Hide()
-        btn.highlight = hi
-
         if cell.badge then
+            local bw = math.min(22, math.max(12, math.floor(cell.w * 0.55)))
+            local bh = math.min(12, math.max(8, math.floor(cell.h * 0.32)))
+            local fill = btn:CreateTexture(nil, "OVERLAY")
+            fill:SetSize(bw, bh)
+            fill:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+            fill:SetTexture(M.TEX.badgeFill)
+            btn.badgeFill = fill
+            local border = btn:CreateTexture(nil, "OVERLAY")
+            border:SetAllPoints(fill)
+            border:SetTexture(M.TEX.badgeBorder)
+            btn.badgeBorder = border
             local badge = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            badge:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 2)
+            badge:SetPoint("CENTER", fill, "CENTER", 0, 0)
             badge:SetText(cell.badge)
             badge:SetTextColor(1, 1, 1, 1)
         end
@@ -863,10 +955,10 @@ local function DrawGrid(content, y, plan)
                 if ok and line then
                     pcall(function()
                         line:SetThickness(M.LINE_PX)
-                        local c = M.Theme.line
-                        if line.SetColorTexture then
-                            line:SetColorTexture(c[1], c[2], c[3], c[4] or 1)
+                        if line.SetTexture then
+                            line:SetTexture(ln.texture or M.TEX.edge)
                         end
+                        Tint(line, M.Theme.line, M.Theme.line[4])
                         line:SetStartPoint("CENTER", a)
                         line:SetEndPoint("CENTER", b)
                     end)

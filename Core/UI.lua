@@ -27,6 +27,24 @@ local DEFAULT_TABS = {
     { id = "pets",        label = "Pets",        module = "Pets"        },
 }
 
+-- These three tabs have their own glyphs. The bar is 30px tall, so the
+-- glyph is drawn at 20px from the _32 cut. The 64 master is the 32px size.
+local TAB_GLYPH = {
+    professions = "Interface\\AddOns\\ToonAge\\Media\\icons\\tab_professions_32.tga",
+    pets        = "Interface\\AddOns\\ToonAge\\Media\\icons\\tab_pets_32.tga",
+    racials     = "Interface\\AddOns\\ToonAge\\Media\\icons\\tab_racials_32.tga",
+}
+local TAB_GLYPH_PX = 20
+
+local function TintTab(btn, hot)
+    local r, g, b = 0.55, 0.52, 0.48
+    if hot then r, g, b = 0.92, 0.90, 0.87 end
+    if btn.label then btn.label:SetTextColor(r, g, b, 1) end
+    if btn.glyph and btn.glyph.SetVertexColor then
+        btn.glyph:SetVertexColor(r, g, b, 1)
+    end
+end
+
 -- Colours defined inline as literals (unpack on colour tables is unreliable in WoW Lua 5.1)
 
 -- ── Backdrop helper ───────────────────────────────────────────────────
@@ -470,7 +488,7 @@ function TA:InitUI()
         -- Update tab button states
         for id, btn in pairs(self.tabButtons) do
             local isActive = (id == tabID)
-            if isActive then btn.label:SetTextColor(0.92, 0.90, 0.87, 1.00) else btn.label:SetTextColor(0.55, 0.52, 0.48, 1.00) end
+            TintTab(btn, isActive)
             if isActive then btn.activeLine:Show() else btn.activeLine:Hide() end
         end
         self.activeTab = tabID
@@ -844,10 +862,22 @@ function TA:InitUI()
                 local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 lbl:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
                 lbl:SetText(tabDef.label)
-                lbl:SetTextColor(0.55, 0.52, 0.48, 1.00)
-                lbl:SetAllPoints(btn)
                 lbl:SetJustifyH("CENTER")
                 btn.label = lbl
+
+                local glyphFile = TAB_GLYPH[tabDef.id]
+                if glyphFile then
+                    local glyph = btn:CreateTexture(nil, "ARTWORK")
+                    glyph:SetSize(TAB_GLYPH_PX, TAB_GLYPH_PX)
+                    glyph:SetPoint("LEFT", btn, "LEFT", 6, 0)
+                    glyph:SetTexture(glyphFile)
+                    btn.glyph = glyph
+                    lbl:SetPoint("LEFT", glyph, "RIGHT", 4, 0)
+                    lbl:SetJustifyH("LEFT")
+                else
+                    lbl:SetAllPoints(btn)
+                end
+                TintTab(btn, false)
 
                 -- Subtle underline for active tab (white instead of gold)
                 local line = btn:CreateTexture(nil, "OVERLAY")
@@ -862,21 +892,18 @@ function TA:InitUI()
                 btn.module = tabDef.module
 
                 lbl:SetWidth(0)
-                btn:SetWidth(lbl:GetStringWidth() + 26)
+                local pad = btn.glyph and (6 + TAB_GLYPH_PX + 4 + 8) or 26
+                btn:SetWidth(lbl:GetStringWidth() + pad)
                 tabX = tabX + btn:GetWidth() + 2
 
                 btn:SetScript("OnClick", function()
                     frame:SetTab(tabDef.id)
                 end)
                 btn:SetScript("OnEnter", function()
-                    if frame.activeTab ~= tabDef.id then
-                        lbl:SetTextColor(0.92, 0.90, 0.87, 1.00)
-                    end
+                    if frame.activeTab ~= tabDef.id then TintTab(btn, true) end
                 end)
                 btn:SetScript("OnLeave", function()
-                    if frame.activeTab ~= tabDef.id then
-                        lbl:SetTextColor(0.55, 0.52, 0.48, 1.00)
-                    end
+                    if frame.activeTab ~= tabDef.id then TintTab(btn, false) end
                 end)
 
                 self.tabButtons[tabDef.id] = btn
