@@ -127,6 +127,9 @@ def main():
     check("an open node is available", M.NodeState(0, 1, False), "available")
     check("gold is not a rank state", M.NodeState(0, 1, False) != "gold", True)
     check("lines are 2px", M.LINE_PX, 2)
+    check("hover and selection use a thicker ring", M.RING_PX > 1, True)
+    check("the gold ring is 3px", M.RING_PX, 3)
+    check("the glow extends past the node", M.GLOW_OUTSET >= 4, True)
 
     theme = M.Theme
     check("maxed is pale yellow", round(theme.maxed[1] * 255), 251)
@@ -221,6 +224,8 @@ flip = ToonAge.modules.ForeverTalents.Layout(flipNodes, flipConds, { windowWidth
     check("568 grid fits the content width", narrow.width <= 307, True)
     check("568 grid is scaled down", narrow.scale < 1, True)
     check("568 still has 12 columns", narrow.columns, 12)
+    lua.execute("window = place(568, 568, nodes, conds)")
+    check("the tree fits the 568px minimum width", lua.eval("window.width") <= 568, True)
 
     # Live read: each node's conditionIDs, both field names, no rank subtext.
     lua.execute(r"""
