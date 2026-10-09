@@ -49,12 +49,11 @@ end
 
 local function PaintEstimate(f, step)
     f._estimateStep = step
-    if not f._estimateRing then return end
-    if step and step.coord and U.CoordsEstimated(step) then
-        f._estimateRing:Show()
-    else
-        f._estimateRing:Hide()
-    end
+end
+
+local function HideArrowArt(f)
+    if f.arrowTex then f.arrowTex:Hide() end
+    if f.arrivedTex then f.arrivedTex:Hide() end
 end
 
 local function GetTravelSpeed()
@@ -113,12 +112,12 @@ function Arrow:InitFrame()
         end
     end)
 
-    -- Scroll-wheel resize (0.5x – 3.0x)
+    -- Scroll-wheel resize, 32–64 px on the texture itself.
     f:EnableMouseWheel(true)
     f:SetScript("OnMouseWheel", function(fr, delta)
-        local s = math.max(0.5, math.min(fr:GetScale() + delta * 0.1, 3.0))
-        fr:SetScale(s)
-        if TA.charDB then TA.charDB.arrow = TA.charDB.arrow or {}; TA.charDB.arrow.scale = s end
+        local size = U.WaypointSize((fr._arrowSize or U.WAYPOINT_SIZE_DEFAULT) + delta * 4, false)
+        fr._arrowSize = size
+        if TA.charDB then TA.charDB.arrow = TA.charDB.arrow or {}; TA.charDB.arrow.size = size end
     end)
 
     -- Right-click to toggle drag lock
@@ -147,9 +146,10 @@ function Arrow:InitFrame()
     end)
     f:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    -- Restore saved state
+    -- Restore saved state. Size is pixels (default 48), not the old frame scale.
     local saved = TA.charDB and TA.charDB.arrow
-    if saved and saved.scale then f:SetScale(saved.scale) end
+    f._arrowSize = U.WaypointSize(saved and saved.size, false)
+    f:SetScale(1)
     if saved and saved.x and saved.y then
         f:ClearAllPoints()
         f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", saved.x, saved.y)
@@ -159,31 +159,20 @@ function Arrow:InitFrame()
     if saved and saved.locked then f:RegisterForDrag() else f:RegisterForDrag("LeftButton") end
     f:Hide()
 
-    -- Gold arrow (active, rotated each tick)
+    -- Full-colour waypoint. SetRotation turns it around its centre.
+    -- No SetVertexColor: the texture is already the colour it should be.
     local arrowTex = f:CreateTexture(nil, "ARTWORK")
-    arrowTex:SetSize(52, 52)
+    arrowTex:SetSize(U.WAYPOINT_SIZE_DEFAULT, U.WAYPOINT_SIZE_DEFAULT)
     arrowTex:SetPoint("TOP", f, "TOP", 0, -4)
-    arrowTex:SetTexture("Interface\\Minimap\\ROTATING-MINIMAPARROW")
-    arrowTex:SetVertexColor(1, 0.82, 0, 1)
+    arrowTex:SetTexture(U.TEX_WAYPOINT)
     f.arrowTex = arrowTex
 
-    -- Hollow ring around the arrow when this step's coordinate is estimated.
-    local estimateRing = f:CreateTexture(nil, "OVERLAY")
-    estimateRing:SetSize(64, 64)
-    estimateRing:SetPoint("CENTER", arrowTex, "CENTER", 0, 0)
-    estimateRing:SetTexture(U.TEX_RING)
-    estimateRing:SetVertexColor(0.92, 0.90, 0.87, 0.95)
-    estimateRing:Hide()
-    f._estimateRing = estimateRing
-
-    -- Grey arrow (inactive — no coord or wrong zone)
-    local greyTex = f:CreateTexture(nil, "ARTWORK")
-    greyTex:SetSize(52, 52)
-    greyTex:SetPoint("TOP", f, "TOP", 0, -4)
-    greyTex:SetTexture("Interface\\Minimap\\ROTATING-MINIMAPARROW")
-    greyTex:SetVertexColor(0.35, 0.30, 0.20, 0.45)
-    greyTex:Hide()
-    f.greyTex = greyTex
+    local arrivedTex = f:CreateTexture(nil, "ARTWORK")
+    arrivedTex:SetSize(U.WAYPOINT_SIZE_DEFAULT, U.WAYPOINT_SIZE_DEFAULT)
+    arrivedTex:SetPoint("TOP", f, "TOP", 0, -4)
+    arrivedTex:SetTexture(U.TEX_WAYPOINT_ARRIVED)
+    arrivedTex:Hide()
+    f.arrivedTex = arrivedTex
 
     local distF = f:CreateFontString(nil, "OVERLAY")
     distF:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
@@ -218,32 +207,23 @@ function Arrow:InitFrame()
     self.frame = f
 end
 
--- ── Color gradient helper ─────────────────────────────────────────────────
-local function ColorGradient(t, br,bg,bb, mr,mg,mb, gr,gg,gb)
-    if t >= 1 then return gr, gg, gb end
-    if t <= 0 then return br, bg, bb end
-    if t < 0.5 then
-        local p = t * 2
-        return br + (mr - br) * p, bg + (mg - bg) * p, bb + (mb - bb) * p
-    else
-        local p = (t - 0.5) * 2
-        return mr + (gr - mr) * p, mg + (gg - mg) * p, mb + (gb - mb) * p
-    end
-end
-
 -- ETA speed smoothing state
 local speedSamples = { 0, 0 }
 local lastDist     = nil
 local lastTime     = 0
-local ARRIVAL_DIST = 10   -- yards — threshold for arrival state
-local ARRIVAL_PULSE_RATE = 3  -- pulses per second
 
 -- ── Per-tick update ───────────────────────────────────────────────────────
 
 function Arrow:Tick(f)
+    if U.InInstance() then
+        U.RevealWaypoint(f, false)
+        return
+    end
+
     -- ── MANUAL WAYPOINT (from /ta way) takes priority over guide step ──
     local coordMap, cx, cy, label
     local isManualWP = false
+    local step
     PaintEstimate(f, nil)
 
     if self.manualWaypoint then
@@ -253,12 +233,12 @@ function Arrow:Tick(f)
         label    = self.manualWaypoint.title or "Waypoint"
         isManualWP = true
     else
-        local step = GetTargetStep()
+        step = GetTargetStep()
         PaintEstimate(f, (step and step.coord) and step or nil)
 
         if not step or not step.coord then
-            f.arrowTex:Hide()
-            f.greyTex:Show()
+            U.RevealWaypoint(f, true)
+            HideArrowArt(f)
             f.distF:SetText("---")
             f.etaF:SetText("")
             f.titleF:SetText("No Waypoint")
@@ -268,8 +248,8 @@ function Arrow:Tick(f)
 
         -- Narrative / no-location steps
         if step.type == "text" then
-            f.arrowTex:Hide()
-            f.greyTex:Hide()
+            U.RevealWaypoint(f, true)
+            HideArrowArt(f)
             f.distF:SetText("")
             f.etaF:SetText("")
             f.titleF:SetText(step.text or "")
@@ -287,8 +267,8 @@ function Arrow:Tick(f)
         coordMap, cx, cy = GetEffectiveCoord(step)
 
         if coordMap == 0 and cx == 0 and cy == 0 then
-            f.arrowTex:Hide()
-            f.greyTex:Show()
+            U.RevealWaypoint(f, true)
+            HideArrowArt(f)
             f.distF:SetText("No Loc")
             f.etaF:SetText("")
             self._arrived = false
@@ -301,7 +281,10 @@ function Arrow:Tick(f)
     f.titleF:SetText(label)
 
     local currentMap = C_Map.GetBestMapForUnit("player")
-    if not currentMap then return end
+    if not currentMap then
+        U.RevealWaypoint(f, false)
+        return
+    end
 
     -- Cross-zone detection
     if coordMap ~= 0 and coordMap ~= currentMap then
@@ -335,8 +318,8 @@ function Arrow:Tick(f)
         if isSameArea then
             coordMap = currentMap
         else
-            f.arrowTex:Hide()
-            f.greyTex:Show()
+            U.RevealWaypoint(f, true)
+            HideArrowArt(f)
             f.distF:SetText("Diff Zone")
             f.etaF:SetText("")
             self._arrived = false
@@ -345,9 +328,16 @@ function Arrow:Tick(f)
     end
 
     local pos = C_Map.GetPlayerMapPosition(currentMap, "player")
-    if not pos then return end
+    if not pos then
+        U.RevealWaypoint(f, false)
+        return
+    end
     local px, py = pos:GetXY()
-    if not px or not py or (px == 0 and py == 0) then return end
+    if not px or not py or (px == 0 and py == 0) then
+        U.RevealWaypoint(f, false)
+        return
+    end
+    U.RevealWaypoint(f, true)
 
     local dx          = cx - px
     local dy          = cy - py
@@ -376,25 +366,21 @@ function Arrow:Tick(f)
 
     local targetAngle = bearing - facing
     local yards = U.ComputeDistance(px, py, cx, cy)
+    local hollow = U.WaypointHollow(step)
+    local _, arrived = U.WaypointArrowAlpha(yards)
 
-    -- ── ARRIVAL STATE ─────────────────────────────────────────────────
-    if yards <= ARRIVAL_DIST then
+    U.PaintQuestArrow(f.arrowTex, f.arrivedTex, {
+        yards = yards, angle = targetAngle, hollow = hollow, size = f._arrowSize,
+    })
+    f.distF:SetText(U.FormatDistance(yards, hollow))
+
+    if arrived then
         if not self._arrived then
             self._arrived = true
             self._arrivedTime = GetTime()
             self.currentAngle = nil
         end
-        f.greyTex:Hide()
-        f.arrowTex:Show()
-        f.arrowTex:SetRotation(0)
-
-        local pulse = 0.6 + 0.4 * math.sin(GetTime() * ARRIVAL_PULSE_RATE * math.pi * 2)
-        f.arrowTex:SetVertexColor(0.20, 0.92, 0.40, pulse)
-
-        f.distF:SetText("|cFF4AFF7AArrived|r")
         f.etaF:SetText("")
-
-        -- Auto-clear manual waypoints 3 seconds after arrival
         if isManualWP and self._arrivedTime and (GetTime() - self._arrivedTime > 3) then
             self.manualWaypoint = nil
             self._arrived = false
@@ -405,25 +391,6 @@ function Arrow:Tick(f)
     end
 
     self._arrived = false
-    f.greyTex:Hide()
-    f.arrowTex:Show()
-
-    -- ── DIRECTIONAL COLOR GRADIENT ────────────────────────────────────
-    local perc = math.abs((math.pi - math.abs(targetAngle)) / math.pi)
-    perc = math.max(0, math.min(1, perc))
-
-    local r, g, b = ColorGradient(perc,
-        0.90, 0.20, 0.15,   -- red (facing away)
-        1.00, 0.80, 0.10,   -- yellow (sideways)
-        0.20, 0.92, 0.40    -- green (facing toward)
-    )
-
-    -- ── ROTATION (direct) ─────────────────────────────────────────────
-    f.arrowTex:SetRotation(targetAngle)
-    f.arrowTex:SetVertexColor(r, g, b, 1)
-
-    -- ── DISTANCE ──────────────────────────────────────────────────────
-    f.distF:SetText(U.FormatDistance(yards))
 
     -- ── SPEED-SMOOTHED ETA ────────────────────────────────────────────
     local now = GetTime()

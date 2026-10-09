@@ -1296,7 +1296,11 @@ function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, up
         local wI, pI = GetItemIlvls(curLink)
         SLabel("|cFF8B7040Score:|r " .. curScore, 10)
         SLabel("iLvl: " .. wI .. (pI and ("  |cFF00FF00PvP: " .. pI .. "|r") or "  |cFF555555(no PvP)|r"), 9)
-        SLabel(GetItemInfo(curLink) or "Equipped Item", 9, 0.55, 0.44, 0.25)
+        local equippedName = GetItemInfo(curLink) or "Equipped Item"
+        if upLink and upScore > curScore then
+            equippedName = U.MarkItemName(equippedName, "downgrade", true)
+        end
+        SLabel(equippedName, 9, 0.55, 0.44, 0.25)
     else
         SLabel("|cFF8B7040Score:|r 0 (Empty)", 10)
     end
@@ -1304,7 +1308,7 @@ function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, up
     y = y - 4
     if upLink then
         SLabel("|cFF1EFF00[+] Upgrade Ready|r", 10, 0.12, 1.0, 0.0)
-        SLabel(GetItemInfo(upLink) or "Upgrade Item", 10, 1, 1, 1)
+        SLabel(U.MarkItemName(GetItemInfo(upLink) or "Upgrade Item", "upgrade", true), 10, 1, 1, 1)
         SLabel("Score: " .. upScore .. "  |cFF1EFF00(+" .. math.floor(upScore - curScore) .. ")|r", 9, 0.12, 1.0, 0.0)
         SButton("Equip Now", function()
             local ok, why = U.SafeEquip(bag, slot, slotID, { allowPrompt = true })
@@ -1442,11 +1446,21 @@ local function InjectTooltipScore(tooltip, itemLink)
     tooltip:AddLine("ToonAge Score", 0.40, 0.75, 1.00)
 
     local diff = score - equippedScore
+    local kind
+    if equippedScore > 0 and diff > 0 then kind = "upgrade"
+    elseif equippedScore > 0 and diff < 0 then kind = "downgrade" end
+    if kind then
+        local nameFS = _G[(tooltip:GetName() or "GameTooltip") .. "TextLeft1"]
+        if nameFS and nameFS.GetText and nameFS.SetText then
+            nameFS:SetText(U.MarkItemName(nameFS:GetText() or "", kind, true))
+        end
+    end
+
     if equippedScore > 0 and diff > 0 then
         local pct = math.floor((diff / equippedScore) * 100)
         tooltip:AddDoubleLine(
             string.format("Score: %d", math.floor(score)),
-            "|TInterface\\Buttons\\UI-GroupLoot-Dice-Up:14:14:0:0|t |cFF4AFF7A+" .. pct .. "% upgrade|r",
+            "|cFF4AFF7A+" .. pct .. "%|r",
             0.92, 0.90, 0.87,
             0.30, 0.92, 0.40
         )
@@ -1454,7 +1468,7 @@ local function InjectTooltipScore(tooltip, itemLink)
         local pct = math.floor((math.abs(diff) / equippedScore) * 100)
         tooltip:AddDoubleLine(
             string.format("Score: %d", math.floor(score)),
-            "|cFFFF6666-" .. pct .. "% downgrade|r",
+            "|cFFFF6666-" .. pct .. "%|r",
             0.92, 0.90, 0.87,
             1.00, 0.40, 0.40
         )

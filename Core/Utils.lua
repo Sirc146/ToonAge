@@ -149,6 +149,28 @@ U.TEX_PIP         = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8.tga"
 U.TEX_PIP_RING    = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8_ring.tga"
 U.TEX_PIP_CHARGED = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8_charged.tga"
 
+-- Quest waypoint arrow (style guide §19). Full-colour 64 masters. Never tint
+-- these with SetVertexColor; fade with SetAlpha. The hollow cut is for an
+-- estimated coordinate or an unverified step, and it is not drawn below 40px.
+U.TEX_WAYPOINT         = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_waypoint.tga"
+U.TEX_WAYPOINT_HOLLOW  = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_waypoint_hollow.tga"
+U.TEX_WAYPOINT_ARRIVED = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_waypoint_arrived.tga"
+U.WAYPOINT_SIZE_DEFAULT = 48
+U.WAYPOINT_SIZE_MIN     = 32
+U.WAYPOINT_SIZE_MAX     = 64
+U.WAYPOINT_HOLLOW_MIN   = 40
+U.WAYPOINT_FADE_FAR     = 8   -- full arrow at this distance and beyond
+U.WAYPOINT_FADE_NEAR    = 5   -- arrived ring at this distance and closer
+
+-- Gear markers (style guide §20). White art, tinted inside the |T|t string.
+-- 16px cuts are the list size. Masters stay available at 32.
+U.TEX_UPGRADE       = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_upgrade.tga"
+U.TEX_UPGRADE_16    = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_upgrade_16.tga"
+U.TEX_DOWNGRADE     = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_downgrade.tga"
+U.TEX_DOWNGRADE_16  = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_downgrade_16.tga"
+U.TEX_SIDEGRADE     = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_sidegrade.tga"
+U.TEX_SIDEGRADE_16  = "Interface\\AddOns\\ToonAge\\Media\\icons\\util_sidegrade_16.tga"
+
 --- True when a guide step's coordinates were converted and still need a spot-check.
 --- A guide flagged coordsEstimated marks every step that has a coord.
 --- Individual steps (Dragonflight Chromie UNVERIFIED notes) set step.estimated.
@@ -165,8 +187,8 @@ end
 -- One phrase for every estimated pin, step ring, and arrow tooltip.
 U.ESTIMATED_TIP = "Approximate. Not checked yet."
 
---- Hollow ring for an estimated waypoint. Filled square otherwise.
---- The ring texture is the same mark on the step, the arrow, and map pins.
+--- Hollow ring for an estimated map pin or step mark. Filled square otherwise.
+--- The quest arrow uses util_waypoint_hollow instead of this ring.
 function U.PaintWaypointMark(tex, estimated, r, g, b, a)
     if not tex or not tex.SetTexture then return end
     if estimated then
@@ -182,6 +204,129 @@ function U.AddEstimatedTip(tooltip, step, guide)
     if not tooltip or not tooltip.AddLine then return end
     if not U.CoordsEstimated(step, guide) then return end
     tooltip:AddLine(U.ESTIMATED_TIP, 0.92, 0.90, 0.87)
+end
+
+--- Hollow quest arrow: estimated coordinates, or a step marked unverified.
+function U.WaypointHollow(step)
+    if type(step) ~= "table" then return false end
+    if step.unverified then return true end
+    return U.CoordsEstimated(step) and true or false
+end
+
+--- Pixel size for the quest arrow. Hollow art cannot go below 40: at 32 it
+--- reads as a solid arrow.
+function U.WaypointSize(size, hollow)
+    local n = tonumber(size) or U.WAYPOINT_SIZE_DEFAULT
+    if n < U.WAYPOINT_SIZE_MIN then n = U.WAYPOINT_SIZE_MIN end
+    if n > U.WAYPOINT_SIZE_MAX then n = U.WAYPOINT_SIZE_MAX end
+    if hollow and n < U.WAYPOINT_HOLLOW_MIN then n = U.WAYPOINT_HOLLOW_MIN end
+    return n
+end
+
+--- Alpha of the pointing arrow, and whether the arrived ring replaces it.
+--- Full from 8 yards out, fading down to 5, then the ring.
+function U.WaypointArrowAlpha(yards)
+    yards = tonumber(yards) or 0
+    if yards <= U.WAYPOINT_FADE_NEAR then return 0, true end
+    if yards >= U.WAYPOINT_FADE_FAR then return 1, false end
+    return (yards - U.WAYPOINT_FADE_NEAR) / (U.WAYPOINT_FADE_FAR - U.WAYPOINT_FADE_NEAR), false
+end
+
+--- True in a dungeon, raid, battleground, arena, or scenario. The quest
+--- arrow hides there. A missing IsInInstance is treated as the open world.
+function U.InInstance()
+    if type(IsInInstance) ~= "function" then return false end
+    local ok, inside = pcall(IsInInstance)
+    return ok and inside == true
+end
+
+--- Show or hide the whole arrow frame without stopping its OnUpdate. A hidden
+--- frame would never notice the player leaving an instance or gaining a position.
+function U.RevealWaypoint(frame, show)
+    if not frame or not frame.SetAlpha then return end
+    if show then
+        frame:SetAlpha(1)
+        if frame.EnableMouse then frame:EnableMouse(true) end
+    else
+        frame:SetAlpha(0)
+        if frame.EnableMouse then frame:EnableMouse(false) end
+    end
+end
+
+--- Point the quest arrow. Full-colour textures: no SetVertexColor. Rotation
+--- is SetRotation, which turns around the texture centre.
+---   state = { yards, angle, hollow, size }
+function U.PaintQuestArrow(arrowTex, arrivedTex, state)
+    state = state or {}
+    local hollow = state.hollow and true or false
+    local size = U.WaypointSize(state.size, hollow)
+    local ringSize = U.WaypointSize(state.size, false)
+    local alpha, arrived = U.WaypointArrowAlpha(state.yards)
+    if arrowTex and arrowTex.SetTexture then
+        arrowTex:SetTexture(hollow and U.TEX_WAYPOINT_HOLLOW or U.TEX_WAYPOINT)
+        if arrowTex.SetSize then arrowTex:SetSize(size, size) end
+        if arrived then
+            if arrowTex.Hide then arrowTex:Hide() end
+        else
+            if arrowTex.Show then arrowTex:Show() end
+            if arrowTex.SetAlpha then arrowTex:SetAlpha(alpha) end
+            if state.angle and arrowTex.SetRotation then arrowTex:SetRotation(state.angle) end
+        end
+    end
+    if arrivedTex and arrivedTex.SetTexture then
+        arrivedTex:SetTexture(U.TEX_WAYPOINT_ARRIVED)
+        if arrivedTex.SetSize then arrivedTex:SetSize(ringSize, ringSize) end
+        if arrived then
+            if arrivedTex.Show then arrivedTex:Show() end
+            if arrivedTex.SetAlpha then arrivedTex:SetAlpha(1) end
+        elseif arrivedTex.Hide then
+            arrivedTex:Hide()
+        end
+    end
+end
+
+-- White gear marks. RGB matches Layout's success, danger, and dim (text_muted).
+local GEAR_MARK_RGB = {
+    upgrade   = { 0.30, 0.92, 0.40 },
+    downgrade = { 1.00, 0.35, 0.30 },
+    sidegrade = { 0.45, 0.43, 0.40 },
+}
+local GEAR_MARK_FILE = {
+    upgrade   = U.TEX_UPGRADE_16,
+    downgrade = U.TEX_DOWNGRADE_16,
+    sidegrade = U.TEX_SIDEGRADE_16,
+}
+
+local function GearByte(x)
+    return math.floor(x * 255 + 0.5)
+end
+
+--- Inline gear marker, 16px, 4px to the right of the text before it.
+--- Downgrade is empty unless `compare` is true: that mark only belongs in a
+--- comparison. The string is the marker alone; callers append it to a name.
+function U.GearMark(kind, compare)
+    if kind == "downgrade" and not compare then return "" end
+    local rgb = GEAR_MARK_RGB[kind]
+    local path = GEAR_MARK_FILE[kind]
+    if not rgb or not path then return "" end
+    return string.format("|T%s:16:16:4:0:16:16:0:16:0:16:%d:%d:%d|t",
+        path, GearByte(rgb[1]), GearByte(rgb[2]), GearByte(rgb[3]))
+end
+
+--- "better" / "trade" / "worse" (and the same words as upgrade / sidegrade /
+--- downgrade) to the marker string. Downgrade still requires compare.
+function U.GearMarkForVerdict(verdict, compare)
+    if verdict == "better" or verdict == "upgrade" then return U.GearMark("upgrade", compare) end
+    if verdict == "trade" or verdict == "sidegrade" then return U.GearMark("sidegrade", compare) end
+    if verdict == "worse" or verdict == "downgrade" then return U.GearMark("downgrade", compare) end
+    return ""
+end
+
+--- Append a gear marker after an item name. Never prefixes the row.
+function U.MarkItemName(text, kind, compare)
+    if type(text) ~= "string" then text = "" end
+    local plain = text:gsub("|T.-|t", "")
+    return plain .. U.GearMark(kind, compare)
 end
 
 function U.SafeNum(val, fallback)
@@ -903,13 +1048,17 @@ function U.ComputeDistance(px, py, tx, ty)
     return math.sqrt(dx * dx + dy * dy)
 end
 
-function U.FormatDistance(yards)
+function U.FormatDistance(yards, estimated)
+    local text
     if yards >= 1000 then
         -- Convert yards to meters (1 yd = 0.9144 m) before dividing into km —
         -- yards/1000 was being mislabeled "km", ~9% short of the real value.
-        return string.format("%.1f km", (yards * 0.9144) / 1000)
+        text = string.format("%.1f km", (yards * 0.9144) / 1000)
+    else
+        text = string.format("%d yd", math.floor(yards or 0))
     end
-    return string.format("%d yds", math.floor(yards))
+    if estimated then return "~" .. text end
+    return text
 end
 
 function U.FormatETA(yards, speed)
