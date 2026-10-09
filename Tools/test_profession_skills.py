@@ -125,6 +125,8 @@ C_SkillInfo = {
 def test_source_has_no_version_branch():
     src = read("Modules/Character/ProfessionSkills.lua")
     check("reader does not mention TA.flavor", "TA.flavor" in src, False)
+    check("reader does not hardcode an absent profession", "Jewelcrafting" in src, False)
+    check("reader does not hardcode a class gate", '"MAGE"' in src, False)
     check("reader does not compare flavor", "flavor ==" in src, False)
     for name in ("segments", "professions", "skilllines", "skillinfo"):
         check(f"reader knows the {name} feature", name in src, True)
@@ -258,6 +260,46 @@ def test_forever_skillinfo():
     """)
     check("unlearned comprehension is omitted", lua.eval("#result.cards"), 1)
     check("blacksmithing remains", lua.eval("result.cards[1].name"), "Blacksmithing")
+
+    # Gates and absences come from the data file. A rogue never sees
+    # Comprehension. A mage below 6 does not either. Poisons is a rogue skill.
+    lua.execute(FOREVER_APIS)
+    lua.execute(r"""
+        function UnitClass() return "Rogue", "ROGUE" end
+        function UnitLevel() return 20 end
+        local orig = C_SkillInfo.GetSkillLineInfo
+        C_SkillInfo.GetSkillLineInfo = function(i)
+            if i == 9 then return { name = "Jewelcrafting", rank = 10, maxRank = 300, skillID = 755 } end
+            if i == 10 then return { name = "Poisons", rank = 1, maxRank = 300, skillID = 40 } end
+            return orig(i)
+        end
+        C_SkillInfo.GetNumSkillLines = function() return 10 end
+        result = ToonAge.ProfessionSkills.Collect()
+        local names = {}
+        for i = 1, #result.cards do names[i] = result.cards[i].name end
+        rogueNames = table.concat(names, ",")
+    """)
+    check("rogue names", lua.eval("rogueNames"), "Blacksmithing,Poisons")
+    check("forever data omits jewelcrafting",
+          "Jewelcrafting" in read("Data/Forever/ProfessionSkills.lua")
+          and "absent" in read("Data/Forever/ProfessionSkills.lua"), True)
+
+    lua.execute(r"""
+        function UnitClass() return "Mage", "MAGE" end
+        function UnitLevel() return 5 end
+        result = ToonAge.ProfessionSkills.Collect()
+        local names = {}
+        for i = 1, #result.cards do names[i] = result.cards[i].name end
+        lowNames = table.concat(names, ",")
+        UnitLevel = function() return 6 end
+        result = ToonAge.ProfessionSkills.Collect()
+        names = {}
+        for i = 1, #result.cards do names[i] = result.cards[i].name end
+        mageNames = table.concat(names, ",")
+    """)
+    check("a level 5 mage does not see comprehension", lua.eval("lowNames"), "Blacksmithing")
+    check("a level 6 mage sees comprehension and not poisons",
+          lua.eval("mageNames"), "Blacksmithing,Comprehension")
 
 
 FRAME = r"""

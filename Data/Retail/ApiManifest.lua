@@ -172,7 +172,7 @@ TA.Data.ApiManifest = {
         ["C_SpecializationInfo.GetAllSelectedPvpTalentIDs"] = { "Modules/TalentsPvP.lua" },
         ["C_SpecializationInfo.GetPvpTalentInfoByID"] = { "Modules/TalentsPvP.lua" },
         ["C_SpecializationInfo.GetPvpTalentSlotInfo"] = { "Modules/TalentsPvP.lua" },
-        ["C_Spell.GetSpellCharges"] = { "Modules/CombatState.lua" },
+        ["C_Spell.GetSpellCharges"] = { "Modules/Character/ProfessionOverload.lua", "Modules/CombatState.lua" },
         ["C_Spell.GetSpellCooldown"] = {
             "Core/Utils.lua",
             "Modules/CombatState.lua",
