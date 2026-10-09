@@ -23,6 +23,11 @@
 --   and add a set bonus while leveling. Before 9.0.1, shoulders, chest,
 --   cloak, helm, legs and rings granted up to 55% bonus experience.
 --   Mists Classic is before that change, so the bonus still applies there.
+--   On Mists the bag fallback also reads the bank while it is open
+--   (BANKFRAME_OPENED, PLAYERBANKSLOTS_CHANGED, and a close snapshot).
+--   The main bank and the bank bags go through the C_Container wrappers.
+--   What was seen is cached on the character, so a closed bank can still
+--   say "in your bank". Those rows do not get an Equip button.
 --
 -- Forever: FOREVER_ENABLED stays false until heirlooms are confirmed there.
 -- The Camelot TOC does not load this file. Era and TBC have no heirlooms.
@@ -140,6 +145,51 @@ end
 
 --- Armor subclass 1-4 is cloth through plate. A shield (subclass 6) is kept.
 --- Lower armor is wearable. Weapons are not filtered here.
+--- Main bank first, then the purchased bank bags. Defaults match Mists:
+--- BANK_CONTAINER is -1, four carried bags, seven bank bags (ids 5-11).
+function M.BankContainers(numBagSlots, numBankBags, bankContainer)
+    local bags = (type(numBagSlots) == "number") and numBagSlots or 4
+    local bankBags = (type(numBankBags) == "number") and numBankBags or 7
+    local main = (type(bankContainer) == "number") and bankContainer or -1
+    local ids = { main }
+    for i = 1, bankBags do
+        ids[#ids + 1] = bags + i
+    end
+    return ids
+end
+
+--- nil live means the bank is closed (the container API returned no slots).
+--- Keep the previous cache. A table, even an empty one, is a live read and
+--- replaces the cache.
+function M.NextBankCache(previous, live)
+    if live == nil then return previous end
+    return live
+end
+
+--- SavedVariables record. Bag and slot are omitted on purpose: a bank item
+--- cannot be equipped, and a stale slot must not become a secure button.
+function M.BankRecord(item)
+    return {
+        itemID = item.itemID,
+        name = item.name,
+        link = item.link,
+        ilvl = item.ilvl,
+        equipLoc = item.equipLoc,
+        classID = item.classID,
+        subclassID = item.subclassID,
+    }
+end
+
+function M.DetailLine(slotName, ilvl, eqIlvl, where)
+    local versus = (eqIlvl == nil) and "empty slot" or ("equipped " .. tostring(eqIlvl))
+    local text = string.format("%s  ·  item level %s vs %s", slotName or "Slot",
+        (ilvl == nil or ilvl == "") and "?" or tostring(ilvl), versus)
+    if where == "bank" then
+        text = text .. "  ·  in your bank"
+    end
+    return text
+end
+
 function M.CanWear(classID, subclassID, playerArmor)
     if classID ~= 4 then return true end
     if subclassID == 6 then return true end
@@ -304,8 +354,16 @@ end
 
 local function Remember(list, item)
     if item.minLevel and UnitLevel and (UnitLevel("player") or 1) < item.minLevel then return end
-    if not Equippable(item.link, item.classID, item.subclassID) then return end
     if not item.slots or not item.slots[1] then return end
+    if item.where == "bank" then
+        -- The link may not resolve once the bank is closed. The armor class
+        -- was stored while it was open.
+        if not M.CanWear(item.classID, item.subclassID, PlayerArmor()) then return end
+        item.bag = nil
+        item.slot = nil
+    elseif not Equippable(item.link, item.classID, item.subclassID) then
+        return
+    end
     list[#list + 1] = item
 end
 
@@ -346,13 +404,17 @@ local function FromCollection()
     return owned, true
 end
 
-local function BagList()
+local function CarriedBags()
     local bags = { 0 }
     local equippedBags = _G.NUM_BAG_SLOTS or 4
     for i = 1, equippedBags do bags[#bags + 1] = i end
-    if type(_G.BANK_CONTAINER) == "number" then bags[#bags + 1] = _G.BANK_CONTAINER end
-    for i = equippedBags + 1, equippedBags + 7 do bags[#bags + 1] = i end
-    return bags, equippedBags
+    return bags
+end
+
+local function ContainerAPI()
+    local U = TA.Utils
+    if not (U and U.GetContainerNumSlots and U.GetContainerItemLink) then return nil end
+    return U
 end
 
 local function QualityOf(link)
@@ -365,48 +427,118 @@ local function QualityOf(link)
     return nil
 end
 
-local function FromBags()
-    local owned = {}
-    local U = TA.Utils
-    local numSlots = U and U.GetContainerNumSlots
-    local itemLink = U and U.GetContainerItemLink
-    if not numSlots or not itemLink then return owned end
-    local bags, equippedBags = BagList()
-    for _, bag in ipairs(bags) do
-        local slots = numSlots(bag) or 0
+--- item table, false when the slot is occupied but its quality is not
+--- known yet, nil when the slot is empty or not an heirloom.
+local function ReadHeirloom(U, bag, slot, where)
+    local link = U.GetContainerItemLink(bag, slot)
+    local id = U.GetContainerItemID and U.GetContainerItemID(bag, slot)
+    if not link and not id then return nil end
+    if not link or QualityOf(link) == nil then
+        M._needItemInfo = true
+        if id and U.RequestItemInfo and (M._itemPasses or 0) < 2 then
+            U.RequestItemInfo(id)
+        end
+        return false
+    end
+    local quality = QualityOf(link)
+    if quality ~= M.HEIRLOOM_QUALITY then return nil end
+    local _, equipLoc, classID, subclassID = Meta(link)
+    if not equipLoc and type(GetItemInfo) == "function" then
+        equipLoc = select(9, GetItemInfo(link))
+    end
+    local name = (type(GetItemInfo) == "function" and GetItemInfo(link)) or link
+    local itemID = Meta(link)
+    if not itemID and U.GetContainerItemID then
+        itemID = U.GetContainerItemID(bag, slot)
+    end
+    local ilvl = ItemLevel(link)
+    if not ilvl then M._needItemInfo = true end
+    local item = {
+        itemID = itemID, name = name, link = link,
+        ilvl = ilvl, equipLoc = equipLoc,
+        slots = equipLoc and EQUIP_SLOTS[equipLoc],
+        where = where, classID = classID, subclassID = subclassID,
+    }
+    if where == "bag" then
+        item.bag = bag
+        item.slot = slot
+    end
+    return item
+end
+
+--- nil when the main bank reports no slots (it is closed). A list, possibly
+--- empty, when the bank is open. Main bank plus bank bags, via the
+--- C_Container wrappers on Utils (Compat picks C_Container on Mists).
+local function ReadBank(U)
+    local ids = M.BankContainers(_G.NUM_BAG_SLOTS, _G.NUM_BANKBAGSLOTS, _G.BANK_CONTAINER)
+    local mainSlots = U.GetContainerNumSlots(ids[1]) or 0
+    if mainSlots <= 0 then return nil end
+    local found, unresolved = {}, false
+    for _, bag in ipairs(ids) do
+        local slots = U.GetContainerNumSlots(bag) or 0
         for slot = 1, slots do
-            local link = itemLink(bag, slot)
-            local quality = link and QualityOf(link)
-            if link and quality == nil then
-                M._needItemInfo = true
-                local Ureq = TA.Utils
-                local id = Ureq and Ureq.GetContainerItemID and Ureq.GetContainerItemID(bag, slot)
-                if id and Ureq.RequestItemInfo and (M._itemPasses or 0) < 2 then
-                    Ureq.RequestItemInfo(id)
-                end
-            end
-            if link and quality == M.HEIRLOOM_QUALITY then
-                local _, equipLoc, classID, subclassID = Meta(link)
-                if not equipLoc and type(GetItemInfo) == "function" then
-                    equipLoc = select(9, GetItemInfo(link))
-                end
-                local name = (type(GetItemInfo) == "function" and GetItemInfo(link)) or link
-                local itemID = Meta(link)
-                if not itemID and U and U.GetContainerItemID then
-                    itemID = U.GetContainerItemID(bag, slot)
-                end
-                local ilvl = ItemLevel(link)
-                if not ilvl then M._needItemInfo = true end
-                local where = "bag"
-                if bag < 0 or bag > equippedBags then where = "bank" end
-                Remember(owned, {
-                    itemID = itemID, name = name, link = link,
-                    ilvl = ilvl, slots = equipLoc and EQUIP_SLOTS[equipLoc],
-                    where = where, bag = bag, slot = slot,
-                    classID = classID, subclassID = subclassID,
-                })
+            local item = ReadHeirloom(U, bag, slot, "bank")
+            if item then
+                found[#found + 1] = item
+            elseif item == false then
+                unresolved = true
             end
         end
+    end
+    return found, unresolved
+end
+
+local function LoadBankCache()
+    local saved = TA.charDB and TA.charDB.heirloomBank
+    if type(saved) ~= "table" then return {} end
+    local out = {}
+    for _, row in ipairs(saved) do
+        if type(row) == "table" and row.equipLoc and EQUIP_SLOTS[row.equipLoc] then
+            out[#out + 1] = {
+                itemID = row.itemID, name = row.name, link = row.link,
+                ilvl = row.ilvl, equipLoc = row.equipLoc,
+                slots = EQUIP_SLOTS[row.equipLoc],
+                where = "bank", classID = row.classID, subclassID = row.subclassID,
+            }
+        end
+    end
+    return out
+end
+
+local function SaveBankCache(items)
+    if not TA.charDB then return end
+    local out = {}
+    for _, item in ipairs(items or {}) do
+        if item.equipLoc then out[#out + 1] = M.BankRecord(item) end
+    end
+    TA.charDB.heirloomBank = out
+end
+
+local function FromBags()
+    local owned = {}
+    local U = ContainerAPI()
+    if not U then return owned end
+    for _, bag in ipairs(CarriedBags()) do
+        local slots = U.GetContainerNumSlots(bag) or 0
+        for slot = 1, slots do
+            local item = ReadHeirloom(U, bag, slot, "bag")
+            if item then Remember(owned, item) end
+        end
+    end
+    local live, unresolved = ReadBank(U)
+    if live == nil then
+        -- Bank is closed. Suggest whatever the last open visit stored.
+        for _, item in ipairs(LoadBankCache()) do Remember(owned, item) end
+    elseif unresolved then
+        -- The bank is open, but some links have not resolved. Keep the saved
+        -- list until a later pass can tell an heirloom from an ordinary item.
+        for _, item in ipairs(live) do Remember(owned, item) end
+        for _, item in ipairs(LoadBankCache()) do Remember(owned, item) end
+    else
+        local accepted = {}
+        for _, item in ipairs(live) do Remember(accepted, item) end
+        SaveBankCache(M.NextBankCache(LoadBankCache(), accepted))
+        for _, item in ipairs(accepted) do owned[#owned + 1] = item end
     end
     return owned
 end
@@ -473,8 +605,15 @@ function M:Status()
         return "heirloom scan skipped: no heirlooms on this version"
     end
     local api = CollectionApiPresent() and "C_Heirloom" or "absent"
-    return string.format("heirloom scan %s via %s: %d owned, %d suggested; CreateHeirloom %s",
-        mode, api, self._owned or 0, #(self._suggestions or {}), self._createMode or M.CreateHeirloomMode())
+    local bankNote = ""
+    if mode == "bags" then
+        local saved = TA.charDB and TA.charDB.heirloomBank
+        local n = (type(saved) == "table") and #saved or 0
+        bankNote = string.format("; bank cache %d", n)
+    end
+    return string.format("heirloom scan %s via %s: %d owned, %d suggested; CreateHeirloom %s%s",
+        mode, api, self._owned or 0, #(self._suggestions or {}),
+        self._createMode or M.CreateHeirloomMode(), bankNote)
 end
 
 function M:Init()
@@ -502,6 +641,9 @@ M.Events = {
     "GET_ITEM_INFO_RECEIVED",
     "PLAYER_REGEN_ENABLED",
     "PLAYER_REGEN_DISABLED",
+    "BANKFRAME_OPENED",
+    "BANKFRAME_CLOSED",
+    "PLAYERBANKSLOTS_CHANGED",
 }
 
 function M:OnEvent(event)
@@ -524,6 +666,11 @@ function M:OnEvent(event)
         self._itemPasses = (self._itemPasses or 0) + 1
         self._needItemInfo = false
         self:Scan()
+        return
+    end
+    if event == "BANKFRAME_OPENED" or event == "BANKFRAME_CLOSED"
+        or event == "PLAYERBANKSLOTS_CHANGED" then
+        if self._mode == "bags" then self:Scan() end
         return
     end
     if event == "BAG_UPDATE" or event == "HEIRLOOMS_UPDATED" then
@@ -800,15 +947,8 @@ function M:Draw(parent, y, width)
         detail:SetPoint("TOPLEFT", name, "BOTTOMLEFT", 0, -2)
         detail:SetWidth(math.max(80, width - 180))
         detail:SetJustifyH("LEFT")
-        local slotName = SLOT_NAME[row.slot] or "Slot"
         local ilvlText = (type(item.ilvl) == "number") and tostring(item.ilvl) or "?"
-        local versus
-        if row.eqIlvl == nil then
-            versus = "empty slot"
-        else
-            versus = "equipped " .. tostring(row.eqIlvl)
-        end
-        detail:SetText(string.format("%s  ·  item level %s vs %s", slotName, ilvlText, versus))
+        detail:SetText(M.DetailLine(SLOT_NAME[row.slot], ilvlText, row.eqIlvl, item.where))
         detail:SetTextColor(NEUTRAL[1], NEUTRAL[2], NEUTRAL[3])
 
         local btn

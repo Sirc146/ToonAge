@@ -126,6 +126,31 @@ eq("cloth on plate", M.CanWear(4, 1, 4), true)
 eq("shield kept", M.CanWear(4, 6, 1), true)
 eq("weapon kept", M.CanWear(2, 7, 1), true)
 
+local ids = M.BankContainers(4, 7, -1)
+eq("main bank plus seven bags", #ids, 8)
+eq("main bank is first", ids[1], -1)
+eq("first bank bag", ids[2], 5)
+eq("last bank bag", ids[8], 11)
+
+local kept = M.NextBankCache({ { itemID = 1 } }, nil)
+eq("closed bank keeps cache", kept[1].itemID, 1)
+local cleared = M.NextBankCache({ { itemID = 1 } }, {})
+eq("open empty bank clears cache", #cleared, 0)
+local written = M.NextBankCache(nil, { { itemID = 9 } })
+eq("open bank writes cache", written[1].itemID, 9)
+
+local rec = M.BankRecord({ itemID = 3, name = "X", bag = 5, slot = 1, equipLoc = "INVTYPE_HEAD", ilvl = 12 })
+eq("cache record drops the bag", rec.bag, nil)
+eq("cache record drops the slot", rec.slot, nil)
+eq("cache record keeps the item", rec.itemID, 3)
+eq("cache record keeps equip loc", rec.equipLoc, "INVTYPE_HEAD")
+
+local bagLine = M.DetailLine("Head", "20", 10, "bag")
+eq("bag line omits the bank", bagLine:find("in your bank", 1, true) == nil, true)
+local bankLine = M.DetailLine("Head", "20", nil, "bank")
+eq("bank line says in your bank", bankLine:find("in your bank", 1, true) ~= nil, true)
+eq("bank line names the empty slot", bankLine:find("empty slot", 1, true) ~= nil, true)
+
 if #fail > 0 then
     return table.concat(fail, "\n")
 end
@@ -145,6 +170,12 @@ check("pip texture", "util_pip_8.tga" in src, True)
 check("lock texture", "util_lock_16.tga" in src, True)
 check("secure item attribute", '"type", "item"' in src, True)
 check("regen requeue", "PLAYER_REGEN_ENABLED" in src, True)
+check("bank open event", "BANKFRAME_OPENED" in src, True)
+check("bank slot event", "PLAYERBANKSLOTS_CHANGED" in src, True)
+check("bank close snapshot", "BANKFRAME_CLOSED" in src, True)
+check("per character bank cache", "heirloomBank" in src, True)
+check("bank rows are not equip buttons", 'MakePlainButton(line, "In bank"' in src, True)
+check("reads containers through the wrapper", "U.GetContainerNumSlots" in src, True)
 
 for toc, want in (
     ("ToonAge_Mainline.toc", True),
