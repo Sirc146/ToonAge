@@ -453,7 +453,7 @@ function QT:FastForward(silent)
         -- Only chain if the next guide is applicable to this player
         if not GP or GP:IsGuideApplicable(nextGuide) then
             if not silent then
-                self:ShowToast("Guide complete! Next: " .. (nextGuide.title or guide.nextGuide))
+                self:ShowToast(self.CompletionNote(guide))
             end
             self.guideID = guide.nextGuide
             self.stepIdx = 1
@@ -497,14 +497,40 @@ local function MapIsInZone(playerMapID, guideZone)
     return MapZoneDistance(playerMapID, guideZone) ~= nil
 end
 
+--- Campaign order, then level, then id. Guides that set `order` stay in that
+--- order ahead of unfilled stubs that share the same minimum level.
+function QT.CompareGuides(a, b)
+    local aMin, bMin = a.minLevel or 1, b.minLevel or 1
+    if aMin ~= bMin then return aMin < bMin end
+    local aOrder, bOrder = a.order, b.order
+    if aOrder and bOrder and aOrder ~= bOrder then return aOrder < bOrder end
+    if aOrder and not bOrder then return true end
+    if bOrder and not aOrder then return false end
+    return (a.id or "") < (b.id or "")
+end
+
+--- Toast when a guide finishes. The campaign still chains to nextGuide.
+--- sideGuide is the route offered beside it (Arator's Journey after Eversong).
+function QT.CompletionNote(guide)
+    if type(guide) ~= "table" or not guide.nextGuide then return "Guide complete!" end
+    local nextGuide = TA.Guides and TA.Guides[guide.nextGuide]
+    if not nextGuide then return "Guide complete!" end
+    local note = "Guide complete! Next: " .. (nextGuide.title or guide.nextGuide)
+    local side = guide.sideGuide and TA.Guides and TA.Guides[guide.sideGuide]
+    if side then
+        note = note .. "  |  Side: " .. (side.title or guide.sideGuide)
+    end
+    return note
+end
+
 function QT:GetSortedGuideList()
     local list = {}
     for id, g in pairs(TA.Guides or {}) do
-        table.insert(list, { id = id, title = g.title, minLevel = g.minLevel or 1 })
+        table.insert(list, {
+            id = id, title = g.title, minLevel = g.minLevel or 1, order = g.order,
+        })
     end
-    table.sort(list, function(a, b)
-        return a.minLevel < b.minLevel or (a.minLevel == b.minLevel and a.id < b.id)
-    end)
+    table.sort(list, QT.CompareGuides)
     return list
 end
 
@@ -3121,11 +3147,12 @@ function QT:RenderMiddlePanel(content)
             table.insert(zoneGuides, {
                 id = id, title = guide.title or id,
                 minLevel = guide.minLevel or 1, maxLevel = guide.maxLevel or 99,
+                order = guide.order,
                 total = total, completed = completed, pct = pct,
             })
         end
     end
-    table.sort(zoneGuides, function(a, b) return a.minLevel < b.minLevel end)
+    table.sort(zoneGuides, QT.CompareGuides)
 
     -- ── Header ───────────────────────────────────────────────────────────────
     local expLabel = selectedExp

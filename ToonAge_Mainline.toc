@@ -108,9 +108,10 @@ Data\Retail\Guides\TAG_TheWarWithin_Hallowfall.lua
 Data\Retail\Guides\TAG_TheWarWithin_Azj_Kahet.lua
 Data\Retail\Guides\TAG_Midnight.lua
 Data\Retail\Guides\TAG_Midnight_Eversong_Woods.lua
+Data\Retail\Guides\TAG_Midnight_Arators_Journey.lua
 Data\Retail\Guides\TAG_Midnight_Harandar.lua
-Data\Retail\Guides\TAG_Midnight_Voidstorm.lua
 Data\Retail\Guides\TAG_Midnight_Zulaman.lua
+Data\Retail\Guides\TAG_Midnight_Voidstorm.lua
 Data\Retail\Guides\TAG_Arathi_Highlands_Returning_Player.lua
 
 # ── Modules: Infrastructure (load first) ──────────────────────────────

@@ -4,11 +4,13 @@
 -- ── WHAT THIS TAB IS ──────────────────────────────────────────────────────
 -- ══════════════════════════════════════════════════════════════════════════
 --
--- The talent tree as a grid. Columns and rows come from the distinct posX and
--- posY values on the trait nodes, in rank order, so the tree scales to the
--- window instead of scrolling sideways. A node is locked from its own
--- condition, not from the row it sits on. The tab does not say which talent
--- is best.
+-- The talent tree as a grid. Columns and rows come from that tree's own
+-- distinct posX and posY values, in rank order, so a tree is never forced
+-- into a fixed shape. The grid shrinks to the content width instead of
+-- scrolling sideways. When the tree is taller than the space under the
+-- points header, that tree area scrolls on its own and the header stays put.
+-- A node is locked from its own condition, not from the row it sits on.
+-- The tab does not say which talent is best.
 --
 -- WHY IT WAS REWRITTEN. The previous version read GetNumTalentTabs /
 -- GetTalentInfo, the Vanilla-era globals. Forever's talent window is the
@@ -157,9 +159,18 @@ end
 
 -- ─── GRID ──────────────────────────────────────────────────────────────────
 --
--- Forever's measured tree has 12 distinct posX values and 7 distinct posY
--- values. Cells are placed by the rank of those coordinates, not by the raw
--- pixel gap, and the whole grid shrinks to the content width.
+-- Each tree is placed from its own posX and posY. The rank of those
+-- coordinates is the column and the row, so nothing here assumes a 12 by 7
+-- grid. A measured Rogue tree is 12 columns by 7 rows. A measured Warlock
+-- tree is 11 columns by 9 rows, 52 nodes. Both fall out of the coordinates.
+-- Cells use that rank, not the raw pixel gap, and the grid shrinks to the
+-- content width.
+--
+-- The points header stays on the content frame. The tree sits in a scroll
+-- frame under it: as tall as the tree when that fits, and as tall as the
+-- space under the header when it does not. A 7-row tree fits the usual
+-- pane. A 9-row tree is taller than a pane of about 368px, so that one
+-- scrolls.
 --
 -- Node size follows the tab-bar window breakpoints (style guide §5):
 --   window >= 740  -> 40 px   (Full)
@@ -180,6 +191,17 @@ local NODE_GLYPH    = 28
 
 -- Gap between nodes, before the grid is scaled down to fit.
 local GRID_GAP = 8
+
+-- Core/UI.lua: the frame is 580, the title bar 34, the tab bar 30. The
+-- content scroll fills the rest. Used when that scroll has no height yet.
+local CONTENT_VIEW_FALLBACK = 580 - 34 - 30
+
+-- The inner scrollbar hangs off the tree. Leave it room only while the
+-- tree actually scrolls, so the last column stays visible.
+local SCROLLBAR_PX = 18
+
+-- Space between two trees in the same pane. A single tree adds none.
+local TREE_GAP = 16
 
 M.LINE_PX = 2
 M.RING_PX = 3          -- the focus frame is this much heavier than the idle ring
@@ -637,6 +659,73 @@ function M.Layout(nodes, conditions, opts)
     }
 end
 
+--- One group per tree, in the order the nodes were read. Nodes with no
+--- tree id stay together, which is the shape the layout tests build.
+function M.GroupByTree(nodes)
+    local groups, index = {}, {}
+    if type(nodes) ~= "table" then return groups end
+    for _, n in ipairs(nodes) do
+        local key = false
+        if type(n) == "table" and n.treeID ~= nil then key = n.treeID end
+        local g = index[key]
+        if not g then
+            g = {}
+            index[key] = g
+            groups[#groups + 1] = g
+        end
+        g[#g + 1] = n
+    end
+    return groups
+end
+
+--- One layout per tree, each from that tree's own coordinates.
+function M.Plans(nodes, conditions, opts)
+    local plans = {}
+    for _, group in ipairs(M.GroupByTree(nodes)) do
+        plans[#plans + 1] = M.Layout(group, conditions, opts)
+    end
+    return plans
+end
+
+--- Height and width of the stacked trees. One tree is just its own size.
+function M.StackHeight(plans)
+    local height, width, n = 0, 0, 0
+    if type(plans) ~= "table" then return 0, 0 end
+    for _, plan in ipairs(plans) do
+        n = n + 1
+        if n > 1 then height = height + TREE_GAP end
+        height = height + (tonumber(plan.height) or 0)
+        local w = tonumber(plan.width) or 0
+        if w > width then width = w end
+    end
+    return height, width
+end
+
+--- Pixels left for the tree under the points header. A missing viewport
+--- falls back to the content scroll in the 580px frame.
+function M.TreeAvail(viewport, headerPx)
+    local view = tonumber(viewport)
+    if not view or view <= 0 then view = CONTENT_VIEW_FALLBACK end
+    local header = tonumber(headerPx) or 0
+    if header < 0 then header = 0 end
+    local avail = math.floor(view - header)
+    if avail < 40 then avail = 40 end
+    return avail
+end
+
+--- Pane height, and whether the tree has to scroll inside it.
+--- Returns pane, scrolls.
+function M.TreePane(treeHeight, avail)
+    local tree = math.floor(tonumber(treeHeight) or 0)
+    if tree < 0 then tree = 0 end
+    local room = math.floor(tonumber(avail) or 0)
+    if room < 0 then room = 0 end
+    if room == 0 or tree <= room then
+        return tree, false
+    end
+    return room, true
+end
+
 --- Live tree: one record per node, plus the condition map those nodes cite.
 --- Returns nodes, conditions, err, spent, unspent.
 function M.ReadGrid()
@@ -735,8 +824,9 @@ function M.ReadGrid()
                         end
 
                         local id = Plain(nodeID) or nodeID
+                        local tid = Plain(treeID) or treeID
                         nodes[#nodes + 1] = {
-                            id = id, posX = posX, posY = posY,
+                            id = id, treeID = tid, posX = posX, posY = posY,
                             rank = rank, max = max,
                             name = name or ("Node " .. tostring(id)),
                             spellID = spellID, texture = texture,
@@ -823,12 +913,14 @@ local function PaintNode(btn)
     end
 end
 
-local function DrawGrid(content, y, plan)
-    local holder = CreateFrame("Frame", nil, content)
+local function DrawGrid(parent, y, plan, pad)
+    local holder = CreateFrame("Frame", nil, parent)
     local width  = math.max(1, math.floor(plan.width + 0.5))
     local height = math.max(1, math.floor(plan.height + 0.5))
     holder:SetSize(width, height)
-    holder:SetPoint("TOPLEFT", content, "TOPLEFT", L.PAD, y)
+    -- 0 is a real inset. Only a missing pad uses the content margin.
+    if pad == nil then pad = L.PAD end
+    holder:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
 
     local buttons = {}
     for _, cell in ipairs(plan.cells) do
@@ -970,6 +1062,106 @@ local function DrawGrid(content, y, plan)
     return y - height - 8
 end
 
+local function ViewportHeight(content)
+    local view = 0
+    if content and content.GetParent then
+        local parent = content:GetParent()
+        if parent and parent.GetHeight then
+            view = tonumber(parent:GetHeight()) or 0
+        end
+    end
+    if view <= 0 and TA.UI and TA.UI.frame and TA.UI.frame.contentScroll
+        and TA.UI.frame.contentScroll.GetHeight then
+        view = tonumber(TA.UI.frame.contentScroll:GetHeight()) or 0
+    end
+    return view
+end
+
+--- Wheel the tree. The template's own handler moves the bar when it has one.
+local function Wheel(self, delta)
+    local bar = self.ScrollBar
+    if bar and bar.SetValue and bar.GetValue and (not bar.IsVisible or bar:IsVisible()) then
+        local step = 24
+        if bar.GetHeight then
+            local h = tonumber(bar:GetHeight())
+            if h and h > 0 then step = h / 2 end
+        end
+        local val = (tonumber(bar:GetValue()) or 0) - (tonumber(delta) or 0) * step
+        local minV, maxV = 0, 0
+        if bar.GetMinMaxValues then minV, maxV = bar:GetMinMaxValues() end
+        minV = tonumber(minV) or 0
+        maxV = tonumber(maxV) or 0
+        if val < minV then val = minV end
+        if val > maxV then val = maxV end
+        bar:SetValue(val)
+        return
+    end
+    local cur = (self.GetVerticalScroll and tonumber(self:GetVerticalScroll())) or 0
+    local maxScroll = (self.GetVerticalScrollRange and tonumber(self:GetVerticalScrollRange())) or 0
+    local nxt = cur - (tonumber(delta) or 0) * 48
+    if nxt < 0 then nxt = 0 end
+    if nxt > maxScroll then nxt = maxScroll end
+    if self.SetVerticalScroll then self:SetVerticalScroll(nxt) end
+end
+
+--- The points header is not a child of this frame. The scroll child is as
+--- tall as the trees; the frame itself is only as tall as the pane.
+local function MountTree(content, y, plans, paneH, treeH, treeW)
+    local scroll = _G.TATalentTreeScroll
+    if scroll and scroll.SetParent then
+        scroll:SetParent(content)
+        if scroll.Show then scroll:Show() end
+    else
+        scroll = CreateFrame("ScrollFrame", "TATalentTreeScroll", content, "UIPanelScrollFrameTemplate")
+    end
+    if scroll.ClearAllPoints then scroll:ClearAllPoints() end
+    scroll:SetPoint("TOPLEFT", content, "TOPLEFT", L.PAD, y)
+    scroll:SetSize(math.max(1, L:Width(content)), math.max(1, math.floor(paneH + 0.5)))
+    if scroll.EnableMouseWheel then scroll:EnableMouseWheel(true) end
+
+    -- Wrap the template handler once. A later refresh must not nest it.
+    if not scroll._taWheelHooked then
+        scroll._taWheel = (scroll.GetScript and scroll:GetScript("OnMouseWheel")) or false
+        scroll._taWheelHooked = true
+        scroll:SetScript("OnMouseWheel", function(self, delta)
+            if self._taWheel then self._taWheel(self, delta) else Wheel(self, delta) end
+        end)
+    end
+    if not scroll._taVertHooked then
+        scroll._taVert = (scroll.GetScript and scroll:GetScript("OnVerticalScroll")) or false
+        scroll._taVertHooked = true
+        scroll:SetScript("OnVerticalScroll", function(self, offset)
+            M._treeScroll = offset
+            if self._taVert then self._taVert(self, offset) end
+        end)
+    end
+
+    local old = scroll.GetScrollChild and scroll:GetScrollChild()
+    if old and old.SetParent then
+        if old.Hide then old:Hide() end
+        old:SetParent(nil)
+    end
+    local child = CreateFrame("Frame", nil, scroll)
+    local cw = math.max(1, math.floor((tonumber(treeW) or 1) + 0.5))
+    local ch = math.max(1, math.floor((tonumber(treeH) or 1) + 0.5))
+    child:SetSize(cw, ch)
+    if scroll.SetScrollChild then scroll:SetScrollChild(child) end
+
+    local yOff = 0
+    for _, plan in ipairs(plans) do
+        DrawGrid(child, yOff, plan, 0)
+        yOff = yOff - (tonumber(plan.height) or 0) - TREE_GAP
+    end
+
+    local keep = tonumber(M._treeScroll) or 0
+    local maxScroll = ch - math.floor(paneH + 0.5)
+    if maxScroll < 0 then maxScroll = 0 end
+    if keep < 0 then keep = 0 end
+    if keep > maxScroll then keep = maxScroll end
+    if scroll.SetVerticalScroll then scroll:SetVerticalScroll(keep) end
+    return scroll
+end
+
 -- ─── RENDER ────────────────────────────────────────────────────────────────
 
 function M:Render(content, side)
@@ -1007,16 +1199,43 @@ function M:Render(content, side)
         local w = TA.UI.frame:GetWidth()
         if type(w) == "number" and w > 0 then windowW = w end
     end
-    local plan = M.Layout(nodes, conds, {
-        windowWidth = windowW,
-        availWidth = L:Width(content),
-        spent = spent,
-    })
-    M._report = plan.report
+    local availW = L:Width(content)
+    local function lay(width)
+        return M.Plans(nodes, conds, {
+            windowWidth = windowW,
+            availWidth = width,
+            spent = spent,
+        })
+    end
+    local plans = lay(availW)
+    local treeH, treeW = M.StackHeight(plans)
+    M._report = plans[1] and plans[1].report
 
+    -- The header stays on the content frame. `y` is where the tree starts,
+    -- so the pane is whatever the content scroll still has under that line.
     y = L:SectionHeader(content, y, M.Header(spent, unspent))
-    y = DrawGrid(content, y, plan)
-    L:Finish(content, y)
+    local availH = M.TreeAvail(ViewportHeight(content), math.abs(y))
+    local paneH, scrolls = M.TreePane(treeH, availH)
+    if scrolls and availW > SCROLLBAR_PX + 40 then
+        local plans2 = lay(availW - SCROLLBAR_PX)
+        local treeH2, treeW2 = M.StackHeight(plans2)
+        local pane2, scrolls2 = M.TreePane(treeH2, availH)
+        if scrolls2 then
+            plans, treeH, treeW = plans2, treeH2, treeW2
+            paneH, scrolls = pane2, scrolls2
+        end
+    end
+
+    MountTree(content, y, plans, paneH, treeH, treeW)
+    if scrolls then
+        -- Match the viewport so the outer content scroll does not move
+        -- the points header while the tree scrolls inside its pane.
+        local view = ViewportHeight(content)
+        if not view or view <= 0 then view = CONTENT_VIEW_FALLBACK end
+        content:SetHeight(math.floor(view))
+    else
+        L:Finish(content, y - paneH - 8)
+    end
 end
 
 function M:OnEvent(event)

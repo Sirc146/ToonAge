@@ -1066,6 +1066,37 @@ local function Plain(text)
     return (tostring(text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
 end
 
+-- Chat pastes get cut off past a few thousand characters. A long report is
+-- split on line breaks into parts of about this many characters, and the
+-- window shows one part at a time ("part 1/3").
+local COPY_PAGE_CHARS = 3500
+
+function TA.CopyPages(text, limit)
+    limit = tonumber(limit) or COPY_PAGE_CHARS
+    if limit < 1 then limit = COPY_PAGE_CHARS end
+    text = tostring(text or "")
+    if #text <= limit then return { text } end
+    local pages, i, n = {}, 1, #text
+    while i <= n do
+        if n - i + 1 <= limit then
+            pages[#pages + 1] = text:sub(i)
+            break
+        end
+        local chunk = text:sub(i, i + limit - 1)
+        local br = 0
+        for p in chunk:gmatch("()\n") do br = p end
+        if br > 1 then
+            pages[#pages + 1] = text:sub(i, i + br - 2)
+            i = i + br
+        else
+            pages[#pages + 1] = chunk
+            i = i + limit
+        end
+    end
+    if #pages == 0 then pages[1] = "" end
+    return pages
+end
+
 function TA:ShowCopyWindow(title, text)
     local f = self._copyWindow
     if not f then
@@ -1117,13 +1148,53 @@ function TA:ShowCopyWindow(title, text)
             TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Selected — press Ctrl+C to copy.")
         end)
 
+        local prev = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        prev:SetSize(70, 22)
+        prev:SetPoint("LEFT", sel, "RIGHT", 8, 0)
+        prev:SetText("Prev")
+        prev:SetScript("OnClick", function()
+            if f.page and f.page > 1 then f:ShowPage(f.page - 1) end
+        end)
+        f.prevBtn = prev
+
+        local nxt = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        nxt:SetSize(70, 22)
+        nxt:SetPoint("LEFT", prev, "RIGHT", 8, 0)
+        nxt:SetText("Next")
+        nxt:SetScript("OnClick", function()
+            if f.page and f.pages and f.page < #f.pages then f:ShowPage(f.page + 1) end
+        end)
+        f.nextBtn = nxt
+
+        function f:ShowPage(n)
+            local pages = self.pages or { "" }
+            local total = #pages
+            if n < 1 then n = 1 end
+            if n > total then n = total end
+            self.page = n
+            local label = tostring(self.baseTitle or "")
+            if total > 1 then label = label .. " part " .. n .. "/" .. total end
+            self.header:SetText("|cFFFFD100" .. label .. "|r  (Ctrl+A to select, Ctrl+C to copy)")
+            self.editBox:SetText(pages[n] or "")
+            self.editBox:SetCursorPosition(0)
+            if total > 1 then
+                self.prevBtn:Show()
+                self.nextBtn:Show()
+            else
+                self.prevBtn:Hide()
+                self.nextBtn:Hide()
+            end
+            if self.prevBtn.SetEnabled then self.prevBtn:SetEnabled(n > 1) end
+            if self.nextBtn.SetEnabled then self.nextBtn:SetEnabled(n < total) end
+        end
+
         tinsert(UISpecialFrames, "ToonAgeCopyWindow")
         self._copyWindow = f
     end
 
-    f.header:SetText("|cFFFFD100" .. tostring(title) .. "|r  (Ctrl+A to select, Ctrl+C to copy)")
-    f.editBox:SetText(Plain(text))
-    f.editBox:SetCursorPosition(0)
+    f.baseTitle = title
+    f.pages = self.CopyPages(Plain(text), COPY_PAGE_CHARS)
+    f:ShowPage(1)
     f:Show()
 end
 

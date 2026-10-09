@@ -872,6 +872,13 @@ Hv.ROUTED_EVENTS = ROUTED_EVENTS
 -- against your own spellbook, which is always right for your class.
 --   catalog["spellID"] = name, rank text, trained level
 --
+-- Rank text is not in memory until the client loads that spell. A blank row
+-- is asked for with C_Spell.RequestLoadSpellData, about 200 IDs a frame, and
+-- filled when SPELL_DATA_LOAD_RESULT arrives. IDs that never answer are asked
+-- once more. The trained level comes from C_Spell.GetSpellLevelLearned, and
+-- when that is silent, from a trainer row for the same spell ID. Neither one
+-- is parsed out of the rank text.
+--
 -- ADDITIVE (T4, approved 2026-10-04). A scan writes new and changed ranks and
 -- never removes one. Rank text loads per session: a Mage session read the
 -- Warrior's and Priest's ranks blank, and the old scan -- which started from
@@ -881,8 +888,24 @@ Hv.ROUTED_EVENTS = ROUTED_EVENTS
 -- already in the store stays.
 
 local FRAME_BUDGET_MS = 8
-local RANK_PASSES     = 3    -- extra passes over spells whose rank text was blank
-local RANK_PASS_DELAY = 3    -- seconds between passes, for the client to load them
+local LOAD_BATCH      = 200  -- RequestLoadSpellData calls per frame
+local LOAD_TIMEOUT    = 3    -- seconds to wait for SPELL_DATA_LOAD_RESULT
+
+local function Comma(n)
+    local s = tostring(tonumber(n) or 0)
+    local k
+    while true do
+        s, k = s:gsub("^(%d+)(%d%d%d)", "%1,%2")
+        if k == 0 then break end
+    end
+    return s
+end
+
+--- SPELL_DATA_LOAD_RESULT during a catalog load. Ignored otherwise.
+function Hv:OnSpellData(spellID, success)
+    local fn = self._onSpellData
+    if type(fn) == "function" then fn(spellID, success) end
+end
 
 function Hv:ScanCatalog(onDone)
     local s = self:Store()
@@ -919,7 +942,85 @@ function Hv:ScanCatalog(onDone)
     local Clean = Hv.Clean
     local range, id, found = 1, ranges[1][1], 0
     local blanks = {}
-    local RetryBlanks, Finish
+    local waiting, queue, qi = {}, {}, 1
+    local total, loaded, filled, mark, round, gen = 0, 0, 0, 0, 1, 0
+    local reported, stopped = -1, false
+    local Finish, BeginLoads, RequestChunk, Arm
+
+    -- Trained level, without reading it out of the rank text. The spell API
+    -- first; a trainer row for this spell ID when the API is silent.
+    local function TrainerLevel(spellID)
+        local key = tostring(spellID)
+        local function from(rows)
+            if type(rows) ~= "table" then return nil end
+            local line = rows[key]
+            if type(line) ~= "string" then return nil end
+            local req = tonumber(line:match("^[^\t]*\t[^\t]*\t([^\t]*)"))
+            if req and req > 0 then return req end
+        end
+        local _, class = Hv.Try("UnitClass", "player")
+        if class and type(s.trainer) == "table" then
+            local lv = from(s.trainer[class])
+            if lv then return lv end
+        end
+        if type(s.trainer) == "table" then
+            for _, rows in pairs(s.trainer) do
+                local lv = from(rows)
+                if lv then return lv end
+            end
+        end
+        local ck = self.CharacterKey and self:CharacterKey()
+        local cap = ck and s.captures and s.captures[ck] and s.captures[ck].trainer
+        if type(cap) == "table" then return from(cap.rows) end
+    end
+
+    local function LevelOf(spellID)
+        local okL, learned = pcall(getLearned, spellID)
+        if okL and type(learned) == "number" and learned > 0 then return learned end
+        return TrainerLevel(spellID)
+    end
+
+    local function RankOf(spellID)
+        local rank = getSub and select(2, pcall(getSub, spellID)) or ""
+        if type(rank) ~= "string" then rank = "" end
+        return rank
+    end
+
+    local function Accept(spellID)
+        local rank = RankOf(spellID)
+        if not rank:find("^Rank %d+$") then return false end
+        local lv = LevelOf(spellID)
+        if not (type(lv) == "number" and lv > 0) then return false end
+        local key = tostring(spellID)
+        local name
+        local prev = fresh[key]
+        if type(prev) == "string" then name = prev:match("^([^\t]*)") end
+        if not name or name == "" then
+            local okN, nm = pcall(getName, spellID)
+            if okN and type(nm) == "string" and nm ~= "" and nm ~= "secret" then name = nm end
+        end
+        if not name or name == "" then return false end
+        local had = type(prev) == "string" and prev:find("\tRank %d+\t") ~= nil
+        fresh[key] = concat({ Clean(name), Clean(rank), Clean(lv) }, "\t")
+        if not had then filled = filled + 1 end
+        return true
+    end
+
+    local function Progress(force)
+        if total == 0 or not TA.Raw then return end
+        if not force and (loaded == 0 or loaded % LOAD_BATCH ~= 0) then return end
+        if loaded == reported then return end
+        reported = loaded
+        TA:Raw(TA.LOG.OUTPUT, ("Catalog: %s / %s loaded"):format(Comma(loaded), Comma(total)))
+    end
+
+    local function PassLine(tag)
+        local left = 0
+        for _ in pairs(waiting) do left = left + 1 end
+        s.catalogPasses = s.catalogPasses or {}
+        s.catalogPasses[#s.catalogPasses + 1] = ("%s: +%d ranks, %d still blank")
+            :format(tag, filled - mark, left)
+    end
 
     local function Step()
         local t0 = clock()
@@ -927,19 +1028,14 @@ function Hv:ScanCatalog(onDone)
             local last = ranges[range][2]
             while id <= last do
                 local okN, name = pcall(getName, id)
-                if okN and type(name) == "string" and name ~= "" then
-                    local okL, learned = pcall(getLearned, id)
-                    if okL and type(learned) == "number" and learned > 0 then
-                        local rank = getSub and select(2, pcall(getSub, id)) or ""
-                        if type(rank) ~= "string" then rank = "" end
-                        if rank == "" or rank:find("^Rank %d+$") then
-                            fresh[tostring(id)] = concat(
-                                { Clean(name), Clean(rank), Clean(learned) }, "\t")
+                if okN and type(name) == "string" and name ~= "" and name ~= "secret" then
+                    local rank = RankOf(id)
+                    if rank == "" or rank:find("^Rank %d+$") then
+                        local lv = LevelOf(id)
+                        if type(lv) == "number" and lv > 0 then
+                            fresh[tostring(id)] = concat({ Clean(name), Clean(rank), Clean(lv) }, "\t")
                             found = found + 1
-                            if rank == "" then
-                                blanks[#blanks + 1] = id
-                                if requestLoad then pcall(requestLoad, id) end
-                            end
+                            if rank == "" then blanks[#blanks + 1] = id end
                         end
                     end
                 end
@@ -952,53 +1048,105 @@ function Hv:ScanCatalog(onDone)
             range = range + 1
             id = ranges[range] and ranges[range][1]
         end
-        -- Pass 2+. Rank text loads asynchronously: the first scan of
-        -- 2026-09-29 stored 9891 spells and only 77 had "Rank N" -- Fireball
-        -- 8400 read "Rank 5" but 10148 (its rank 8) read "". Asking once
-        -- starts the load, so blanks are asked again after a pause, up to
-        -- RANK_PASSES times, stopping early when a pass resolves nothing.
-        RetryBlanks(1)
+        BeginLoads()
     end
 
-    function RetryBlanks(pass)
-        if #blanks == 0 or pass > RANK_PASSES or not getSub then return Finish() end
-        Hv.After(RANK_PASS_DELAY, function()
-            local i, still, resolved = 1, {}, 0
-            local function Chunk()
-                local t0 = clock()
-                while i <= #blanks do
-                    local bid = blanks[i]
-                    local okR, rank = pcall(getSub, bid)
-                    if okR and type(rank) == "string" and rank:find("^Rank %d+$") then
-                        local line = fresh[tostring(bid)]
-                        if line then
-                            local nm, _, lv = line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)")
-                            fresh[tostring(bid)] = concat({ nm, rank, lv }, "\t")
-                        end
-                        resolved = resolved + 1
-                    else
-                        still[#still + 1] = bid
-                    end
-                    i = i + 1
-                    if (i % 500) == 0 and clock() - t0 > FRAME_BUDGET_MS then
-                        Hv.After(0, Chunk)
-                        return
-                    end
+    Arm = function()
+        local token = gen
+        Hv.After(LOAD_TIMEOUT, function()
+            if stopped or token ~= gen then return end
+            local left = {}
+            for spellID in pairs(waiting) do left[#left + 1] = spellID end
+            for i = 1, #left do
+                if Accept(left[i]) then
+                    waiting[left[i]] = nil
+                    loaded = loaded + 1
                 end
-                blanks = still
-                -- Pass results go to the store (shown in the Full report), not
-                -- to chat: chat gets the start line and the final count only.
-                s.catalogPasses = s.catalogPasses or {}
-                s.catalogPasses[#s.catalogPasses + 1] = ("pass %d: +%d ranks, %d still blank")
-                    :format(pass + 1, resolved, #blanks)
-                if resolved == 0 then return Finish() end
-                RetryBlanks(pass + 1)
             end
-            Chunk()
+            if next(waiting) == nil then
+                gen = gen + 1
+                PassLine(round >= 2 and "retry" or "load")
+                Progress(true)
+                return Finish()
+            end
+            if round >= 2 then
+                gen = gen + 1
+                PassLine("retry")
+                Progress(true)
+                return Finish()
+            end
+            PassLine("load")
+            round = 2
+            mark = filled
+            queue = {}
+            for spellID in pairs(waiting) do queue[#queue + 1] = spellID end
+            sort(queue)
+            qi = 1
+            gen = gen + 1
+            RequestChunk()
         end)
     end
 
-    function Finish()
+    RequestChunk = function()
+        if stopped then return end
+        local n = 0
+        while qi <= #queue and n < LOAD_BATCH do
+            if stopped then return end
+            local spellID = queue[qi]
+            qi = qi + 1
+            n = n + 1
+            if waiting[spellID] then pcall(requestLoad, spellID) end
+        end
+        if stopped then return end
+        if qi <= #queue then
+            Hv.After(0, RequestChunk)
+        else
+            Arm()
+        end
+    end
+
+    BeginLoads = function()
+        if #blanks == 0 then return Finish() end
+        if not requestLoad then
+            s.catalogPasses[#s.catalogPasses + 1] = ("load: skipped, %d still blank"):format(#blanks)
+            return Finish()
+        end
+        if not self._loadEventRegistered and TA.RegisterEvent then
+            TA:RegisterEvent("SPELL_DATA_LOAD_RESULT")
+            self._loadEventRegistered = true
+        end
+        total = #blanks
+        for i = 1, #blanks do waiting[blanks[i]] = true end
+        queue = {}
+        for i = 1, #blanks do queue[i] = blanks[i] end
+        qi = 1
+        round = 1
+        mark = 0
+        self._onSpellData = function(spellID, success)
+            if stopped then return end
+            local spell = tonumber(spellID)
+            if not spell or not waiting[spell] then return end
+            waiting[spell] = nil
+            if success ~= false then
+                loaded = loaded + 1
+                Accept(spell)
+                Progress(false)
+            end
+            if next(waiting) == nil then
+                gen = gen + 1
+                PassLine(round >= 2 and "retry" or "load")
+                Progress(true)
+                Finish()
+            end
+        end
+        RequestChunk()
+    end
+
+    Finish = function()
+        if stopped then return end
+        stopped = true
+        gen = gen + 1
+        self._onSpellData = nil
         self._catalogRunning = false
         s.catalogBuild = select(2, Hv.Try("GetBuildInfo"))
         -- Merge: every stored rank stays; this pass adds new ranks and
@@ -1227,6 +1375,10 @@ function H:View()
 end
 
 function H:OnEvent(event, ...)
+    if event == "SPELL_DATA_LOAD_RESULT" then
+        Hv:OnSpellData(...)
+        return
+    end
     if event == "PLAYER_REGEN_ENABLED" then
         if Hv._scanQueued then Hv:StartScan() end
         return

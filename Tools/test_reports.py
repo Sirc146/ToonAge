@@ -6,6 +6,8 @@ scrollback with combat spam. Anything longer than a few lines has to end up
 somewhere the player can copy it from.
 """
 import sys, os, re
+
+from lupa import lua51
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _res = []
 
@@ -23,6 +25,20 @@ ui = open(os.path.join(ROOT, "Core/UI.lua"), encoding="utf-8").read()
 check("copy window exists", "function TA:ShowCopyWindow" in ui)
 check("copy window strips colour codes", "local function Plain" in ui)
 check("copy window is escape-closable", 'tinsert(UISpecialFrames, "ToonAgeCopyWindow")' in ui)
+check("copy window pages long text", "COPY_PAGE_CHARS = 3500" in ui and "function TA.CopyPages" in ui)
+check("a long report is labelled part 1/3", 'label .. " part "' in ui and "Prev" in ui and "Next" in ui)
+
+L = lua51.LuaRuntime(unpack_returned_tuples=True)
+L.execute("ToonAge = { Utils = {} }")
+L.execute(ui)
+body = "\n".join("row %04d %s" % (i, "x" * 40) for i in range(1, 401))
+pages_t = L.eval("ToonAge.CopyPages(...)", body)
+pages = [pages_t[i] for i in range(1, len(pages_t) + 1)]
+check("a long report splits into several parts", len(pages) > 1)
+check("no part is longer than 3500 characters", max(len(p) for p in pages) <= 3500)
+check("the parts join back into the report", "\n".join(pages), body)
+short = L.eval('ToonAge.CopyPages("one line")')
+check("a short report stays one part", (len(short), short[1]), (1, "one line"))
 check("report writer exists", "function TA:BeginReport" in ui)
 check("report has Add/Addf/Finish",
       all(f"function r:{fn}" in ui for fn in ("Add", "Addf", "Finish")))

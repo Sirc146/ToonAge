@@ -2,9 +2,12 @@
 """
 ToonAge -- Forever talent grid
 ==============================
-Columns and rows are the rank order of posX and posY. A gated node carries
-its own lock. posY that grows upward is flipped. Node size follows the
-tab-bar widths, then the grid shrinks to the content width.
+Columns and rows are the rank order of that tree's own posX and posY.
+A Rogue tree is 12 by 7. A Warlock tree is 11 by 9, 52 nodes. Neither
+shape is a clamp. A gated node carries its own lock. posY that grows
+upward is flipped. Node size follows the tab-bar widths, then the grid
+shrinks to the content width. A tree taller than the space under the
+points header scrolls on its own; the header stays put.
 
 Usage:  python3 Tools/test_forever_talents.py [-v]
 """
@@ -111,7 +114,7 @@ function build()
     for y = 1, 6 do
         add(nodes, 2000 + y, 0, y * 100, 0, 1, {}, {})
     end
-    -- Fill the measured shape: 12 distinct x, 7 distinct y.
+    -- Rogue's measured shape: 12 distinct x, 7 distinct y.
     -- Eight gates, two of them sharing a row with a different amount,
     -- so a row is not one gate.
     nodes[1].rank, nodes[1].max = 0, 1                 -- available
@@ -141,6 +144,39 @@ function build()
     gate(2004, 7, 20, false)
     gate(2005, 8, 30, false)
     return nodes, conds
+end
+
+-- Warlock's measured shape: 11 distinct x, 9 distinct y, 52 nodes.
+-- 11 by 9 is 99 cells; only 52 are filled, and every column and row
+-- still appears at least once.
+function buildWarlock()
+    local nodes = {}
+    local id = 1
+    local function put(x, y)
+        add(nodes, id, x * 100, y * 100, 0, 1, {}, {})
+        id = id + 1
+    end
+    for x = 0, 10 do
+        local y = x
+        if y > 8 then y = y - 9 end
+        put(x, y)
+    end
+    local seen = {}
+    for i = 1, #nodes do
+        seen[nodes[i].posX .. ":" .. nodes[i].posY] = true
+    end
+    for y = 0, 8 do
+        for x = 0, 10 do
+            if #nodes >= 52 then break end
+            local key = (x * 100) .. ":" .. (y * 100)
+            if not seen[key] then
+                put(x, y)
+                seen[key] = true
+            end
+        end
+        if #nodes >= 52 then break end
+    end
+    return nodes, {}
 end
 
 function place(window, avail, nodes, conds)
@@ -232,6 +268,9 @@ def main():
     plan = lua.globals().plan
     check("twelve columns", plan.columns, 12)
     check("seven rows", plan.rows, 7)
+    check("rogue grid is 568 wide", plan.width, 568)
+    # 7*40 + 6*8. Fits a 368px pane.
+    check("rogue tree is 328 tall", plan.height, 328)
     check("posY increases downward", plan.yDown, True)
     check("downward layout is not flipped", plan.flipped, False)
     check("wide window is not scaled", plan.scale, 1)
@@ -309,6 +348,57 @@ flip = ToonAge.modules.ForeverTalents.Layout(flipNodes, flipConds, { windowWidth
     lua.execute("window = place(568, 568, nodes, conds)")
     check("the tree fits the 568px minimum width", lua.eval("window.width") <= 568, True)
 
+    # Warlock is a different shape from the same layout. 11 distinct posX,
+    # 9 distinct posY, 52 filled cells. Nothing in the module names 11 or 9.
+    lua.execute("wnodes, wconds = buildWarlock()")
+    lua.execute("wplan = place(900, 640, wnodes, wconds)")
+    wplan = lua.globals().wplan
+    check("warlock has 52 nodes", len(wplan.cells), 52)
+    check("warlock has eleven columns", wplan.columns, 11)
+    check("warlock has nine rows", wplan.rows, 9)
+    check("warlock keeps 40px nodes", wplan.nodePx, 40)
+    check("warlock grid is not scaled at 640", wplan.scale, 1)
+    # 11*40 + 10*8.
+    check("warlock grid is 520 wide", wplan.width, 520)
+    # 9*40 + 8*8 = 424. The in-game estimate was about 468; this is that
+    # tree at the real node size and gap, and it is still past 368.
+    check("warlock tree is 424 tall", wplan.height, 424)
+    check("warlock is taller than a 368px pane", wplan.height > 368, True)
+    check("rogue fits a 368px pane", plan.height <= 368, True)
+
+    lua.execute("roguePane, rogueScrolls = ToonAge.modules.ForeverTalents.TreePane(plan.height, 368)")
+    lua.execute("warPane, warScrolls = ToonAge.modules.ForeverTalents.TreePane(wplan.height, 368)")
+    g = lua.globals()
+    check("rogue pane is the whole tree", g.roguePane, 328)
+    check("rogue pane does not scroll", g.rogueScrolls, False)
+    check("warlock pane stops at 368", g.warPane, 368)
+    check("warlock pane scrolls", g.warScrolls, True)
+    # 580 frame, title 34, tabs 30, header ending 34px down: 516 - 34.
+    lua.execute("room = ToonAge.modules.ForeverTalents.TreeAvail(0, 34)")
+    check("a 580px frame leaves 482px under the header", lua.globals().room, 482)
+    lua.execute("fitPane, fitScrolls = ToonAge.modules.ForeverTalents.TreePane(wplan.height, room)")
+    check("warlock fits the 580px frame", lua.globals().fitScrolls, False)
+    check("that pane is the whole warlock tree", lua.globals().fitPane, 424)
+
+    # Two trees that share coordinates must not collapse into one grid.
+    lua.execute(r"""
+mixed = {
+    { id = 1, treeID = 11, posX = 0,   posY = 0, rank = 0, max = 1 },
+    { id = 2, treeID = 11, posX = 100, posY = 0, rank = 0, max = 1 },
+    { id = 3, treeID = 22, posX = 0,   posY = 0,   rank = 0, max = 1 },
+    { id = 4, treeID = 22, posX = 0,   posY = 400, rank = 0, max = 1 },
+    { id = 5, treeID = 22, posX = 100, posY = 800, rank = 0, max = 1 },
+}
+mixedPlans = ToonAge.modules.ForeverTalents.Plans(mixed, {}, { windowWidth = 900, availWidth = 640, spent = 0 })
+merged = ToonAge.modules.ForeverTalents.Layout(mixed, {}, { windowWidth = 900, availWidth = 640, spent = 0 })
+""")
+    check("two trees stay two plans", len(lua.globals().mixedPlans), 2)
+    check("the first tree is one row", lua.eval("mixedPlans[1].rows"), 1)
+    check("the first tree is two columns", lua.eval("mixedPlans[1].columns"), 2)
+    check("the second tree is three rows", lua.eval("mixedPlans[2].rows"), 3)
+    check("the second tree is two columns", lua.eval("mixedPlans[2].columns"), 2)
+    check("a merged layout would have used the taller tree", lua.eval("merged.rows"), 3)
+
     # Live read: each node's conditionIDs, both field names, no rank subtext.
     lua.execute(r"""
 subtextCalls = 0
@@ -373,6 +463,160 @@ readReport = reportText(ToonAge.modules.ForeverTalents.Diagnose(readNodes, readC
     check("the square entry is a square node", lua.eval("cell(readPlan, 10).shape"), "square")
     check("the circle entry is a circle node", lua.eval("cell(readPlan, 11).shape"), "circle")
     check("partial badge from the live rank", lua.eval("cell(readPlan, 10).badge"), "2/5")
+    check("a live node keeps its tree id", lua.eval("readNodes[1].treeID"), 1111)
+
+    # A second config: two trees, same coordinates, different shapes.
+    lua.execute(r"""
+C_Traits.GetConfigInfo = function() return { treeIDs = { 11, 22 } } end
+C_Traits.GetTreeCurrencyInfo = function() return { { quantity = 1 } } end
+C_Traits.GetTreeNodes = function(id)
+    if id == 11 then return { 1, 2 } end
+    return { 3, 4, 5 }
+end
+C_Traits.GetNodeInfo = function(_, id)
+    local pos = {
+        [1] = { 0, 0 }, [2] = { 300, 0 },
+        [3] = { 0, 0 }, [4] = { 0, 400 }, [5] = { 300, 800 },
+    }
+    local p = pos[id]
+    return { posX = p[1], posY = p[2], activeRank = 0, maxRanks = 1, entryIDs = { id } }
+end
+splitNodes = ToonAge.modules.ForeverTalents.ReadGrid()
+splitPlans = ToonAge.modules.ForeverTalents.Plans(splitNodes, {}, { windowWidth = 900, availWidth = 640, spent = 0 })
+""")
+    check("the live read keeps both trees", len(lua.globals().splitNodes), 5)
+    check("live plans do not merge the trees", len(lua.globals().splitPlans), 2)
+    check("live first tree is 2 by 1", lua.eval("splitPlans[1].columns") == 2 and lua.eval("splitPlans[1].rows") == 1, True)
+    check("live second tree is 2 by 3", lua.eval("splitPlans[2].columns") == 2 and lua.eval("splitPlans[2].rows") == 3, True)
+
+    # Draw both shapes into a mocked window. The header stays on the content
+    # frame. The scroll child is the tree. A 402px viewport leaves 368px
+    # under the header (the pane that a 9-row tree overflows).
+    lua.execute(r"""
+local function widget()
+    local f = { kids = {}, points = {}, scripts = {} }
+    function f:SetSize(w, h) self.w, self.h = w, h end
+    function f:SetWidth(w) self.w = w end
+    function f:SetHeight(h) self.h = h end
+    function f:GetWidth() return self.w or 0 end
+    function f:GetHeight() return self.h or 0 end
+    function f:SetPoint(...) self.points[#self.points + 1] = { ... } end
+    function f:ClearAllPoints() self.points = {} end
+    function f:SetParent(p) self.parent = p end
+    function f:GetParent() return self.parent end
+    function f:CreateTexture() return widget() end
+    function f:CreateFontString() return widget() end
+    function f:SetScript(name, fn) self.scripts[name] = fn end
+    function f:GetScript(name) return self.scripts[name] end
+    function f:EnableMouse() end
+    function f:EnableMouseWheel(v) self.wheel = v end
+    function f:Hide() self.hidden = true end
+    function f:Show() self.hidden = false end
+    function f:SetFrameLevel(n) self.level = n end
+    function f:GetFrameLevel() return self.level or 1 end
+    function f:SetScrollChild(c) self.child = c; if c then c.parent = self end end
+    function f:GetScrollChild() return self.child end
+    function f:SetVerticalScroll(n) self.scroll = n end
+    function f:GetVerticalScroll() return self.scroll or 0 end
+    function f:GetVerticalScrollRange()
+        local ch = self.child and (self.child.h or 0) or 0
+        local h = self.h or 0
+        if ch > h then return ch - h end
+        return 0
+    end
+    function f:SetAllPoints() end
+    function f:SetTexture() end
+    function f:SetColorTexture() end
+    function f:SetAlpha() end
+    function f:SetDesaturated() end
+    function f:SetVertexColor() end
+    function f:SetText() end
+    function f:SetTextColor() end
+    function f:SetBlendMode() end
+    return f
+end
+
+CreateFrame = function(kind, name, parent, template)
+    local f = widget()
+    f.kind, f.name, f.template = kind, name, template
+    f.parent = parent
+    if parent and parent.kids then parent.kids[#parent.kids + 1] = f end
+    if name then _G[name] = f end
+    return f
+end
+
+ToonAge.Layout = { PAD = 14, C_DIM = { 0.5, 0.5, 0.5 } }
+function ToonAge.Layout:Width() return 640 end
+function ToonAge.Layout:SectionHeader(parent, y, title)
+    self.headerParent = parent
+    self.headerTitle = title
+    return y - 26
+end
+function ToonAge.Layout:Finish(parent, y)
+    parent:SetHeight(math.max(math.floor(math.abs(y) + 20), 40))
+    self.finishY = y
+end
+
+local view = widget()
+view:SetHeight(402)   -- 368px pane + the 34px header offset
+local content = widget()
+content.parent = view
+talentContent = content
+
+ToonAge.UI = { frame = { GetWidth = function() return 900 end } }
+
+local function buttons(root)
+    local n = 0
+    for _, holder in ipairs(root.kids or {}) do
+        for _, c in ipairs(holder.kids or {}) do
+            if c.kind == "Button" then n = n + 1 end
+        end
+    end
+    return n
+end
+
+local function show(nodes, conds)
+    ToonAge.modules.ForeverTalents._treeScroll = 0
+    ToonAge.modules.ForeverTalents.ReadGrid = function()
+        return nodes, conds, nil, 3, 2
+    end
+    ToonAge.modules.ForeverTalents:Render(content, nil)
+    local scroll = _G.TATalentTreeScroll
+    local child = scroll:GetScrollChild()
+    return {
+        buttons = buttons(child),
+        tree = child.h,
+        pane = scroll.h,
+        range = scroll:GetVerticalScrollRange(),
+        template = scroll.template,
+        title = ToonAge.Layout.headerTitle,
+        contentH = content.h,
+        headerOnContent = ToonAge.Layout.headerParent == content,
+        headerOnChild = ToonAge.Layout.headerParent == child,
+    }
+end
+
+warSnap = show(wnodes, wconds)
+rogueSnap = show(nodes, conds)
+""")
+    g = lua.globals()
+    war, rogue = g.warSnap, g.rogueSnap
+    check("warlock draws 52 buttons", war.buttons, 52)
+    check("warlock scroll child is the 424px tree", war.tree, 424)
+    check("warlock pane is 368px", war.pane, 368)
+    check("warlock scroll range is the overflow", war.range, 56)
+    check("warlock header stays on the content frame", war.headerOnContent, True)
+    check("warlock header is not the scroll child", war.headerOnChild, False)
+    check("warlock header names the points", "points spent" in war.title, True)
+    check("warlock content matches the viewport", war.contentH, 402)
+    check("warlock scroll uses the panel template", war.template, "UIPanelScrollFrameTemplate")
+    check("rogue draws every node", rogue.buttons, len(plan.cells))
+    check("rogue scroll child is the 328px tree", rogue.tree, 328)
+    check("rogue pane is the whole tree", rogue.pane, 328)
+    check("rogue scroll range is zero", rogue.range, 0)
+    check("rogue header stays on the content frame", rogue.headerOnContent, True)
+    check("rogue header is not the scroll child", rogue.headerOnChild, False)
+    check("rogue content is only as tall as the tree", rogue.contentH < 402, True)
 
     passed = sum(_results)
     total = len(_results)

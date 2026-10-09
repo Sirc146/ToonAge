@@ -21,6 +21,70 @@ local LERP_RATE  = 0.35   -- fraction of the remaining angle closed per tick (hi
 
 local ARROW_W, ARROW_H = 80, 100
 
+-- Classic Arathi Highlands (uiMap 14) and the current-era Arathi map (2372)
+-- are one zone. Arator's Journey stores the same x,y on both. A client that
+-- does not return GetMapInfo for one of them still resolves the name.
+Arrow.MAP_NAMES = {
+    [14]   = "Arathi Highlands",
+    [2372] = "Arathi Highlands",
+}
+Arrow.MAP_SAME = {
+    [14] = 2372,
+    [2372] = 14,
+}
+
+function Arrow.SameMap(a, b)
+    if a == nil or b == nil then return false end
+    if a == b then return true end
+    return Arrow.MAP_SAME[a] == b
+end
+
+function Arrow.MapName(mapID)
+    if C_Map and C_Map.GetMapInfo then
+        local info = C_Map.GetMapInfo(mapID)
+        if type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
+            return info.name
+        end
+    end
+    return Arrow.MAP_NAMES[mapID]
+end
+
+function Arrow.TokenIsMapID(n)
+    if type(n) ~= "number" or n ~= math.floor(n) or n <= 0 then return false end
+    if Arrow.MAP_NAMES[n] then return true end
+    if n > 100 then return true end
+    if C_Map and C_Map.GetMapInfo then
+        local info = C_Map.GetMapInfo(n)
+        if type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
+            return true
+        end
+    end
+    return false
+end
+
+local function ParentMatches(startMap, targetMap)
+    if not (C_Map and C_Map.GetMapInfo) then return false end
+    local checkMap = startMap
+    for _ = 1, 5 do
+        local mapInfo = C_Map.GetMapInfo(checkMap)
+        if not mapInfo then return false end
+        if mapInfo.parentMapID == targetMap then return true end
+        if mapInfo.parentMapID and mapInfo.parentMapID > 0 then
+            checkMap = mapInfo.parentMapID
+        else
+            return false
+        end
+    end
+    return false
+end
+
+function Arrow.SameArea(currentMap, coordMap)
+    if Arrow.SameMap(currentMap, coordMap) then return true end
+    if ParentMatches(currentMap, coordMap) then return true end
+    if ParentMatches(coordMap, currentMap) then return true end
+    return false
+end
+
 -- Shortest-path angle interpolation (avoids spinning the long way around
 -- when the target bearing crosses the -pi/pi wrap boundary).
 local function LerpAngle(current, target, factor)
@@ -66,6 +130,8 @@ end
 -- powers the default UI's built-in supertracking arrow — real, verified
 -- per-quest data instead of a guessed zone-center/last-NPC fallback.
 local function GetEffectiveCoord(step)
+    -- A scenario or dungeon step is tagged noArrow: show the step, draw nothing.
+    if not step or step.noArrow then return 0, 0, 0 end
     -- PRIORITY 1: Blizzard's live quest waypoint system.
     -- GetNextWaypoint only works for supertracked/watched quests.
     if step.questID and C_QuestLog.GetNextWaypoint then
@@ -175,6 +241,7 @@ local function GetEffectiveCoord(step)
     end
 
     -- PRIORITY 4: Manual guide coords
+    if type(step.coord) ~= "table" then return 0, 0, 0 end
     local coordMap = step.coord.map or 0
     local cx, cy   = step.coord.x, step.coord.y
     if coordMap ~= 0 or cx ~= 0 or cy ~= 0 then
@@ -340,6 +407,18 @@ function Arrow:Tick(f)
         step = GetTargetStep()
         PaintEstimate(f, (step and step.coord) and step or nil)
 
+        if step and step.noArrow then
+            U.RevealWaypoint(f, true)
+            HideArrowArt(f)
+            f.distF:SetText("")
+            f.etaF:SetText("")
+            local label = step.text or ""
+            if #label > 35 then label = label:sub(1, 32) .. "..." end
+            f.titleF:SetText(label)
+            self._arrived = false
+            return
+        end
+
         if not step or not step.coord then
             U.RevealWaypoint(f, true)
             HideArrowArt(f)
@@ -394,35 +473,10 @@ function Arrow:Tick(f)
         return
     end
 
-    -- Cross-zone detection (coordMap=0 with real coords = assume same zone)
+    -- Cross-zone detection (coordMap=0 with real coords = assume same zone).
+    -- Map 14 and 2372 are both Arathi Highlands, so they count as one area.
     if coordMap ~= 0 and coordMap ~= currentMap then
-        -- Check parent-zone containment — sub-zones shouldn't trigger travel redirect
-        local isSameArea = false
-        local checkMap = currentMap
-        for _ = 1, 5 do  -- max 5 levels of parent traversal
-            local mapInfo = C_Map.GetMapInfo(checkMap)
-            if not mapInfo then break end
-            if mapInfo.parentMapID == coordMap then isSameArea = true; break end
-            if mapInfo.parentMapID and mapInfo.parentMapID > 0 then
-                checkMap = mapInfo.parentMapID
-            else
-                break
-            end
-        end
-        -- Also check reverse: target might be a sub-zone of current
-        if not isSameArea then
-            checkMap = coordMap
-            for _ = 1, 5 do
-                local mapInfo = C_Map.GetMapInfo(checkMap)
-                if not mapInfo then break end
-                if mapInfo.parentMapID == currentMap then isSameArea = true; break end
-                if mapInfo.parentMapID and mapInfo.parentMapID > 0 then
-                    checkMap = mapInfo.parentMapID
-                else
-                    break
-                end
-            end
-        end
+        local isSameArea = Arrow.SameArea(currentMap, coordMap)
 
         if isSameArea then
             -- Same area — treat coordMap as current map for bearing calculation
@@ -746,8 +800,10 @@ function Arrow:ParseWayCommand(args)
         local n3 = tonumber(tokens[3])
 
         if n1 and n2 and n3 then
-            -- Three numbers: first is mapID if it's an integer > 100
-            if n1 == math.floor(n1) and n1 > 100 then
+            -- Three numbers: first is a map id when it is a known map.
+            -- Integers above 100 are map ids. 14 (Arathi) is below that
+            -- cutoff, so named maps and GetMapInfo resolve it too.
+            if Arrow.TokenIsMapID(n1) then
                 mapID = n1
                 xRaw  = n2
                 yRaw  = n3
@@ -797,9 +853,8 @@ function Arrow:ParseWayCommand(args)
     -- Confirmation message
     local mapStr = ""
     if mapID and mapID > 0 then
-        local mapInfo = C_Map.GetMapInfo(mapID)
-        mapStr = mapInfo and mapInfo.name or ("map " .. mapID)
-        mapStr = " in " .. mapStr
+        local name = Arrow.MapName(mapID)
+        mapStr = " in " .. (name or ("map " .. mapID))
     end
     TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100[TA Arrow]|r Waypoint set: |cFF4AFF7A%.2f, %.2f|r%s%s",
         xRaw, yRaw, mapStr, desc and (" — " .. desc) or ""))
