@@ -111,6 +111,7 @@ Data\Retail\Guides\TAG_Arathi_Highlands_Returning_Player.lua
 Modules\Infrastructure\DevHelpers.lua
 Modules\Infrastructure\ErrorLog.lua
 Modules\Infrastructure\CoordHarvester.lua
+Modules\Infrastructure\ContextAction.lua
 
 # ── Modules: Combat (helpers before consumers) ────────────────────────
 Modules\Combat\TalentsHelpers.lua
@@ -148,6 +149,7 @@ Modules\Navigation\GuideBrowser.lua
 Modules\Navigation\GuideContextMenu.lua
 Modules\Navigation\ChromieTime.lua
 Modules\Navigation\QuestTracker.lua
+Modules\Navigation\QuestContext.lua
 Modules\Navigation\Arrow.lua
 Modules\Navigation\CoordResolver.lua
 Modules\Navigation\AntTrail.lua

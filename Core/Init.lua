@@ -804,7 +804,7 @@ local EVENT_ROUTES = {
     BAG_UPDATE = { "Gear", "Heirlooms", "ProfessionGear" },
     UNIT_INVENTORY_CHANGED = { "Character", "ForeverGear", "Gear", "ProfessionGear" },
     GET_ITEM_INFO_RECEIVED = { "ForeverGear", "Gear", "Heirlooms", "ProfessionGear" },
-    QUEST_LOG_UPDATE = { "CoordHarvester", "NameplateObjectives", "PullPlanner", "QuestTracker", "TargetMarker" },
+    QUEST_LOG_UPDATE = { "CoordHarvester", "NameplateObjectives", "PullPlanner", "QuestContext", "QuestTracker", "TargetMarker" },
     UNIT_AURA = { "CombatState" },
     UNIT_STATS = { "ForeverCharacter", "ForeverScrolls" },
     COMBAT_RATING_UPDATE = {  },
@@ -814,7 +814,7 @@ local EVENT_ROUTES = {
     PLAYER_XP_UPDATE = { "ForeverCharacter", "XPTracker" },
     ACTIONBAR_SLOT_CHANGED = { "CombatRecorder", "ForeverRotation" },
     SPELL_UPDATE_COOLDOWN = { "ProfessionOverload" },
-    PLAYER_TARGET_CHANGED = { "CombatState", "ForeverPvP", "Gear" },
+    PLAYER_TARGET_CHANGED = { "CombatState", "ForeverPvP", "Gear", "QuestContext" },
     UNIT_ATTACK_POWER = {  },
     BAG_UPDATE_DELAYED = { "AutoEquip", "DataHarvester", "ForeverGear" },
     ZONE_CHANGED = { "CoordResolver", "TravelRouter" },
@@ -1559,6 +1559,9 @@ local function Dispatch(self, msg)
             end
             if TA.ProfessionOverload and TA.ProfessionOverload.StatusLine then
                 Say("  " .. TA.ProfessionOverload:StatusLine())
+            end
+            if TA.ContextAction and TA.ContextAction.StatusLine then
+                Say("  " .. TA.ContextAction:StatusLine())
             end
             Say("━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 

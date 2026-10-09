@@ -75,6 +75,8 @@ Modules\Infrastructure\ErrorLog.lua
 # registered, so TBC gets Quest Automation (AutoQuest/AutoEquip/VendorAssist),
 # Module Health, module switches, Export/Import and About -- nothing retail-only.
 Modules\Infrastructure\Settings.lua
+# Shared spell/item button above the action bars. Overload is retail-only.
+Modules\Infrastructure\ContextAction.lua
 
 # ── Modules: TBC (Character first — dependents follow) ─────────────────
 Modules\TBC\Character.lua

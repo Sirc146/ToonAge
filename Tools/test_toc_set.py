@@ -63,6 +63,7 @@ FOREVER_TOC = "ToonAge_Camelot.toc"     # filename fixed by the loader; see the 
 FOREVER_MODULES = [
     "Modules/Infrastructure/ErrorLog.lua",
     "Modules/Infrastructure/Settings.lua",
+    "Modules/Infrastructure/ContextAction.lua",
     "Modules/Infrastructure/ChatCopy.lua",
     "Modules/Infrastructure/CoordHarvester.lua",
     # Harvest sensor array (Docs/SPEC_HARVEST_SENSOR_ARRAY.md, T2, 2026-10-04): the
@@ -243,6 +244,7 @@ def test_scaffold_tocs_are_core_only():
                   sorted(mods),
                   ["Modules/Character/ProfessionBoard.lua",
                    "Modules/Character/ProfessionSkills.lua",
+                   "Modules/Infrastructure/ContextAction.lua",
                    "Modules/Infrastructure/ErrorLog.lua"])
             check("vanilla: includes Layout for the profession cards",
                   any(f.endswith("Core/Layout.lua") for f in files), True)
