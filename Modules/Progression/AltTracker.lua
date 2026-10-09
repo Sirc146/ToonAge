@@ -163,7 +163,7 @@ function AltTracker:Render(content, sidebar)
     -- Label column
     local cornerLbl = headerRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     cornerLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-    cornerLbl:SetText(COL_GREY .. "Character →" .. CLOSE)
+    cornerLbl:SetText(COL_GREY .. ("Character " .. ToonAge.Utils.Glyph("arrow", "888780")) .. CLOSE)
     cornerLbl:SetPoint("TOPLEFT", headerRow, "TOPLEFT", 0, -6)
 
     for ci, charInfo in ipairs(chars) do
@@ -233,9 +233,9 @@ function AltTracker:Render(content, sidebar)
             local done  = tasks[taskDef.id]
             local sym
             if done == true then
-                sym = COL_GREEN .. "✓" .. CLOSE
+                sym = COL_GREEN .. ToonAge.Utils.Glyph("check", "4AFF7A") .. CLOSE
             elseif done == false then
-                sym = COL_RED .. "○" .. CLOSE
+                sym = COL_RED .. ToonAge.Utils.Glyph("pipRing", "FF4444") .. CLOSE
             else
                 sym = COL_GREY .. "—" .. CLOSE
             end
@@ -289,8 +289,8 @@ function AltTracker:RenderInline(content, startY)
         for _, taskDef in ipairs(BUILTIN_TASKS) do
             local done = data.tasks and data.tasks[taskDef.id]
             local sym
-            if done == true then sym = COL_GREEN .. "✓" .. CLOSE
-            elseif done == false then sym = COL_RED .. "○" .. CLOSE
+            if done == true then sym = COL_GREEN .. ToonAge.Utils.Glyph("check", "4AFF7A") .. CLOSE
+            elseif done == false then sym = COL_RED .. ToonAge.Utils.Glyph("pipRing", "FF4444") .. CLOSE
             else sym = COL_GREY .. "—" .. CLOSE
             end
             local cell = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")

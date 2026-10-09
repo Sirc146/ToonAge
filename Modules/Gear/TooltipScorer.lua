@@ -44,9 +44,9 @@ local DUAL_SLOT_LOCS = {
 }
 
 -- ── Unicode indicators ────────────────────────────────────────────────────────
-local ARROW_UP    = "\226\150\178"  -- ▲ (U+25B2)
-local ARROW_DOWN  = "\226\150\188"  -- ▼ (U+25BC)
-local ARROW_SIDE  = "\226\149\144"  -- ═ (U+2550)
+local ARROW_UP    = ToonAge.Utils.GearMark("upgrade")
+local ARROW_DOWN  = ToonAge.Utils.GearMark("downgrade", true)
+local ARROW_SIDE  = ToonAge.Utils.GearMark("sidegrade")
 
 local COLOR_GREEN  = "|cFF4AFF7A"
 local COLOR_RED    = "|cFFFF4444"

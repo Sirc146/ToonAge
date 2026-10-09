@@ -289,7 +289,7 @@ P[182] = { -- skillLine ID for Herbalism
     },
 
     talentTree = {
-        -- ⚠ PERMANENT — cannot be reset. Plan before spending KP.
+        -- WARNING PERMANENT — cannot be reset. Plan before spending KP.
         -- KP sources: first-craft bonus (1 KP each new recipe), open-world treasures, weekly quests
         archetypes = {
             {
@@ -324,7 +324,7 @@ P[182] = { -- skillLine ID for Herbalism
                 swapAt = 75,
             },
         },
-        permanenceWarning = "⚠ Profession talent choices are PERMANENT — unlike combat talents, KP cannot be refunded. Botany (mounted gathering at 40 KP) is the highest-value milestone. Prioritize it before branching.",
+        permanenceWarning = (ToonAge.Utils.Glyph("warn") .. " Profession talent choices are PERMANENT — unlike combat talents, KP cannot be refunded. Botany (mounted gathering at 40 KP) is the highest-value milestone. Prioritize it before branching."),
         rows = {
             {
                 {
@@ -469,7 +469,7 @@ P[393] = { -- skillLine ID for Skinning
     },
 
     talentTree = {
-        permanenceWarning = "⚠ PERMANENT — KP cannot be refunded. Skinning has no mounted-gathering milestone but Deftness (speed) is essential for farming efficiently.",
+        permanenceWarning = (ToonAge.Utils.Glyph("warn") .. " PERMANENT — KP cannot be refunded. Skinning has no mounted-gathering milestone but Deftness (speed) is essential for farming efficiently."),
         rows = {
             {
                 {
@@ -687,7 +687,7 @@ P[171] = {
     },
 
     talentTree = {
-        permanenceWarning = "⚠ PERMANENT — Knowledge Points cannot be refunded. Potion Prowess early → Fluent in Flasks at 50 is the standard progression for raiders.",
+        permanenceWarning = (ToonAge.Utils.Glyph("warn") .. " PERMANENT — Knowledge Points cannot be refunded. Potion Prowess early " .. ToonAge.Utils.Glyph("arrow") .. " Fluent in Flasks at 50 is the standard progression for raiders."),
         rows = {
             {
                 {

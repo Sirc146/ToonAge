@@ -197,6 +197,9 @@ class Harness:
         self.lua.execute(f"ToonAgeDB = {db_literal}")
         self.TA = self.lua.globals().ToonAge
         self.TA.InitDB(self.TA)
+        # Welcome lines call Glyph while the file loads. The game loads
+        # Core/Utils.lua first; this harness does not.
+        self.lua.execute("ToonAge.Utils = { Glyph = function() return '' end }")
 
     def load_onboarding(self):
         self.lua.execute(_read("Modules/Infrastructure/Onboarding.lua"))

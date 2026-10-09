@@ -207,7 +207,7 @@ function Settings:Render(content, sidebar)
         end
     end)
 
-    y = MakeToggleRow(content, y, w, "  └ Only accept quests in active guide (stricter mode)", function()
+    y = MakeToggleRow(content, y, w, "  - Only accept quests in active guide (stricter mode)", function()
         return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoQuestGuideOnly
     end, function()
         if TA.charDB and TA.charDB.tracker then
@@ -243,7 +243,7 @@ function Settings:Render(content, sidebar)
 
     VendorToggle("Sell Grey Items (poor quality only)",        "autoSellJunk")
     VendorToggle("Repair All On Opening A Vendor",             "autoRepair")
-    VendorToggle("  \226\148\148 Use guild funds when your rank allows", "repairFromGuild")
+    VendorToggle("  - Use guild funds when your rank allows", "repairFromGuild")
 
     y = MakeToggleRow(content, y, w, "Auto-Equip Looted Upgrades (hold Shift to pause)", function()
         return TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoEquip
@@ -444,7 +444,7 @@ function Settings:Render(content, sidebar)
     if errored > 0 then
         for _, entry in ipairs(report) do
             if entry.status == "errored" then
-                y = MakeInfoRow(content, y, w, "  ✗ " .. entry.name, "|cFFFF4444" .. (entry.error or "unknown") .. "|r")
+                y = MakeInfoRow(content, y, w, ("  " .. ToonAge.Utils.Glyph("cross") .. " ") .. entry.name, "|cFFFF4444" .. (entry.error or "unknown") .. "|r")
             end
         end
     end

@@ -93,7 +93,7 @@ function M:Render(content, side)
 
     for _, trait in ipairs(data.traits) do
         y = L:DataRow(content, y, {
-            label  = trait.n .. (trait.combat and "  |cFFFFD100● combat|r" or ""),
+            label  = trait.n .. (trait.combat and ("  |cFFFFD100" .. ToonAge.Utils.Glyph("pip", "FFD100") .. " combat|r") or ""),
             value  = "",
             status = trait.combat and "neutral" or "dim",
             note   = trait.d,

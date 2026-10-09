@@ -523,7 +523,7 @@ end
 M.BagUpgrades = function() return BagUpgrades() end
 
 local function Colored(name, quality)
-    if not name then return "|cFF6E6A62loading…|r" end
+    if not name then return "|cFF6E6A62loading...|r" end
     return "|cFF" .. (QUALITY_HEX[quality or 1] or "ffffff") .. name .. "|r"
 end
 
@@ -805,7 +805,7 @@ local function RenderSlots(content, y, rows)
         -- the noise this layout exists to remove.
         if not r.empty then
             local hex = QUALITY_HEX[r.quality or 1] or "ffffff"
-            local shown = r.name and ("|cFF" .. hex .. r.name .. "|r") or "|cFF6E6A62loading…|r"
+            local shown = r.name and ("|cFF" .. hex .. r.name .. "|r") or "|cFF6E6A62loading...|r"
 
             local note = r.ilvl and ("Item level " .. r.ilvl) or nil
             if r.dps then

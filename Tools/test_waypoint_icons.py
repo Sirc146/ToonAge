@@ -48,7 +48,7 @@ DELIVERED = {
 }
 
 tgas = [f for f in os.listdir(ICON) if f.endswith(".tga")]
-check("folder holds the 80 delivered textures", len(tgas), 80)
+check("folder holds the 98 delivered textures", len(tgas), 98)
 for name in NEW:
     path = os.path.join(ICON, name)
     check(f"{name} is in Media/icons", os.path.isfile(path), True)
@@ -70,8 +70,8 @@ for name, size in DELIVERED.items():
               (hdr[2], w, h), (2, size[0], size[1]))
 
 manifest = open(os.path.join(ICON, "MEDIA.md"), encoding="utf-8").read()
-check("manifest counts 80 textures, the full named set",
-      "80 TGA" in manifest and "named set is 80" in manifest)
+check("manifest counts 98 textures, the full named set",
+      "98 TGA" in manifest and "named set is 98" in manifest)
 check("manifest no longer lists those nine as missing",
       "still not in any archive" not in manifest and "util_lock_16.tga" in manifest)
 

@@ -435,11 +435,11 @@ function M:CreateCollapsibleSection(parent, opts)
 
     local function UpdateVisual()
         if section.collapsed then
-            arrow:SetText("\226\150\182")  -- ▶ right-pointing triangle
+            arrow:SetText(ToonAge.Utils.Glyph("arrow"))
             content:Hide()
             container:SetHeight(HEADER_H)
         else
-            arrow:SetText("\226\150\188")  -- ▼ down-pointing triangle
+            arrow:SetText(ToonAge.Utils.Glyph("arrowDown"))
             content:Show()
             container:SetHeight(HEADER_H + section.contentHeight)
         end
@@ -472,9 +472,9 @@ function M:CreateCollapsibleSection(parent, opts)
             M:AnimateHeight(container, HEADER_H + self.contentHeight, ANIM_DURATION)
         end
         if self.collapsed then
-            arrow:SetText("\226\150\182")
+            arrow:SetText(ToonAge.Utils.Glyph("arrow"))
         else
-            arrow:SetText("\226\150\188")
+            arrow:SetText(ToonAge.Utils.Glyph("arrowDown"))
         end
     end
 
@@ -562,14 +562,14 @@ function M:InitDrawer()
     arrowLbl:SetJustifyH("CENTER")
     arrowLbl:SetJustifyV("MIDDLE")
     arrowLbl:SetTextColor(unpack(self.CLR_TEXT_ACCENT))
-    arrowLbl:SetText("Show \226\134\145")
+    arrowLbl:SetText(("Show " .. ToonAge.Utils.Glyph("arrowUp")))
 
     local function UpdateArrowBtnLabel()
         local Arrow = TA:GetModule("Arrow")
         if Arrow and Arrow.frame and Arrow.frame:IsVisible() then
-            arrowLbl:SetText("Hide \226\134\145")
+            arrowLbl:SetText(("Hide " .. ToonAge.Utils.Glyph("arrowUp")))
         else
-            arrowLbl:SetText("Show \226\134\145")
+            arrowLbl:SetText(("Show " .. ToonAge.Utils.Glyph("arrowUp")))
         end
     end
 
@@ -625,9 +625,9 @@ function M:InitDrawer()
 
     local function UpdateToggleArrow()
         if isOpen then
-            toggleArrow:SetText("\194\187")  -- » (close/collapse)
+            toggleArrow:SetText(ToonAge.Utils.Glyph("arrow"))
         else
-            toggleArrow:SetText("\194\171")  -- « (open/expand)
+            toggleArrow:SetText(ToonAge.Utils.Glyph("arrowLeft"))
         end
     end
 

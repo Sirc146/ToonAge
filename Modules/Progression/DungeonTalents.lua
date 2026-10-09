@@ -128,7 +128,7 @@ function DungeonTalents:ShowSwitchPrompt(instanceName, buildLabel, importString)
             -- Copy to clipboard for paste into talent UI
             if CopyToClipboard then
                 CopyToClipboard(importString)
-                TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A[ToonAge]|r Talent string copied! Open Talents (N) → Import → Paste.")
+                TA:Raw(TA.LOG.OUTPUT, ("|cFF4AFF7A[ToonAge]|r Talent string copied! Open Talents (N) " .. ToonAge.Utils.Glyph("arrow") .. " Import " .. ToonAge.Utils.Glyph("arrow") .. " Paste."))
             end
 
             -- Also try direct API application (may fail if protected/not supported)

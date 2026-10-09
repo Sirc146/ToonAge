@@ -486,7 +486,7 @@ function Settings:Render(content, sidebar)
             end)
         end
 
-        y = MakeToggleRow(content, y, w, "Nameplate Quest Markers (X on kill targets, ★ on loot targets)", function()
+        y = MakeToggleRow(content, y, w, ("Nameplate Quest Markers (X on kill targets, " .. ToonAge.Utils.Glyph("star") .. " on loot targets)"), function()
             return TA.db and TA.db.modules and TA.db.modules.NameplateObjectives ~= false
         end, function()
             if TA.db and TA.db.modules then
@@ -667,7 +667,7 @@ function Settings:Render(content, sidebar)
     if errored > 0 then
         for _, entry in ipairs(report) do
             if entry.status == "errored" then
-                y = MakeInfoRow(content, y, w, "  ✗ " .. entry.name, "|cFFFF4444" .. (entry.error or "unknown") .. "|r")
+                y = MakeInfoRow(content, y, w, ("  " .. ToonAge.Utils.Glyph("cross") .. " ") .. entry.name, "|cFFFF4444" .. (entry.error or "unknown") .. "|r")
             end
         end
     end

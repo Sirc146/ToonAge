@@ -25,42 +25,42 @@ TA:RegisterModule("TravelRouter", TR)
 TR.PORTALS = {
     -- ── Major city portals (Retail) ───────────────────────────────────
     -- Stormwind portals
-    { from = 84,   to = 1978, method = "portal", label = "SW → Dragon Isles" },
-    { from = 84,   to = 2112, method = "portal", label = "SW → Valdrakken" },
-    { from = 84,   to = 2339, method = "portal", label = "SW → Dornogal (Khaz Algar)" },
-    { from = 84,   to = 2537, method = "portal", label = "SW → Quel'Thalas (Midnight)" },
+    { from = 84,   to = 1978, method = "portal", label = ("SW " .. ToonAge.Utils.Glyph("arrow") .. " Dragon Isles") },
+    { from = 84,   to = 2112, method = "portal", label = ("SW " .. ToonAge.Utils.Glyph("arrow") .. " Valdrakken") },
+    { from = 84,   to = 2339, method = "portal", label = ("SW " .. ToonAge.Utils.Glyph("arrow") .. " Dornogal (Khaz Algar)") },
+    { from = 84,   to = 2537, method = "portal", label = ("SW " .. ToonAge.Utils.Glyph("arrow") .. " Quel'Thalas (Midnight)") },
     -- Removed 2026-07-25: a "SW → Hallowfall" entry pointing at 2339, which is
     -- Dornogal — it duplicated the Khaz Algar portal above under a wrong name.
     -- Also removed "SW → Emerald Dream" pointing at 2215, which is Hallowfall.
     -- Re-add the Emerald Dream portal once its real map ID is confirmed in-game.
-    { from = 84,   to = 619,  method = "portal", label = "SW → Jade Forest" },
+    { from = 84,   to = 619,  method = "portal", label = ("SW " .. ToonAge.Utils.Glyph("arrow") .. " Jade Forest") },
 
     -- Orgrimmar portals
-    { from = 85,   to = 1978, method = "portal", label = "Org → Dragon Isles" },
-    { from = 85,   to = 2112, method = "portal", label = "Org → Valdrakken" },
-    { from = 85,   to = 2339, method = "portal", label = "Org → Dornogal (Khaz Algar)" },
-    { from = 85,   to = 2537, method = "portal", label = "Org → Quel'Thalas (Midnight)" },
+    { from = 85,   to = 1978, method = "portal", label = ("Org " .. ToonAge.Utils.Glyph("arrow") .. " Dragon Isles") },
+    { from = 85,   to = 2112, method = "portal", label = ("Org " .. ToonAge.Utils.Glyph("arrow") .. " Valdrakken") },
+    { from = 85,   to = 2339, method = "portal", label = ("Org " .. ToonAge.Utils.Glyph("arrow") .. " Dornogal (Khaz Algar)") },
+    { from = 85,   to = 2537, method = "portal", label = ("Org " .. ToonAge.Utils.Glyph("arrow") .. " Quel'Thalas (Midnight)") },
     -- Same two removals as the Stormwind block above.
-    { from = 85,   to = 619,  method = "portal", label = "Org → Jade Forest" },
+    { from = 85,   to = 619,  method = "portal", label = ("Org " .. ToonAge.Utils.Glyph("arrow") .. " Jade Forest") },
 
     -- Valdrakken hub portals
-    { from = 2112, to = 84,   method = "portal", label = "Valdrakken → Stormwind" },
-    { from = 2112, to = 85,   method = "portal", label = "Valdrakken → Orgrimmar" },
-    { from = 2112, to = 2339, method = "portal", label = "Valdrakken → Dornogal (Khaz Algar)" },
-    { from = 2112, to = 2537, method = "portal", label = "Valdrakken → Quel'Thalas" },
+    { from = 2112, to = 84,   method = "portal", label = ("Valdrakken " .. ToonAge.Utils.Glyph("arrow") .. " Stormwind") },
+    { from = 2112, to = 85,   method = "portal", label = ("Valdrakken " .. ToonAge.Utils.Glyph("arrow") .. " Orgrimmar") },
+    { from = 2112, to = 2339, method = "portal", label = ("Valdrakken " .. ToonAge.Utils.Glyph("arrow") .. " Dornogal (Khaz Algar)") },
+    { from = 2112, to = 2537, method = "portal", label = ("Valdrakken " .. ToonAge.Utils.Glyph("arrow") .. " Quel'Thalas") },
 
     -- Oribos (Shadowlands hub)
-    { from = 1670, to = 84,   method = "portal", label = "Oribos → Stormwind" },
-    { from = 1670, to = 85,   method = "portal", label = "Oribos → Orgrimmar" },
+    { from = 1670, to = 84,   method = "portal", label = ("Oribos " .. ToonAge.Utils.Glyph("arrow") .. " Stormwind") },
+    { from = 1670, to = 85,   method = "portal", label = ("Oribos " .. ToonAge.Utils.Glyph("arrow") .. " Orgrimmar") },
 
     -- Midnight zones internal connections.
     -- Corrected 2026-07-25. Previous values were 2435/2436/2437 off a 2434 hub —
     -- every one of them wrong. 2437 is Zul'Aman; 2435/2436 aren't Midnight maps;
     -- and 2434 is Dead Scar, a sub-area of Eversong (see Data/Zones.lua:158),
     -- not the Quel'Thalas hub it was being used as.
-    { from = 2537, to = 2395, method = "portal", label = "Quel'Thalas → Eversong Woods" },
-    { from = 2537, to = 2393, method = "portal", label = "Quel'Thalas → Silvermoon City" },
-    { from = 2537, to = 2600, method = "portal", label = "Quel'Thalas → Naigtal" },
+    { from = 2537, to = 2395, method = "portal", label = ("Quel'Thalas " .. ToonAge.Utils.Glyph("arrow") .. " Eversong Woods") },
+    { from = 2537, to = 2393, method = "portal", label = ("Quel'Thalas " .. ToonAge.Utils.Glyph("arrow") .. " Silvermoon City") },
+    { from = 2537, to = 2600, method = "portal", label = ("Quel'Thalas " .. ToonAge.Utils.Glyph("arrow") .. " Naigtal") },
 }
 
 -- MAP ID VERIFICATION STATUS
@@ -129,7 +129,7 @@ TR.PORTALS = {
 -- matching therefore has to rank by specificity, not just take the first hit —
 -- see MapZoneDistance in QuestTracker.lua.
 --
--- ⚠ STILL UNVERIFIED:
+-- WARNING STILL UNVERIFIED:
 --   2600  Naigtal — inferred from a map binding, not yet walked.
 --   Emerald Dream portals — removed rather than left pointing at 2215
 --     (Hallowfall). Re-add once the real destination ID is confirmed.
@@ -310,7 +310,7 @@ function TR:FindRoute(fromZone, toZone)
                 if p.from == hub and p.to == toZone then
                     return {
                         method = "multi",
-                        label  = toHub.label .. " → " .. p.label,
+                        label  = toHub.label .. (" " .. ToonAge.Utils.Glyph("arrow") .. " ") .. p.label,
                         hops   = 2,
                     }
                 end
@@ -329,7 +329,7 @@ function TR:FindRoute(fromZone, toZone)
             if p.from == hearthMapID and p.to == toZone then
                 return {
                     method = "multi",
-                    label  = "Hearth → " .. p.label,
+                    label  = ("Hearth " .. ToonAge.Utils.Glyph("arrow") .. " ") .. p.label,
                     hops   = 2,
                 }
             end

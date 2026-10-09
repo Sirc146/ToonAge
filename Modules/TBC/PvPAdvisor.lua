@@ -139,11 +139,11 @@ local function RenderModeToggle(content, y)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText("PvP mode", 1, 0.82, 0)
         GameTooltip:AddLine("Changes five things at once, so they cannot disagree:", 0.9, 0.9, 0.9, true)
-        GameTooltip:AddLine("• Cap target pinned to same-level (a player is your level)", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("• Melee hit cap 9% -> 5%, spell hit 16% -> 3%", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("• Gear weights swap to the PvP set", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("• Defense uncrittable target dropped", 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("• Resilience surfaced on the Caps tab", 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine((ToonAge.Utils.Glyph("bullet") .. " Cap target pinned to same-level (a player is your level)"), 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine((ToonAge.Utils.Glyph("bullet") .. " Melee hit cap 9% -> 5%, spell hit 16% -> 3%"), 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine((ToonAge.Utils.Glyph("bullet") .. " Gear weights swap to the PvP set"), 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine((ToonAge.Utils.Glyph("bullet") .. " Defense uncrittable target dropped"), 0.8, 0.8, 0.8, true)
+        GameTooltip:AddLine((ToonAge.Utils.Glyph("bullet") .. " Resilience surfaced on the Caps tab"), 0.8, 0.8, 0.8, true)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -291,7 +291,7 @@ function M:Render(content, side)
         for _, tree in ipairs(trees) do
             parts[#parts + 1] = string.format("%s %d", tree.name, tree.points)
         end
-        y = L:Bullet(content, y, table.concat(parts, "   ·   "), { color = L.C_DIM, marker = "›" })
+        y = L:Bullet(content, y, table.concat(parts, "   ·   "), { color = L.C_DIM, marker = ToonAge.Utils.Glyph("bullet", L.C_DIM) })
     end
 
     -- ─── Spike 3: stats ───────────────────────────────────────────────
@@ -393,7 +393,7 @@ function M:Render(content, side)
     y = L:SectionHeader(content, y, "DIMINISHING RETURNS",
         string.format("The most important PvP mechanic with no interface anywhere in the "
             .. "game: %s, then the chain resets after about %d seconds.",
-            table.concat(TA.Data.DRChain, " → "), TA.Data.DRWindowSeconds))
+            table.concat(TA.Data.DRChain, (" " .. ToonAge.Utils.Glyph("arrow") .. " ")), TA.Data.DRWindowSeconds))
 
     for _, cat in ipairs(TA.Data.DRCategories) do
         y = L:DataRow(content, y, {

@@ -40,7 +40,7 @@ function RM:ApplyCameraProfile()
     pcall(C_CVar.SetCVar, "cameraDistanceMaxZoomFactor", zoom)
 
     if TA.debug then
-        TA:Raw(TA.LOG.INFO, string.format("|cFFFFD100[TA]|r Camera → %s (spec %d)", zoom, specID))
+        TA:Raw(TA.LOG.INFO, string.format(("|cFFFFD100[TA]|r Camera " .. ToonAge.Utils.Glyph("arrow") .. " %s (spec %d)"), zoom, specID))
     end
 end
 
@@ -95,9 +95,9 @@ function RM:CheckHeirlooms()
     end
 
     if #deadSlots > 0 then
-        TA:Raw(TA.LOG.WARN, "|cFFFF9A1A[ToonAge]|r ⚠ Heirloom gear has stopped scaling!")
+        TA:Raw(TA.LOG.WARN, ("|cFFFF9A1A[ToonAge]|r " .. ToonAge.Utils.Glyph("warn") .. " Heirloom gear has stopped scaling!"))
         for _, info in ipairs(deadSlots) do
-            TA:Raw(TA.LOG.WARN, string.format("  |cFFFF4444✗|r %s (capped at level %d) — replace ASAP", info.name, info.cap))
+            TA:Raw(TA.LOG.WARN, string.format(("  " .. ToonAge.Utils.Glyph("cross", "FF4444") .. " %s (capped at level %d) — replace ASAP"), info.name, info.cap))
         end
         -- Flag these slots for aggressive AutoEquip replacement
         TA.charDB.heirloomDeadSlots = {}
@@ -186,7 +186,7 @@ function RM:AuditBuffs()
     end
 
     if not hasAnyFlask then
-        table.insert(warnings, "|cFFFF4444✗ No Flask!|r Use a " .. primary .. " flask.")
+        table.insert(warnings, ("|cFFFF4444" .. ToonAge.Utils.Glyph("cross", "FF4444") .. " No Flask!|r Use a ") .. primary .. " flask.")
     end
 
     -- Check food (simplified: just check if Well Fed is active)
@@ -201,7 +201,7 @@ function RM:AuditBuffs()
         end
     end
     if not hasFood then
-        table.insert(warnings, "|cFFFF9A1A⚠ No Food Buff!|r Eat for secondary stats.")
+        table.insert(warnings, ("|cFFFF9A1A" .. ToonAge.Utils.Glyph("warn", "FF9A1A") .. " No Food Buff!|r Eat for secondary stats."))
     end
 
     -- Output warnings

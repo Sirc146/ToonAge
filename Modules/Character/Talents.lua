@@ -505,7 +505,7 @@ function Talents:RenderContent(content, activeSpecID)
 
             local rdyLbl = mcard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             rdyLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-            rdyLbl:SetText(ready and "|cFF4AFF7A\226\156\147 Ready|r" or ("|cFFFF5555\226\156\151 Need " .. row.req .. "|r"))
+            rdyLbl:SetText(ready and ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("check", "4AFF7A") .. " Ready|r") or (("|cFFFF5555" .. ToonAge.Utils.Glyph("cross", "FF5555") .. " Need ") .. row.req .. "|r"))
             rdyLbl:SetPoint("TOPRIGHT", mcard, "TOPRIGHT", -10, ry)
         end
     else
@@ -538,7 +538,7 @@ function Talents:RenderContent(content, activeSpecID)
                 if t then
                     found = found + 1
                     if lvl == playerLevel then
-                        pathLines[#pathLines + 1] = "|cFF4AFF7A→ Lvl " .. lvl .. ":|r |cFFFFD100" .. t .. "|r  ← take now"
+                        pathLines[#pathLines + 1] = ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Lvl ") .. lvl .. ":|r |cFFFFD100" .. t .. ("|r  " .. ToonAge.Utils.Glyph("arrowLeft") .. " take now")
                     else
                         pathLines[#pathLines + 1] = "|cFF888780  Lvl " .. lvl .. ":|r " .. t
                     end
@@ -564,11 +564,11 @@ function Talents:RenderContent(content, activeSpecID)
         -- 80-90 Midnight leveling band; Apex talents from 81 (Blizzard "Level Up
         -- Your Talents in Midnight"); level cap 90. Earlier text claimed Heroic
         -- dungeons at 30 and Delves at 50, which no current source supports.
-        if     playerLevel < 10 then mileTxt = "Milestone \226\134\146 Level 10: talent tree opens"
-        elseif playerLevel < 71 then mileTxt = "Milestone \226\134\146 Level 71: Hero talents unlock (one point per level)"
-        elseif playerLevel < 80 then mileTxt = "Milestone \226\134\146 Level 80: Midnight leveling zones (80\226\128\14790)"
-        elseif playerLevel < 81 then mileTxt = "Milestone \226\134\146 Level 81: Apex talents begin"
-        else                         mileTxt = "Milestone \226\134\146 Level 90: max level \194\183 Season 2 Delves, Mythic+ and Great Vault" end
+        if     playerLevel < 10 then mileTxt = ("Milestone " .. ToonAge.Utils.Glyph("arrow") .. " Level 10: talent tree opens")
+        elseif playerLevel < 71 then mileTxt = ("Milestone " .. ToonAge.Utils.Glyph("arrow") .. " Level 71: Hero talents unlock (one point per level)")
+        elseif playerLevel < 80 then mileTxt = ("Milestone " .. ToonAge.Utils.Glyph("arrow") .. " Level 80: Midnight leveling zones (80-90)")
+        elseif playerLevel < 81 then mileTxt = ("Milestone " .. ToonAge.Utils.Glyph("arrow") .. " Level 81: Apex talents begin")
+        else                         mileTxt = ("Milestone " .. ToonAge.Utils.Glyph("arrow") .. " Level 90: max level · Season 2 Delves, Mythic+ and Great Vault") end
 
         local mileLbl = mcard:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         mileLbl:SetFont(STANDARD_TEXT_FONT, 8)
@@ -814,7 +814,7 @@ function Talents:RenderContent(content, activeSpecID)
                 AddText("|cFF888780This means your current gear has more of the stats that " .. recName
                     .. " values. Consider respeccing or regearing if you want to stay " .. GetSpecNameByID(activeSpecID) .. ".|r", 9, 0.5, 0.5, 0.5)
                 if weaponNotes[bestSpec] then
-                    AddText("|cFFFF8800⚠ Weapon excluded:|r Your equipped weapon type isn't usable by "
+                    AddText(("|cFFFF8800" .. ToonAge.Utils.Glyph("warn", "FF8800") .. " Weapon excluded:|r Your equipped weapon type isn't usable by ")
                         .. recName .. ". Score is based on armor + accessories only — you'd need a different weapon to actually respec.", 9, 0.7, 0.5, 0.2)
                 end
                 y = y - 4
@@ -829,7 +829,7 @@ function Talents:RenderContent(content, activeSpecID)
                     local sName = GetSpecNameByID(entry.id)
                     local isActive = (entry.id == activeSpecID)
                     local color = isActive and "|cFF4AFF7A" or "|cFFAAAAAA"
-                    local tag   = isActive and " ← active" or ""
+                    local tag   = isActive and (" " .. ToonAge.Utils.Glyph("arrowLeft") .. " active") or ""
                     local wpnTag = weaponNotes[entry.id] and " |cFF888780(no weapon)|r" or ""
                     AddText(color .. sName .. "|r: " .. U.FormatNumber(entry.score) .. " gear score" .. tag .. wpnTag, 9, 0.6, 0.6, 0.6)
                 end
@@ -891,7 +891,7 @@ function Talents:RenderSidebar(parent, activeSpecID)
 
             local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             lbl:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
-            lbl:SetText(name .. (isActive and " |cFF4AFF7A●|r" or ""))
+            lbl:SetText(name .. (isActive and (" " .. ToonAge.Utils.Glyph("pip", "4AFF7A")) or ""))
             -- Class-colored when selected, neutral when not
             if isSelected then
                 lbl:SetTextColor(cr, cg, cb, 1)

@@ -785,8 +785,8 @@ local function TalentScan()
     p("or use the 'Save Current as X Build' button in /ta talents to set them per content type.")
     p("")
     p("|cFF888780To populate ALL content types for this spec:|r")
-    p("  1. Switch to your M+ loadout in Blizzard UI → open /ta talents → click Mythic+ tab → 'Save Current'")
-    p("  2. Switch to Raid loadout → Raid tab → 'Save Current'")
+    p(("  1. Switch to your M+ loadout in Blizzard UI " .. ToonAge.Utils.Glyph("arrow") .. " open /ta talents " .. ToonAge.Utils.Glyph("arrow") .. " click Mythic+ tab " .. ToonAge.Utils.Glyph("arrow") .. " 'Save Current'"))
+    p(("  2. Switch to Raid loadout " .. ToonAge.Utils.Glyph("arrow") .. " Raid tab " .. ToonAge.Utils.Glyph("arrow") .. " 'Save Current'"))
     p("  3. Repeat for PvP, Delves, Leveling")
     p("  4. Each save persists in SavedVariables — available next session.")
 end
@@ -808,7 +808,10 @@ DH.SlashCommands["talentscan"] = function(self) TalentScan() end
 local function NormName(n)
     n = tostring(n or ""):lower()
     n = n:gsub("%s*%b()", "")          -- "Fire Breath (Empower 3)" -> "fire breath"
-    n = n:gsub("%s*[\226][\128-\191][\128-\191].*$", "")  -- drop "— note" / "→ x" suffixes
+    -- Drop a trailing dash or arrow suffix. The bytes are the UTF-8 of those
+    -- marks, built with string.char so the source stays ASCII.
+    n = n:gsub("%s*" .. string.char(226) .. "[" .. string.char(128) .. "-" .. string.char(191)
+        .. "][" .. string.char(128) .. "-" .. string.char(191) .. "].*$", "")
     n = n:gsub("[^%w]", "")
     return n
 end
@@ -1146,7 +1149,7 @@ DH.SlashCommands["secretprobe"] = function()
         capture[#capture + 1] = safeMsg
     end
 
-    out("|cFFFFD100━━━ Secret Value Probe ━━━|r")
+    out("|cFFFFD100--- Secret Value Probe ---|r")
 
     local ok, aura = pcall(C_UnitAuras.GetBuffDataByIndex, "player", 1)
     if not ok or not aura then
@@ -1158,9 +1161,9 @@ DH.SlashCommands["secretprobe"] = function()
         out(("  U.SafeNum(spellId): |cFFFFD100%s|r"):format(tostring(U.SafeNum(raw))))
         -- The verdict line. This is the whole reason the command exists.
         if U.SafeNum(raw) > 0 then
-            out("  |cFF4AFF7A✓ Coercion works -- the real spellID survived.|r")
+            out(("  |cFF4AFF7A" .. ToonAge.Utils.Glyph("check", "4AFF7A") .. " Coercion works -- the real spellID survived.|r"))
         else
-            out("  |cFFFF4444✗ Coercion FAILED -- SafeNum returned 0, so auras are")
+            out(("  |cFFFF4444" .. ToonAge.Utils.Glyph("cross", "FF4444") .. " Coercion FAILED -- SafeNum returned 0, so auras are"))
             out("     being dropped by the id > 0 guard. AlreadyActive can never")
             out("     see them and the prediction cannot change.|r")
         end
@@ -1328,7 +1331,7 @@ DH.SlashCommands["secretprobe"] = function()
         out(("  cd.duration       : raw=|cFFFFD100%s|r  SafeNum=|cFFFFD100%s|r")
             :format(tostring(cd.duration), tostring(U.SafeNum(cd.duration))))
     end
-    out("|cFFFFD100━━━━━━━━━━━━━━━━━━━━━━━━━|r")
+    out("|cFFFFD100-------------------------|r")
 
     -- Persist. Keep the last 3 runs so an in-combat and an out-of-combat pass
     -- can be compared without one overwriting the other -- the two runs
@@ -1375,7 +1378,7 @@ DH.SlashCommands["auradump"] = function()
         capture[#capture + 1] = U.StripMarkup(msg)
     end
 
-    out("|cFFFFD100━━━ Aura Dump ━━━|r")
+    out("|cFFFFD100--- Aura Dump ---|r")
 
     local function dump(label, getter, unit, filter)
         out(("|cFF888780%s|r"):format(label))
@@ -1405,7 +1408,7 @@ DH.SlashCommands["auradump"] = function()
 
     out("|cFF888780Paste an ID into Data/Rotations.lua, e.g.|r")
     out("|cFF888780  when=C.HasBuff(12345)  or  C.BuffStacks(12345, 2)|r")
-    out("|cFFFFD100━━━━━━━━━━━━━━━━━|r")
+    out("|cFFFFD100-----------------|r")
 
     if TA.db then
         TA.db.auraLog = TA.db.auraLog or {}

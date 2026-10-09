@@ -1,8 +1,8 @@
 # ToonAge icon media list (`Interface\AddOns\ToonAge\Media\icons\`)
 
-Shipped set, 2026-10-09. 80 TGA files are in this folder. The first 62 came from the three earlier archives: the original set, the redraw (`tab_caps`, `tab_weapons`, `tab_weekly` and their `_32` cuts), then the final archive over the top (`tab_delves`, `tab_delves_32`, replacement `tab_caps_32` and `tab_weekly_32`, and `util_pip_8`, `util_pip_8_ring`, `util_pip_8_charged`). Name aliases `tab_guide`, `tab_rotation` and `util_harvest` are byte-copies of `tab_scrolls`, `tab_casts` and `tab_harvest`.
+Shipped set, 2026-10-09. 98 TGA files are in this folder. The first 62 came from the three earlier archives: the original set, the redraw (`tab_caps`, `tab_weapons`, `tab_weekly` and their `_32` cuts), then the final archive over the top (`tab_delves`, `tab_delves_32`, replacement `tab_caps_32` and `tab_weekly_32`, and `util_pip_8`, `util_pip_8_ring`, `util_pip_8_charged`). Name aliases `tab_guide`, `tab_rotation` and `util_harvest` are byte-copies of `tab_scrolls`, `tab_casts` and `tab_harvest`.
 
-The waypoint and gear archive added nine more: `util_waypoint`, `util_waypoint_hollow`, `util_waypoint_arrived` (64, full colour), and `util_upgrade`, `util_downgrade`, `util_sidegrade` (32 masters plus `_16`). The last archive added the remaining nine: `tab_racials`, `tab_professions`, `tab_pets` (64 and `_32`) and `util_lock`, `util_lock_32`, `util_lock_16`. The named set is 80, and all 80 are in this folder.
+The waypoint and gear archive added nine more: `util_waypoint`, `util_waypoint_hollow`, `util_waypoint_arrived` (64, full colour), and `util_upgrade`, `util_downgrade`, `util_sidegrade` (32 masters plus `_16`). The last archive added the remaining nine: `tab_racials`, `tab_professions`, `tab_pets` (64 and `_32`) and `util_lock`, `util_lock_32`, `util_lock_16`. The named set is 98, and all 98 are in this folder. Gilder's 2026-10-09 list-glyph archive added fifteen 16×16 cuts: check, cross, warn, people, heart, herb, pick, diamond, star, menu, flight, square, and the left, up, and down chevrons. The options gear is `util_settings_16.tga`. Inline bolt and swords are `util_bolt_16.tga` and `util_swords_16.tga`, not the tab icons. All three are white plus alpha.
 
 Final icon set, signed off by the art director (Gilder) on 2026-10-08. Specs: `toonage/style-guide.md` (rev 2) §9b–§11 and `toonage/prompt-sheet-2026-10-08.md` §4. This manifest is the per-file usage list. The style guide stays the source of truth for the design rules.
 
@@ -44,7 +44,8 @@ All files are 32-bit uncompressed TGA (type 2) with straight alpha and power-of-
 | `tab_harvest.tga` | 64×64 | Harvest (data harvester) tab: map pin with record dot and ground line | 32 |
 | `tab_harvest_32.tga` | 32×32 | Same, hinted | 20, 32 |
 | `util_settings.tga` | 64×64 | Settings cog (opens `TASettingsDrawer`) | master |
-| `util_settings_32.tga` | 32×32 | Same, hinted | 16 (icon button) |
+| `util_settings_32.tga` | 32×32 | Same, hinted | 16+ |
+| `util_settings_16.tga` | 16×16 | Settings cog, white plus alpha. Options button | 14 |
 | `util_close.tga` | 64×64 | Close ×, master | master |
 | `util_close_32.tga` | 32×32 | Close ×, icon-button glyph | 16 (icon button) |
 | `util_close_16.tga` | 16×16 | Close ×, red title-dot **hover** glyph (2 px) | 8 on 12 px dot (rule 3) |
@@ -65,7 +66,24 @@ All files are 32-bit uncompressed TGA (type 2) with straight alpha and power-of-
 | `util_skull_16.tga` | 16×16 | Skull, list glyph: two 3×3 eye sockets, flat jaw, no teeth | 12 (list) |
 | `util_chevron.tga` | 64×64 | Right chevron, master (rotate with `SetRotation` for open) | master |
 | `util_chevron_32.tga` | 32×32 | Same, hinted | 16+ |
-| `util_chevron_16.tga` | 16×16 | Chevron, 1 px, bbox centred on (8,8) for clean rotation | 12 (collapsible sections, Diagnostics back chevron) |
+| `util_chevron_16.tga` | 16×16 | Right chevron. Forward, and a collapsed section | 12 |
+| `util_chevron_left_16.tga` | 16×16 | Left chevron. Back | 12 |
+| `util_chevron_up_16.tga` | 16×16 | Up chevron | 12 |
+| `util_chevron_down_16.tga` | 16×16 | Down chevron. An open section | 12 |
+| `util_check_16.tga` | 16×16 | Check | 12 |
+| `util_cross_16.tga` | 16×16 | Cross | 12 |
+| `util_warn_16.tga` | 16×16 | Warning | 12 |
+| `util_people_16.tga` | 16×16 | People | 12 |
+| `util_heart_16.tga` | 16×16 | Heart | 12 |
+| `util_herb_16.tga` | 16×16 | Herb | 12 |
+| `util_pick_16.tga` | 16×16 | Pick | 12 |
+| `util_diamond_16.tga` | 16×16 | Diamond | 12 |
+| `util_star_16.tga` | 16×16 | Star. Not the spells-tab star | 12 |
+| `util_menu_16.tga` | 16×16 | Menu | 12 |
+| `util_flight_16.tga` | 16×16 | Flight | 12 |
+| `util_square_16.tga` | 16×16 | Filled square | 12 |
+| `util_bolt_16.tga` | 16×16 | Lightning bolt, white plus alpha. Not the casts-tab icon | 12 |
+| `util_swords_16.tga` | 16×16 | Crossed swords, white plus alpha. Not the PvP-tab icon | 12 |
 | `util_waypoint.tga` | 64×64 | Quest arrow, full colour (rule 5) | 48 default, 32–64 |
 | `util_waypoint_hollow.tga` | 64×64 | Same arrow, hollow, for an estimated or unverified step (rule 5) | 40–64 (never 32) |
 | `util_waypoint_arrived.tga` | 64×64 | Arrived ring, full colour, shown at 5 yards and closer (rule 5) | 48 default, 32–64 |

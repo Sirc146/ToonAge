@@ -20,7 +20,9 @@ DEFAULT_CHAT_FRAME = { AddMessage = function() end }
 StaticPopupDialogs = {}
 ToonAge = { modules = {}, Data = {}, LOG = { OUTPUT = 1, INFO = 2, WARN = 3 }, flavor = "retail", charDB = {}, db = {} }
 local TA = ToonAge
-TA.Utils = setmetatable({}, { __index = function() return function() end end })
+TA.Utils = setmetatable({
+    Glyph = function() return "" end,
+}, { __index = function() return function() end end })
 function TA:RegisterModule(n, m) self.modules[n] = m end
 function TA:GetModule(n) return self.modules[n] end
 function TA:Raw() end function TA:Print() end function TA:Printf() end

@@ -2577,7 +2577,7 @@ TA.ProfessionGuides.midnight["Jewelcrafting"] = {
             },
             optionalSlots = { "Spark", "Infuse with Power", "Artisan's Authenticity" },
             firstCraftKnowledge = true,
-            source = { kind = "drop/treasure", recipeItemID = 256715, where = "Dungeons Raids / 12 - Midnight / 2 - March on Quel’Danas" },
+            source = { kind = "drop/treasure", recipeItemID = 256715, where = "Dungeons Raids / 12 - Midnight / 2 - March on Quel'Danas" },
         },
         {
             spellID = 1242461,

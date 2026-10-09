@@ -73,14 +73,14 @@ function SA:GetDungeonSuggestion()
     -- Role-based suggestion
     if role == "TANK" then
         return string.format(
-            "|cFF4AFF7A⚔ Tank Tip:|r Queue %s — instant queue + %.0fk XP/run (%dm avg)",
+            ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("swords", "4AFF7A") .. " Tank Tip:|r Queue %s — instant queue + %.0fk XP/run (%dm avg)"),
             match[3],
             match[5] / 1000,
             match[4]
         )
     elseif role == "HEALER" then
         return string.format(
-            "|cFF4AFF7A♥ Healer Tip:|r Queue %s — fast queue + %.0fk XP/run",
+            ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("heart", "4AFF7A") .. " Healer Tip:|r Queue %s — fast queue + %.0fk XP/run"),
             match[3],
             match[5] / 1000
         )

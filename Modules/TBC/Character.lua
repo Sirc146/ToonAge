@@ -365,7 +365,7 @@ local function RenderTalents(content, y)
     for _, tree in ipairs(trees) do
         local isMain = specName and tree.name == specName
         y = L:DataRow(content, y, {
-            label  = tree.name .. (isMain and "  |cFFFFD100● main|r" or ""),
+            label  = tree.name .. (isMain and ("  |cFFFFD100" .. ToonAge.Utils.Glyph("pip", "FFD100") .. " main|r") or ""),
             value  = tostring(tree.points),
             bold   = isMain,
             status = isMain and "neutral" or "dim",

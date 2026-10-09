@@ -70,7 +70,7 @@ def lua_keys(t):
 
 def main():
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
-    lua.execute("ToonAge = {}")
+    lua.execute("ToonAge = { Utils = { Glyph = function() return '' end } }")
     for f in ("Data/Retail/RotationConditions.lua", "Data/Retail/StatWeights.lua",
               "Data/Retail/Rotations.lua", "Data/Retail/Talents.lua",
               "Data/Retail/TalentsPvP.lua"):

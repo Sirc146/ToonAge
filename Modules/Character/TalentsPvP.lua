@@ -497,9 +497,9 @@ function TalentsPvP:RenderTreePanel(content, startY, w, padL, nodes, pvpData)
             badge:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
             badge:SetPoint("TOPRIGHT", card, "TOPRIGHT", -8, -6)
             if isRecommended and isActive then
-                badge:SetText(COL_GREEN .. "✓ PvP" .. CLOSE)
+                badge:SetText(COL_GREEN .. (ToonAge.Utils.Glyph("check", "4AFF7A") .. " PvP") .. CLOSE)
             elseif isRecommended then
-                badge:SetText(COL_ORANGE .. "← Take" .. CLOSE)
+                badge:SetText(COL_ORANGE .. (ToonAge.Utils.Glyph("arrowLeft", "FF9A1A") .. " Take") .. CLOSE)
             elseif isActive then
                 badge:SetText(COL_GREY .. "Active" .. CLOSE)
             else
@@ -628,7 +628,7 @@ function TalentsPvP:RenderPvPTalentPanel(content, startY, w, padL, pvpData)
             if isSelected then
                 local bdg = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 bdg:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
-                bdg:SetText(COL_GREEN .. "● Active" .. CLOSE)
+                bdg:SetText(COL_GREEN .. (ToonAge.Utils.Glyph("pip", "4AFF7A") .. " Active") .. CLOSE)
                 bdg:SetPoint("RIGHT", row, "RIGHT", -8, 0)
             end
 
@@ -685,7 +685,7 @@ function TalentsPvP:RenderMatchupsPanel(content, startY, w, padL, specID)
         end
         local favLine = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
         favLine:SetFont(STANDARD_TEXT_FONT, 10)
-        favLine:SetText(table.concat(list, COL_GREY .. "   •   " .. CLOSE))
+        favLine:SetText(table.concat(list, COL_GREY .. ("   " .. ToonAge.Utils.Glyph("bullet", "888780") .. "   ") .. CLOSE))
         favLine:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
         favLine:SetWidth(w)
         favLine:SetJustifyH("LEFT")
@@ -784,7 +784,7 @@ function TalentsPvP:RenderLevelAdvisor(content, startY, w, padL, pvpData)
             local advLbl = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             advLbl:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
             if nextLevel == playerLevel then
-                advLbl:SetText(COL_GREEN .. "→ Take now: " .. CLOSE .. COL_GOLD .. nextTalent.name .. CLOSE)
+                advLbl:SetText(COL_GREEN .. (ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Take now: ") .. CLOSE .. COL_GOLD .. nextTalent.name .. CLOSE)
             else
                 advLbl:SetText(COL_ORANGE .. "At level " .. nextLevel .. ": " .. CLOSE .. nextTalent.name)
             end
@@ -810,7 +810,7 @@ function TalentsPvP:RenderLevelAdvisor(content, startY, w, padL, pvpData)
             if #upcoming > 0 then
                 local upLbl = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 upLbl:SetFont(STANDARD_TEXT_FONT, 8)
-                upLbl:SetText(COL_GREY .. "Upcoming: " .. table.concat(upcoming, " → ") .. CLOSE)
+                upLbl:SetText(COL_GREY .. "Upcoming: " .. table.concat(upcoming, (" " .. ToonAge.Utils.Glyph("arrow") .. " ")) .. CLOSE)
                 upLbl:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 10, 6)
                 upLbl:SetWidth(w - 20)
                 upLbl:SetWordWrap(false)

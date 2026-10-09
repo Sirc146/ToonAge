@@ -620,13 +620,13 @@ function M:Render(content, side)
                     .. "already counted in the score above.|r"
             end
             if up.mainHandBlocks then
-                note = note .. "  |cFFFF9A1A⚠ " .. up.mainHandNote .. "|r"
+                note = note .. ("  |cFFFF9A1A" .. ToonAge.Utils.Glyph("warn", "FF9A1A") .. " ") .. up.mainHandNote .. "|r"
                 status = "warn"
             end
 
             y = L:DataRow(content, y, {
                 label  = U.MarkItemName(U.ColourItemName(up.name or "?", up.quality), "upgrade", true)
-                       .. "  |cFF555049→ " .. (U.SLOT_NAMES[up.slot] or "?") .. "|r",
+                       .. ("  |cFF555049" .. ToonAge.Utils.Glyph("arrow", "555049") .. " ") .. (U.SLOT_NAMES[up.slot] or "?") .. "|r",
                 value  = (up.mainHandBlocks and "|cFFFF9A1Anot yet|r  " or "") .. "+" .. U.Score(up.gain),
                 status = status, bold = true,
                 note   = note,
@@ -727,7 +727,7 @@ M.SlashCommands = {
             TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Every item stat key seen so far is mapped.")
             return
         end
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ Unmapped item stat keys ━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100--- Unmapped item stat keys ---|r")
         TA:Raw(TA.LOG.OUTPUT, "|cFF888780These were skipped during scoring. Paste them back to get them mapped.|r")
         for _, entry in ipairs(list) do
             TA:Raw(TA.LOG.OUTPUT, string.format("  %s  |cFF888780(seen %dx)|r", entry.key, entry.count))

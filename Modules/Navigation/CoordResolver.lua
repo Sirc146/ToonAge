@@ -180,7 +180,7 @@ local function QuerySuperTrack(questID)
     local tracked = C_SuperTrack.GetSuperTrackedQuestID()
     if tracked ~= questID then return nil end
 
-    -- ⚠ DEAD ON 12.1.0 — C_Navigation.GetDestination was verified nil by live
+    -- WARNING DEAD ON 12.1.0 — C_Navigation.GetDestination was verified nil by live
     -- dump on 2026-07-26. Because the call sits behind an existence check, this
     -- whole source has been returning nil silently, not erroring. Every step
     -- that should have resolved via SuperTrack has been falling through to APR

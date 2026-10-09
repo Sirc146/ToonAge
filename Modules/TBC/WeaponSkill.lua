@@ -155,7 +155,7 @@ function M:Render(content, side)
 
         local label = line.name
         if equipped[line.name] then
-            label = label .. "  |cFFFFD100● " .. equipped[line.name] .. "|r"
+            label = label .. ("  |cFFFFD100" .. ToonAge.Utils.Glyph("pip", "FFD100") .. " ") .. equipped[line.name] .. "|r"
         end
         if racial > 0 then
             label = label .. string.format("  |cFF4AFF7A+%d racial|r", racial)
@@ -220,7 +220,7 @@ M.SlashCommands = {
         if not Scan then return end
         local maxSkill = U.GetPlayerLevel() * 5
         local scan = Scan:Scan(true)
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100━━━ Weapon skills ━━━|r")
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100--- Weapon skills ---|r")
         if #scan.weapons == 0 then
             TA:Raw(TA.LOG.OUTPUT, "  Could not read the skill list.")
             return
@@ -228,7 +228,7 @@ M.SlashCommands = {
         for _, line in ipairs(scan.weapons) do
             local deficit = maxSkill - line.rank
             TA:Raw(TA.LOG.OUTPUT, string.format("  %s %s  %d/%d",
-                deficit <= 0 and "|cFF4AFF7A✓|r" or "|cFFFF9A1A→|r",
+                deficit <= 0 and ToonAge.Utils.Glyph("check", "4AFF7A") or ToonAge.Utils.Glyph("arrow", "FF9A1A"),
                 line.name, line.rank, line.maxRank))
         end
     end,

@@ -129,7 +129,7 @@ local function CreateGuideFrame()
 
     local collapseBtnText = collapseBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     collapseBtnText:SetPoint("CENTER")
-    collapseBtnText:SetText("−")
+    collapseBtnText:SetText(ToonAge.Utils.Glyph("minus"))
     collapseBtn.text = collapseBtnText
 
     collapseBtn:SetScript("OnClick", function()
@@ -235,7 +235,7 @@ function DungeonGuide:UpdateCollapse()
         f.nav:Show()
         f:SetHeight(FRAME_HEIGHT)
         if f.collapseBtn and f.collapseBtn.text then
-            f.collapseBtn.text:SetText("−")
+            f.collapseBtn.text:SetText(ToonAge.Utils.Glyph("minus"))
         end
     end
 end

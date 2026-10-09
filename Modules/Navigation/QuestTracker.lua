@@ -765,8 +765,8 @@ function QT:Diagnose()
         end
 
         local flags = {}
-        if levelMatch then flags[#flags+1] = "|cFF4AFF7Alevel✓|r"  else flags[#flags+1] = "|cFFFF4444level✗|r" end
-        if zoneMatch  then flags[#flags+1] = "|cFF4AFF7Azone✓|r"   else flags[#flags+1] = "|cFF888780zone✗|r"  end
+        if levelMatch then flags[#flags+1] = ("|cFF4AFF7Alevel" .. ToonAge.Utils.Glyph("check", "4AFF7A") .. "|r")  else flags[#flags+1] = ("|cFFFF4444level" .. ToonAge.Utils.Glyph("cross", "FF4444") .. "|r") end
+        if zoneMatch  then flags[#flags+1] = ("|cFF4AFF7Azone" .. ToonAge.Utils.Glyph("check", "4AFF7A") .. "|r")   else flags[#flags+1] = ("|cFF888780zone" .. ToonAge.Utils.Glyph("cross", "888780") .. "|r")  end
         if matches > 0 then flags[#flags+1] = string.format("|cFFFFD100%d quest match(es)|r", matches) end
 
         p(string.format("  [%s] '%s'  lvl %d-%d  zone=%d  %s",
@@ -1624,7 +1624,7 @@ function QT:InitWindow()
     -- Shelf button (opens the guide picker). Named apart from the title
     -- bar's "Guides" button above: both used to be browseBtn, and the
     -- second binding quietly took the name over mid-function.
-    local shelfBtn = MakeBtn(win, 20, 20, "☰", function()
+    local shelfBtn = MakeBtn(win, 20, 20, ToonAge.Utils.Glyph("menu"), function()
         if TA.UI then
             if not TA.UI:IsVisible() then TA.UI:Show() end
             TA.UI:SetTab("guide")
@@ -1906,10 +1906,10 @@ function QT:UpdateWindow()
             body = string.format(
                 "|cFFFF9A1AYour quest log is full (%d/%d).|r\n\n"
              .. "|cFFFFD100Right-click this tracker|r for options:\n\n"
-             .. "|cFF4AFF7A• Quest Log Advisor|r\n"
+             .. ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("bullet", "4AFF7A") .. " Quest Log Advisor|r\n")
              .. "  See which quests are closest to done.\n"
              .. "  Finish them to free slots naturally.\n\n"
-             .. "|cFFFF9A1A• Clean Up Quest Log|r\n"
+             .. ("|cFFFF9A1A" .. ToonAge.Utils.Glyph("bullet", "FF9A1A") .. " Clean Up Quest Log|r\n")
              .. "  Drop old/grey quests you've outleveled.",
                 actualQuestCount, MAX_QUESTS)
         else
@@ -1956,7 +1956,7 @@ function QT:UpdateWindow()
                 if trackedObjectives and #trackedObjectives > 0 then
                     for _, obj in ipairs(trackedObjectives) do
                         if obj.text and obj.text ~= "" then
-                            local clr = obj.finished and "|cFF4AFF7A✓ " or "|cFFFFFFFF  "
+                            local clr = obj.finished and ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("check", "4AFF7A") .. " ") or "|cFFFFFFFF  "
                             lines[#lines + 1] = clr .. obj.text .. "|r"
                         end
                     end
@@ -2028,7 +2028,7 @@ function QT:UpdateWindow()
             if trackedObjectives then
                 for _, obj in ipairs(trackedObjectives) do
                     if obj.text and obj.text ~= "" then
-                        local clr = obj.finished and "|cFF4AFF7A\226\156\147 " or "|cFFFFFFFF  "
+                        local clr = obj.finished and ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("check", "4AFF7A") .. " ") or "|cFFFFFFFF  "
                         lines[#lines+1] = clr .. obj.text .. "|r"
                     end
                 end
@@ -2047,7 +2047,7 @@ function QT:UpdateWindow()
         end
 
         -- Contextual hint
-        local hint = "|cFF1EBCFF\226\134\146 Following your quest log|r"
+        local hint = ("|cFF1EBCFF" .. ToonAge.Utils.Glyph("arrow", "1EBCFF") .. " Following your quest log|r")
         win.tipF:SetText(hint)
         return
     end
@@ -2095,11 +2095,11 @@ function QT:UpdateWindow()
             local questStatus = self:GetQuestStatus(step.questID)
             if questStatus == "available" then
                 -- Quest not in log, not complete — player needs to PICK IT UP
-                headLines[#headLines + 1] = "|cFF4AFF7A→ Go pick up this quest|r"
+                headLines[#headLines + 1] = ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Go pick up this quest|r")
             elseif questStatus == "turnin" then
-                headLines[#headLines + 1] = "|cFFFFD100→ Turn in this quest|r"
+                headLines[#headLines + 1] = ("|cFFFFD100" .. ToonAge.Utils.Glyph("arrow", "FFD100") .. " Turn in this quest|r")
             elseif questStatus == "complete" then
-                headLines[#headLines + 1] = "|cFF888780✓ Already done|r"
+                headLines[#headLines + 1] = ("|cFF888780" .. ToonAge.Utils.Glyph("check", "888780") .. " Already done|r")
             end
             -- "inprogress" shows objectives below, no extra line needed
         end
@@ -2260,9 +2260,9 @@ function QT:RenderStatusLine()
         if hasLiveTarget then
             local glow = 0.5 + 0.5 * math.sin(GetTime() * 4)   -- 0..1
             local g    = math.floor(140 + glow * 115)          -- brightness pulse, 140-255
-            dot = string.format("|cFF1E%02X30●|r ", g)
+            dot = U.Glyph("pip", { 0x1E, g, 0x30 }) .. " "
         else
-            dot = "|cFF555555●|r "
+            dot = (ToonAge.Utils.Glyph("pip", "555555") .. " ")
         end
         win.stepBadgeF:SetText(dot .. (self._badgeBase or ""))
     end
@@ -2439,7 +2439,7 @@ function QT:ShowQuestLogCleanup()
         table.insert(lines, "\n|cFFFF4444Trivial / Grey Quests (safe to drop):|r")
         for i, q in ipairs(analysis.lowLevel) do
             if i <= 10 then
-                table.insert(lines, "  • " .. q.title)
+                table.insert(lines, ("  " .. ToonAge.Utils.Glyph("bullet") .. " ") .. q.title)
             end
         end
         if #analysis.lowLevel > 10 then
@@ -2451,7 +2451,7 @@ function QT:ShowQuestLogCleanup()
         table.insert(lines, "\n|cFFFF9A1AOld Expansion Quests (likely safe):|r")
         for i, q in ipairs(analysis.oldExpansion) do
             if i <= 10 then
-                table.insert(lines, "  • " .. q.title)
+                table.insert(lines, ("  " .. ToonAge.Utils.Glyph("bullet") .. " ") .. q.title)
             end
         end
         if #analysis.oldExpansion > 10 then
@@ -2595,7 +2595,7 @@ function QT:ShowQuestLogAdvisor()
     -- Build the advisor text for chat output (formatted nicely)
     local function PrintSection(header, color, items, showPct)
         if #items == 0 then return end
-        TA:Raw(TA.LOG.OUTPUT, color .. "── " .. header .. " (" .. #items .. ") ──|r")
+        TA:Raw(TA.LOG.OUTPUT, color .. "-- " .. header .. " (" .. #items .. ") --|r")
         for i, q in ipairs(items) do
             if i > 8 then
                 TA:Raw(TA.LOG.OUTPUT, "  |cFF888780... +" .. (#items - 8) .. " more|r")
@@ -2610,19 +2610,19 @@ function QT:ShowQuestLogAdvisor()
     end
 
     TA:Raw(TA.LOG.OUTPUT, "")
-    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100═══ ToonAge Quest Log Advisor ═══|r")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100=== ToonAge Quest Log Advisor ===|r")
     TA:Raw(TA.LOG.OUTPUT, string.format("|cFF888780%d/%d quests in log|r", total, MAX_QUESTS))
     TA:Raw(TA.LOG.OUTPUT, "")
 
     if #progress.readyToTurnIn > 0 then
-        TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A★ TURN THESE IN NOW — they're already done!|r")
+        TA:Raw(TA.LOG.OUTPUT, ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("star", "4AFF7A") .. " TURN THESE IN NOW — they're already done!|r"))
         TA:Raw(TA.LOG.OUTPUT, "|cFF4AFF7A  Each one you turn in frees a quest slot.|r")
         PrintSection("Ready to Turn In", "|cFF4AFF7A", progress.readyToTurnIn, false)
         TA:Raw(TA.LOG.OUTPUT, "")
     end
 
     if #progress.almostDone > 0 then
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100★ ALMOST DONE — just one objective left:|r")
+        TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100" .. ToonAge.Utils.Glyph("star", "FFD100") .. " ALMOST DONE — just one objective left:|r"))
         PrintSection("Almost Done", "|cFFFFD100", progress.almostDone, true)
         TA:Raw(TA.LOG.OUTPUT, "")
     end
@@ -2633,7 +2633,7 @@ function QT:ShowQuestLogAdvisor()
     end
 
     if #progress.notStarted > 0 then
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFF9A1A★ NOT STARTED — you could turn these in later.\n  Consider finishing nearby ones or saving for a future session.|r")
+        TA:Raw(TA.LOG.OUTPUT, ("|cFFFF9A1A" .. ToonAge.Utils.Glyph("star", "FF9A1A") .. " NOT STARTED — you could turn these in later.\n  Consider finishing nearby ones or saving for a future session.|r"))
         PrintSection("Not Started", "|cFFFF9A1A", progress.notStarted, false)
         TA:Raw(TA.LOG.OUTPUT, "")
     end
@@ -2642,14 +2642,14 @@ function QT:ShowQuestLogAdvisor()
     local freeableNow = #progress.readyToTurnIn
     local freeableSoon = #progress.almostDone
     if freeableNow > 0 then
-        TA:Raw(TA.LOG.OUTPUT, string.format("|cFF4AFF7A→ You can free %d slot(s) immediately by turning in completed quests.|r", freeableNow))
+        TA:Raw(TA.LOG.OUTPUT, string.format(("|cFF4AFF7A" .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " You can free %d slot(s) immediately by turning in completed quests.|r"), freeableNow))
     elseif freeableSoon > 0 then
-        TA:Raw(TA.LOG.OUTPUT, string.format("|cFFFFD100→ Finish %d almost-done quest(s) to free up slots without dropping anything.|r", freeableSoon))
+        TA:Raw(TA.LOG.OUTPUT, string.format(("|cFFFFD100" .. ToonAge.Utils.Glyph("arrow", "FFD100") .. " Finish %d almost-done quest(s) to free up slots without dropping anything.|r"), freeableSoon))
     else
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFF9A1A→ No quests are close to completion. Consider finishing the highest-% ones first,|r")
+        TA:Raw(TA.LOG.OUTPUT, ("|cFFFF9A1A" .. ToonAge.Utils.Glyph("arrow", "FF9A1A") .. " No quests are close to completion. Consider finishing the highest-% ones first,|r"))
         TA:Raw(TA.LOG.OUTPUT, "|cFFFF9A1A  or use 'Clean Up Quest Log' to safely remove trivial/grey quests.|r")
     end
-    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100═══════════════════════════════════|r")
+    TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100===================================|r")
 end
 
 function QT:GetUnrelatedQuests()
@@ -2700,7 +2700,7 @@ function QT:ShowDropUnrelatedPopup()
     -- Build the confirmation popup
     local questList = ""
     for i, q in ipairs(unrelated) do
-        questList = questList .. "\n  • " .. q.title .. " (ID: " .. q.questID .. ")"
+        questList = questList .. ("\n  " .. ToonAge.Utils.Glyph("bullet") .. " ") .. q.title .. " (ID: " .. q.questID .. ")"
         if i >= 15 then
             questList = questList .. "\n  ... and " .. (#unrelated - 15) .. " more"
             break
@@ -2870,7 +2870,7 @@ function QT:Render(content, sidebar)
         if isSuggested then
             text = text .. " |cFF66BBFF(Suggested)|r"
         elseif expDef.key == bestKey then
-            text = text .. " |cFF4AE0FF★|r"
+            text = text .. (" " .. ToonAge.Utils.Glyph("star", "4AE0FF"))
         end
         lbl:SetText(text)
         lbl:SetPoint("LEFT", btn, "LEFT", 6, 0)
@@ -3367,7 +3367,7 @@ function QT:RenderMiddlePanel(content)
                     end
                     local qRow = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
                     qRow:SetFont(STANDARD_TEXT_FONT, 10, "")
-                    qRow:SetText("  \226\151\139 " .. questName)
+                    qRow:SetText(("  " .. ToonAge.Utils.Glyph("pipRing") .. " ") .. questName)
                     qRow:SetTextColor(0.75, 0.70, 0.60, 1)
                     qRow:SetPoint("TOPLEFT", content, "TOPLEFT", padL + 4, y)
                     qRow:SetWidth(w - 8)
@@ -3439,25 +3439,25 @@ function QT:GetStepContextHint(guide, stepIdx)
 
     -- Spatial routing: if we re-ordered to nearest objective
     if self._spatialRouted then
-        return "|cFF1EBCFF\226\134\146 Closest objective|r"
+        return ("|cFF1EBCFF" .. ToonAge.Utils.Glyph("arrow", "1EBCFF") .. " Closest objective|r")
     end
 
     -- Chain prerequisite
     if step.pre then
-        return "|cFF888780\226\134\146 Chain prerequisite met|r"
+        return ("|cFF888780" .. ToonAge.Utils.Glyph("arrow", "888780") .. " Chain prerequisite met|r")
     end
 
     -- Accept step for a quest not yet in log
     if (step.type == "accept" or step.type == "pickup") and step.questID then
         if not C_QuestLog.GetLogIndexForQuestID(step.questID) then
-            return "|cFF4AFF7A\226\134\146 Pick up this quest|r"
+            return ("|cFF4AFF7A" .. ToonAge.Utils.Glyph("arrow", "4AFF7A") .. " Pick up this quest|r")
         end
     end
 
     -- Turn-in step
     if step.type == "turnin" and step.questID then
         if C_QuestLog.ReadyForTurnIn and C_QuestLog.ReadyForTurnIn(step.questID) then
-            return "|cFFFFD100\226\134\146 Ready to turn in|r"
+            return ("|cFFFFD100" .. ToonAge.Utils.Glyph("arrow", "FFD100") .. " Ready to turn in|r")
         end
     end
 
@@ -3470,7 +3470,7 @@ function QT:GetStepContextHint(guide, stepIdx)
                 if obj.finished then done = done + 1 end
             end
             if total > 0 and done < total then
-                return string.format("|cFF888780\226\134\146 %d/%d objectives done|r", done, total)
+                return string.format(("|cFF888780" .. ToonAge.Utils.Glyph("arrow", "888780") .. " %d/%d objectives done|r"), done, total)
             end
         end
     end
@@ -3711,7 +3711,7 @@ function QT:ShowTrackerMenuLegacy(anchor)
             TA.UI:SetTab("guide")
         end
     end)
-    AddButton("─────────────────────", function() end)
+    AddButton("---------------------", function() end)
     AddButton((TA:GetModule("Arrow") and TA:GetModule("Arrow").frame and TA:GetModule("Arrow").frame:IsVisible())
         and "Hide Arrow" or "Show Arrow", function()
         local Arrow = TA:GetModule("Arrow")
@@ -3728,7 +3728,7 @@ function QT:ShowTrackerMenuLegacy(anchor)
             CR.SlashCommands.coord(CR)
         end
     end)
-    AddButton("─────────────────────", function() end)
+    AddButton("---------------------", function() end)
     AddButton("Toggle Settings", function()
         if self.optionsFrame:IsShown() then self.optionsFrame:Hide()
         else self.optionsFrame:Show() end
@@ -3943,10 +3943,10 @@ function QT:UpdateDrawer()
                         objF:SetWidth(contentW - PAD * 2 - 8)
                         objF:SetJustifyH("LEFT")
                         if obj.finished then
-                            objF:SetText("\226\156\147 " .. obj.text)
+                            objF:SetText((ToonAge.Utils.Glyph("check") .. " ") .. obj.text)
                             objF:SetTextColor(unpack(M.CLR_TEXT_SUCCESS))
                         else
-                            objF:SetText("\226\151\139 " .. obj.text)
+                            objF:SetText((ToonAge.Utils.Glyph("pipRing") .. " ") .. obj.text)
                             objF:SetTextColor(unpack(M.CLR_TEXT_PRIMARY))
                         end
                         y = y - 13
@@ -4066,10 +4066,10 @@ function QT:UpdateDrawer()
                 objF:SetWidth(contentW - PAD * 2 - 8)
                 objF:SetJustifyH("LEFT")
                 if obj.finished then
-                    objF:SetText("✓ " .. (obj.text or ""))
+                    objF:SetText((ToonAge.Utils.Glyph("check") .. " ") .. (obj.text or ""))
                     objF:SetTextColor(unpack(M.CLR_TEXT_SUCCESS))
                 else
-                    objF:SetText("○ " .. (obj.text or ""))
+                    objF:SetText((ToonAge.Utils.Glyph("pipRing") .. " ") .. (obj.text or ""))
                     objF:SetTextColor(unpack(M.CLR_TEXT_PRIMARY))
                 end
                 y = y - 13
