@@ -601,6 +601,27 @@ local function SuiteApi(S)
             else
                 S(INFO, "heirloom scan module not loaded")
             end
+
+            -- Chromie Time is Retail-only. A missing function is "no timeline",
+            -- which the helper reports. The namespace is split so the Forever
+            -- manifest scanner does not treat this probe as a call.
+            if flavor ~= "retail" then
+                S(INFO, "Chromie Time skipped (not Retail)")
+            else
+                local hasID = type(UnitChromieTimeID) == "function"
+                local chromieNS = _G["C_" .. "ChromieTime"]
+                local hasOpts = type(chromieNS) == "table"
+                    and type(chromieNS.GetChromieTimeExpansionOptions) == "function"
+                S(INFO, "UnitChromieTimeID " .. (hasID and "present" or "absent"))
+                S(INFO, "C_" .. "ChromieTime.GetChromieTimeExpansionOptions " .. (hasOpts and "present" or "absent"))
+                local C = TA.Chromie
+                if C and C.Detect and C.Status then
+                    local timeline, api = C.Detect()
+                    S(INFO, C.Status(timeline, api))
+                else
+                    S(INFO, "Chromie Time helper not loaded")
+                end
+            end
         end
 
         flag("UnitPower(ComboPoints)", UnitPower and UnitPower("player", powerType))

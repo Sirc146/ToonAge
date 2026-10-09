@@ -1055,7 +1055,12 @@ function QT:OnEvent(event, ...)
             if QT.guideID then QT:FastForward(true) end
         end)
 
+    elseif event == "CHROMIE_TIME_OPEN" or event == "CHROMIE_TIME_CLOSE" then
+        -- The selection UI opened or the player dismissed it. Re-read the
+        -- timeline; the guide tab rebuilds from TAB_EVENTS.
+        self:SyncTimeline(true)
     elseif event == "PLAYER_LEVEL_UP" or event == "PLAYER_SPECIALIZATION_CHANGED" then
+        if event == "PLAYER_LEVEL_UP" then self:SyncTimeline(true) end
         self:UpdateWindow()
     end
 end
@@ -1073,6 +1078,14 @@ function QT:Init()
     TA:RegisterEvent("QUEST_COMPLETE")
     TA:RegisterEvent("GOSSIP_SHOW")
     TA:RegisterEvent("QUEST_GREETING")
+    -- Retail only. Classic clients do not load this file. The names are
+    -- CHROMIE_TIME_OPEN, CHROMIE_TIME_CLOSE (no payload, 9.0.1) and the
+    -- existing PLAYER_LEVEL_UP. A client that lacks one records it as unknown.
+    if TA.flavor == "retail" then
+        TA:RegisterEvent("CHROMIE_TIME_OPEN")
+        TA:RegisterEvent("CHROMIE_TIME_CLOSE")
+        TA:RegisterEvent("PLAYER_LEVEL_UP")
+    end
 
     -- Preserve existing saved settings; only apply defaults for missing keys
     TA.charDB.tracker = TA.charDB.tracker or {}
@@ -2505,56 +2518,77 @@ end
 QT.middlePanelFrames = {}
 QT._contentFrame = nil  -- reference to the content scroll child for isolated re-renders
 
--- Expansion data for the sidebar filter
+-- Expansion keys match guide.expansion on the Retail guide files.
+-- Dragonflight guides use "dragonflight", not "df". Wrath uses "wrath".
 QT._expansions = {
-    { key = "midnight",   label = "Midnight",         maxLevel = 90 },
-    { key = "warwithin",  label = "The War Within",   maxLevel = 80 },
-    { key = "df",         label = "Dragonflight",     maxLevel = 70 },
-    { key = "sl",         label = "Shadowlands",      maxLevel = 60 },
-    { key = "bfa",        label = "Battle for Azeroth", maxLevel = 50 },
-    { key = "legion",     label = "Legion",           maxLevel = 50 },
-    { key = "wod",        label = "Warlords of Draenor", maxLevel = 50 },
-    { key = "mop",        label = "Mists of Pandaria", maxLevel = 50 },
-    { key = "cata",       label = "Cataclysm",        maxLevel = 50 },
-    { key = "wotlk",      label = "Wrath of the Lich King", maxLevel = 50 },
-    { key = "tbc",        label = "The Burning Crusade", maxLevel = 50 },
-    { key = "classic",    label = "Classic",           maxLevel = 50 },
-    { key = "starter",    label = "Starter Zones",    maxLevel = 20 },
+    { key = "midnight",     label = "Midnight" },
+    { key = "warwithin",    label = "The War Within" },
+    { key = "dragonflight", label = "Dragonflight" },
+    { key = "shadowlands",  label = "Shadowlands" },
+    { key = "bfa",          label = "Battle for Azeroth" },
+    { key = "legion",       label = "Legion" },
+    { key = "wod",          label = "Warlords of Draenor" },
+    { key = "mop",          label = "Mists of Pandaria" },
+    { key = "cata",         label = "Cataclysm" },
+    { key = "wrath",        label = "Wrath of the Lich King" },
+    { key = "tbc",          label = "The Burning Crusade" },
+    { key = "vanilla",      label = "Classic" },
+    { key = "starter",      label = "Starter Zones" },
 }
 
-QT._selectedExpansion = nil  -- nil = auto-detect on first render
+QT._selectedExpansion = nil  -- nil = follow the active timeline on first render
+QT._sideButtons = {}
 
---- Determine the best expansion filter based on active guide, player level, or zone.
-function QT:DetectBestExpansion()
-    -- Priority 1: If a guide is active, use its expansion
-    if self.guideID and TA.Guides and TA.Guides[self.guideID] then
-        local guide = TA.Guides[self.guideID]
-        if guide.expansion then return guide.expansion end
-        -- Infer from level range
-        local lvl = guide.minLevel or 1
-        if lvl >= 80 then return "midnight" end
-        if lvl >= 70 then return "warwithin" end
-        if lvl >= 60 then return "df" end
-        if lvl >= 50 then return "sl" end
-        if lvl <= 20 then return "starter" end
+--- Read the timeline and, unless the player pinned a sidebar row, select
+--- that timeline's guide set. forceSelection clears the pin (Chromie Time
+--- opened or closed, or the player leveled).
+function QT:SyncTimeline(forceSelection)
+    local C = TA.Chromie
+    if not C then return end
+    if forceSelection then self._expansionPinned = false end
+    local timeline, api = C.Detect()
+    self._timeline = timeline
+    self._chromieApi = api
+    self._guideChoice = C.Resolve(timeline, TA.Guides)
+    local choice = self._guideChoice
+    if not self._expansionPinned and choice and choice.key and choice.mode ~= "missing" then
+        self._selectedExpansion = choice.key
     end
+end
 
-    -- Priority 2: Based on player level
-    local playerLevel = UnitLevel("player") or 1
-    if playerLevel >= 80 then return "midnight" end
-    if playerLevel >= 70 then return "warwithin" end
-    if playerLevel >= 60 then return "df" end
-    if playerLevel >= 50 then return "sl" end
-    if playerLevel >= 45 then return "bfa" end
-    if playerLevel >= 10 then
-        -- Check Chromie Time
-        if C_ChromieTime and C_ChromieTime.GetChromieTimeExpansionOption then
-            local ok, result = pcall(C_ChromieTime.GetChromieTimeExpansionOption)
-            if ok and result then return result end
+function QT:HighlightSidebar(expKey)
+    for _, sb in ipairs(self._sideButtons or {}) do
+        local sel = (sb._expKey == expKey)
+        if sel then
+            sb:SetBackdropColor(0.12, 0.10, 0.04, 1)
+            sb:SetBackdropBorderColor(0.40, 0.75, 1.00, 0.80)
+            if sb._lbl and sb._lbl.SetFont then
+                sb._lbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+            end
+            if sb._lbl then sb._lbl:SetTextColor(0.92, 0.90, 0.87, 1) end
+        else
+            sb:SetBackdropColor(0.04, 0.04, 0.04, 0.80)
+            sb:SetBackdropBorderColor(0.20, 0.20, 0.20, 0.30)
+            if sb._lbl and sb._lbl.SetFont then
+                sb._lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
+            end
+            if sb._lbl then sb._lbl:SetTextColor(0.65, 0.60, 0.50, 1) end
         end
-        return "bfa"  -- default timewalking expansion
     end
-    return "starter"
+end
+
+--- The guide set for the active timeline, or the current expansion intro
+--- when there is no timeline. Nil when that timeline has no guides: the
+--- empty card offers the zones we do have instead of a substitute.
+function QT:DetectBestExpansion()
+    if TA.Chromie and not self._guideChoice then
+        self:SyncTimeline(false)
+    end
+    local choice = self._guideChoice
+    if not choice or choice.mode == "missing" or choice.mode == "skip" then
+        return nil
+    end
+    return choice.key
 end
 
 function QT:Render(content, sidebar)
@@ -2562,10 +2596,8 @@ function QT:Render(content, sidebar)
     local y = -10
     local w = content:GetWidth() - 28
 
-    -- Auto-detect expansion filter if not manually selected yet
-    if not self._selectedExpansion then
-        self._selectedExpansion = self:DetectBestExpansion()
-    end
+    -- The active timeline picks the guide set until the player pins a row.
+    if self.SyncTimeline then self:SyncTimeline(false) end
 
     -- ══════════════════════════════════════════════════════════════════════════
     -- PANEL 1: LEFT SIDEBAR — Expansion Filter
@@ -2580,19 +2612,39 @@ function QT:Render(content, sidebar)
     sideTitle:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, sideY)
     sideY = sideY - 16
 
-    -- Detect Chromie Time for suggested badge
-    local chromieExpansion = nil
-    if C_ChromieTime and C_ChromieTime.GetChromieTimeExpansionOption then
-        local ok, result = pcall(C_ChromieTime.GetChromieTimeExpansionOption)
-        if ok and result then chromieExpansion = result end
+    local timelineLine = TA.Chromie and TA.Chromie.HeaderLine(self._timeline) or nil
+    if timelineLine then
+        local sideTime = sidebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        sideTime:SetFont(STANDARD_TEXT_FONT, 9, "")
+        sideTime:SetText(timelineLine)
+        sideTime:SetTextColor(0.55, 0.52, 0.48, 1)
+        sideTime:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, sideY)
+        sideTime:SetPoint("TOPRIGHT", sidebar, "TOPRIGHT", -6, sideY)
+        sideTime:SetJustifyH("LEFT")
+        sideTime:SetWordWrap(false)
+        sideY = sideY - 14
     end
+
+    -- recommended comes from the options list, not from a level bracket.
+    local suggestedKey = nil
+    local timeline = self._timeline
+    if timeline and timeline.eligible then
+        for _, opt in ipairs(timeline.eligible) do
+            if opt.recommended and opt.guideKey then
+                suggestedKey = opt.guideKey
+                break
+            end
+        end
+    end
+    local bestKey = self:DetectBestExpansion()
 
     -- Store sidebar buttons for highlight updates without full re-render
     local sideButtons = {}
+    self._sideButtons = sideButtons
 
     for _, expDef in ipairs(self._expansions) do
         local isSelected = (self._selectedExpansion == expDef.key)
-        local isSuggested = (chromieExpansion and expDef.key == chromieExpansion)
+        local isSuggested = suggestedKey and expDef.key == suggestedKey and expDef.key ~= bestKey
 
         local btn = CreateFrame("Button", nil, sidebar, "BackdropTemplate")
         btn:SetHeight(22)
@@ -2605,7 +2657,7 @@ function QT:Render(content, sidebar)
         local text = expDef.label
         if isSuggested then
             text = text .. " |cFF66BBFF(Suggested)|r"
-        elseif expDef.key == self:DetectBestExpansion() then
+        elseif expDef.key == bestKey then
             text = text .. " |cFF4AE0FF★|r"
         end
         lbl:SetText(text)
@@ -2631,23 +2683,9 @@ function QT:Render(content, sidebar)
 
         local expKey = expDef.key
         btn:SetScript("OnClick", function()
+            self._expansionPinned = true
             self._selectedExpansion = expKey
-
-            -- Update ALL sidebar button visuals immediately (no re-render needed)
-            for _, sb in ipairs(sideButtons) do
-                local sel = (sb._expKey == expKey)
-                if sel then
-                    sb:SetBackdropColor(0.12, 0.10, 0.04, 1)
-                    sb:SetBackdropBorderColor(0.40, 0.75, 1.00, 0.80)
-                    sb._lbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-                    sb._lbl:SetTextColor(0.92, 0.90, 0.87, 1)
-                else
-                    sb:SetBackdropColor(0.04, 0.04, 0.04, 0.80)
-                    sb:SetBackdropBorderColor(0.20, 0.20, 0.20, 0.30)
-                    sb._lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
-                    sb._lbl:SetTextColor(0.65, 0.60, 0.50, 1)
-                end
-            end
+            self:HighlightSidebar(expKey)
 
             -- Re-render ONLY the middle panel (aggressive wipe built in)
             if self._contentFrame then
@@ -2770,16 +2808,98 @@ function QT:RenderMiddlePanel(content)
     local padL = 14
     local y = -10
     local w = content:GetWidth() - 28
-    local selectedExp = self._selectedExpansion or "midnight"
+    local choice = self._guideChoice
+    local selectedExp = self._selectedExpansion
+    if not selectedExp and choice and choice.mode ~= "missing" then
+        selectedExp = choice.key
+    end
+    selectedExp = selectedExp or "midnight"
 
     -- Helper: track created elements
     local function Track(f) table.insert(self.middlePanelFrames, f); return f end
 
+    -- A timeline with no guide of its own must not fall through onto some
+    -- other expansion's zones. The card names the gap and lists what we have.
+    if choice and choice.mode == "missing" and not self._expansionPinned then
+        local hdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
+        hdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+        hdr:SetText(choice.header or "No timeline")
+        hdr:SetTextColor(0.92, 0.90, 0.87, 1)
+        hdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        y = y - 22
+
+        local cardW = math.min(360, math.max((w > 40) and w or 220, 220))
+        local card = Track(CreateFrame("Frame", nil, content, "BackdropTemplate"))
+        card:SetSize(cardW, 108)
+        card:SetPoint("TOP", content, "TOP", 0, y)
+        if TA._ApplyBackdrop then
+            TA._ApplyBackdrop(card, 0.07, 0.07, 0.08, 0.94, 0.30, 0.28, 0.24, 1)
+        else
+            card:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+            card:SetBackdropColor(0.07, 0.07, 0.08, 0.94)
+            card:SetBackdropBorderColor(0.30, 0.28, 0.24, 1)
+        end
+        local glyph = card:CreateTexture(nil, "ARTWORK")
+        glyph:SetSize(24, 24)
+        glyph:SetPoint("TOP", 0, -12)
+        glyph:SetTexture("Interface\\AddOns\\ToonAge\\Media\\frame\\ring_32.tga")
+        glyph:SetVertexColor(1.00, 0.82, 0.00)
+        local heading = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        heading:SetFont(STANDARD_TEXT_FONT, 14, "")
+        heading:SetPoint("TOP", glyph, "BOTTOM", 0, -6)
+        heading:SetWidth(cardW - 24)
+        heading:SetJustifyH("CENTER")
+        heading:SetText(choice.cardTitle or "No guide for this timeline yet")
+        heading:SetTextColor(1.00, 0.82, 0.00)
+        local body = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        body:SetFont(STANDARD_TEXT_FONT, 11, "")
+        body:SetPoint("TOP", heading, "BOTTOM", 0, -4)
+        body:SetWidth(cardW - 28)
+        body:SetJustifyH("CENTER")
+        body:SetWordWrap(true)
+        body:SetText(choice.cardBody or "These are the zones we do have.")
+        body:SetTextColor(0.92, 0.90, 0.87)
+        y = y - 116
+
+        local zones = (TA.Chromie and TA.Chromie.ZonesWeHave(TA.Guides, self._expansions)) or {}
+        for _, zone in ipairs(zones) do
+            local zbtn = Track(CreateFrame("Button", nil, content, "BackdropTemplate"))
+            zbtn:SetHeight(22)
+            zbtn:SetPoint("TOPLEFT", content, "TOPLEFT", padL - 4, y)
+            zbtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL + 4, y)
+            zbtn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+            zbtn:SetBackdropColor(0.04, 0.04, 0.04, 0.80)
+            zbtn:SetBackdropBorderColor(0.20, 0.20, 0.20, 0.30)
+            local zl = zbtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            zl:SetFont(STANDARD_TEXT_FONT, 10, "")
+            local ztext = zone.label
+            if zone.count > 1 then ztext = string.format("%s (%d)", zone.label, zone.count) end
+            zl:SetText(ztext)
+            zl:SetTextColor(0.65, 0.60, 0.50, 1)
+            zl:SetPoint("LEFT", zbtn, "LEFT", 6, 0)
+            zl:SetPoint("RIGHT", zbtn, "RIGHT", -6, 0)
+            zl:SetJustifyH("LEFT")
+            local zoneKey = zone.key
+            zbtn:SetScript("OnClick", function()
+                self._expansionPinned = true
+                self._selectedExpansion = zoneKey
+                self:HighlightSidebar(zoneKey)
+                self:RenderMiddlePanel(content)
+            end)
+            y = y - 26
+        end
+        content:SetHeight(math.abs(y) + 20)
+        self._renderingMiddle = false
+        return
+    end
+
     -- ── Gather guides for the selected expansion ─────────────────────────────
+    local introOnly = choice and choice.mode == "intro" and not self._expansionPinned
     local zoneGuides = {}
     for id, guide in pairs(TA.Guides or {}) do
         local guideExp = self:ClassifyGuideExpansion(guide)
-        if guideExp == selectedExp then
+        local skipIntro = introOnly and TA.Chromie and not TA.Chromie.IsIntroGuide(guide)
+        if guideExp == selectedExp and not skipIntro then
             local total, completed = 0, 0
             for _, step in ipairs(guide.steps) do
                 if step.questID then
@@ -2805,16 +2925,20 @@ function QT:RenderMiddlePanel(content)
         if def.key == selectedExp then expLabel = def.label; break end
     end
 
-    -- Check if this is the recommended expansion for the player's level
-    local recommended = (self:DetectBestExpansion() == selectedExp)
+    local timelineName = TA.Chromie and TA.Chromie.HeaderLine(self._timeline) or nil
+    local hdrText
+    if self._expansionPinned or not (choice and choice.header) then
+        hdrText = expLabel .. " Guides"
+    else
+        hdrText = choice.header
+    end
+    if timelineName and timelineName ~= hdrText and timelineName ~= (choice and choice.name) then
+        hdrText = hdrText .. "  ·  " .. timelineName
+    end
 
     local hdr = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
     hdr:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
-    if recommended then
-        hdr:SetText(expLabel .. " Guides  |cFF4AE0FF(Recommended)|r")
-    else
-        hdr:SetText(expLabel .. " Guides")
-    end
+    hdr:SetText(hdrText)
     hdr:SetTextColor(0.92, 0.90, 0.87, 1)
     hdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
     y = y - 22

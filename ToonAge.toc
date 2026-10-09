@@ -139,6 +139,7 @@ Modules\Navigation\GuideParser.lua
 Modules\Navigation\GuideImporter.lua
 Modules\Navigation\GuideBrowser.lua
 Modules\Navigation\GuideContextMenu.lua
+Modules\Navigation\ChromieTime.lua
 Modules\Navigation\QuestTracker.lua
 Modules\Navigation\Arrow.lua
 Modules\Navigation\CoordResolver.lua

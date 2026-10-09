@@ -595,6 +595,8 @@ function TA:InitUI()
             QUEST_FINISHED = true, SUPER_TRACKING_CHANGED = true,
             ZONE_CHANGED = true, ZONE_CHANGED_NEW_AREA = true,
             PLAYER_LEVEL_UP = true, PLAYER_XP_UPDATE = true,
+            -- Chromie Time selection UI (verified names, no payload, 9.0.1).
+            CHROMIE_TIME_OPEN = true, CHROMIE_TIME_CLOSE = true,
         },
         character = {
             PLAYER_LEVEL_UP = true, PLAYER_EQUIPMENT_CHANGED = true,
