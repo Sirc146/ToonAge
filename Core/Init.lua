@@ -813,12 +813,12 @@ local EVENT_ROUTES = {
     CHAT_MSG_SYSTEM = { "ForeverWorldRefresh" },
     PLAYER_XP_UPDATE = { "ForeverCharacter", "XPTracker" },
     ACTIONBAR_SLOT_CHANGED = { "CombatRecorder", "ForeverRotation" },
-    SPELL_UPDATE_COOLDOWN = {  },
+    SPELL_UPDATE_COOLDOWN = { "ProfessionOverload" },
     PLAYER_TARGET_CHANGED = { "CombatState", "ForeverPvP", "Gear" },
     UNIT_ATTACK_POWER = {  },
     BAG_UPDATE_DELAYED = { "AutoEquip", "DataHarvester", "ForeverGear" },
     ZONE_CHANGED = { "CoordResolver", "TravelRouter" },
-    UNIT_SPELLCAST_SUCCEEDED = { "CombatRecorder", "CombatState", "ForeverCastLog" },
+    UNIT_SPELLCAST_SUCCEEDED = { "CombatRecorder", "CombatState", "ForeverCastLog", "ProfessionOverload" },
 }
 -- END GENERATED EVENT_ROUTES
 
@@ -1556,6 +1556,9 @@ local function Dispatch(self, msg)
             end
             if TA.Analytics and TA.Analytics.StatusLine then
                 Say("  " .. TA.Analytics:StatusLine())
+            end
+            if TA.ProfessionOverload and TA.ProfessionOverload.StatusLine then
+                Say("  " .. TA.ProfessionOverload:StatusLine())
             end
             Say("━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
