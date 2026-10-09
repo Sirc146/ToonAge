@@ -773,8 +773,40 @@ function Arrow.ClearBareWay()
     end
 end
 
---- Bare /way, only when nobody else owns it at login. /ta way is unaffected.
+--- True when this arrow is part of the running client: not switched off,
+--- not skipped by the profile, and allowed for this flavor. Checked at
+--- PLAYER_LOGIN, which is before InitModules copies those flags, so the
+--- saved toggle and ModuleAllowed are read here as well.
+function Arrow:WayRunnable()
+    if self._disabled or self._profileSkipped then return false end
+    if TA.TocFlavorMismatch and TA:TocFlavorMismatch() then return false end
+    if TA.ModuleAllowed then
+        local ok, allowed = pcall(TA.ModuleAllowed, TA, "Arrow")
+        if not ok or not allowed then return false end
+    end
+    local db = (type(TA.db) == "table" and TA.db) or (type(ToonAgeDB) == "table" and ToonAgeDB)
+    if type(db) == "table" and type(db.modules) == "table" and db.modules.Arrow == false then
+        return false
+    end
+    return true
+end
+
+--- Bare /way enters the same dispatch as /ta way, so a disabled, safe-skipped
+--- or wrong-client arrow prints the not-running message and does not run.
+--- The text after /way is not lowercased; Dispatch keeps it for the label.
+function Arrow:RunBareWay(msg)
+    local rest = type(msg) == "string" and msg:match("^%s*(.-)%s*$") or ""
+    local text = (rest ~= "") and ("way " .. rest) or "way"
+    if TA.SlashCommand then TA:SlashCommand(text) end
+end
+
+--- Bare /way, only when this arrow is running and nobody else owns it.
+--- /ta way is unaffected: it already goes through dispatch.
 function Arrow:RegisterBareWay()
+    if not self:WayRunnable() then
+        if Arrow.OwnsBareWay() then Arrow.ClearBareWay() end
+        return
+    end
     if Arrow.TomTomLoaded() or Arrow.ForeignWaySlash() then
         if Arrow.OwnsBareWay() then Arrow.ClearBareWay() end
         return
@@ -782,8 +814,7 @@ function Arrow:RegisterBareWay()
     if type(SlashCmdList) ~= "table" then return end
     _G.SLASH_TOONAGEWAY1 = "/way"
     SlashCmdList["TOONAGEWAY"] = function(msg)
-        -- Same handler as /ta way, so the label keeps its capitals.
-        self.SlashCommands.way(self, msg)
+        self:RunBareWay(msg)
     end
 end
 

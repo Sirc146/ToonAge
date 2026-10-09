@@ -242,12 +242,13 @@ def test_scaffold_tocs_are_core_only():
                   [f for f in files if f.startswith("Data/")],
                   ["Data/Vanilla/ProfessionSkills.lua"])
             mods = [f for f in files if f.startswith("Modules/") and f != SELFTEST]
-            check("vanilla: ErrorLog, the profession readout and the rotation list",
+            check("vanilla: ErrorLog, the profession readout, the rotation list and probes",
                   sorted(mods),
                   ["Modules/Character/ProfessionBoard.lua",
                    "Modules/Character/ProfessionSkills.lua",
                    "Modules/Infrastructure/ContextAction.lua",
                    "Modules/Infrastructure/ErrorLog.lua",
+                   "Modules/Infrastructure/Harvester.lua",
                    "Modules/Infrastructure/RotationBoard.lua",
                    "Modules/Infrastructure/RotationLists.lua",
                    "Modules/Progression/FactionTracker.lua"])
@@ -256,8 +257,10 @@ def test_scaffold_tocs_are_core_only():
         else:
             check(f"{name}: lists no Data/", [f for f in files if f.startswith("Data/")], [])
             mods = [f for f in files if f.startswith("Modules/")]
-            check(f"{name}: only ErrorLog module (+ self-test)",
-                  [m for m in mods if m != SELFTEST], ["Modules/Infrastructure/ErrorLog.lua"])
+            check(f"{name}: ErrorLog plus the shared probe core (+ self-test)",
+                  [m for m in mods if m != SELFTEST],
+                  ["Modules/Infrastructure/ErrorLog.lua",
+                   "Modules/Infrastructure/Harvester.lua"])
         check(f"{name}: includes Core/Environment",
               any(f.endswith("Core/Environment.lua") for f in files), True)
         check(f"{name}: includes Core/Profile",
