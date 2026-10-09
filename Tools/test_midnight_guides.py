@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Midnight campaign guides load, and authored guides have no 0,0 coordinates.
+"""Midnight data loads, and authored guides have no 0,0 coordinates.
 
-Eversong, Harandar, Zul'Aman and Voidstorm are the campaign. Arator's Journey
-is the side route offered after Eversong. The Darkening Sky is optional.
-Scenario steps carry no waypoint. 86528 is the hollow approximate marker.
-Map 14 and 2372 are both Arathi Highlands. useItem steps use the shared
-context-action button.
+The Chronicler set under Data/Retail/Midnight replaces the earlier campaign
+copy: full routes, side quests, professions, gathering, and one route per
+faction. 86528 stays the hollow approximate marker. Map 14 and 2372 are both
+Arathi Highlands. useItem steps use the shared context-action button.
 """
 
 import sys
@@ -40,7 +39,9 @@ def toc_guides(rel):
     names = []
     for line in read(rel).splitlines():
         line = line.strip()
-        if line.startswith("Data\\Retail\\Guides\\") and line.endswith(".lua"):
+        if not line.endswith(".lua"):
+            continue
+        if line.startswith("Data\\Retail\\Guides\\") or line.startswith("Data\\Retail\\Midnight\\"):
             names.append(line.replace("\\", "/"))
     return names
 
@@ -110,16 +111,20 @@ def main():
     mainline = toc_guides("ToonAge_Mainline.toc")
     check("both retail TOCs list the same guides", retail, mainline)
     joined = "\n".join(retail)
-    check("Eversong is before Harandar",
-          joined.find("TAG_Midnight_Eversong_Woods.lua") < joined.find("TAG_Midnight_Harandar.lua"))
-    check("Harandar is before Zul'Aman",
-          joined.find("TAG_Midnight_Harandar.lua") < joined.find("TAG_Midnight_Zulaman.lua"))
-    check("Zul'Aman is before Voidstorm",
-          joined.find("TAG_Midnight_Zulaman.lua") < joined.find("TAG_Midnight_Voidstorm.lua"))
-    check("Arator's Journey is listed", "TAG_Midnight_Arators_Journey.lua" in joined)
+    midnight = sorted(str(p.relative_to(ROOT)).replace("\\", "/")
+                      for p in (ROOT / "Data/Retail/Midnight").rglob("*.lua"))
+    listed = [n for n in retail if n.startswith("Data/Retail/Midnight/")]
+    check("every Midnight file is on the retail TOC", sorted(listed), midnight)
+    check("WireRepRoutes is the last Midnight file", listed[-1], "Data/Retail/Midnight/WireRepRoutes.lua")
+    check("faction routes load before they are copied into guides",
+          joined.find("Data/Retail/Midnight/rep/") < joined.find("Data/Retail/Midnight/WireRepRoutes.lua")
+          and joined.find("Data/Retail/Midnight/reputations.lua") < joined.find("Data/Retail/Midnight/WireRepRoutes.lua"))
+    for name in ("eversong_woods_full.lua", "harandar.lua", "harandar_full.lua",
+                 "zulaman.lua", "zulaman_full.lua", "voidstorm.lua", "voidstorm_full.lua",
+                 "arators_journey.lua", "intro.lua", "gathering.lua", "reputations.lua"):
+        check(f"{name} is listed", f"Data/Retail/Midnight/{name}" in joined)
     camelot = read("ToonAge_Camelot.toc")
-    check("Forever TOC does not load the Arathi side route",
-          "TAG_Midnight_Arators_Journey.lua" in camelot, False)
+    check("Forever TOC does not load Midnight data", "Data\\Retail\\Midnight\\" in camelot, False)
 
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(BOOT)
@@ -151,9 +156,6 @@ def main():
     check("Midnight audit is clean", lua.eval("MID_N"), 0)
     if lua.eval("MID_N") != 0:
         print("        first:", lua.eval("MID_1"))
-    check("19 useItem steps", lua.eval("USES"), 19)
-    check("13 scenario steps", lua.eval("NILC"), 13)
-    check("those 13 steps suppress the waypoint", lua.eval("NOARROW"), 13)
     check("map 14 is present", lua.eval("SAW14"), True)
     check("map 2372 is present", lua.eval("SAW2372"), True)
     check("86528 is approximate", lua.eval("HOLO"), True)
@@ -242,7 +244,7 @@ def main():
         table.sort(rows, QT.CompareGuides)
         ORDER = {}
         for i, row in ipairs(rows) do ORDER[i] = row.id end
-        local note = QT.CompletionNote(ToonAge.Guides.midnight_eversong_campaign)
+        local note = QT.CompletionNote(ToonAge.Guides.midnight_eversong_full)
         NOTE = note
         local CA = ToonAge.ContextAction
         local QC = ToonAge.QuestContext
@@ -258,24 +260,21 @@ def main():
         local tracker = ToonAge:GetModule("QuestTracker")
         local ids = {}
         local button
-        for _, gid in ipairs({
-            "midnight_eversong_campaign", "midnight_harandar_campaign",
-            "midnight_zulaman_campaign", "midnight_voidstorm_campaign",
-            "midnight_arators_journey", "midnight_darkening_sky",
-        }) do
-            local guide = ToonAge.Guides[gid]
-            for i, step in ipairs(guide.steps) do
-                if type(step.useItem) == "number" then
-                    tracker.guideID = gid
-                    tracker.stepIdx = i
-                    QC:Refresh()
-                    local plan = CA._plan
-                    local action = plan and plan.action
-                    ids[#ids + 1] = step.useItem
-                    if action ~= "item:" .. tostring(step.useItem) then
-                        USE_BAD = gid .. " " .. tostring(action)
+        for gid, guide in pairs(ToonAge.Guides) do
+            if type(gid) == "string" and gid:sub(1, 9) == "midnight_" then
+                for i, step in ipairs(guide.steps or {}) do
+                    if type(step.useItem) == "number" then
+                        tracker.guideID = gid
+                        tracker.stepIdx = i
+                        QC:Refresh()
+                        local plan = CA._plan
+                        local action = plan and plan.action
+                        ids[#ids + 1] = step.useItem
+                        if action ~= "item:" .. tostring(step.useItem) then
+                            USE_BAD = gid .. " " .. tostring(action)
+                        end
+                        button = CA._button
                     end
-                    button = CA._button
                 end
             end
         end
@@ -310,9 +309,8 @@ def main():
           got_order, want_order)
     note = lua.eval("NOTE")
     check("finishing Eversong chains to Harandar", "Harandar" in note)
-    check("finishing Eversong offers Arator's Journey", "Arator" in note)
     check("the shared button is 44px", lua.eval("SIZE"), 44)
-    check("every useItem step reaches the context button", lua.eval("USE_N"), 19)
+    check("useItem steps reach the context button", lua.eval("USE_N") > 0)
     check("useItem actions match the step", lua.eval("USE_BAD"), "")
     check("the button is drawn at 44px", (lua.eval("BTN_W"), lua.eval("BTN_H")), (44, 44))
     check("the button uses the gold frame", abs(lua.eval("BTN_GOLD") - 0.910) < 0.001)

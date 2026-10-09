@@ -83,6 +83,18 @@ probes.skillinfo = { title = "Skill lines: C_SkillInfo", run = function(P, L)
     P.Call(L, "C_PaperDollInfo.OffhandHasWeapon()", "C_PaperDollInfo.OffhandHasWeapon")
 end }
 
+probes.reputation = { title = "Reputation", run = function(P, L)
+    -- Unverified until a probe report is read back. 72 is only an argument
+    -- so each call has a faction id; it is not a measured Forever faction.
+    L[#L + 1] = "unverified until this probe is read back"
+    P.Call(L, "C_MajorFactions.GetMajorFactionData(72)", "C_MajorFactions.GetMajorFactionData", 72)
+    P.Call(L, "C_Reputation.GetFactionDataByID(72)", "C_Reputation.GetFactionDataByID", 72)
+    P.Call(L, "C_Reputation.IsFactionParagon(72)", "C_Reputation.IsFactionParagon", 72)
+    P.Call(L, "C_Reputation.GetFactionParagonInfo(72)", "C_Reputation.GetFactionParagonInfo", 72)
+    P.Call(L, "C_GossipInfo.GetFriendshipReputation(72)", "C_GossipInfo.GetFriendshipReputation", 72)
+    P.Call(L, "GetFactionInfoByID(72)", "GetFactionInfoByID", 72)
+end }
+
 probes.scrolls = { title = "Scroll tooltips in your bags", run = function(P, L)
     local found = 0
     local lastBag = tonumber((Caps.Get("NUM_TOTAL_EQUIPPED_BAG_SLOTS")))
@@ -165,7 +177,7 @@ Hv:RegisterPack{
     catalogRanges = { { 1, 60000 }, { 400000, 440000 }, { 1220000, 1330000 } },
 
     probeOrder = { "client", "professions", "professionLines", "sheet", "skillinfo",
-                   "talentGeometry", "spellRanks", "combat", "map", "scrolls" },
+                   "talentGeometry", "spellRanks", "combat", "map", "reputation", "scrolls" },
     probes = probes,
     probesBlurb = "Runs every open check from the Forever brief -- professions and "
         .. "Comprehension, weapon skill, spell power, combat recording, scroll "

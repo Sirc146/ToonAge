@@ -80,8 +80,48 @@ function OL.Leading(name, list)
     return nil
 end
 
+local spotIndex
+
+function OL.RebuildSpots()
+    spotIndex = {}
+    local groups = TA.GatheringData and TA.GatheringData.midnight
+        and TA.GatheringData.midnight.overloadSpots
+    if type(groups) ~= "table" then return spotIndex end
+    for _, group in ipairs(groups) do
+        if type(group) == "table" and type(group.overloadSpellID) == "number" then
+            for _, spot in ipairs(group.spots or {}) do
+                if type(spot) == "table" then
+                    for _, id in ipairs(spot.objectIDs or {}) do
+                        if type(id) == "number" and spotIndex[id] == nil then
+                            spotIndex[id] = {
+                                objectID = id,
+                                spellID = group.overloadSpellID,
+                                name = group.variant,
+                                profession = group.profession,
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return spotIndex
+end
+
+function OL.SpotFor(objectID)
+    if type(objectID) ~= "number" then return nil end
+    local groups = TA.GatheringData and TA.GatheringData.midnight
+        and TA.GatheringData.midnight.overloadSpots
+    if spotIndex == nil or (not next(spotIndex) and type(groups) == "table" and groups[1]) then
+        OL.RebuildSpots()
+    end
+    return spotIndex and spotIndex[objectID] or nil
+end
+
 --- node, prefix, denied. A denied name is never a node, even if an object
 --- id is listed. A prefix hit is used when the exact list does not name it.
+--- Gathering overload spots supply a spell id without writing the retail
+--- node list.
 function OL.Match(data, name, guid)
     if type(data) ~= "table" then return nil end
     local denied = OL.Leading(name, data.denyPrefixes)
@@ -95,6 +135,8 @@ function OL.Match(data, name, guid)
             if idHit or nameHit then return node, nil, nil end
         end
     end
+    local spot = OL.SpotFor(objectID)
+    if spot then return spot, nil, nil end
     local allowed = OL.Leading(name, data.allowPrefixes)
     if allowed and not OL.Secret(name) and type(name) == "string" then
         return { name = name, prefix = allowed }, allowed, nil

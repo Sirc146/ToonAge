@@ -18,6 +18,7 @@ local ROW_PAD       = 6    -- extra vertical space between rows
 local DEFAULT_TABS = {
     { id = "character",   label = "Character",   module = "Character"   },
     { id = "guide",       label = "Guide",       module = "QuestTracker" },
+    { id = "reputations", label = "Reputation",  module = "FactionTracker" },
     { id = "gear",        label = "Gear",        module = "Gear"        },
     { id = "talents",     label = "Talents",     module = "Talents"     },
     { id = "rotation",    label = "Rotation",    module = "Rotation"    },

@@ -107,7 +107,7 @@ end
 
 function QT:IsStepComplete(step)
     if not self:IsStepApplicable(step) then return true end
-    if step.type == "text"             then return true end
+    if step.type == "text" or step.type == "note" then return true end
     if step._manualDone                then return true end
 
     local sType = step.type or "quest"
@@ -143,6 +143,19 @@ function QT:IsStepComplete(step)
     if sType == "waypoint" then
         if IsPlayerFlying() then return true end  -- auto-skip waypoints while flying
         return false  -- otherwise only proximity advance
+    end
+
+    if sType == "gather" then
+        if IsPlayerFlying() then return true end
+        return false
+    end
+
+    -- Catalog steps that carry a quest id finish when that quest is flagged.
+    if sType == "treasure" or sType == "rare" or sType == "glyph"
+        or sType == "worldboss" or sType == "hiddenquest" or sType == "firstgather"
+        or sType == "achievement" or sType == "vendor" or sType == "firstcraft" then
+        if step.questID then return IsComplete(step.questID) end
+        return false
     end
 
     -- ─── Legacy "quest" type: complete when flagged complete ───────────
@@ -475,7 +488,7 @@ end
 ---         and so on; nil when the guide's zone is not an ancestor at all.
 ---
 --- Returning a distance rather than a boolean matters because guides legitimately
---- sit at different levels of the map tree. TAG_Midnight_Intro is keyed to
+--- sit at different levels of the map tree. midnight_intro is keyed to
 --- Quel'Thalas (2537) while TAG_Eversong_Midnight is keyed to Eversong (2395) —
 --- and Eversong's parent *is* Quel'Thalas, so standing in Eversong matches both.
 --- Without a specificity measure the winner came down to whichever had the lower
@@ -3776,7 +3789,8 @@ function QT:CheckProximityAdvance()
     -- Core proximity types: waypoint, travel
     -- Extended: any step with an explicit "range" field is opt-in to proximity advance
     local stepType = step.type or ""
-    local isProximityType = (stepType == "travel" or stepType == "waypoint" or stepType == "run")
+    local isProximityType = (stepType == "travel" or stepType == "waypoint"
+        or stepType == "run" or stepType == "gather")
     local hasExplicitRange = (step.range ~= nil and step.range > 0)
 
     if not isProximityType and not hasExplicitRange then

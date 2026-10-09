@@ -40,6 +40,7 @@ Core\Layout.lua
 Data\Vanilla\ProfessionSkills.lua
 Modules\Character\ProfessionSkills.lua
 Modules\Character\ProfessionBoard.lua
+Modules\Progression\FactionTracker.lua
 
 # ── Shared infrastructure (no game-rule content) ───────────────────────
 Modules\Infrastructure\ErrorLog.lua

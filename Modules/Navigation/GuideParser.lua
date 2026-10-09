@@ -42,6 +42,7 @@
 --     noArrow        = boolean?,     -- suppress arrow for this step
 --     estimated      = boolean?,     -- hollow approximate marker
 --     optional       = boolean?,     -- skippable achievement/side step
+--     rep            = { { factionID = number, amount = number }, ... }?,
 --     precondition   = {             -- gating conditions
 --       questID       = number?,     -- quest must be in log
 --       questComplete = number?,     -- quest must be flagged complete
@@ -69,6 +70,10 @@
 -- text      — Informational only. Always considered complete (auto-skip).
 -- flyto     — Take a flight path. Complete when player lands in target zone.
 -- sethearth — Set hearthstone. Complete when hearthstone location changes.
+-- gather    — Farm-loop hotspot. Completes by proximity, like a waypoint.
+-- note      — Informational. Always complete, like text.
+-- treasure, rare, glyph, worldboss, hiddenquest, firstgather, achievement,
+-- vendor, firstcraft — catalog steps. A questID completes when flagged.
 -- ═══════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
@@ -97,6 +102,19 @@ local VALID_TYPES = {
     -- Specialized types
     flyto     = true,   -- take flight path
     sethearth = true,   -- set hearthstone location
+
+    -- Midnight catalog types (Chronicler, 2026-10-09).
+    gather      = true,
+    note        = true,
+    treasure    = true,
+    rare        = true,
+    glyph       = true,
+    worldboss   = true,
+    hiddenquest = true,
+    firstgather = true,
+    firstcraft  = true,
+    achievement = true,
+    vendor      = true,
 }
 
 -- Expose for other modules (NavHud, QuestTracker use this to classify steps)
@@ -207,6 +225,22 @@ local function ValidateStep(id, n, step)
         if type(itemID) ~= "number" or itemID <= 0 then
             LogError(id, n, "'useItem' must be an item id")
             ok = false
+        end
+    end
+    if step.rep ~= nil then
+        if type(step.rep) ~= "table" then
+            LogError(id, n, "'rep' must be a table")
+            ok = false
+        else
+            for _, grant in ipairs(step.rep) do
+                if type(grant) ~= "table"
+                    or type(grant.factionID) ~= "number"
+                    or type(grant.amount) ~= "number" then
+                    LogError(id, n, "'rep' entries need a factionID and an amount")
+                    ok = false
+                    break
+                end
+            end
         end
     end
     return ok
@@ -343,24 +377,9 @@ function GP:Init()
     end
 end
 
--- Midnight campaign catalog. Step counts are the Chronicler files.
 -- A guide that is entirely 0,0 is an unfilled stub. A guide that already
 -- has a real coordinate, or an explicit nil coordinate, must not also
--- contain a 0,0 step.
-local MIDNIGHT_GUIDES = {
-    { id = "midnight_eversong_campaign", steps = 224, order = 10,
-      nextGuide = "midnight_harandar_campaign", sideGuide = "midnight_arators_journey" },
-    { id = "midnight_arators_journey", steps = 148, order = 15,
-      nextGuide = "midnight_harandar_campaign" },
-    { id = "midnight_harandar_campaign", steps = 225, order = 20,
-      nextGuide = "midnight_zulaman_campaign" },
-    { id = "midnight_zulaman_campaign", steps = 192, order = 30,
-      nextGuide = "midnight_voidstorm_campaign" },
-    { id = "midnight_darkening_sky", steps = 17, order = 35,
-      nextGuide = "midnight_voidstorm_campaign", optional = true },
-    { id = "midnight_voidstorm_campaign", steps = 175, order = 40 },
-}
-
+-- contain a 0,0 step. Retail also requires the Midnight faction routes.
 function GP:AuditLoaded()
     local report = {
         loaded = 0,
@@ -377,8 +396,6 @@ function GP:AuditLoaded()
         saw2372 = false,
         holokey = false,
     }
-    local want = {}
-    for _, spec in ipairs(MIDNIGHT_GUIDES) do want[spec.id] = spec end
 
     for id in pairs(TA.GuideData or {}) do
         report.data = report.data + 1
@@ -391,25 +408,22 @@ function GP:AuditLoaded()
     for id, guide in pairs(TA.Guides or {}) do
         report.loaded = report.loaded + 1
         local real, zeros, nils = 0, 0, 0
-        local watched = want[id] ~= nil
         for _, step in ipairs(guide.steps or {}) do
             if type(step) == "table" then
                 local coord = step.coord
                 if coord == nil then
                     nils = nils + 1
-                    if watched then
-                        report.nilCoord = report.nilCoord + 1
-                        if step.noArrow then report.noArrow = report.noArrow + 1 end
-                    end
+                    report.nilCoord = report.nilCoord + 1
+                    if step.noArrow then report.noArrow = report.noArrow + 1 end
                 elseif type(coord) == "table" then
                     local x = tonumber(coord.x) or 0
                     local y = tonumber(coord.y) or 0
                     if x == 0 and y == 0 then zeros = zeros + 1
                     else real = real + 1 end
-                    if watched and coord.map == 14 then report.saw14 = true end
-                    if watched and coord.map == 2372 then report.saw2372 = true end
+                    if coord.map == 14 then report.saw14 = true end
+                    if coord.map == 2372 then report.saw2372 = true end
                 end
-                if watched and step.useItem ~= nil then
+                if step.useItem ~= nil then
                     local itemID = step.useItem
                     if type(itemID) == "table" then itemID = itemID.id or itemID.itemID end
                     if type(itemID) == "number" and itemID > 0 then
@@ -418,10 +432,10 @@ function GP:AuditLoaded()
                         report.midnight[#report.midnight + 1] = id .. " useItem is not an item id"
                     end
                 end
-                if watched and step.questID == 86528 and step.type == "accept" then
+                if id == "midnight_voidstorm_campaign" and step.questID == 86528 and step.type == "accept" then
                     report.holokey = step.estimated == true
                 end
-                if watched and step.questID == 86528 and step.type ~= "accept" and step.estimated then
+                if step.questID == 86528 and step.type ~= "accept" and step.estimated then
                     report.midnight[#report.midnight + 1] = "86528 turn-in is marked approximate"
                 end
             end
@@ -429,54 +443,36 @@ function GP:AuditLoaded()
         if zeros > 0 and (real > 0 or nils > 0) then
             report.bad = report.bad + 1
             report.problems[#report.problems + 1] = id .. " has a 0,0 coordinate"
+            report.midnight[#report.midnight + 1] = id .. " has a 0,0 coordinate"
         elseif zeros > 0 then
             report.stubs = report.stubs + 1
         end
-        if watched and zeros > 0 then
-            report.midnight[#report.midnight + 1] = id .. " has a 0,0 coordinate"
-        end
     end
 
-    for _, spec in ipairs(MIDNIGHT_GUIDES) do
-        local guide = TA.Guides and TA.Guides[spec.id]
-        if not guide then
-            report.midnight[#report.midnight + 1] = "missing " .. spec.id
+    if TA.flavor == "retail" then
+        local reps = TA.Reputations and TA.Reputations.midnight
+        if type(reps) ~= "table" then
+            report.midnight[#report.midnight + 1] = "reputations are not loaded"
         else
-            if #(guide.steps or {}) ~= spec.steps then
-                report.midnight[#report.midnight + 1] =
-                    spec.id .. " has " .. #(guide.steps or {}) .. " steps"
-            end
-            if guide.order ~= spec.order then
-                report.midnight[#report.midnight + 1] = spec.id .. " order"
-            end
-            local nextID = guide.nextGuide
-            if spec.nextGuide == nil then
-                if nextID ~= nil then
-                    report.midnight[#report.midnight + 1] = spec.id .. " nextGuide"
+            local n = 0
+            for fid, faction in pairs(reps) do
+                n = n + 1
+                local idNum = (type(faction) == "table" and faction.factionID) or fid
+                local gid = "midnight_rep_" .. tostring(idNum)
+                if not (TA.Guides and TA.Guides[gid]) then
+                    report.midnight[#report.midnight + 1] = "missing " .. gid
                 end
-            elseif nextID ~= spec.nextGuide then
-                report.midnight[#report.midnight + 1] = spec.id .. " nextGuide"
             end
-            if spec.sideGuide and guide.sideGuide ~= spec.sideGuide then
-                report.midnight[#report.midnight + 1] = spec.id .. " sideGuide"
-            end
-            if spec.optional and guide.optional ~= true then
-                report.midnight[#report.midnight + 1] = spec.id .. " optional"
+            if n ~= 12 then
+                report.midnight[#report.midnight + 1] = "faction count " .. tostring(n)
             end
         end
-    end
-    if report.nilCoord ~= 13 or report.noArrow ~= 13 then
-        report.midnight[#report.midnight + 1] =
-            "nil steps " .. report.nilCoord .. ", noArrow " .. report.noArrow
-    end
-    if report.useItems ~= 19 then
-        report.midnight[#report.midnight + 1] = "useItem steps " .. report.useItems
-    end
-    if not report.holokey then
-        report.midnight[#report.midnight + 1] = "86528 A Cracked Holokey is not approximate"
-    end
-    if not report.saw14 or not report.saw2372 then
-        report.midnight[#report.midnight + 1] = "Arathi map 14 or 2372 is missing"
+        if not report.holokey then
+            report.midnight[#report.midnight + 1] = "86528 A Cracked Holokey is not approximate"
+        end
+        if not report.saw14 or not report.saw2372 then
+            report.midnight[#report.midnight + 1] = "Arathi map 14 or 2372 is missing"
+        end
     end
     return report
 end

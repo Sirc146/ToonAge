@@ -68,6 +68,7 @@ Modules\Infrastructure\RotationBoard.lua
 Modules\Mists\Character.lua
 Modules\Character\ProfessionSkills.lua
 Modules\Character\ProfessionBoard.lua
+Modules\Progression\FactionTracker.lua
 Modules\Mists\PetCare.lua
 Modules\Gear\Heirlooms.lua
 Modules\Mists\Gear.lua

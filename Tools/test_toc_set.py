@@ -102,6 +102,7 @@ FOREVER_MODULES = [
     # and stays unverified until an in-game probe confirms it.
     "Modules/Character/ProfessionSkills.lua",
     "Modules/Character/ProfessionBoard.lua",
+    "Modules/Progression/FactionTracker.lua",
     "Modules/Infrastructure/TestHarness.lua",
 ]
 
@@ -248,7 +249,8 @@ def test_scaffold_tocs_are_core_only():
                    "Modules/Infrastructure/ContextAction.lua",
                    "Modules/Infrastructure/ErrorLog.lua",
                    "Modules/Infrastructure/RotationBoard.lua",
-                   "Modules/Infrastructure/RotationLists.lua"])
+                   "Modules/Infrastructure/RotationLists.lua",
+                   "Modules/Progression/FactionTracker.lua"])
             check("vanilla: includes Layout for the profession cards",
                   any(f.endswith("Core/Layout.lua") for f in files), True)
         else:

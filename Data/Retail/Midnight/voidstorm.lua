@@ -33,7 +33,7 @@ TA.GuideData = TA.GuideData or {}
 
 TA.GuideData["midnight_voidstorm_campaign"] = {
     id = "midnight_voidstorm_campaign", title = "Midnight: Voidstorm (Campaign)", expansion = "midnight",
-    zone = 2405, minLevel = 80, maxLevel = 90, order = 40,
+    zone = 2405, minLevel = 80, maxLevel = 90,
     nextGuide = nil, -- APR continues with The War of Light and Shadow (level 90) or Arator's Journey
     steps = {
         -- (APR: grind/continue to level 88 before the next step - skipped when the warband has achievement 42045)
@@ -50,7 +50,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
         { type = "quest",  questID = 86543, text = "Magisters' Terrace: Homecoming (objective 1)",
           coord = { map = 2424, x = 0.619, y = 0.152 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86543, text = "Magisters' Terrace: Homecoming (objective 3)",
-          coord = nil, noArrow = true },  -- no coord: APR step has none; scenario/instance step
+          coord = nil },  -- no coord: APR step has none; scenario/instance step
         { type = "turnin", questID = 86543, text = "Turn in: Magisters' Terrace: Homecoming",
           coord = { map = 2393, x = 0.351, y = 0.658 } },  -- APR route coord (converted)
         { type = "accept", questID = 86549, text = "No Fear of the Dark",
@@ -59,7 +59,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2393, x = 0.353, y = 0.655 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86549, text = "No Fear of the Dark (objective 3)",
           coord = { map = 2393, x = 0.353, y = 0.661 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86549, text = "Turn in: No Fear of the Dark",
+        { type = "turnin", questID = 86549, text = "Turn in: No Fear of the Dark", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.343, y = 0.604 } },  -- APR route coord (converted)
         { type = "accept", questID = 86558, text = "Save a Piece of Mind",
           coord = { map = 2405, x = 0.343, y = 0.605 } },  -- giver coord: ATT
@@ -75,9 +75,9 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.362, y = 0.580 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86557, text = "A Matter of Strife and Death (objective 1)",
           coord = { map = 2405, x = 0.356, y = 0.593 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86557, text = "Turn in: A Matter of Strife and Death",
+        { type = "turnin", questID = 86557, text = "Turn in: A Matter of Strife and Death", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.370, y = 0.586 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86558, text = "Turn in: Save a Piece of Mind",
+        { type = "turnin", questID = 86558, text = "Turn in: Save a Piece of Mind", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.370, y = 0.586 } },  -- APR route coord (converted)
         { type = "accept", questID = 86559, text = "The Far, Far Frontier",
           coord = { map = 2405, x = 0.370, y = 0.586 } },  -- giver coord: ATT
@@ -85,7 +85,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.370, y = 0.586 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86559, text = "The Far, Far Frontier (objective 2)",
           coord = { map = 2405, x = 0.369, y = 0.587 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86559, text = "Turn in: The Far, Far Frontier",
+        { type = "turnin", questID = 86559, text = "Turn in: The Far, Far Frontier", rep = { { factionID = 2699, amount = 10 } },
           coord = { map = 2405, x = 0.313, y = 0.544 } },  -- APR route coord (converted)
         { type = "accept", questID = 86562, text = "Dancing with Death",
           coord = { map = 2405, x = 0.313, y = 0.544 } },  -- giver coord: ATT
@@ -99,9 +99,9 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.281, y = 0.503 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86561, text = "A Strange, Different World (objective 1)",
           coord = { map = 2405, x = 0.282, y = 0.525 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86562, text = "Turn in: Dancing with Death",
+        { type = "turnin", questID = 86562, text = "Turn in: Dancing with Death", rep = { { factionID = 2699, amount = 100 } },
           coord = { map = 2405, x = 0.274, y = 0.510 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86561, text = "Turn in: A Strange, Different World",
+        { type = "turnin", questID = 86561, text = "Turn in: A Strange, Different World", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.274, y = 0.510 } },  -- APR route coord (converted)
         { type = "accept", questID = 86565, text = "No Prayer for the Wicked",
           coord = { map = 2405, x = 0.274, y = 0.510 } },  -- giver coord: ATT
@@ -111,7 +111,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.262, y = 0.515 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86565, text = "No Prayer for the Wicked (objective 3)",
           coord = { map = 2405, x = 0.265, y = 0.511 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86565, text = "Turn in: No Prayer for the Wicked",
+        { type = "turnin", questID = 86565, text = "Turn in: No Prayer for the Wicked", rep = { { factionID = 2699, amount = 1500 } },
           coord = { map = 2405, x = 0.354, y = 0.591 } },  -- APR route coord (converted)
         { type = "accept", questID = 86536, text = "Reliable Enemies",
           coord = { map = 2405, x = 0.354, y = 0.591 } },  -- giver coord: ATT
@@ -121,7 +121,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.366, y = 0.730 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86536, text = "Reliable Enemies (objective 3)",
           coord = { map = 2405, x = 0.367, y = 0.729 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86536, text = "Turn in: Reliable Enemies",
+        { type = "turnin", questID = 86536, text = "Turn in: Reliable Enemies", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.366, y = 0.730 } },  -- APR route coord (converted)
         { type = "accept", questID = 86531, text = "Work Disruption",
           coord = { map = 2405, x = 0.366, y = 0.730 } },  -- giver coord: ATT
@@ -133,13 +133,13 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.365, y = 0.761 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86531, text = "Work Disruption (objective 1)",
           coord = { map = 2405, x = 0.365, y = 0.761 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86531, text = "Turn in: Work Disruption",
+        { type = "turnin", questID = 86531, text = "Turn in: Work Disruption", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.363, y = 0.804 } },  -- APR route coord (converted)
         { type = "accept",  questID = 86528, text = "A Cracked Holokey", estimated = true,
           coord = { map = 2405, x = 0.357, y = 0.792 } },  -- starts from Cracked Holokey (item 241000 / object 504349) per ATT; no APR PickUp - UNVERIFIED placement
-        { type = "turnin", questID = 86528, text = "Turn in: A Cracked Holokey",
+        { type = "turnin", questID = 86528, text = "Turn in: A Cracked Holokey", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.363, y = 0.804 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86530, text = "Turn in: First, The Shells",
+        { type = "turnin", questID = 86530, text = "Turn in: First, The Shells", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.363, y = 0.806 } },  -- APR route coord (converted)
         { type = "accept", questID = 86538, text = "Second, The Fuel",
           coord = { map = 2405, x = 0.363, y = 0.806 } },  -- giver coord: ATT
@@ -157,13 +157,13 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.346, y = 0.780 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86538, text = "Second, The Fuel (objective 1)",
           coord = { map = 2405, x = 0.341, y = 0.793 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86537, text = "Turn in: Network Insecurity",
+        { type = "turnin", questID = 86537, text = "Turn in: Network Insecurity", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.363, y = 0.804 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86538, text = "Turn in: Second, The Fuel",
+        { type = "turnin", questID = 86538, text = "Turn in: Second, The Fuel", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.363, y = 0.806 } },  -- APR route coord (converted)
         { type = "accept", questID = 86539, text = "A Naaru!",
           coord = { map = 2405, x = 0.363, y = 0.806 } },  -- giver coord: ATT
-        { type = "turnin", questID = 86539, text = "Turn in: A Naaru!",
+        { type = "turnin", questID = 86539, text = "Turn in: A Naaru!", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.394, y = 0.822 } },  -- APR route coord (converted)
         { type = "accept", questID = 86540, text = "Third, Blow It Up",
           coord = { map = 2405, x = 0.393, y = 0.822 } },  -- giver coord: ATT
@@ -191,11 +191,11 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.381, y = 0.865 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86541, text = "Just In Case... (objective 2)",
           coord = { map = 2405, x = 0.386, y = 0.838 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 88768, text = "Turn in: Agents of Darkness",
+        { type = "turnin", questID = 88768, text = "Turn in: Agents of Darkness", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.380, y = 0.834 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86540, text = "Turn in: Third, Blow It Up",
+        { type = "turnin", questID = 86540, text = "Turn in: Third, Blow It Up", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.380, y = 0.832 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86541, text = "Turn in: Just In Case...",
+        { type = "turnin", questID = 86541, text = "Turn in: Just In Case...", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.379, y = 0.832 } },  -- APR route coord (converted)
         { type = "accept", questID = 86542, text = "Flicker in the Dark",
           coord = { map = 2405, x = 0.380, y = 0.832 } },  -- giver coord: ATT
@@ -207,11 +207,11 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.387, y = 0.855 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86542, text = "Flicker in the Dark (objective 4)",
           coord = { map = 2405, x = 0.387, y = 0.855 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86542, text = "Turn in: Flicker in the Dark",
+        { type = "turnin", questID = 86542, text = "Turn in: Flicker in the Dark", rep = { { factionID = 2699, amount = 100 } },
           coord = { map = 2405, x = 0.416, y = 0.788 } },  -- APR route coord (converted)
         { type = "accept", questID = 89249, text = "Overwhelmed",
           coord = { map = 2405, x = 0.416, y = 0.788 } },  -- giver coord: ATT
-        { type = "turnin", questID = 89249, text = "Turn in: Overwhelmed",
+        { type = "turnin", questID = 89249, text = "Turn in: Overwhelmed", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.417, y = 0.747 } },  -- APR route coord (converted)
         { type = "accept", questID = 86544, text = "Post-Mortem",
           coord = { map = 2405, x = 0.417, y = 0.747 } },  -- giver coord: ATT
@@ -229,7 +229,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.421, y = 0.753 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86544, text = "Post-Mortem (objective 4) [3/3]",
           coord = { map = 2405, x = 0.423, y = 0.754 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86544, text = "Turn in: Post-Mortem",
+        { type = "turnin", questID = 86544, text = "Turn in: Post-Mortem", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.417, y = 0.747 } },  -- APR route coord (converted)
         { type = "accept", questID = 86545, text = "The Light's Brand",
           coord = { map = 2405, x = 0.417, y = 0.747 } },  -- giver coord: ATT
@@ -239,13 +239,13 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.410, y = 0.727 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86545, text = "The Light's Brand (objective 4)",
           coord = { map = 2405, x = 0.412, y = 0.727 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86545, text = "Turn in: The Light's Brand",
+        { type = "turnin", questID = 86545, text = "Turn in: The Light's Brand", rep = { { factionID = 2699, amount = 1500 } },
           coord = { map = 2405, x = 0.411, y = 0.727 } },  -- APR route coord (converted)
         { type = "accept", questID = 86509, text = "Friend or Fiend",
           coord = { map = 2405, x = 0.412, y = 0.727 } },  -- giver coord: ATT
         { type = "quest",  questID = 86509, text = "Friend or Fiend (objective 1)",
           coord = { map = 2405, x = 0.513, y = 0.729 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86509, text = "Turn in: Friend or Fiend",
+        { type = "turnin", questID = 86509, text = "Turn in: Friend or Fiend", rep = { { factionID = 2699, amount = 10 } },
           coord = { map = 2405, x = 0.514, y = 0.729 } },  -- APR route coord (converted)
         { type = "accept", questID = 86510, text = "Domus Penumbra",
           coord = { map = 2405, x = 0.514, y = 0.729 } },  -- giver coord: ATT
@@ -257,7 +257,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.512, y = 0.693 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86510, text = "Domus Penumbra (objective 2)",
           coord = { map = 2405, x = 0.532, y = 0.682 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86510, text = "Turn in: Domus Penumbra",
+        { type = "turnin", questID = 86510, text = "Turn in: Domus Penumbra", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.510, y = 0.679 } },  -- APR route coord (converted)
         { type = "accept", questID = 90571, text = "The Lay of the Beast",
           coord = { map = 2405, x = 0.510, y = 0.679 } },  -- giver coord: ATT
@@ -267,13 +267,13 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.494, y = 0.589 } },  -- APR route coord (converted)
         { type = "quest",  questID = 90571, text = "The Lay of the Beast (objective 2) [3/3]",
           coord = { map = 2405, x = 0.514, y = 0.560 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 90571, text = "Turn in: The Lay of the Beast",
+        { type = "turnin", questID = 90571, text = "Turn in: The Lay of the Beast", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.510, y = 0.679 } },  -- APR route coord (converted)
         { type = "accept", questID = 86511, text = "Edge of the Abyss",
           coord = { map = 2405, x = 0.511, y = 0.680 } },  -- giver coord: ATT
         { type = "quest",  questID = 86511, text = "Edge of the Abyss (objective 1)",
           coord = { map = 2405, x = 0.544, y = 0.743 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86511, text = "Turn in: Edge of the Abyss",
+        { type = "turnin", questID = 86511, text = "Turn in: Edge of the Abyss", rep = { { factionID = 2699, amount = 10 } },
           coord = { map = 2405, x = 0.544, y = 0.743 } },  -- APR route coord (converted)
         { type = "accept", questID = 86512, text = "The Harvest",
           coord = { map = 2405, x = 0.543, y = 0.743 } },  -- giver coord: ATT
@@ -303,9 +303,9 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.559, y = 0.725 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86513, text = "Face the Tide (objective 1)",
           coord = { map = 2405, x = 0.559, y = 0.725 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86513, text = "Turn in: Face the Tide",
+        { type = "turnin", questID = 86513, text = "Turn in: Face the Tide", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.556, y = 0.727 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86512, text = "Turn in: The Harvest",
+        { type = "turnin", questID = 86512, text = "Turn in: The Harvest", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.556, y = 0.728 } },  -- APR route coord (converted)
         { type = "accept", questID = 86514, text = "Lady of the Pit",
           coord = { map = 2405, x = 0.556, y = 0.728 } },  -- giver coord: ATT
@@ -317,7 +317,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.556, y = 0.786 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86514, text = "Lady of the Pit (objective 4)",
           coord = { map = 2405, x = 0.556, y = 0.786 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86514, text = "Turn in: Lady of the Pit",
+        { type = "turnin", questID = 86514, text = "Turn in: Lady of the Pit", rep = { { factionID = 2699, amount = 100 } },
           coord = { map = 2405, x = 0.608, y = 0.736 } },  -- APR route coord (converted)
         { type = "accept", questID = 86516, text = "All Become Prey",
           coord = { map = 2405, x = 0.608, y = 0.736 } },  -- giver coord: ATT
@@ -339,11 +339,11 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.624, y = 0.824 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86516, text = "All Become Prey (objective 1,2)", useItem = 237807,
           coord = { map = 2405, x = 0.627, y = 0.764 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86517, text = "Turn in: Vanished in the Void",
+        { type = "turnin", questID = 86517, text = "Turn in: Vanished in the Void", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.608, y = 0.737 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86515, text = "Turn in: Hollow Hunger",
+        { type = "turnin", questID = 86515, text = "Turn in: Hollow Hunger", rep = { { factionID = 2699, amount = 100 } },
           coord = { map = 2405, x = 0.607, y = 0.736 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86516, text = "Turn in: All Become Prey",
+        { type = "turnin", questID = 86516, text = "Turn in: All Become Prey", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.608, y = 0.736 } },  -- APR route coord (converted)
         { type = "accept", questID = 86518, text = "The Mantle of Predation",
           coord = { map = 2405, x = 0.608, y = 0.736 } },  -- giver coord: ATT
@@ -355,7 +355,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.626, y = 0.800 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86518, text = "The Mantle of Predation (objective 4)",
           coord = { map = 2405, x = 0.644, y = 0.809 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86518, text = "Turn in: The Mantle of Predation",
+        { type = "turnin", questID = 86518, text = "Turn in: The Mantle of Predation", rep = { { factionID = 2699, amount = 50 } },
           coord = { map = 2405, x = 0.603, y = 0.764 } },  -- APR route coord (converted)
         { type = "accept", questID = 86519, text = "Abyssus, Abyssum",
           coord = { map = 2405, x = 0.603, y = 0.764 } },  -- giver coord: ATT
@@ -363,25 +363,25 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
           coord = { map = 2405, x = 0.606, y = 0.766 } },  -- APR route coord (converted)
         { type = "quest",  questID = 86519, text = "Abyssus, Abyssum (objective 2)",
           coord = { map = 2405, x = 0.609, y = 0.769 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86519, text = "Turn in: Abyssus, Abyssum",
+        { type = "turnin", questID = 86519, text = "Turn in: Abyssus, Abyssum", rep = { { factionID = 2699, amount = 100 } },
           coord = { map = 2405, x = 0.601, y = 0.762 } },  -- APR route coord (converted)
         { type = "accept", questID = 86520, text = "Hunt the Light",
           coord = { map = 2405, x = 0.601, y = 0.762 } },  -- giver coord: ATT
         { type = "quest",  questID = 86520, text = "Hunt the Light (objective 1)",
           coord = { map = 2405, x = 0.639, y = 0.617 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86520, text = "Turn in: Hunt the Light",
+        { type = "turnin", questID = 86520, text = "Turn in: Hunt the Light", rep = { { factionID = 2699, amount = 10 } },
           coord = { map = 2405, x = 0.641, y = 0.618 } },  -- APR route coord (converted)
         { type = "accept", questID = 86521, text = "Nexus-Point Xenas: Eclipse",
           coord = { map = 2405, x = 0.641, y = 0.618 } },  -- giver coord: ATT
         { type = "quest",  questID = 86521, text = "Nexus-Point Xenas: Eclipse (objective 3)",
-          coord = nil, noArrow = true },  -- no coord: APR step has none
+          coord = nil },  -- no coord: APR step has none
         { type = "quest",  questID = 86521, text = "Nexus-Point Xenas: Eclipse (objective 4)",
           coord = { map = 2405, x = 0.459, y = 0.646 } },  -- APR route coord (converted)
-        { type = "turnin", questID = 86521, text = "Turn in: Nexus-Point Xenas: Eclipse",
+        { type = "turnin", questID = 86521, text = "Turn in: Nexus-Point Xenas: Eclipse", rep = { { factionID = 2699, amount = 250 } },
           coord = { map = 2405, x = 0.460, y = 0.646 } },  -- APR route coord (converted)
         { type = "accept", questID = 86522, text = "Daylight is Breaking",
           coord = { map = 2405, x = 0.460, y = 0.646 } },  -- giver coord: ATT
-        { type = "turnin", questID = 86522, text = "Turn in: Daylight is Breaking",
+        { type = "turnin", questID = 86522, text = "Turn in: Daylight is Breaking", rep = { { factionID = 2699, amount = 1500 } },
           coord = { map = 2393, x = 0.454, y = 0.703 } },  -- APR route coord (converted)
         { type = "accept", questID = 95276, text = "The Last Push",
           coord = { map = 2393, x = 0.454, y = 0.706 } },  -- giver coord: ATT
@@ -393,7 +393,7 @@ TA.GuideData["midnight_voidstorm_campaign"] = {
 
 TA.GuideData["midnight_darkening_sky"] = {
     id = "midnight_darkening_sky", title = "Midnight: The Darkening Sky (optional)", expansion = "midnight",
-    zone = 2395, minLevel = 80, maxLevel = 90, order = 35, optional = true,
+    zone = 2395, minLevel = 80, maxLevel = 90,
     nextGuide = "midnight_voidstorm_campaign",
     steps = {
         { type = "accept", questID = 91854, text = "Deepening Shadows",
