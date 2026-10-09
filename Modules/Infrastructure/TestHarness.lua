@@ -152,7 +152,7 @@ local API_CHECKS = {
     { "C_SpellBook.GetNumSpellBookSkillLines",  "forever",      "Forever Spells tab" },
     { "C_Item.GetItemStats",                    "forever",      "Forever Gear totals" },
     { "GetActionInfo",                          "forever",      "Forever Spells tab: lower-rank-on-bar notes" },
-    { "C_Spell.GetSpellSubtext",                "forever",      "Forever Spells tab: rank text for bar spells" },
+    { "C_Spell.GetSpellSubtext",                "forever",      "Forever Spells tab: rank text for display only" },
     -- informational
     { "issecretvalue" },
     { "CreateFramePool",                        nil,            "needed for the row-pooling fix" },
@@ -724,6 +724,53 @@ local function SuiteApi(S)
                 tostring(build), tostring(iface), records, sections))
         else
             S(FAIL, "harvest formatter wrong on: " .. concat(bad, ", "))
+        end
+    end
+
+    -- Spell rank chains. The number used for comparisons is the position in
+    -- the flavor's data file. Subtext is checked only so a loaded "Rank N"
+    -- that disagrees with that position is visible. An empty subtext is the
+    -- client not having loaded it yet: ask, and do not warn.
+    do
+        local U = TA.Utils
+        local key = U and U.SpellRankTableName and U.SpellRankTableName(flavor)
+        local chains = key and TA.Data and TA.Data[key]
+        if type(chains) ~= "table" then
+            S(INFO, "spell rank chains: no data file for this flavor")
+        elseif not (U and U.SpellRankDisagreements) then
+            S(WARN, "spell rank chains: checker missing from Core/Utils.lua")
+        elseif not (C_Spell and type(C_Spell.GetSpellSubtext) == "function") then
+            S(INFO, "spell rank chains: GetSpellSubtext absent, not compared")
+        else
+            local function subtextFor(id)
+                local ok, sub = pcall(C_Spell.GetSpellSubtext, id)
+                if ok and type(sub) == "string" and sub ~= "" then return sub end
+                if type(C_Spell.RequestLoadSpellData) == "function" then
+                    pcall(C_Spell.RequestLoadSpellData, id)
+                end
+                return nil
+            end
+            local bad, checked, unloaded = U.SpellRankDisagreements(chains, subtextFor)
+            local shown = 0
+            for _, d in ipairs(bad or {}) do
+                shown = shown + 1
+                if shown <= 8 then
+                    S(WARN, format("spell rank %s (%d): data file rank %d, subtext %q",
+                        d.name, d.id, d.file, d.sub))
+                end
+            end
+            if shown > 8 then
+                S(WARN, format("spell rank chains: %d more disagreements", shown - 8))
+            end
+            if shown == 0 then
+                if (checked or 0) > 0 then
+                    S(PASS, format("spell rank chains agree with loaded subtext (%d checked, %d not loaded yet)",
+                        checked, unloaded or 0))
+                else
+                    S(INFO, format("spell rank chains: subtext not loaded yet (%d); spell data requested",
+                        unloaded or 0))
+                end
+            end
         end
     end
 

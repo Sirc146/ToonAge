@@ -350,10 +350,11 @@ end
 -- catalog["spellID"] = name, rank text, trained level. Written as
 -- name -> entries sorted by TRAINED LEVEL (then ID), the shape
 -- Modules/Forever/Rotation.lua reads (TA.Data.ForeverSpellRanks). `n` is the
--- rank number. Only entries WITH rank text are shipped: the client reports a
+-- position in this chain after sorting by trained level, not the digits in
+-- the subtext. Only entries WITH rank text are shipped: the client reports a
 -- trained level for NPC copies of a spell as well (Fireball 9053, 20823 at
--- "level 20", no rank), so rank text is what marks the player's ranks. The
--- catalog scan re-asks blank ones until the text has loaded.
+-- "level 20", no rank), so rank text is what marks the player's ranks at
+-- generation time. At runtime the position is the rank; subtext is display.
 
 do
     local byName, count = {}, 0
@@ -385,10 +386,12 @@ do
                 return a.id < b.id
             end)
             local parts = {}
-            for _, r in ipairs(list) do
-                parts[#parts + 1] = r.n
-                    and ("{ id = %d, n = %d, learned = %d }"):format(r.id, r.n, r.learned)
-                    or  ("{ id = %d, learned = %d }"):format(r.id, r.learned)
+            for i, r in ipairs(list) do
+                if r.n and r.n ~= i then
+                    print(("spell rank %s id %d: subtext rank %s, chain position %d")
+                        :format(name, r.id, tostring(r.n), i))
+                end
+                parts[#parts + 1] = ("{ id = %d, n = %d, learned = %d }"):format(r.id, i, r.learned)
             end
             out[#out + 1] = ("    [%s] = { %s },"):format(Q(name), table.concat(parts, ", "))
         end
