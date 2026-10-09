@@ -1367,11 +1367,16 @@ end
 -- that everything it prints is routed per TA.SINK, rather than each of the ~300
 -- print sites having to know where its output belongs.
 local function Dispatch(self, msg)
-    msg = msg and msg:lower():match("^%s*(.-)%s*$") or ""
+    -- The command word is matched in lowercase. The raw remainder is kept
+    -- beside it so /ta way can show a label with its capitals. Every other
+    -- handler still receives the lowercased args.
+    local raw = msg and msg:match("^%s*(.-)%s*$") or ""
+    msg = raw:lower()
 
     -- Split into command + args (e.g. "switchto 12345" → cmd="switchto", args="12345")
     local cmd, args = msg:match("^(%S+)%s*(.*)$")
     if not cmd then cmd = msg; args = "" end
+    local rawArgs = raw:match("^%S+%s*(.*)$") or ""
 
     -- ── Empty input: toggle UI ────────────────────────────────────────
     if cmd == "" or cmd == "open" then
@@ -1665,7 +1670,10 @@ local function Dispatch(self, msg)
                         command, name, mod._profileReason or "switched off"))
                     return true
                 end
-                mod.SlashCommands[command](mod, args)
+                -- Only `way` reads the raw text, and only so its label keeps
+                -- capitals. Other handlers stay on the lowercased args.
+                local handlerArgs = (command == "way") and rawArgs or args
+                mod.SlashCommands[command](mod, handlerArgs)
                 return true
             end
         end

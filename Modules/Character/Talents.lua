@@ -1194,3 +1194,24 @@ function Talents:OpenImportFrame()
     self.importFrame = cf
     cf:Show()
 end
+
+-- /ta talentsync. Data/Retail/Talents.lua owns the import; this is the command
+-- the data comment points at. It fills empty build strings and leaves anything
+-- the player already pasted alone.
+Talents.SlashCommands = {
+    talentsync = function()
+        if not T or type(T.SyncFromBetterTalents) ~= "function" then
+            TA:Print(TA.LOG.OUTPUT, nil, "Talent sync is not available on this client.")
+            return
+        end
+        local BT = _G["BetterTalents"]
+        if not BT or not BT.BuildData then
+            TA:Print(TA.LOG.OUTPUT, nil, "BetterTalents is not loaded, so there is nothing to sync.")
+            return
+        end
+        local n = T:SyncFromBetterTalents() or 0
+        if n == 0 then
+            TA:Print(TA.LOG.OUTPUT, nil, "Talent sync finished. No empty build slots were filled.")
+        end
+    end,
+}

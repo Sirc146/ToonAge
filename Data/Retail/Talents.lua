@@ -395,7 +395,7 @@ local SPEC_NAME_TO_ID = {
 }
 
 --- Mirror talent import strings from BetterTalents into ToonAge's per-spec build entries.
---- Called once on login (or on demand via /ta talentsync) after both addons are loaded.
+--- On demand via /ta talentsync (Modules/Character/Talents.lua), after both addons are loaded.
 --- Only fills in empty strings — never overwrites user-pasted data.
 --- @return number — count of strings filled
 function T:SyncFromBetterTalents()

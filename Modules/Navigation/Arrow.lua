@@ -1,6 +1,7 @@
 -- ToonAge/Modules/Arrow.lua
 -- Draggable, scroll-to-resize, right-click-lockable HUD arrow.
--- Layout: gold arrow -> white distance -> grey ETA -> gold objective title
+-- Layout: arrow -> white distance -> grey ETA -> gold objective title.
+-- A typed /way label sits 2px under the distance, in body text, and hides on arrival.
 --
 -- Bearing math (WoW specifics):
 --   Map-y increases SOUTHWARD, so atan2(dx, -dy) gives a clockwise bearing
@@ -60,6 +61,34 @@ function Arrow.TokenIsMapID(n)
         end
     end
     return false
+end
+
+--- uiMap id for a zone name the player typed, such as "Stormwind City".
+--- Prefers a zone map (mapType 3) and, among those, the lowest id.
+function Arrow.MapIDForZone(name)
+    if type(name) ~= "string" or name == "" then return nil end
+    local want = name:lower()
+    local bestId, bestZone = nil, false
+    local function consider(id, infoName, mapType)
+        if type(id) ~= "number" or type(infoName) ~= "string" then return end
+        if infoName:lower() ~= want then return end
+        local isZone = mapType == 3
+        if bestId == nil or (isZone and not bestZone) or (isZone == bestZone and id < bestId) then
+            bestId, bestZone = id, isZone
+        end
+    end
+    if Arrow.MAP_NAMES then
+        for id, n in pairs(Arrow.MAP_NAMES) do consider(id, n, 3) end
+    end
+    if C_Map and type(C_Map.GetMapInfo) == "function" then
+        for id = 1, 2500 do
+            local ok, info = pcall(C_Map.GetMapInfo, id)
+            if ok and type(info) == "table" then
+                consider(id, info.name, info.mapType)
+            end
+        end
+    end
+    return bestId
 end
 
 local function ParentMatches(startMap, targetMap)
@@ -378,9 +407,32 @@ local speedSamples = { 0, 0 }
 local lastDist     = nil
 local lastTime     = 0
 
+-- Guide titles stay under the ETA. A typed /way label is 2px under the
+-- distance line, and the ETA moves below that label so the two do not stack.
+local function AnchorWayCaption(f, belowDistance)
+    if belowDistance and f.distF and f.titleF and f.titleF.SetPoint then
+        f.titleF:SetPoint("TOP", f.distF, "BOTTOM", 0, -2)
+        if f.etaF and f.etaF.SetPoint then
+            f.etaF:SetPoint("TOP", f.titleF, "BOTTOM", 0, -2)
+        end
+    else
+        if f.etaF and f.etaF.SetPoint and f.distF then
+            f.etaF:SetPoint("TOP", f.distF, "BOTTOM", 0, -2)
+        end
+        if f.titleF and f.titleF.SetPoint and f.etaF then
+            f.titleF:SetPoint("TOP", f.etaF, "BOTTOM", 0, -4)
+        end
+    end
+end
+
 -- ── Per-tick update ───────────────────────────────────────────────────────
 
 function Arrow:Tick(f)
+    -- Guide-step titles are gold. A /way label overrides this below.
+    if f.titleF and f.titleF.SetTextColor then
+        f.titleF:SetTextColor(1, 0.82, 0, 1)
+    end
+    AnchorWayCaption(f, false)
     if U.InInstance() then
         U.RevealWaypoint(f, false)
         return
@@ -463,8 +515,15 @@ function Arrow:Tick(f)
         end
     end
 
-    -- Truncate long labels
+    -- Truncate long labels. Guide steps stay gold. A /way label is body text
+    -- (UIModern CLR_TEXT_PRIMARY), the same warm white as other body copy.
     if #label > 35 then label = label:sub(1, 32) .. "..." end
+    if isManualWP and self.manualWaypoint.labeled then
+        f.titleF:SetTextColor(0.92, 0.90, 0.87, 1)
+        AnchorWayCaption(f, true)
+    else
+        f.titleF:SetTextColor(1, 0.82, 0, 1)
+    end
     f.titleF:SetText(label)
 
     local currentMap = C_Map.GetBestMapForUnit("player")
@@ -594,7 +653,6 @@ function Arrow:Tick(f)
     U.PaintQuestArrow(f.arrowTex, f.arrivedTex, {
         yards = yards, angle = targetAngle, hollow = hollow, size = f._arrowSize,
     })
-    f.distF:SetText(U.FormatDistance(yards, hollow))
 
     if arrived then
         if not self._arrived then
@@ -602,7 +660,10 @@ function Arrow:Tick(f)
             self._arrivedTime = GetTime()
             self.currentAngle = nil
         end
+        -- Arrived ring only. Distance and the caption go away together.
+        f.distF:SetText("")
         f.etaF:SetText("")
+        if f.titleF then f.titleF:SetText("") end
         if isManualWP and self._arrivedTime and (GetTime() - self._arrivedTime > 3) then
             self.manualWaypoint = nil
             self._arrived = false
@@ -611,6 +672,8 @@ function Arrow:Tick(f)
         end
         return
     end
+
+    f.distF:SetText(U.FormatDistance(yards, hollow))
 
     self._arrived = false
 
@@ -720,11 +783,14 @@ function Arrow:SetWaypoint(mapID, x, y, title)
     if not mapID or mapID == 0 then
         mapID = C_Map.GetBestMapForUnit("player") or 0
     end
+    local labeled = type(title) == "string" and title ~= ""
     self.manualWaypoint = {
         map   = mapID,
         x     = x,
         y     = y,
         title = title or string.format("%.2f, %.2f", x * 100, y * 100),
+        -- A player-typed label is body text. The coordinate fallback is not.
+        labeled = labeled,
     }
     self._arrived = false
     self._arrivedTime = nil
@@ -743,12 +809,70 @@ function Arrow:ClearWaypoint()
     self._arrivedTime = nil
 end
 
+--- A display coordinate is 0-100. "45,2" is 45.2. A token outside that range
+--- (a map id) is not a coordinate.
+local function WayTokenNumber(token)
+    if type(token) ~= "string" then return nil end
+    local n = tonumber(token)
+    if n then return n end
+    if token:match("^%d+,%d+$") then
+        return tonumber((token:gsub(",", ".", 1)))
+    end
+    return nil
+end
+
+local function WayTokenInRange(token)
+    local n = WayTokenNumber(token)
+    return n ~= nil and n >= 0 and n <= 100
+end
+
+--- Turn TomTom coordinate spellings into plain number tokens.
+---   "45,67"           -> 45, 67          one token, no second coordinate
+---   "45.2,67.8"       -> 45.2, 67.8
+---   "45,2" "67,8"     -> 45.2, 67.8      two tokens, decimal commas
+function Arrow.NormalizeWayTokens(list)
+    local out = {}
+    local i = 1
+    while i <= #list do
+        local token = list[i]
+        local nxt = list[i + 1]
+        local a, b = token:match("^([%d%.]+),([%d%.]+)$")
+        local ax, ay = tonumber(a), tonumber(b)
+        local pair = ax and ay and ax >= 0 and ax <= 100 and ay >= 0 and ay <= 100
+        local nextIsCoord = WayTokenInRange(nxt)
+        if pair and not nextIsCoord then
+            out[#out + 1] = a
+            out[#out + 1] = b
+            i = i + 1
+        elseif WayTokenInRange(token) and nextIsCoord then
+            local n = WayTokenNumber(token)
+            local thirdIsCoord = WayTokenInRange(list[i + 2])
+            -- "14 68.9 37.7": 14 is a map id with two coordinates after it.
+            local asMap = n and n == math.floor(n) and (
+                n > 100 or (Arrow.TokenIsMapID and Arrow.TokenIsMapID(n) and thirdIsCoord)
+            )
+            if asMap then
+                out[#out + 1] = token
+                i = i + 1
+            else
+                out[#out + 1] = tostring(WayTokenNumber(token))
+                out[#out + 1] = tostring(WayTokenNumber(nxt))
+                i = i + 2
+            end
+        else
+            out[#out + 1] = token
+            i = i + 1
+        end
+    end
+    return out
+end
+
 --- Parse a TomTom-compatible /way string and set the arrow.
 --- Supported formats:
 ---   /ta way 45.2 67.8              — current map, TomTom coords (divided by 100)
 ---   /ta way 45.2 67.8 My Place     — with description
 ---   /ta way 2393 45.2 67.8         — explicit mapID + coords
----   /ta way 2393 45.2 67.8 My Spot — mapID + coords + description
+---   /ta way Stormwind City 45.2 67.8 Bank — zone name, or a mapID, plus a label
 ---   /ta way clear                  — remove manual waypoint
 function Arrow:ParseWayCommand(args)
     if not args or args == "" then
@@ -764,14 +888,15 @@ function Arrow:ParseWayCommand(args)
         return
     end
 
-    -- Normalize separators: "45,2" → "45.2", "45.2, 67.8" → "45.2 67.8"
-    args = args:gsub("(%d),(%d)", "%1.%2")    -- comma as decimal separator
-    args = args:gsub(",%s*", " ")             -- comma + space between coords
+    -- "45.2, 67.8" is two tokens. A comma with no space stays in the token
+    -- so a lone "45,67" can be read as x,y the way TomTom does.
+    args = args:gsub(",%s+", " ")
 
-    local tokens = {}
+    local rawTokens = {}
     for token in args:gmatch("%S+") do
-        table.insert(tokens, token)
+        rawTokens[#rawTokens + 1] = token
     end
+    local tokens = Arrow.NormalizeWayTokens(rawTokens)
 
     -- Handle subcommands
     local first = tokens[1] and tokens[1]:lower()
@@ -820,10 +945,32 @@ function Arrow:ParseWayCommand(args)
             yRaw = n2
             descStart = 3
         else
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Invalid format. Examples:")
-            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 45.2 67.8|r")
-            TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 2393 45.2 67.8 My Spot|r")
-            return
+            -- "Stormwind City 45.2 67.8 The Bank": the first two coordinates
+            -- are x y, the words before them are the zone, the rest is the label.
+            local zx, zy, zi
+            for i = 1, #tokens - 1 do
+                local a = tonumber(tokens[i])
+                local b = tonumber(tokens[i + 1])
+                if a and b and a >= 0 and a <= 100 and b >= 0 and b <= 100 then
+                    zx, zy, zi = a, b, i
+                    break
+                end
+            end
+            if zx and zi and zi > 1 then
+                local zone = table.concat(tokens, " ", 1, zi - 1)
+                mapID = Arrow.MapIDForZone(zone)
+                if not mapID then
+                    TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Unknown zone: " .. zone)
+                    return
+                end
+                xRaw, yRaw = zx, zy
+                descStart = zi + 2
+            else
+                TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA Arrow]|r Invalid format. Examples:")
+                TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 45.2 67.8|r")
+                TA:Raw(TA.LOG.OUTPUT, "  |cFFFFD100/ta way 2393 45.2 67.8 My Spot|r")
+                return
+            end
         end
     end
 
@@ -890,6 +1037,7 @@ function Arrow:Init()
     TA:RegisterEvent("UNIT_EXITED_VEHICLE")
     TA:RegisterEvent("PET_BATTLE_OPENING_START")
     TA:RegisterEvent("PET_BATTLE_OVER")
+    -- /way is claimed on PLAYER_LOGIN, not here. Setup runs later.
 end
 
 function Arrow:OnEvent(event, ...)
@@ -906,6 +1054,100 @@ function Arrow:OnEvent(event, ...)
     end
 end
 
+--- True when TomTom is already loaded. Either API may be missing; a throw
+--- must not become a false "not loaded", which would let us take /way.
+function Arrow.TomTomLoaded()
+    local function ask(fn)
+        if type(fn) ~= "function" then return false end
+        local ok, loaded = pcall(fn, "TomTom")
+        return ok and not not loaded
+    end
+    if C_AddOns and ask(C_AddOns.IsAddOnLoaded) then return true end
+    if ask(IsAddOnLoaded) then return true end
+    return false
+end
+
+--- Another SlashCmdList entry already bound /way. Only that entry's
+--- SLASH_<KEY>n globals are checked. Our own TOONAGEWAY key does not count.
+function Arrow.ForeignWaySlash()
+    if type(SlashCmdList) ~= "table" then return false end
+    for key in pairs(SlashCmdList) do
+        if type(key) == "string" and key ~= "TOONAGEWAY" then
+            local i = 1
+            while true do
+                local cmd = _G["SLASH_" .. key .. i]
+                if type(cmd) ~= "string" then break end
+                if cmd:lower() == "/way" then return true end
+                i = i + 1
+            end
+        end
+    end
+    return false
+end
+
+--- True once this module has bound /way. A nil SlashCmdList is not ours.
+function Arrow.OwnsBareWay()
+    if type(_G.SLASH_TOONAGEWAY1) == "string" and _G.SLASH_TOONAGEWAY1:lower() == "/way" then
+        return true
+    end
+    return type(SlashCmdList) == "table" and SlashCmdList["TOONAGEWAY"] ~= nil
+end
+
+--- Drop our /way binding. The chat hash is cleared only when it exists:
+--- ImportListToHash stores the uppercased tag, so the key is "/WAY".
+function Arrow.ClearBareWay()
+    _G.SLASH_TOONAGEWAY1 = nil
+    if type(SlashCmdList) == "table" then
+        SlashCmdList["TOONAGEWAY"] = nil
+    end
+    if hash_SlashCmdList then
+        hash_SlashCmdList["/WAY"] = nil
+    end
+end
+
+--- Bare /way, only when nobody else owns it at login. /ta way is unaffected.
+function Arrow:RegisterBareWay()
+    if Arrow.TomTomLoaded() or Arrow.ForeignWaySlash() then
+        if Arrow.OwnsBareWay() then Arrow.ClearBareWay() end
+        return
+    end
+    if type(SlashCmdList) ~= "table" then return end
+    _G.SLASH_TOONAGEWAY1 = "/way"
+    SlashCmdList["TOONAGEWAY"] = function(msg)
+        -- Same handler as /ta way, so the label keeps its capitals.
+        self.SlashCommands.way(self, msg)
+    end
+end
+
+--- A later addon claimed /way. Give the command back, including the hash.
+function Arrow:GiveUpBareWay()
+    if not Arrow.OwnsBareWay() then return end
+    if not (Arrow.TomTomLoaded() or Arrow.ForeignWaySlash()) then return end
+    Arrow.ClearBareWay()
+end
+
+function Arrow:OnWayWatch(event)
+    if event == "PLAYER_LOGIN" then
+        self:RegisterBareWay()
+    elseif event == "ADDON_LOADED" then
+        self:GiveUpBareWay()
+    end
+end
+
 Arrow.SlashCommands = {
     arrow = function(self) self:Toggle() end,
+    way   = function(self, args) self:ParseWayCommand(args) end,
 }
+
+-- File load is before PLAYER_LOGIN, so this runs after every login addon.
+-- Arrow:Init is later (PLAYER_ENTERING_WORLD) and must not register /way.
+-- The private frame keeps ADDON_LOADED: core unregisters that event on its
+-- own frame once ToonAge itself has loaded.
+if type(CreateFrame) == "function" then
+    local wayWatch = CreateFrame("Frame")
+    wayWatch:RegisterEvent("PLAYER_LOGIN")
+    wayWatch:RegisterEvent("ADDON_LOADED")
+    wayWatch:SetScript("OnEvent", function(_, event)
+        Arrow:OnWayWatch(event)
+    end)
+end
