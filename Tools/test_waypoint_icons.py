@@ -40,8 +40,15 @@ WANT_SIZE = {
     "util_upgrade_16.tga": (16, 16), "util_downgrade_16.tga": (16, 16), "util_sidegrade_16.tga": (16, 16),
 }
 
+DELIVERED = {
+    "tab_pets.tga": (64, 64), "tab_pets_32.tga": (32, 32),
+    "tab_professions.tga": (64, 64), "tab_professions_32.tga": (32, 32),
+    "tab_racials.tga": (64, 64), "tab_racials_32.tga": (32, 32),
+    "util_lock.tga": (64, 64), "util_lock_32.tga": (32, 32), "util_lock_16.tga": (16, 16),
+}
+
 tgas = [f for f in os.listdir(ICON) if f.endswith(".tga")]
-check("folder holds the 71 delivered textures", len(tgas), 71)
+check("folder holds the 80 delivered textures", len(tgas), 80)
 for name in NEW:
     path = os.path.join(ICON, name)
     check(f"{name} is in Media/icons", os.path.isfile(path), True)
@@ -52,11 +59,26 @@ for name in NEW:
         check(f"{name} is {WANT_SIZE[name][0]}x{WANT_SIZE[name][1]} type 2",
               (hdr[2], w, h), (2, WANT_SIZE[name][0], WANT_SIZE[name][1]))
 
+for name, size in DELIVERED.items():
+    path = os.path.join(ICON, name)
+    check(f"{name} is in Media/icons", os.path.isfile(path), True)
+    if os.path.isfile(path):
+        with open(path, "rb") as fh:
+            hdr = fh.read(18)
+        w, h = struct.unpack_from("<HH", hdr, 12)
+        check(f"{name} is {size[0]}x{size[1]} type 2",
+              (hdr[2], w, h), (2, size[0], size[1]))
+
 manifest = open(os.path.join(ICON, "MEDIA.md"), encoding="utf-8").read()
-check("manifest counts 71 textures on disk and names the set of 80",
-      "71 TGA" in manifest and "named set is 80" in manifest)
-check("manifest still says the lock and tab files were not delivered",
-      "util_lock_16" in manifest and "still not in any archive" in manifest)
+check("manifest counts 80 textures, the full named set",
+      "80 TGA" in manifest and "named set is 80" in manifest)
+check("manifest no longer lists those nine as missing",
+      "still not in any archive" not in manifest and "util_lock_16.tga" in manifest)
+
+ui = open(os.path.join(ROOT, "Core/UI.lua"), encoding="utf-8").read()
+check("Professions tab uses its 20px glyph", "tab_professions_32.tga" in ui, True)
+check("Pets tab uses its 20px glyph", "tab_pets_32.tga" in ui, True)
+check("Racials tab uses its 20px glyph", "tab_racials_32.tga" in ui, True)
 
 L = lua51.LuaRuntime(unpack_returned_tuples=True)
 L.execute("ToonAge = {}")

@@ -1,8 +1,8 @@
 # ToonAge icon media list (`Interface\AddOns\ToonAge\Media\icons\`)
 
-Shipped set, 2026-10-09. 71 TGA files are in this folder. The first 62 came from the three earlier archives: the original set, the redraw (`tab_caps`, `tab_weapons`, `tab_weekly` and their `_32` cuts), then the final archive over the top (`tab_delves`, `tab_delves_32`, replacement `tab_caps_32` and `tab_weekly_32`, and `util_pip_8`, `util_pip_8_ring`, `util_pip_8_charged`). Name aliases `tab_guide`, `tab_rotation` and `util_harvest` are byte-copies of `tab_scrolls`, `tab_casts` and `tab_harvest`.
+Shipped set, 2026-10-09. 80 TGA files are in this folder. The first 62 came from the three earlier archives: the original set, the redraw (`tab_caps`, `tab_weapons`, `tab_weekly` and their `_32` cuts), then the final archive over the top (`tab_delves`, `tab_delves_32`, replacement `tab_caps_32` and `tab_weekly_32`, and `util_pip_8`, `util_pip_8_ring`, `util_pip_8_charged`). Name aliases `tab_guide`, `tab_rotation` and `util_harvest` are byte-copies of `tab_scrolls`, `tab_casts` and `tab_harvest`.
 
-The waypoint and gear archive added nine more: `util_waypoint`, `util_waypoint_hollow`, `util_waypoint_arrived` (64, full colour), and `util_upgrade`, `util_downgrade`, `util_sidegrade` (32 masters plus `_16`). The named set is 80. The other nine names are still not in any archive: `tab_racials`, `tab_professions`, `tab_pets` (64 and `_32`) and `util_lock`, `util_lock_32`, `util_lock_16`. The heirloom row still asks for `util_lock_16.tga`, which is not in this folder.
+The waypoint and gear archive added nine more: `util_waypoint`, `util_waypoint_hollow`, `util_waypoint_arrived` (64, full colour), and `util_upgrade`, `util_downgrade`, `util_sidegrade` (32 masters plus `_16`). The last archive added the remaining nine: `tab_racials`, `tab_professions`, `tab_pets` (64 and `_32`) and `util_lock`, `util_lock_32`, `util_lock_16`. The named set is 80, and all 80 are in this folder.
 
 Final icon set, signed off by the art director (Gilder) on 2026-10-08. Specs: `toonage/style-guide.md` (rev 2) §9b–§11 and `toonage/prompt-sheet-2026-10-08.md` §4. This manifest is the per-file usage list. The style guide stays the source of truth for the design rules.
 
@@ -75,5 +75,14 @@ All files are 32-bit uncompressed TGA (type 2) with straight alpha and power-of-
 | `util_downgrade_16.tga` | 16×16 | Downgrade mark, list cut (rule 6) | 16, comparison views only |
 | `util_sidegrade.tga` | 32×32 | Sidegrade mark, white, `text_muted` tint (rule 6) | master |
 | `util_sidegrade_16.tga` | 16×16 | Sidegrade mark, list cut (rule 6) | 16, 4 px after the item name |
+| `tab_racials.tga` | 64×64 | Racials tab: swallowtail banner with a round emblem | 32 |
+| `tab_racials_32.tga` | 32×32 | Same, hinted | 20 (glyph-only pill), 32 |
+| `tab_professions.tga` | 64×64 | Professions tab: anvil, side view | 32 |
+| `tab_professions_32.tga` | 32×32 | Same, hinted | 20, 32 |
+| `tab_pets.tga` | 64×64 | Pets tab: paw print | 32 |
+| `tab_pets_32.tga` | 32×32 | Same, hinted | 20, 32 |
+| `util_lock.tga` | 64×64 | Lock, master | master |
+| `util_lock_32.tga` | 32×32 | Lock, hinted | 16+ |
+| `util_lock_16.tga` | 16×16 | Lock, list and talent-node glyph | 12–16 |
 
 Note: the clock's 64 and `_32` files still show the 10:10 pose. Only `util_clock_16` (the 12 px list glyph) uses the 12-and-3 L shape, per the AD's final fix. Likewise, the expand 64/`_32` keep the corner brackets, and only the `_16` hover glyph is a plus.
