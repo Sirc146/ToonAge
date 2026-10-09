@@ -409,6 +409,10 @@ local lastTime     = 0
 -- ── Per-tick update ───────────────────────────────────────────────────────
 
 function Arrow:Tick(f)
+    -- Guide-step titles are gold. A /way label overrides this below.
+    if f.titleF and f.titleF.SetTextColor then
+        f.titleF:SetTextColor(1, 0.82, 0, 1)
+    end
     if U.InInstance() then
         U.RevealWaypoint(f, false)
         return
@@ -491,8 +495,14 @@ function Arrow:Tick(f)
         end
     end
 
-    -- Truncate long labels
+    -- Truncate long labels. Guide steps stay gold. A /way label is body text
+    -- (UIModern CLR_TEXT_PRIMARY), the same warm white as other body copy.
     if #label > 35 then label = label:sub(1, 32) .. "..." end
+    if isManualWP and self.manualWaypoint.labeled then
+        f.titleF:SetTextColor(0.92, 0.90, 0.87, 1)
+    else
+        f.titleF:SetTextColor(1, 0.82, 0, 1)
+    end
     f.titleF:SetText(label)
 
     local currentMap = C_Map.GetBestMapForUnit("player")
@@ -748,11 +758,14 @@ function Arrow:SetWaypoint(mapID, x, y, title)
     if not mapID or mapID == 0 then
         mapID = C_Map.GetBestMapForUnit("player") or 0
     end
+    local labeled = type(title) == "string" and title ~= ""
     self.manualWaypoint = {
         map   = mapID,
         x     = x,
         y     = y,
         title = title or string.format("%.2f, %.2f", x * 100, y * 100),
+        -- A player-typed label is body text. The coordinate fallback is not.
+        labeled = labeled,
     }
     self._arrived = false
     self._arrivedTime = nil
@@ -769,6 +782,64 @@ function Arrow:ClearWaypoint()
     self.manualWaypoint = nil
     self._arrived = false
     self._arrivedTime = nil
+end
+
+--- A display coordinate is 0-100. "45,2" is 45.2. A token outside that range
+--- (a map id) is not a coordinate.
+local function WayTokenNumber(token)
+    if type(token) ~= "string" then return nil end
+    local n = tonumber(token)
+    if n then return n end
+    if token:match("^%d+,%d+$") then
+        return tonumber((token:gsub(",", ".", 1)))
+    end
+    return nil
+end
+
+local function WayTokenInRange(token)
+    local n = WayTokenNumber(token)
+    return n ~= nil and n >= 0 and n <= 100
+end
+
+--- Turn TomTom coordinate spellings into plain number tokens.
+---   "45,67"           -> 45, 67          one token, no second coordinate
+---   "45.2,67.8"       -> 45.2, 67.8
+---   "45,2" "67,8"     -> 45.2, 67.8      two tokens, decimal commas
+function Arrow.NormalizeWayTokens(list)
+    local out = {}
+    local i = 1
+    while i <= #list do
+        local token = list[i]
+        local nxt = list[i + 1]
+        local a, b = token:match("^([%d%.]+),([%d%.]+)$")
+        local ax, ay = tonumber(a), tonumber(b)
+        local pair = ax and ay and ax >= 0 and ax <= 100 and ay >= 0 and ay <= 100
+        local nextIsCoord = WayTokenInRange(nxt)
+        if pair and not nextIsCoord then
+            out[#out + 1] = a
+            out[#out + 1] = b
+            i = i + 1
+        elseif WayTokenInRange(token) and nextIsCoord then
+            local n = WayTokenNumber(token)
+            local thirdIsCoord = WayTokenInRange(list[i + 2])
+            -- "14 68.9 37.7": 14 is a map id with two coordinates after it.
+            local asMap = n and n == math.floor(n) and (
+                n > 100 or (Arrow.TokenIsMapID and Arrow.TokenIsMapID(n) and thirdIsCoord)
+            )
+            if asMap then
+                out[#out + 1] = token
+                i = i + 1
+            else
+                out[#out + 1] = tostring(WayTokenNumber(token))
+                out[#out + 1] = tostring(WayTokenNumber(nxt))
+                i = i + 2
+            end
+        else
+            out[#out + 1] = token
+            i = i + 1
+        end
+    end
+    return out
 end
 
 --- Parse a TomTom-compatible /way string and set the arrow.
@@ -792,14 +863,15 @@ function Arrow:ParseWayCommand(args)
         return
     end
 
-    -- Normalize separators: "45,2" → "45.2", "45.2, 67.8" → "45.2 67.8"
-    args = args:gsub("(%d),(%d)", "%1.%2")    -- comma as decimal separator
-    args = args:gsub(",%s*", " ")             -- comma + space between coords
+    -- "45.2, 67.8" is two tokens. A comma with no space stays in the token
+    -- so a lone "45,67" can be read as x,y the way TomTom does.
+    args = args:gsub(",%s+", " ")
 
-    local tokens = {}
+    local rawTokens = {}
     for token in args:gmatch("%S+") do
-        table.insert(tokens, token)
+        rawTokens[#rawTokens + 1] = token
     end
+    local tokens = Arrow.NormalizeWayTokens(rawTokens)
 
     -- Handle subcommands
     local first = tokens[1] and tokens[1]:lower()
@@ -996,7 +1068,8 @@ function Arrow:RegisterBareWay()
     if type(SlashCmdList) ~= "table" then return end
     _G.SLASH_TOONAGEWAY1 = "/way"
     SlashCmdList["TOONAGEWAY"] = function(msg)
-        self:ParseWayCommand(msg)
+        -- Same handler as /ta way, so the label keeps its capitals.
+        self.SlashCommands.way(self, msg)
     end
 end
 

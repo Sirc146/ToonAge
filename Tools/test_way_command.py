@@ -108,11 +108,31 @@ def check_arrow(rel, label):
     lua.execute('Way("45,2 67,8")')
     check(f"{label} comma decimals divide by 100", near(g(lua, "WAY_X"), 0.452) and near(g(lua, "WAY_Y"), 0.678))
 
+    lua.execute('Way("45,67")')
+    check(f"{label} single token A,B is x and y", near(g(lua, "WAY_X"), 0.45) and near(g(lua, "WAY_Y"), 0.67))
+
+    lua.execute('Way("45.2,67.8 The Bank")')
+    check(f"{label} dotted pair divides by 100", near(g(lua, "WAY_X"), 0.452) and near(g(lua, "WAY_Y"), 0.678))
+    check(f"{label} dotted pair keeps the label", g(lua, "WAY_TITLE"), "The Bank")
+
+    lua.execute('Way("45,67 The Bank")')
+    check(f"{label} pair label keeps capitals", g(lua, "WAY_TITLE"), "The Bank")
+
+    lua.execute('Way("2393 45,67 Spot")')
+    check(f"{label} mapID plus A,B", g(lua, "WAY_MAP"), 2393)
+    check(f"{label} mapID plus A,B divides by 100", near(g(lua, "WAY_X"), 0.45) and near(g(lua, "WAY_Y"), 0.67))
+    check(f"{label} mapID plus A,B keeps the label", g(lua, "WAY_TITLE"), "Spot")
+
     lua.execute('Way("2393 10 20 My Spot")')
     check(f"{label} mapID is accepted", g(lua, "WAY_MAP"), 2393)
     check(f"{label} mapID x is divided by 100", near(g(lua, "WAY_X"), 0.10))
     check(f"{label} mapID y is divided by 100", near(g(lua, "WAY_Y"), 0.20))
     check(f"{label} mapID label is kept", g(lua, "WAY_TITLE"), "My Spot")
+
+    lua.execute('Way("Stormwind City 45.2,67.8 The Bank")')
+    check(f"{label} zone plus A,B resolves", g(lua, "WAY_MAP"), 84)
+    check(f"{label} zone plus A,B divides by 100", near(g(lua, "WAY_X"), 0.452) and near(g(lua, "WAY_Y"), 0.678))
+    check(f"{label} zone plus A,B keeps the label", g(lua, "WAY_TITLE"), "The Bank")
 
     lua.execute('Way("Stormwind City 12.5 34 The Bank")')
     check(f"{label} zone name resolves", g(lua, "WAY_MAP"), 84)
@@ -130,6 +150,23 @@ def check_arrow(rel, label):
     wp = g(lua, "ToonAge.modules.Arrow.manualWaypoint")
     check(f"{label} bare /way divides by 100",
           wp is not None and wp.map == 84 and near(wp.x, 0.10) and near(wp.y, 0.20) and wp.title == "Bare")
+
+    lua.execute(r"""
+        local A = ToonAge.modules.Arrow
+        local orig = A.SlashCommands.way
+        local seen
+        A.SlashCommands.way = function(self, args)
+            seen = args
+            return orig(self, args)
+        end
+        A:ClearWaypoint()
+        SlashCmdList.TOONAGEWAY("10 20 The Bank")
+        BARE_SEEN = seen
+        BARE_TITLE = A.manualWaypoint and A.manualWaypoint.title
+        A.SlashCommands.way = orig
+    """)
+    check(f"{label} bare /way uses the way handler", g(lua, "BARE_SEEN"), "10 20 The Bank")
+    check(f"{label} bare /way keeps label capitals", g(lua, "BARE_TITLE"), "The Bank")
 
     claimed = load_arrow(rel)
     claimed.execute(r"""
@@ -183,6 +220,131 @@ def check_arrow(rel, label):
     check(f"{label} TomTom's /way stays", g(later, "LATER_THEIRS"), "/way")
 
 
+def check_label_case():
+    """Dispatch lowercases every command except the text /ta way shows."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_onboarding import PRELUDE, _read  # noqa: E402
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute(PRELUDE)
+    lua.execute(_read("Core/Init.lua"))
+    lua.execute(r"""
+        ToonAgeDB = {}
+        local TA = ToonAge
+        TA:InitDB()
+        local wayArgs, otherArgs
+        TA.modules.Arrow = {
+            SlashCommands = {
+                way = function(self, args) wayArgs = args end,
+            },
+        }
+        TA.modules.Notes = {
+            SlashCommands = {
+                zznote = function(self, args) otherArgs = args end,
+            },
+        }
+        function Run(msg)
+            wayArgs, otherArgs = nil, nil
+            TA:SlashCommand(msg)
+            WAY_ARGS, OTHER_ARGS = wayArgs, otherArgs
+        end
+    """)
+    lua.eval("Run")("way 45.2 67.8 The Bank")
+    check("/ta way keeps the label capitals", g(lua, "WAY_ARGS"), "45.2 67.8 The Bank")
+    check("/ta way does not hand the label to another module", g(lua, "OTHER_ARGS") is None)
+    lua.eval("Run")("wa 10 20 The Bank")
+    check("an abbreviated /ta way keeps the label capitals", g(lua, "WAY_ARGS"), "10 20 The Bank")
+    lua.eval("Run")("zznote The Bank")
+    check("another command still receives lowercased args", g(lua, "OTHER_ARGS"), "the bank")
+    check("another command does not see the way handler", g(lua, "WAY_ARGS") is None)
+
+
+def check_arrow_paint(rel, label):
+    """A /way point uses the guide arrow, then the arrived ring, and a body-color label."""
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute(r"""
+        ToonAge = { modules = {}, LOG = { OUTPUT = 0, INFO = 3 } }
+        function ToonAge:RegisterModule(name, mod) self.modules[name] = mod; self[name] = mod end
+        function ToonAge:RegisterEvent() end
+        function ToonAge:GetModule() return nil end
+        function ToonAge:Raw() end
+        function ToonAge:Print() end
+        function Piece()
+            local p = { shown = true }
+            function p:SetTexture(v) self.tex = v end
+            function p:SetSize() end
+            function p:SetAlpha(a) self.alpha = a end
+            function p:SetRotation() end
+            function p:Show() self.shown = true end
+            function p:Hide() self.shown = false end
+            function p:SetText(t) self.text = t end
+            function p:SetTextColor(r, g, b, a) self.r, self.g, self.b, self.a = r, g, b, a end
+            function p:SetPoint() end
+            function p:IsVisible() return self.shown end
+            function p:IsShown() return self.shown end
+            return p
+        end
+        function Frame()
+            local f = Piece()
+            function f:SetAlpha(a) self.alpha = a end
+            function f:EnableMouse() end
+            f.arrowTex = Piece()
+            f.arrivedTex = Piece()
+            f.distF = Piece()
+            f.etaF = Piece()
+            f.titleF = Piece()
+            f._arrowSize = 48
+            return f
+        end
+        C_Map = {
+            GetBestMapForUnit = function() return 84 end,
+            GetPlayerMapPosition = function()
+                return { GetXY = function() return 0.10, 0.20 end }
+            end,
+            GetMapInfo = function() return nil end,
+        }
+        GetPlayerFacing = function() return 0 end
+        GetTime = function() return 1000 end
+    """)
+    lua.execute(read("Core/Utils.lua"))
+    lua.execute(read(rel))
+    lua.execute(r"""
+        local A = ToonAge.modules.Arrow
+        local f = Frame()
+        A.frame = f
+        A:SetWaypoint(84, 0.50, 0.50, "The Bank")
+        A:Tick(f)
+        FAR_TEX = f.arrowTex.tex
+        FAR_ARROW = f.arrowTex.shown
+        FAR_ARRIVED = f.arrivedTex.shown
+        FAR_TITLE = f.titleF.text
+        FAR_R, FAR_G, FAR_B = f.titleF.r, f.titleF.g, f.titleF.b
+        A:SetWaypoint(84, 0.10, 0.20, "The Bank")
+        A:Tick(f)
+        NEAR_TEX = f.arrivedTex.tex
+        NEAR_ARROW = f.arrowTex.shown
+        NEAR_ARRIVED = f.arrivedTex.shown
+        A:ClearWaypoint()
+        A:Tick(f)
+        IDLE_TITLE = f.titleF.text
+        IDLE_R, IDLE_G, IDLE_B = f.titleF.r, f.titleF.g, f.titleF.b
+    """)
+    far = g(lua, "FAR_TEX") or ""
+    near = g(lua, "NEAR_TEX") or ""
+    check(f"{label} /way uses the guide arrow art", "util_waypoint.tga" in far and "hollow" not in far and "arrived" not in far)
+    check(f"{label} /way arrow is showing on the way", g(lua, "FAR_ARROW"), True)
+    check(f"{label} /way hides the arrived ring on the way", g(lua, "FAR_ARRIVED"), False)
+    check(f"{label} /way shows the label", g(lua, "FAR_TITLE"), "The Bank")
+    check(f"{label} /way label is body text, not gold",
+          (round(g(lua, "FAR_R"), 2), round(g(lua, "FAR_G"), 2), round(g(lua, "FAR_B"), 2)),
+          (0.92, 0.90, 0.87))
+    check(f"{label} arrival uses util_waypoint_arrived", "util_waypoint_arrived.tga" in near)
+    check(f"{label} arrival hides the pointing arrow", g(lua, "NEAR_ARROW"), False)
+    check(f"{label} arrival shows the ring", g(lua, "NEAR_ARRIVED"), True)
+    check(f"{label} a guide step with no waypoint stays gold",
+          g(lua, "IDLE_TITLE") == "No Waypoint"
+          and (round(g(lua, "IDLE_R"), 2), round(g(lua, "IDLE_G"), 2), round(g(lua, "IDLE_B"), 2)) == (1.0, 0.82, 0.0))
+
+
 def check_talents():
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(BOOT)
@@ -226,6 +388,9 @@ def check_talents():
 def main():
     check_arrow("Modules/Navigation/Arrow.lua", "retail")
     check_arrow("Modules/Mists/Arrow.lua", "mists")
+    check_label_case()
+    check_arrow_paint("Modules/Navigation/Arrow.lua", "retail")
+    check_arrow_paint("Modules/Mists/Arrow.lua", "mists")
     check_talents()
     passed = sum(_results)
     print(f"[{'OK' if passed == len(_results) else 'FAIL'}] {passed}/{len(_results)} assertions passed.")
