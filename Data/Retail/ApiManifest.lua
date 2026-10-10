@@ -103,6 +103,7 @@ TA.Data.ApiManifest = {
             "Modules/NavHud.lua",
             "Modules/QuestTracker.lua",
         },
+        ["C_Map.GetWorldPosFromMapPos"] = { "Core/Compat/API.lua" },
         ["C_Minimap.GetNumTrackingTypes"] = { "Modules/ProfQuesting.lua" },
         ["C_Minimap.GetTrackingInfo"] = { "Modules/ProfQuesting.lua" },
         ["C_MountJournal.GetCollectedDragonridingMounts"] = { "Modules/AutoMount.lua" },
@@ -279,6 +280,7 @@ TA.Data.ApiManifest = {
         ["C_WeeklyRewards.HasAvailableRewards"] = { "Modules/DevHelpers.lua", "Modules/Weekly.lua" },
     },
     globals = {
+        ["CreateVector2D"] = { "Core/Compat/API.lua" },
         ["GetAverageItemLevel"] = {
             "Core/Utils.lua",
             "Data/ItemLevels.lua",

@@ -38,6 +38,7 @@ TA.Data.ApiManifest = {
         ["C_Map.GetBestMapForUnit"] = { "Core/Utils.lua", "Modules/Mists/AntTrail.lua", "Modules/Mists/Arrow.lua", "Modules/Mists/CoordResolver.lua", "Modules/Mists/DeathRecovery.lua", "Modules/Mists/DevHelpers.lua", "Modules/Mists/GatherTracker.lua", "Modules/Mists/MapPins.lua", "Modules/Mists/NavHud.lua", "Modules/Mists/QuestTracker.lua" },
         ["C_Map.GetMapInfo"] = { "Modules/Mists/Arrow.lua", "Modules/Mists/DevHelpers.lua" },
         ["C_Map.GetPlayerMapPosition"] = { "Core/Utils.lua", "Modules/Mists/AntTrail.lua", "Modules/Mists/Arrow.lua", "Modules/Mists/CoordResolver.lua", "Modules/Mists/DeathRecovery.lua", "Modules/Mists/DevHelpers.lua", "Modules/Mists/GatherTracker.lua", "Modules/Mists/NavHud.lua" },
+        ["C_Map.GetWorldPosFromMapPos"] = { "Core/Compat/API.lua" },
         ["C_MountJournal.GetMountIDs"] = { "Modules/Mists/AutoMount.lua" },
         ["C_MountJournal.GetMountInfoByID"] = { "Modules/Mists/AutoMount.lua" },
         ["C_MountJournal.SummonByID"] = { "Modules/Mists/AutoMount.lua" },
@@ -66,6 +67,7 @@ TA.Data.ApiManifest = {
         ["C_UnitAuras.GetBuffDataByIndex"] = { "Modules/Infrastructure/TestHarness.lua" },
     },
     globals = {
+        ["CreateVector2D"] = { "Core/Compat/API.lua" },
         ["GetContainerItemLink"] = { "Modules/Mists/AutoEquip.lua" },
         ["GetContainerNumSlots"] = { "Modules/Mists/AutoEquip.lua" },
         ["GetInventoryItemLink"] = { "Core/Utils.lua", "Modules/Mists/AutoEquip.lua", "Modules/Mists/DeathRecovery.lua", "Modules/Mists/Gear.lua" },
