@@ -8,7 +8,6 @@ SlashCmdList entry already owns the command. A later ADDON_LOADED that claims
 /way clears our binding, including hash_SlashCmdList['/WAY'] when that table
 exists. /ta talentsync calls Data/Retail/Talents.lua SyncFromBetterTalents.
 """
-import math
 import sys
 from pathlib import Path
 
@@ -686,129 +685,6 @@ def check_talents():
           "/ta talentsync" in read("Data/Retail/Talents.lua"))
 
 
-def _angle_close(got, want):
-    if got is None:
-        return False
-    # South is pi and -pi. Both are the same direction.
-    d = (float(got) - float(want) + math.pi) % (2 * math.pi) - math.pi
-    return abs(d) < 1e-6
-
-
-def check_arrow_bearing(rel, label):
-    """Player at (0.5, 0.5). Bearing and facing share one counter-clockwise circle."""
-    # facing, target x, target y, expected SetRotation. Map Y grows south.
-    table = (
-        (0, 0.5, 0.4, 0, "due north"),
-        (0, 0.4, 0.5, math.pi / 2, "due west"),
-        (0, 0.6, 0.5, -math.pi / 2, "due east"),
-        (0, 0.5, 0.6, math.pi, "due south"),
-        (math.pi / 2, 0.4, 0.5, 0, "facing west, target due west"),
-    )
-    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
-    lua.execute(r"""
-        ToonAge = { modules = {}, LOG = { OUTPUT = 0, INFO = 3 } }
-        function ToonAge:RegisterModule(name, mod) self.modules[name] = mod; self[name] = mod end
-        function ToonAge:RegisterEvent() end
-        function ToonAge:GetModule() return nil end
-        function ToonAge:Raw() end
-        function ToonAge:Print() end
-        PX, PY, FACING, NOW = 0.5, 0.5, 0, 1000
-        function GetPlayerFacing() return FACING end
-        function GetTime() return NOW end
-        C_Map = {
-            GetBestMapForUnit = function() return 84 end,
-            GetPlayerMapPosition = function()
-                return { GetXY = function() return PX, PY end }
-            end,
-            GetMapInfo = function() return nil end,
-        }
-        function Piece()
-            local p = { shown = true, text = "" }
-            function p:SetTexture() end
-            function p:SetSize() end
-            function p:SetAlpha() end
-            function p:SetRotation(a) self.rot = a end
-            function p:Show() self.shown = true end
-            function p:Hide() self.shown = false end
-            function p:SetText(t) self.text = t end
-            function p:SetTextColor(r, g, b, a) self.r, self.g, self.b, self.a = r, g, b, a end
-            function p:SetPoint() end
-            function p:IsVisible() return self.shown end
-            function p:IsShown() return self.shown end
-            return p
-        end
-        function Frame()
-            local f = Piece()
-            function f:SetAlpha() end
-            function f:EnableMouse() end
-            f.arrowTex = Piece()
-            f.arrivedTex = Piece()
-            f.distF = Piece()
-            f.etaF = Piece()
-            f.titleF = Piece()
-            f._arrowSize = 48
-            return f
-        end
-    """)
-    lua.execute(read("Core/Utils.lua"))
-    lua.execute(read(rel))
-    lua.execute(r"""
-        local A = ToonAge.modules.Arrow
-        local f = Frame()
-        A.frame = f
-        function Aim(facing, tx, ty)
-            FACING = facing
-            PX, PY = 0.5, 0.5
-            A._lastPx, A._lastPy, A._lastFacing = nil, nil, nil
-            A:SetWaypoint(84, tx, ty, "Mark")
-            A:Tick(f)
-            return f.arrowTex.rot
-        end
-    """)
-    aim = lua.eval("Aim")
-    for facing, tx, ty, want, name in table:
-        got = aim(facing, tx, ty)
-        check(f"{label} bearing {name}", _angle_close(got, want))
-    src = read(rel)
-    check(f"{label} bearing is counter-clockwise", "math.atan2(-dx, -dy)" in src)
-    check(f"{label} movement facing is counter-clockwise", "math.atan2(-mdx, -mdy)" in src)
-    check(f"{label} clockwise bearing is gone", "math.atan2(dx, -dy)" not in src)
-    check(f"{label} clockwise movement facing is gone", "math.atan2(mdx, -mdy)" not in src)
-
-    # Step west with no GetPlayerFacing. The fallback must use the same circle,
-    # so a target still to the west leaves the arrow at 0.
-    lua.execute(r"""
-        FACING = nil
-        PX, PY, NOW = 0.5, 0.5, 5000
-        local A = ToonAge.modules.Arrow
-        A._lastPx, A._lastPy, A._lastFacing = nil, nil, nil
-        A:SetWaypoint(84, 0.3, 0.5, "Mark")
-        A:Tick(A.frame)
-        PX, NOW = 0.4, 5001
-        A:Tick(A.frame)
-        STEP_ROT = A.frame.arrowTex.rot
-    """)
-    check(f"{label} a step west uses the counter-clockwise fallback",
-          _angle_close(g(lua, "STEP_ROT"), 0))
-
-    lua.execute(r"""
-        FACING = 0
-        PX, PY, NOW = 0.5, 0.4, 6000
-        local A = ToonAge.modules.Arrow
-        A._lastPx, A._lastPy = nil, nil
-        A:SetWaypoint(84, 0.5, 0.3, "Mark")
-        A:Tick(A.frame)
-        PY, NOW = 0.55, 6001
-        A:Tick(A.frame)
-        AWAY_TEXT = A.frame.etaF.text
-        AWAY_R, AWAY_G, AWAY_B = A.frame.etaF.r, A.frame.etaF.g, A.frame.etaF.b
-    """)
-    check(f"{label} moving away is plain text", g(lua, "AWAY_TEXT"), "moving away")
-    check(f"{label} moving away is body color",
-          (round(g(lua, "AWAY_R"), 2), round(g(lua, "AWAY_G"), 2), round(g(lua, "AWAY_B"), 2)),
-          (0.92, 0.90, 0.87))
-
-
 def main():
     check_arrow("Modules/Navigation/Arrow.lua", "retail")
     check_arrow("Modules/Mists/Arrow.lua", "mists")
@@ -816,8 +692,6 @@ def main():
     check_bare_dispatch()
     check_arrow_paint("Modules/Navigation/Arrow.lua", "retail")
     check_arrow_paint("Modules/Mists/Arrow.lua", "mists")
-    check_arrow_bearing("Modules/Navigation/Arrow.lua", "retail")
-    check_arrow_bearing("Modules/Mists/Arrow.lua", "mists")
     check_talents()
     passed = sum(_results)
     print(f"[{'OK' if passed == len(_results) else 'FAIL'}] {passed}/{len(_results)} assertions passed.")

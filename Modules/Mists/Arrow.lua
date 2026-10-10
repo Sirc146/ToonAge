@@ -13,9 +13,8 @@
 --   - C_Map.GetBestMapForUnit exists in MoP Classic
 --
 -- Bearing math (WoW specifics):
---   Map Y increases south. GetPlayerFacing and Texture:SetRotation are both
---   counter-clockwise from north, so the bearing is atan2(-dx, -dy):
---   North 0, West +pi/2, East -pi/2. targetAngle = bearing - facing.
+--   Map-y increases SOUTHWARD, so atan2(dx, -dy) gives a clockwise bearing
+--   where 0 = North, matching GetPlayerFacing() conventions.
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -377,10 +376,7 @@ function Arrow:Tick(f)
 
     local dx          = cx - px
     local dy          = cy - py
-    -- Map Y increases south. GetPlayerFacing and SetRotation are both
-    -- counter-clockwise from north, so this bearing is too.
-    -- North 0, west +pi/2, east -pi/2. targetAngle = bearing - facing.
-    local bearing     = math.atan2(-dx, -dy)
+    local bearing     = math.atan2(dx, -dy)
 
     -- GetPlayerFacing() works in MoP Classic
     local facing = GetPlayerFacing()
@@ -391,8 +387,7 @@ function Arrow:Tick(f)
             local mdy = py - self._lastPy
             local moved = math.sqrt(mdx * mdx + mdy * mdy)
             if moved > 0.0001 then
-                -- Same counter-clockwise circle as GetPlayerFacing.
-                facing = math.atan2(-mdx, -mdy)
+                facing = math.atan2(mdx, -mdy)
             else
                 facing = self._lastFacing or 0
             end
@@ -458,9 +453,7 @@ function Arrow:Tick(f)
             f.etaF:SetText("")
         end
     elseif avgSpeed < -0.5 then
-        -- Body text. Red is the gear downgrade marker, not this line.
-        f.etaF:SetTextColor(0.92, 0.90, 0.87, 1)
-        f.etaF:SetText("moving away")
+        f.etaF:SetText("|cFFFF6666moving away|r")
     else
         local fallbackSpeed = GetTravelSpeed()
         if fallbackSpeed > 0 then
