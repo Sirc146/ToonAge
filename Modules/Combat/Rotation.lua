@@ -85,6 +85,7 @@ function Rotation:OnEvent(event, ...)
         if TA.UI and TA.UI.activeTab == "rotation" then
             self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end
+        if self.predictBar then self:UpdatePrediction() end
     end
 
     -- GROUP_ROSTER_UPDATE catches joining/leaving a group; ZONE_CHANGED_NEW_AREA
@@ -103,6 +104,7 @@ function Rotation:OnEvent(event, ...)
             if TA.UI and TA.UI.activeTab == "rotation" then
                 self:Render(TA.UI.contentChild, TA.UI.sideChild)
             end
+            if self.predictBar then self:UpdatePrediction() end
         end
     end
 end
@@ -459,7 +461,7 @@ function Rotation:RenderContent(content, rotData, specID, level)
     if listed and (listed.empty or not listed.spells or #listed.spells == 0) then
         local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         f:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-        f:SetText("No verified rotation yet")
+        f:SetText("No suggestions for this spec")
         f:SetTextColor(0.85, 0.86, 0.88, 1)
         f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
         f:SetWidth(w)
@@ -483,7 +485,7 @@ function Rotation:RenderContent(content, rotData, specID, level)
     if specID and not self:HasVerified(specID) then
         local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         f:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-        f:SetText("No verified rotation yet")
+        f:SetText("No suggestions for this spec")
         f:SetTextColor(0.85, 0.86, 0.88, 1)
         f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
         f:SetWidth(w)
@@ -496,7 +498,7 @@ function Rotation:RenderContent(content, rotData, specID, level)
     if not rotData or not rotData.priorities then
         local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         f:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
-        f:SetText("No rotation data for this spec. See Icy Veins or Method for current guidance.")
+        f:SetText("No suggestions for this spec")
         f:SetTextColor(0.55, 0.50, 0.36, 1)
         f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
         f:SetWidth(w)
@@ -653,6 +655,11 @@ local PREDICTION_COUNT = 3
 local ICON_SIZE = 40
 local ICON_GAP = 6
 local PREDICT_UPDATE_HZ = 0.15 -- refresh rate for prediction bar (slightly slower than CombatState)
+local SLOT_GOLD = { 0.910, 0.702, 0.353 }
+local BODY_TEXT = { 0.92, 0.90, 0.87 }
+local SUCCESS = { 0.20, 0.92, 0.40 }
+-- Icon, a two-line name, and the combo-point cue.
+local BAR_HEIGHT = ICON_SIZE + 46
 
 -- ── Role-aware view labels ─────────────────────────────────────────────────────
 -- Returns context-appropriate names for the 3 prediction bar views based on
@@ -698,9 +705,9 @@ function Rotation:InitPredictBar()
     end
 
     local bar = CreateFrame("Button", "TARotationPredictBar", UIParent, "BackdropTemplate")
-    -- Three tray widths, padding included: 88, 144, 200. The live bar is the
-    -- three-spell size.
-    bar:SetSize(TRAY_WIDTH[3], ICON_SIZE + 28)
+    -- Three tray widths, padding included: 88, 144, 200. The live bar starts
+    -- at the three-spell size and shrinks to the filled slots out of combat.
+    bar:SetSize(TRAY_WIDTH[3], BAR_HEIGHT)
     bar:SetFrameStrata("HIGH")
     bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 180)
     bar:SetMovable(true)
@@ -811,9 +818,14 @@ function Rotation:InitPredictBar()
         local nameLabel = frame:CreateFontString(nil, "OVERLAY")
         nameLabel:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
         nameLabel:SetPoint("TOP", frame, "BOTTOM", 0, -1)
-        nameLabel:SetWidth(ICON_SIZE + 10)
+        nameLabel:SetWidth(ICON_SIZE + ICON_GAP)
+        nameLabel:SetHeight(20)
         nameLabel:SetJustifyH("CENTER")
-        nameLabel:SetWordWrap(false)
+        nameLabel:SetJustifyV("TOP")
+        nameLabel:SetWordWrap(true)
+        nameLabel:SetTextColor(BODY_TEXT[1], BODY_TEXT[2], BODY_TEXT[3])
+        if nameLabel.SetMaxLines then nameLabel:SetMaxLines(2) end
+        if nameLabel.SetNonSpaceWrap then nameLabel:SetNonSpaceWrap(true) end
         frame.nameLabel = nameLabel
 
         icons[i] = frame
@@ -826,7 +838,7 @@ function Rotation:InitPredictBar()
     local pips = {}
     local pipRow = CreateFrame("Frame", nil, bar)
     pipRow:SetSize(7 * 10, 10)
-    pipRow:SetPoint("BOTTOM", icons[1], "BOTTOM", 0, -12)
+    pipRow:SetPoint("TOP", icons[1].nameLabel, "BOTTOM", 0, -1)
     for i = 1, 7 do
         local tex = pipRow:CreateTexture(nil, "ARTWORK")
         tex:SetSize(8, 8)
@@ -843,8 +855,16 @@ function Rotation:InitPredictBar()
     end
     RegUnit("UNIT_POWER_FREQUENT")
     RegUnit("UNIT_POWER_POINT_CHARGE")
-    bar:SetScript("OnEvent", function()
-        self:UpdatePips()
+    -- The bar's OnUpdate does not run while it is hidden, so combat start and
+    -- end are events. They still arrive on a hidden frame.
+    bar:RegisterEvent("PLAYER_REGEN_DISABLED")
+    bar:RegisterEvent("PLAYER_REGEN_ENABLED")
+    bar:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+            self:UpdatePrediction()
+        else
+            self:UpdatePips()
+        end
     end)
 
     -- Healer triage line: who needs healing most, above the icons.
@@ -873,6 +893,51 @@ function Rotation:InitPredictBar()
 
     bar:Hide() -- starts hidden; shown during combat
     self.predictBar = bar
+end
+
+--- Slot chrome for one filled icon. Borders stay gold. The name is the
+--- body colour and wraps; the string itself is not cut down.
+function Rotation:PaintPredictSlot(iconFrame, name, spellID, suggested)
+    if not iconFrame then return end
+    local tex = spellID and U.GetSpellTexture and U.GetSpellTexture(spellID)
+    iconFrame.icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
+    iconFrame.nameLabel:SetText(name or "")
+    iconFrame.nameLabel:SetTextColor(BODY_TEXT[1], BODY_TEXT[2], BODY_TEXT[3])
+    iconFrame:SetBackdropColor(0.06, 0.04, 0.00, 0.98)
+    local a = suggested and 1 or 0.85
+    iconFrame:SetBackdropBorderColor(SLOT_GOLD[1], SLOT_GOLD[2], SLOT_GOLD[3], a)
+    iconFrame:Show()
+end
+
+--- Width follows the filled slots, and only while the player is out of
+--- combat. No picks fade the bar in combat and hide it once combat ends.
+function Rotation:FitPredictBar(filled, inCombat)
+    local bar = self.predictBar
+    if not bar then return end
+    filled = tonumber(filled) or 0
+    if filled < 1 then
+        if inCombat then
+            -- Stay shown so the fade can lift when a pick appears. Hide waits
+            -- until combat ends; a hidden frame would not see that either.
+            local saved = TA.charDB and TA.charDB.predictBar
+            if (not saved or saved.visible ~= false) and not bar:IsShown() then
+                bar:Show()
+            end
+            bar:SetAlpha(0)
+        else
+            bar:SetAlpha(1)
+            bar:Hide()
+        end
+        return
+    end
+    bar:SetAlpha(1)
+    local saved = TA.charDB and TA.charDB.predictBar
+    if (not saved or saved.visible ~= false) and not bar:IsShown() then
+        bar:Show()
+    end
+    if inCombat or (InCombatLockdown and InCombatLockdown()) then return end
+    local w = TRAY_WIDTH[filled] or TRAY_WIDTH[#TRAY_WIDTH]
+    bar:SetSize(w, BAR_HEIGHT)
 end
 
 function Rotation:UpdatePrediction()
@@ -905,22 +970,18 @@ function Rotation:UpdatePrediction()
         end
         local plan = TA.RotationLists.BarPlan(listed.spells, assisted and assisted.entry,
             inCombat and (TA.IsRetail or TA.IsForever))
-        local gold = { 0.910, 0.702, 0.353 }
+        local filled = 0
         for i = 1, PREDICTION_COUNT do
             local iconFrame = self.predictIcons[i]
             local spell = plan[i]
             if spell then
-                local tex = spell.spellID and U.GetSpellTexture(spell.spellID)
-                iconFrame.icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
-                iconFrame.nameLabel:SetText(spell.name or "")
-                iconFrame:SetBackdropColor(0.06, 0.04, 0.00, 0.98)
-                iconFrame:SetBackdropBorderColor(gold[1], gold[2], gold[3], spell.suggested and 1 or 0.70)
-                iconFrame.nameLabel:SetTextColor(gold[1], gold[2], gold[3])
-                iconFrame:Show()
+                filled = filled + 1
+                self:PaintPredictSlot(iconFrame, spell.name, spell.spellID, spell.suggested)
             else
                 iconFrame:Hide()
             end
         end
+        self:FitPredictBar(filled, inCombat)
         self:UpdatePips()
         return
     end
@@ -932,6 +993,7 @@ function Rotation:UpdatePrediction()
         for i = 1, PREDICTION_COUNT do
             self.predictIcons[i]:Hide()
         end
+        self:FitPredictBar(0, inCombat)
         self:UpdatePips()
         return
     end
@@ -967,36 +1029,20 @@ function Rotation:UpdatePrediction()
         end
     end
 
+    local filled = 0
     for i = 1, PREDICTION_COUNT do
         local iconFrame = self.predictIcons[i]
         local prediction = next3[i]
 
         if prediction then
             local entry = prediction.entry
-            local tex = entry.spellID and U.GetSpellTexture(entry.spellID)
-            iconFrame.icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
-            iconFrame.nameLabel:SetText(entry.name or "")
-
-            -- Color: first = bright green, second = gold, third = dimmer gold
-            if i == 1 then
-                iconFrame:SetBackdropColor(0.04, 0.12, 0.02, 0.98)
-                iconFrame:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.95)
-                iconFrame.nameLabel:SetTextColor(0.20, 0.92, 0.40)
-            elseif i == 2 then
-                iconFrame:SetBackdropColor(0.06, 0.04, 0.00, 0.98)
-                iconFrame:SetBackdropBorderColor(1.00, 0.82, 0.00, 0.80)
-                iconFrame.nameLabel:SetTextColor(1.00, 0.82, 0.00)
-            else
-                iconFrame:SetBackdropColor(0.04, 0.03, 0.00, 0.98)
-                iconFrame:SetBackdropBorderColor(0.70, 0.55, 0.10, 0.60)
-                iconFrame.nameLabel:SetTextColor(0.70, 0.55, 0.10)
-            end
-
-            iconFrame:Show()
+            filled = filled + 1
+            self:PaintPredictSlot(iconFrame, entry.name, entry.spellID, i == 1 and assisted)
         else
             iconFrame:Hide()
         end
     end
+    self:FitPredictBar(filled, inCombat)
     self:UpdatePips()
 end
 
@@ -1009,11 +1055,10 @@ function Rotation:UpdatePips()
     local chargedList = GetUnitChargedPowerPoints and GetUnitChargedPowerPoints("player")
     local secret = (U.IsSecret and (U.IsSecret(cur) or U.IsSecret(max) or U.IsSecret(chargedList)))
     cur, max = tonumber(cur), tonumber(max)
+    -- No readable combo points: this is not a combo-point cue. Leave the
+    -- slot borders gold.
     if secret or not cur or not max or max <= 0 then
         row:Hide()
-        if self.predictIcons and self.predictIcons[1] then
-            self.predictIcons[1]:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.95)
-        end
         return
     end
     local charged = {}
@@ -1039,7 +1084,8 @@ function Rotation:UpdatePips()
                 tex:SetVertexColor(1, 1, 1, 1)
             elseif i <= cur then
                 tex:SetTexture(base)
-                tex:SetVertexColor(0.910, 0.702, 0.353, 1)
+                -- Green is the combo-point cue only. Slot borders stay gold.
+                tex:SetVertexColor(SUCCESS[1], SUCCESS[2], SUCCESS[3], 1)
             else
                 tex:SetTexture(ring)
                 tex:SetVertexColor(0.70, 0.68, 0.62, 0.85)
@@ -1050,10 +1096,6 @@ function Rotation:UpdatePips()
         end
     end
     row:Show()
-    local finisher = (cur >= max) or (cur >= 5 and max >= 5)
-    if self.predictIcons and self.predictIcons[1] and finisher then
-        self.predictIcons[1]:SetBackdropBorderColor(0.910, 0.702, 0.353, 1)
-    end
 end
 
 function Rotation:ShowPredictBar()
@@ -1147,16 +1189,8 @@ function Rotation:RenderPredictionInline(content, y, w, padL, rotData, level)
             edgeSize = 1,
         })
 
-        if i == 1 then
-            frame:SetBackdropColor(0.04, 0.12, 0.02, 0.98)
-            frame:SetBackdropBorderColor(0.20, 0.92, 0.40, 0.95)
-        elseif i == 2 then
-            frame:SetBackdropColor(0.06, 0.04, 0.00, 0.98)
-            frame:SetBackdropBorderColor(1.00, 0.82, 0.00, 0.80)
-        else
-            frame:SetBackdropColor(0.04, 0.03, 0.00, 0.98)
-            frame:SetBackdropBorderColor(0.70, 0.55, 0.10, 0.60)
-        end
+        frame:SetBackdropColor(0.06, 0.04, 0.00, 0.98)
+        frame:SetBackdropBorderColor(SLOT_GOLD[1], SLOT_GOLD[2], SLOT_GOLD[3], 0.85)
 
         local tex = frame:CreateTexture(nil, "ARTWORK")
         tex:SetSize(inlineSize - 6, inlineSize - 6)
@@ -1174,16 +1208,13 @@ function Rotation:RenderPredictionInline(content, y, w, padL, rotData, level)
         nameLbl:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
         nameLbl:SetPoint("TOP", frame, "BOTTOM", 0, -2)
         nameLbl:SetWidth(inlineSize + 16)
+        nameLbl:SetHeight(22)
         nameLbl:SetJustifyH("CENTER")
-        nameLbl:SetWordWrap(false)
+        nameLbl:SetJustifyV("TOP")
+        nameLbl:SetWordWrap(true)
+        if nameLbl.SetMaxLines then nameLbl:SetMaxLines(2) end
         nameLbl:SetText(entry.name or "")
-        if i == 1 then
-            nameLbl:SetTextColor(0.20, 0.92, 0.40)
-        elseif i == 2 then
-            nameLbl:SetTextColor(1.00, 0.82, 0.00)
-        else
-            nameLbl:SetTextColor(0.70, 0.55, 0.10)
-        end
+        nameLbl:SetTextColor(BODY_TEXT[1], BODY_TEXT[2], BODY_TEXT[3])
 
         table.insert(self.frames, frame)
         table.insert(self.frames, nameLbl)
