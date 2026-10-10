@@ -2,8 +2,8 @@
 """Arrow bearing matches GetPlayerFacing, which is counter-clockwise from north.
 
 The old atan2(dx, -dy) was clockwise, so a spot to the east drew the arrow
-west. Facing is GetPlayerFacing or the direction of a real step. The minimap
-rotation is not a substitute, and a nil facing hides the arrow.
+west. Facing is GetPlayerFacing, or the direction of a real step. A nil
+facing with no step hides the arrow.
 """
 import math
 import sys
@@ -47,13 +47,6 @@ def read(rel):
 def load(rel):
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(r"""
-        MINIMAP_FACING_CALLS = 0
-        Minimap = {
-            GetFacing = function()
-                MINIMAP_FACING_CALLS = MINIMAP_FACING_CALLS + 1
-                return 1.23
-            end,
-        }
         PX, PY = 0.50, 0.50
         FACING = 0
         NOW = 1000
@@ -120,7 +113,7 @@ def g(lua, name):
 def check_source(rel, label):
     src = read(rel)
     stripped = src.replace("GetPlayerFacing", "")
-    check(f"{label} does not read the minimap facing", "GetFacing" not in stripped)
+    check(f"{label} does not call the minimap facing", "GetFacing" not in stripped)
     check(f"{label} bearing is counter-clockwise", "math.atan2(-(dx or 0), -(dy or 0))" in src)
     check(f"{label} no longer uses the clockwise bearing", "math.atan2(dx, -dy)" not in src)
     check(f"{label} movement fallback is not clockwise", "math.atan2(mdx, -mdy)" not in src)
@@ -150,6 +143,14 @@ def check_tick(rel, label):
     go(0.40, 0.50)
     check(f"{label} a western spot turns the arrow west",
           near(g(lua, "ToonAge.modules.Arrow.frame.arrowTex.rot"), PI / 2))
+    place(0.50, 0.50, 0, 1002)
+    go(0.50, 0.60)
+    check(f"{label} a southern spot turns the arrow south",
+          near(g(lua, "ToonAge.modules.Arrow.frame.arrowTex.rot"), PI))
+    place(0.50, 0.50, PI / 2, 1003)
+    go(0.40, 0.50)
+    check(f"{label} facing west at a western target points up",
+          near(g(lua, "ToonAge.modules.Arrow.frame.arrowTex.rot"), 0))
 
     # Face north, run north. The arrow stays aimed at the top and the yards fall.
     lua = load(rel)
@@ -168,14 +169,12 @@ def check_tick(rel, label):
     check(f"{label} running north drops the yards",
           far == "400 yds" and near_yd == "200 yds")
 
-    # No player facing and no step yet: hide. The minimap must not fill in.
+    # No player facing and no step yet: hide. Do not aim north.
     lua = load(rel)
     lua.execute("FACING = nil")
     lua.eval("Go")(0.60, 0.50)
     check(f"{label} a nil facing hides the arrow",
           g(lua, "ToonAge.modules.Arrow.frame.arrowTex.shown"), False)
-    check(f"{label} a nil facing does not ask the minimap",
-          g(lua, "MINIMAP_FACING_CALLS"), 0)
 
     # Step east toward an eastern mark. The arrow points up (you are facing it).
     lua.execute("PX, PY, NOW = 0.50, 0.50, 3000")
@@ -186,8 +185,6 @@ def check_tick(rel, label):
           near(g(lua, "ToonAge.modules.Arrow.frame.arrowTex.rot"), 0))
     check(f"{label} a step east shows the arrow",
           g(lua, "ToonAge.modules.Arrow.frame.arrowTex.shown"), True)
-    check(f"{label} movement fallback does not ask the minimap",
-          g(lua, "MINIMAP_FACING_CALLS"), 0)
 
     # Walk away from the mark. The line is body-colored text, not a red code.
     lua = load(rel)
