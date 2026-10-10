@@ -48,17 +48,17 @@ local function GetTravelSpeed()
     return (TM and TM:GetSpeed()) or 7
 end
 
---- Bearing from the player to a map offset, in GetPlayerFacing's circle.
---- dx is east (map X). dy is south (map Y grows south).
---- North is 0, west is +pi/2, south is pi, east is -pi/2.
+--- Map-fraction fallback bearing. dx is east, dy is south.
+--- Used only when world position is missing. Same circle as GetPlayerFacing:
+--- north 0, west +pi/2, east -pi/2.
 function Arrow.Bearing(dx, dy)
     return math.atan2(-(dx or 0), -(dy or 0))
 end
 
--- GetPlayerFacing, or the direction of the last real step (same circle).
--- The minimap rotation is a different angle and is not consulted. Nil means
--- the arrow hides instead of pretending the player faces north.
-local function ResolveFacing(self, px, py)
+-- GetPlayerFacing, or the direction of the last real step.
+-- north/west are world yards (x north, y west). Without them the step is
+-- read in map fractions. Nil hides the arrow instead of aiming north.
+local function ResolveFacing(self, px, py, north, west)
     if type(GetPlayerFacing) == "function" then
         local ok, raw = pcall(GetPlayerFacing)
         if ok and raw ~= nil then
@@ -66,15 +66,20 @@ local function ResolveFacing(self, px, py)
             if n then return n end
         end
     end
-    if self._lastPx and self._lastPy then
+    if north ~= nil and west ~= nil and self._lastNorth ~= nil and self._lastWest ~= nil then
+        local dN = north - self._lastNorth
+        local dW = west - self._lastWest
+        if math.sqrt(dN * dN + dW * dW) > 1 then
+            return math.atan2(dW, dN)
+        end
+        if self._lastFacing then return self._lastFacing end
+    elseif self._lastPx and self._lastPy then
         local mdx = px - self._lastPx
         local mdy = py - self._lastPy
         if math.sqrt(mdx * mdx + mdy * mdy) > 0.0001 then
             return Arrow.Bearing(mdx, mdy)
         end
-        if self._lastFacing then
-            return self._lastFacing
-        end
+        if self._lastFacing then return self._lastFacing end
     end
     return nil
 end
@@ -410,8 +415,14 @@ function Arrow:Tick(f)
         end
     end
 
-    -- Truncate long labels
+    -- Truncate long labels. A bare coordinate pair is body text. Quest
+    -- titles and typed names stay gold.
     if #label > 35 then label = label:sub(1, 32) .. "..." end
+    if isManualWP and self.manualWaypoint.coordTitle then
+        f.titleF:SetTextColor(0.92, 0.90, 0.87, 1)
+    elseif f.titleF.SetTextColor then
+        f.titleF:SetTextColor(1, 0.82, 0, 1)
+    end
     f.titleF:SetText(label)
 
     local currentMap = C_Map.GetBestMapForUnit("player")
@@ -497,18 +508,39 @@ function Arrow:Tick(f)
     local py = tonumber(tostring(rawPy))
     if not px or not py or (px == 0 and py == 0) then return end
 
-    local dx          = cx - px
-    local dy          = cy - py
-    -- Same circle as GetPlayerFacing: counter-clockwise from north.
-    local bearing     = Arrow.Bearing(dx, dy)
-    local facing      = ResolveFacing(self, px, py)
-    self._lastPx = px
-    self._lastPy = py
-
-    local yards = U.ComputeDistance(px, py, cx, cy)
+    local dx, dy = cx - px, cy - py
+    -- World x is north, world y is west, both in yards. Distance is the
+    -- straight-line length. Bearing is counter-clockwise from north.
+    -- A missing world position, or two different continents, hides the
+    -- distance and keeps the map-fraction bearing.
+    local targetMap = (coordMap and coordMap ~= 0) and coordMap or currentMap
+    local WP = TA.Compat and TA.Compat.WorldPosFromMapPos
+    local pCont, pN, pW
+    local tCont, tN, tW
+    if WP then
+        pCont, pN, pW = WP(currentMap, px, py)
+        tCont, tN, tW = WP(targetMap, cx, cy)
+    end
+    local yards, bearing
+    -- A world north of 0 is a real position. Compare against nil, not truth.
+    if pCont ~= nil and pCont == tCont and pN ~= nil and pW ~= nil and tN ~= nil and tW ~= nil then
+        local dN = tN - pN
+        local dW = tW - pW
+        yards = math.sqrt(dN * dN + dW * dW)
+        bearing = math.atan2(dW, dN)
+    else
+        bearing = Arrow.Bearing(dx, dy)
+    end
+    local facing = ResolveFacing(self, px, py, pN, pW)
+    self._lastPx, self._lastPy = px, py
+    if pN ~= nil and pW ~= nil then
+        self._lastNorth, self._lastWest = pN, pW
+    else
+        self._lastNorth, self._lastWest = nil, nil
+    end
 
     -- ── ARRIVAL STATE ─────────────────────────────────────────────────
-    if yards <= ARRIVAL_DIST then
+    if yards and yards <= ARRIVAL_DIST then
         if not self._arrived then
             self._arrived = true
             self._arrivedTime = GetTime()
@@ -561,9 +593,17 @@ function Arrow:Tick(f)
     end
 
     -- ── DISTANCE ──────────────────────────────────────────────────────
-    f.distF:SetText(U.FormatDistance(yards))
+    -- No world yards: hide the number. Do not show the old zone-size guess.
+    if yards then
+        f.distF:SetText(U.FormatDistance(yards))
+    else
+        f.distF:SetText("")
+        f.etaF:SetText("")
+    end
 
     -- ── SPEED-SMOOTHED ETA ────────────────────────────────────────────
+    if not yards then return end
+
     -- Track distance changes over time and average over 2 samples to
     -- prevent ETA jitter from micro-movement and position snapping.
     local now = GetTime()
@@ -670,11 +710,13 @@ function Arrow:SetWaypoint(mapID, x, y, title)
     if not mapID or mapID == 0 then
         mapID = C_Map.GetBestMapForUnit("player") or 0
     end
+    local coordTitle = not title or title == ""
     self.manualWaypoint = {
-        map   = mapID,
-        x     = x,
-        y     = y,
-        title = title or string.format("%.2f, %.2f", x * 100, y * 100),
+        map        = mapID,
+        x          = x,
+        y          = y,
+        title      = coordTitle and string.format("%.2f, %.2f", x * 100, y * 100) or title,
+        coordTitle = coordTitle,
     }
     self._arrived = false
     self._arrivedTime = nil
