@@ -342,12 +342,17 @@ check("a missing namespaced position is not filled in from the global",
       "C_Map.GetPlayerMapPosition  ->  missing" in pos)
 check("the legacy global has its own sample",
       "GetPlayerMapPosition(player)  ->  0.2, 0.3" in pos)
-Lpos.execute("FB_X, FB_Y = ToonAge.Compat.WaypointFn('C_Map.GetPlayerMapPosition')('player')")
-check("WaypointFn falls back to the legacy global",
-      (Lpos.eval("FB_X"), Lpos.eval("FB_Y")), (0.2, 0.3))
+check("WaypointFn does not return the legacy global when C_Map is missing",
+      Lpos.eval("ToonAge.Compat.WaypointFn('C_Map.GetPlayerMapPosition')"), None)
 Lpos.execute("C_Map.GetPlayerMapPosition = function() return { x = 1 } end")
-check("WaypointFn prefers C_Map.GetPlayerMapPosition when both exist",
-      Lpos.eval("type(ToonAge.Compat.WaypointFn('C_Map.GetPlayerMapPosition')(10, 'player'))"), "table")
+Lpos.execute("GOT = ToonAge.Compat.WaypointFn('C_Map.GetPlayerMapPosition')(10, 'player')")
+check("WaypointFn returns only the namespaced result when both exist",
+      Lpos.eval("type(GOT)"), "table")
+check("that result is not the legacy global's numbers",
+      (Lpos.eval("GOT.x"), Lpos.eval("select(2, ToonAge.Compat.WaypointFn('C_Map.GetPlayerMapPosition')(10, 'player'))")),
+      (1, None))
+check("the namespaced wrapper is never the legacy function",
+      Lpos.eval("ToonAge.Compat.WaypointFn('C_Map.GetPlayerMapPosition') == GetPlayerMapPosition"), False)
 
 Lrot = world(extra=r"""
 ROT_FRAMES, ROT_TEXTURES = 0, 0

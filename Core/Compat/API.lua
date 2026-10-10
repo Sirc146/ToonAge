@@ -660,14 +660,12 @@ function C.MapPositionFn(path)
 end
 
 --- The function for a waypoint API path, or nil when ApiGuard or this client
---- says it is not there. Player position tries C_Map.GetPlayerMapPosition
---- first and falls back to the legacy global.
+--- says it is not there. C_Map.GetPlayerMapPosition resolves only that
+--- function. The legacy global is a different call, sampled on its own probe
+--- line, and is never returned in its place: the two shapes do not match.
 function C.WaypointFn(path)
-    if path == "C_Map.GetPlayerMapPosition" then
-        return C.MapPositionFn("C_Map.GetPlayerMapPosition") or C.MapPositionFn("GetPlayerMapPosition")
-    end
-    if path == "GetPlayerMapPosition" then
-        return C.MapPositionFn("GetPlayerMapPosition")
+    if path == "C_Map.GetPlayerMapPosition" or path == "GetPlayerMapPosition" then
+        return C.MapPositionFn(path)
     end
     if not WaypointAllowed(path) then return nil end
     if path == "IsInInstance" then
