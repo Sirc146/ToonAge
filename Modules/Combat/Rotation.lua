@@ -904,7 +904,7 @@ function Rotation:InitPredictBar()
         bar:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", saved.x, saved.y)
     end
 
-    bar:Hide() -- starts hidden; shown during combat
+    bar:Hide() -- shown when this spec has at least one pick; hidden only when it has none
     self.predictBar = bar
 end
 
@@ -1062,18 +1062,29 @@ end
 function Rotation:UpdatePips()
     local row = self.pipRow
     if not row then return end
-    local powerType = (Enum and Enum.PowerType and Enum.PowerType.ComboPoints) or 4
-    local cur = UnitPower and UnitPower("player", powerType)
-    local max = UnitPowerMax and UnitPowerMax("player", powerType)
-    local chargedList = GetUnitChargedPowerPoints and GetUnitChargedPowerPoints("player")
-    local secret = (U.IsSecret and (U.IsSecret(cur) or U.IsSecret(max) or U.IsSecret(chargedList)))
-    cur, max = tonumber(cur), tonumber(max)
     local slot = self.predictIcons and self.predictIcons[1]
     local function HideFullCue()
         if slot and slot.glow then slot.glow:Hide() end
     end
-    -- No readable combo points. Leave the slot borders as they were painted.
-    if secret or not cur or not max or max <= 0 then
+    -- Combo-point max comes from the client. A missing enum, a nil read, or a
+    -- secret value leaves the slot border alone.
+    local comboType = Enum and Enum.PowerType and Enum.PowerType.ComboPoints
+    if not comboType or type(UnitPower) ~= "function" or type(UnitPowerMax) ~= "function" then
+        row:Hide()
+        HideFullCue()
+        return
+    end
+    local cur = UnitPower("player", Enum.PowerType.ComboPoints)
+    local max = UnitPowerMax("player", Enum.PowerType.ComboPoints)
+    local chargedList = GetUnitChargedPowerPoints and GetUnitChargedPowerPoints("player")
+    local secret = (U.IsSecret and (U.IsSecret(cur) or U.IsSecret(max) or U.IsSecret(chargedList)))
+    if secret or cur == nil or max == nil then
+        row:Hide()
+        HideFullCue()
+        return
+    end
+    cur, max = tonumber(cur), tonumber(max)
+    if not cur or not max or max <= 0 then
         row:Hide()
         HideFullCue()
         return
