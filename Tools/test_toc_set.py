@@ -337,6 +337,7 @@ def test_forever_toc_carries_no_retail_content():
     45 guide files, 433 KB of retail rotations, on a Vanilla-era client that
     can use none of it.
     """
+    import re
     p = ROOT / FOREVER_TOC
     check("Forever TOC exists", p.exists(), True)
     if not p.exists():
@@ -379,9 +380,10 @@ def test_forever_toc_carries_no_retail_content():
                 text = (ROOT / f).read_text(encoding="utf-8")
             except OSError:
                 return False
-            return ("unverified = true" in text
-                    and "verified=true" not in text
-                    and "verified = true" not in text)
+            # "unverified = true" contains the letters "verified = true", so
+            # the entry check has to ignore that prefix.
+            bad = re.search(r"(?<![A-Za-z])verified\s*=\s*true", text)
+            return "unverified = true" in text and not bad
         return False
     check("Forever: ships no game data beyond the manifest, the sourced coach, measured harvest data, the unverified profession list and the unverified rotation list",
           [f for f in data if not allowed_data(f)], [])
