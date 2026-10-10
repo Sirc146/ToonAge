@@ -92,6 +92,9 @@ Core\Analytics.lua
 # ── Sourced reference (names and roles only, each spec cites its guide) ──
 # Icy Veins WoW Forever spec guides, read 2026-09-27. Not game numbers.
 Data\Forever\Coach.lua
+# Rotation priorities. Forever entries stay verified=false until a harvest
+# confirms the rank IDs. Retail, TBC, Mists, and Era lists are not loaded here.
+Data\Forever\RotationLists.lua
 
 # ── Measured game data (generated from the Forever harvest) ──────────
 # Tools/gen_forever_data.lua turns the harvest in the saved file into these.

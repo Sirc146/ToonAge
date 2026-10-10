@@ -39,6 +39,7 @@ Core\Layout.lua
 
 # ── Profession skill lines (single bar; no advice) ─────────────────────
 Data\Vanilla\ProfessionSkills.lua
+Data\Vanilla\RotationLists.lua
 Modules\Character\ProfessionSkills.lua
 Modules\Character\ProfessionBoard.lua
 Modules\Progression\FactionTracker.lua

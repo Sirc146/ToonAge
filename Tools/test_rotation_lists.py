@@ -208,9 +208,93 @@ def test_files():
         check(f"{toc} does not load another version's data", foreign, [])
 
 
+def test_shipped():
+    """The real per-version files, not the inline fixture."""
+    harness = read("Modules/Infrastructure/TestHarness.lua")
+    check("the self-test warns when this spec has fewer than 3 ids",
+          'format("rotation spells: this spec has %d ids", count)' in harness
+          and "count < 3" in harness, True)
+    listed = {
+        "ToonAge.toc": "Data\\Retail\\RotationLists.lua",
+        "ToonAge_Mainline.toc": "Data\\Retail\\RotationLists.lua",
+        "ToonAge_Camelot.toc": "Data\\Forever\\RotationLists.lua",
+        "ToonAge_Mists.toc": "Data\\Mists\\RotationLists.lua",
+        "ToonAge_TBC.toc": "Data\\TBC\\RotationLists.lua",
+        "ToonAge_Vanilla.toc": "Data\\Vanilla\\RotationLists.lua",
+    }
+    names = set(listed.values())
+    for toc, line in listed.items():
+        text = read(toc)
+        check(f"{toc} lists its rotation file", line in text, True)
+        check(f"{toc} lists no other rotation file",
+              sorted(n for n in names if n != line and n in text), [])
+    for toc in ("ToonAge_Cata.toc", "ToonAge_Wrath.toc"):
+        text = read(toc)
+        check(f"{toc} lists no rotation data", any(n in text for n in names), False)
+
+    files = (
+        "Data/Retail/RotationLists.lua",
+        "Data/Forever/RotationLists.lua",
+        "Data/Mists/RotationLists.lua",
+        "Data/TBC/RotationLists.lua",
+        "Data/Vanilla/RotationLists.lua",
+    )
+    for rel in files:
+        lua = runtime()
+        lua.execute(read(rel))
+        check(f"{rel} sets TA.Data.RotationLists",
+              lua.eval("type(ToonAge.Data.RotationLists)"), "table")
+
+    # Retail spec ids: 259 Assassination, 260 Outlaw, 261 Subtlety.
+    lua = runtime()
+    lua.execute(read("Data/Retail/RotationLists.lua"))
+    lua.execute(r"""
+        local RL = ToonAge.RotationLists
+        N259 = RL.CountSpecIDs(nil, "ROGUE", "Assassination")
+        N260 = RL.CountSpecIDs(nil, "ROGUE", "Outlaw")
+        N261 = RL.CountSpecIDs(nil, "ROGUE", "Subtlety")
+        VIEW = RL.Resolve(nil, "ROGUE", "Assassination", 80, "st")
+    """)
+    counts = {259: lua.eval("N259"), 260: lua.eval("N260"), 261: lua.eval("N261")}
+    for spec_id, n in counts.items():
+        print(f"  spec {spec_id}: {n} ids")
+        check(f"rogue {spec_id} has at least 3 ids", n >= 3, True)
+    check("retail assassination at 80 has a list", lua.eval("VIEW.empty"), False)
+    check("retail assassination at 80 opens on Deathstalker's Mark",
+          lua.eval("VIEW.spells[1].spellID"), 457052)
+    check("retail assassination keeps Garrote's id", lua.eval("VIEW.spells[3].spellID"), 703)
+
+    lua = runtime()
+    lua.execute(read("Data/Forever/RotationLists.lua"))
+    lua.execute(r"""
+        local RL = ToonAge.RotationLists
+        local data = ToonAge.Data.RotationLists
+        local bad = 0
+        local function walk(node, seen)
+            if type(node) ~= "table" or seen[node] then return end
+            seen[node] = true
+            if type(node.name) == "string" and node.verified == true then bad = bad + 1 end
+            for _, child in pairs(node) do
+                if type(child) == "table" then walk(child, seen) end
+            end
+        end
+        walk(data, {})
+        FOREVER_BAD = bad
+        FOREVER_FLAG = RL.FileUnverified(data)
+        FOREVER_VIEW = RL.Resolve(data, "ROGUE", "Assassination", 20, "st")
+        FOREVER_RANKS = FOREVER_VIEW.spells[1].ranks
+    """)
+    check("forever file flag marks every row approximate", lua.eval("FOREVER_FLAG"), True)
+    check("forever entries stay verified=false", lua.eval("FOREVER_BAD"), 0)
+    check("forever assassination is approximate", lua.eval("FOREVER_VIEW.spells[1].approximate"), True)
+    check("forever keeps the Slice and Dice rank chain", lua.eval("FOREVER_RANKS[1]"), 5171)
+    check("forever keeps the second Slice and Dice rank", lua.eval("FOREVER_RANKS[2]"), 6774)
+
+
 def main():
     test_rules()
     test_files()
+    test_shipped()
     passed = sum(1 for ok in _results if ok)
     total = len(_results)
     print()

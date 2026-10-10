@@ -61,6 +61,7 @@ Data\TBC\TBCTalentBuilds.lua
 Data\TBC\TBCSecondaryRoles.lua
 Data\TBC\TBCRotations.lua
 Data\TBC\TBCLevelingRotations.lua
+Data\TBC\RotationLists.lua
 Data\TBC\TBCArmor.lua
 Data\TBC\TBCPvP.lua
 Data\TBC\PetFoods.lua

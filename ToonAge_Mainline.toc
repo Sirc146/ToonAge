@@ -57,6 +57,7 @@ Data\Retail\Talents.lua
 Data\Retail\TalentsPvP.lua
 Data\Retail\RotationConditions.lua
 Data\Retail\Rotations.lua
+Data\Retail\RotationLists.lua
 Data\Retail\Professions.lua
 Data\Retail\ProfessionSkills.lua
 Data\Retail\professions_retail.lua
