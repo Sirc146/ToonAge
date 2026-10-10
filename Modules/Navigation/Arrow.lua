@@ -4,8 +4,12 @@
 -- A typed /way label sits 2px under the distance, in body text, and hides on arrival.
 --
 -- Bearing math (WoW specifics):
---   Map-y increases SOUTHWARD, so atan2(dx, -dy) gives a clockwise bearing
---   where 0 = North, matching GetPlayerFacing() conventions.
+--   World x is north and world y is west, already in yards. Bearing is
+--   atan2(dW, dN), counter-clockwise from north, minus GetPlayerFacing.
+--   If that world position is missing, map Y increases south and the
+--   fallback is atan2(-dx, -dy): North 0, West +pi/2, East -pi/2.
+--   Facing comes from GetPlayerFacing only. A nil result hides the arrow
+--   unless a real step can stand in for it. The minimap rotation is not used.
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -151,6 +155,42 @@ end
 local function GetTravelSpeed()
     local TM = TA:GetModule("TravelModes")
     return (TM and TM:GetSpeed()) or 7
+end
+
+--- Map-fraction fallback bearing. dx is east, dy is south.
+--- Used only when world position is missing. Same circle as GetPlayerFacing:
+--- north 0, west +pi/2, east -pi/2.
+function Arrow.Bearing(dx, dy)
+    return math.atan2(-(dx or 0), -(dy or 0))
+end
+
+-- GetPlayerFacing, or the direction of the last real step.
+-- north/west are world yards (x north, y west). Without them the step is
+-- read in map fractions. Nil hides the arrow instead of aiming north.
+local function ResolveFacing(self, px, py, north, west)
+    if type(GetPlayerFacing) == "function" then
+        local ok, raw = pcall(GetPlayerFacing)
+        if ok and raw ~= nil then
+            local n = tonumber(tostring(raw))
+            if n then return n end
+        end
+    end
+    if north ~= nil and west ~= nil and self._lastNorth ~= nil and self._lastWest ~= nil then
+        local dN = north - self._lastNorth
+        local dW = west - self._lastWest
+        if math.sqrt(dN * dN + dW * dW) > 1 then
+            return math.atan2(dW, dN)
+        end
+        if self._lastFacing then return self._lastFacing end
+    elseif self._lastPx and self._lastPy then
+        local mdx = px - self._lastPx
+        local mdy = py - self._lastPy
+        if math.sqrt(mdx * mdx + mdy * mdy) > 0.0001 then
+            return Arrow.Bearing(mdx, mdy)
+        end
+        if self._lastFacing then return self._lastFacing end
+    end
+    return nil
 end
 
 -- Resolve a step's map/x/y, falling back to Blizzard's own live quest
@@ -515,14 +555,17 @@ function Arrow:Tick(f)
         end
     end
 
-    -- Truncate long labels. Guide steps stay gold. A /way label is body text
-    -- (UIModern CLR_TEXT_PRIMARY), the same warm white as other body copy.
+    -- Truncate long labels. Guide steps stay gold. A typed /way label and a
+    -- bare coordinate pair are body text (UIModern CLR_TEXT_PRIMARY).
     if #label > 35 then label = label:sub(1, 32) .. "..." end
-    if isManualWP and self.manualWaypoint.labeled then
+    local manual = isManualWP and self.manualWaypoint
+    if manual and (manual.labeled or manual.coordTitle) and f.titleF.SetTextColor then
         f.titleF:SetTextColor(0.92, 0.90, 0.87, 1)
-        AnchorWayCaption(f, true)
-    else
+    elseif f.titleF.SetTextColor then
         f.titleF:SetTextColor(1, 0.82, 0, 1)
+    end
+    if manual and manual.labeled then
+        AnchorWayCaption(f, true)
     end
     f.titleF:SetText(label)
 
@@ -594,65 +637,60 @@ function Arrow:Tick(f)
     end
     U.RevealWaypoint(f, true)
 
-    local dx          = cx - px
-    local dy          = cy - py
-    -- WoW map: Y increases southward. atan2(dx, -dy) gives clockwise bearing.
-    -- GetPlayerFacing() returns counter-clockwise radians from north.
-    -- The difference gives the screen-space rotation for the arrow texture.
-    local bearing     = math.atan2(dx, -dy)
-    
-    -- ── Player facing detection ───────────────────────────────────────
-    -- 12.0 PTR: GetPlayerFacing() is often restricted (returns nil or secret).
-    -- Fallback chain: GetPlayerFacing → Minimap rotation → movement inference.
-    local facing = nil
-    
-    -- Method 1: Direct API (works in open world on most builds)
-    local rawFacing = GetPlayerFacing()
-    if rawFacing then
-        facing = tonumber(tostring(rawFacing))
+    local dx, dy = cx - px, cy - py
+    -- World x is north, world y is west, both in yards. Distance is the
+    -- straight-line length. Bearing is counter-clockwise from north.
+    -- A missing world position, or two different continents, hides the
+    -- distance and keeps the map-fraction bearing.
+    local targetMap = (coordMap and coordMap ~= 0) and coordMap or currentMap
+    local WP = TA.Compat and TA.Compat.WorldPosFromMapPos
+    local pCont, pN, pW
+    local tCont, tN, tW
+    if WP then
+        pCont, pN, pW = WP(currentMap, px, py)
+        tCont, tN, tW = WP(targetMap, cx, cy)
     end
-    
-    -- Method 2: Minimap rotation (always available, same coordinate space)
-    if not facing and Minimap and Minimap.GetFacing then
-        local ok, rot = pcall(Minimap.GetFacing, Minimap)
-        if ok and rot then
-            facing = tonumber(tostring(rot))
-        end
+    local yards, bearing
+    -- A world north of 0 is a real position. Compare against nil, not truth.
+    if pCont ~= nil and pCont == tCont and pN ~= nil and pW ~= nil and tN ~= nil and tW ~= nil then
+        local dN = tN - pN
+        local dW = tW - pW
+        yards = math.sqrt(dN * dN + dW * dW)
+        bearing = math.atan2(dW, dN)
+    else
+        bearing = Arrow.Bearing(dx, dy)
     end
-    
-    -- Method 3: Infer from movement direction
-    if not facing then
-        -- Infer facing from movement direction
-        if self._lastPx and self._lastPy then
-            local mdx = px - self._lastPx
-            local mdy = py - self._lastPy
-            local moved = math.sqrt(mdx * mdx + mdy * mdy)
-            if moved > 0.0001 then
-                -- Player moved — use movement direction as facing
-                facing = math.atan2(mdx, -mdy)
-            else
-                -- Standing still — use last known facing or 0
-                facing = self._lastFacing or 0
-            end
-        else
-            facing = 0
-        end
+    local facing = ResolveFacing(self, px, py, pN, pW)
+    self._lastPx, self._lastPy = px, py
+    if pN ~= nil and pW ~= nil then
+        self._lastNorth, self._lastWest = pN, pW
+    else
+        self._lastNorth, self._lastWest = nil, nil
     end
-    self._lastPx = px
-    self._lastPy = py
-    self._lastFacing = facing
-
-    local targetAngle = bearing - facing
-
-    local yards = U.ComputeDistance(px, py, cx, cy)
-    local hollow = U.WaypointHollow(step)
-    local _, arrived = U.WaypointArrowAlpha(yards)
-
     -- Full-colour art. Fades between 8 and 5 yards, then the arrived ring.
-    -- SetRotation turns the arrow around its centre. No vertex tint.
-    U.PaintQuestArrow(f.arrowTex, f.arrivedTex, {
-        yards = yards, angle = targetAngle, hollow = hollow, size = f._arrowSize,
-    })
+    -- A missing world position is not arrival, and it does not invent yards.
+    -- No facing: hide the arrow. A guess of "north" aims the wrong way.
+    local hollow = U.WaypointHollow(step)
+    local arrived = false
+    if yards ~= nil then
+        local _
+        _, arrived = U.WaypointArrowAlpha(yards)
+    end
+    if facing then
+        self._lastFacing = facing
+    end
+    if facing or arrived then
+        local paintYards = yards
+        if paintYards == nil then paintYards = U.WAYPOINT_FADE_FAR end
+        U.PaintQuestArrow(f.arrowTex, f.arrivedTex, {
+            yards = paintYards,
+            angle = facing and (bearing - facing) or nil,
+            hollow = hollow,
+            size = f._arrowSize,
+        })
+    else
+        HideArrowArt(f)
+    end
 
     if arrived then
         if not self._arrived then
@@ -673,11 +711,17 @@ function Arrow:Tick(f)
         return
     end
 
+    self._arrived = false
+    if yards == nil then
+        f.distF:SetText("")
+        f.etaF:SetText("")
+        return
+    end
     f.distF:SetText(U.FormatDistance(yards, hollow))
 
-    self._arrived = false
-
     -- ── SPEED-SMOOTHED ETA ────────────────────────────────────────────
+    if not yards then return end
+
     -- Track distance changes over time and average over 2 samples to
     -- prevent ETA jitter from micro-movement and position snapping.
     local now = GetTime()
@@ -704,8 +748,9 @@ function Arrow:Tick(f)
             f.etaF:SetText("")
         end
     elseif avgSpeed < -0.5 then
-        -- Moving away
-        f.etaF:SetText("|cFFFF6666moving away|r")
+        -- Body color, one weight. The red color code read as a second style.
+        f.etaF:SetTextColor(0.92, 0.90, 0.87, 1)
+        f.etaF:SetText("moving away")
     else
         -- Standing still or moving perpendicular — use fallback speed
         local fallbackSpeed = GetTravelSpeed()
@@ -784,13 +829,15 @@ function Arrow:SetWaypoint(mapID, x, y, title)
         mapID = C_Map.GetBestMapForUnit("player") or 0
     end
     local labeled = type(title) == "string" and title ~= ""
+    local coordTitle = not labeled
     self.manualWaypoint = {
-        map   = mapID,
-        x     = x,
-        y     = y,
-        title = title or string.format("%.2f, %.2f", x * 100, y * 100),
-        -- A player-typed label is body text. The coordinate fallback is not.
-        labeled = labeled,
+        map        = mapID,
+        x          = x,
+        y          = y,
+        title      = coordTitle and string.format("%.2f, %.2f", x * 100, y * 100) or title,
+        -- A typed /way label and a bare coordinate pair are both body text.
+        labeled    = labeled,
+        coordTitle = coordTitle,
     }
     self._arrived = false
     self._arrivedTime = nil

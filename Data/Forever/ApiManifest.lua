@@ -39,6 +39,7 @@ TA.Data.ApiManifest = {
         ["C_Map.GetBestMapForUnit"] = { "Core/Utils.lua", "Modules/Automation/DeathRecovery.lua", "Modules/Farming/GatherTracker.lua", "Modules/Infrastructure/CoordHarvester.lua", "Modules/Infrastructure/Harvester.lua" },
         ["C_Map.GetMapInfo"] = { "Modules/Infrastructure/CoordHarvester.lua" },
         ["C_Map.GetPlayerMapPosition"] = { "Core/Utils.lua", "Modules/Automation/DeathRecovery.lua", "Modules/Farming/GatherTracker.lua", "Modules/Infrastructure/CoordHarvester.lua" },
+        ["C_Map.GetWorldPosFromMapPos"] = { "Core/Compat/API.lua" },
         ["C_MerchantFrame.GetItemInfo"] = { "Modules/Forever/Gear.lua" },
         ["C_MerchantFrame.GetItemLink"] = { "Modules/Forever/Gear.lua" },
         ["C_PaperDollInfo.OffhandHasWeapon"] = { "Modules/Harvest/Packs/Forever.lua" },

@@ -395,6 +395,12 @@ def check_arrow_paint(rel, label):
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(r"""
         ToonAge = { modules = {}, LOG = { OUTPUT = 0, INFO = 3 } }
+        ToonAge.Compat = {
+            WorldPosFromMapPos = function(mapID, x, y)
+                if type(x) ~= "number" or type(y) ~= "number" then return nil end
+                return 1, -y * 800, -x * 800
+            end,
+        }
         function ToonAge:RegisterModule(name, mod) self.modules[name] = mod; self[name] = mod end
         function ToonAge:RegisterEvent() end
         function ToonAge:GetModule() return nil end

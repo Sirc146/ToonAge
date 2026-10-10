@@ -648,4 +648,39 @@ function C.GuardMissingForeverAPIs()
     end
 end
 
+-- ── Map point → world yards ────────────────────────────────────────────────
+-- C_Map.GetWorldPosFromMapPos returns continentID and a vector whose x points
+-- north and whose y points west, already in yards. The arrow uses that for
+-- distance and bearing. A missing API returns nil so the caller can hide the
+-- distance instead of inventing a zone-sized yard.
+
+--- @param mapID number
+--- @param x number map fraction 0–1, east
+--- @param y number map fraction 0–1, south
+--- @return number|nil continentID
+--- @return number|nil north  world x, yards
+--- @return number|nil west   world y, yards
+function C.WorldPosFromMapPos(mapID, x, y)
+    if type(mapID) ~= "number" or mapID == 0 then return nil end
+    if type(x) ~= "number" or type(y) ~= "number" then return nil end
+    if TA.HasAPI and not TA:HasAPI("C_Map.GetWorldPosFromMapPos") then return nil end
+    if TA.HasAPI and not TA:HasAPI("CreateVector2D") then return nil end
+    if not (C_Map and type(C_Map.GetWorldPosFromMapPos) == "function") then return nil end
+    if type(CreateVector2D) ~= "function" then return nil end
+    local okVec, vec = pcall(CreateVector2D, x, y)
+    if not okVec or not vec then return nil end
+    local ok, continentID, world = pcall(C_Map.GetWorldPosFromMapPos, mapID, vec)
+    if not ok or continentID == nil then return nil end
+    if type(world) ~= "table" and type(world) ~= "userdata" then return nil end
+    local north, west = world.x, world.y
+    if type(north) ~= "number" or type(west) ~= "number" then
+        if type(world.GetXY) == "function" then
+            local okXY, a, b = pcall(world.GetXY, world)
+            if okXY then north, west = a, b end
+        end
+    end
+    if type(north) ~= "number" or type(west) ~= "number" then return nil end
+    return continentID, north, west
+end
+
 return C
