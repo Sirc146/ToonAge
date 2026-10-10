@@ -219,3 +219,12 @@ Classic Era or Mists guide content was invented.
    `GetVersatilityBonus` returning a secret value; the fix would be an
    `issecretvalue` guard that shows a dash instead of 0. Do not change
    the readout until that is confirmed on a character sheet.
+10. `Tools/test_harvest_capture.py` ("last scanned sits on the scan row")
+    fails on `test`. Older than PR #34; the next-3 bar did not cause it.
+    The check wants the Scan now / Notices on row to end in
+    `|Last scanned 12:26 AM`. `Hv:LastScannedLabel` in
+    `Modules/Infrastructure/Harvester.lua` formats the capture time with
+    `date("%I:%M %p")`, which is the host's local clock. Timestamp
+    `1791160000` is 12:26 AM in UTC, so the assertion fails in any other
+    timezone. Do not treat that one red check as a harvest regression
+    until the expected string is stable across timezones.
