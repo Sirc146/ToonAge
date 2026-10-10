@@ -384,14 +384,6 @@ function Arrow:Tick(f)
 
     -- GetPlayerFacing() works in MoP Classic
     local facing = GetPlayerFacing()
-    -- Minimap:GetFacing is unverified. Call it only when it is a function,
-    -- and only inside pcall. Otherwise skip it and keep going.
-    if not facing and type(Minimap) == "table" and type(Minimap.GetFacing) == "function" then
-        local ok, rot = pcall(Minimap.GetFacing, Minimap)
-        if ok and rot then
-            facing = tonumber(tostring(rot))
-        end
-    end
     if not facing then
         -- Fallback: infer from movement direction
         if self._lastPx and self._lastPy then

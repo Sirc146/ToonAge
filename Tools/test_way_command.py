@@ -807,49 +807,6 @@ def check_arrow_bearing(rel, label):
     check(f"{label} moving away is body color",
           (round(g(lua, "AWAY_R"), 2), round(g(lua, "AWAY_G"), 2), round(g(lua, "AWAY_B"), 2)),
           (0.92, 0.90, 0.87))
-    check(f"{label} minimap facing is called only as a function",
-          'type(Minimap.GetFacing) == "function"' in src)
-    check(f"{label} minimap facing is inside pcall",
-          "pcall(Minimap.GetFacing, Minimap)" in src)
-
-    # GetPlayerFacing is nil and the player has not moved, so the only extra
-    # facing is the minimap. A non-function is skipped. A function is used.
-    # A function that errors is skipped. Target is due west: angle +pi/2 means
-    # the facing stayed 0, and angle 0 means the facing was west.
-    lua.execute(r"""
-        local A = ToonAge.modules.Arrow
-        local function once(kind)
-            FACING = nil
-            PX, PY = 0.5, 0.5
-            A._lastPx, A._lastPy, A._lastFacing = nil, nil, nil
-            MINIMAP_CALLS = 0
-            if kind == "string" then
-                Minimap = { GetFacing = "nope" }
-            elseif kind == "error" then
-                Minimap = { GetFacing = function()
-                    MINIMAP_CALLS = MINIMAP_CALLS + 1
-                    error("unverified")
-                end }
-            else
-                Minimap = { GetFacing = function()
-                    MINIMAP_CALLS = MINIMAP_CALLS + 1
-                    return math.pi / 2
-                end }
-            end
-            A:SetWaypoint(84, 0.4, 0.5, "Mark")
-            A:Tick(A.frame)
-            return A.frame.arrowTex.rot, MINIMAP_CALLS
-        end
-        SKIP_ROT, SKIP_CALLS = once("string")
-        ERR_ROT, ERR_CALLS = once("error")
-        USE_ROT, USE_CALLS = once("fn")
-    """)
-    check(f"{label} a non-function minimap facing is skipped",
-          _angle_close(g(lua, "SKIP_ROT"), math.pi / 2) and g(lua, "SKIP_CALLS") == 0)
-    check(f"{label} a minimap facing error is skipped",
-          _angle_close(g(lua, "ERR_ROT"), math.pi / 2) and g(lua, "ERR_CALLS") == 1)
-    check(f"{label} a minimap facing function is used",
-          _angle_close(g(lua, "USE_ROT"), 0) and g(lua, "USE_CALLS") == 1)
 
 
 def main():
