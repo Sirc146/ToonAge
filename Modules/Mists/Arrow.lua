@@ -11,8 +11,10 @@
 --   - C_Map.GetBestMapForUnit exists in MoP Classic
 --
 -- Bearing math (WoW specifics):
---   Map-y increases SOUTHWARD, so atan2(dx, -dy) gives a clockwise bearing
---   where 0 = North, matching GetPlayerFacing() conventions.
+--   Map Y increases south. GetPlayerFacing is counter-clockwise from north,
+--   so the bearing is atan2(-dx, -dy): North 0, West +pi/2, East -pi/2.
+--   Facing comes from GetPlayerFacing only. A nil result hides the arrow
+--   unless a real step can stand in for it. The minimap rotation is not used.
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -49,6 +51,37 @@ end
 local function GetTravelSpeed()
     local TM = TA:GetModule("TravelModes")
     return (TM and TM:GetSpeed()) or 7
+end
+
+--- Bearing from the player to a map offset, in GetPlayerFacing's circle.
+--- dx is east (map X). dy is south (map Y grows south).
+--- North is 0, west is +pi/2, south is pi, east is -pi/2.
+function Arrow.Bearing(dx, dy)
+    return math.atan2(-(dx or 0), -(dy or 0))
+end
+
+-- GetPlayerFacing, or the direction of the last real step (same circle).
+-- The minimap rotation is a different angle and is not consulted. Nil means
+-- the arrow hides instead of pretending the player faces north.
+local function ResolveFacing(self, px, py)
+    if type(GetPlayerFacing) == "function" then
+        local ok, raw = pcall(GetPlayerFacing)
+        if ok and raw ~= nil then
+            local n = tonumber(tostring(raw))
+            if n then return n end
+        end
+    end
+    if self._lastPx and self._lastPy then
+        local mdx = px - self._lastPx
+        local mdy = py - self._lastPy
+        if math.sqrt(mdx * mdx + mdy * mdy) > 0.0001 then
+            return Arrow.Bearing(mdx, mdy)
+        end
+        if self._lastFacing then
+            return self._lastFacing
+        end
+    end
+    return nil
 end
 
 -- Resolve a step's map/x/y using CoordResolver (Classic priority chain)
@@ -328,30 +361,12 @@ function Arrow:Tick(f)
 
     local dx          = cx - px
     local dy          = cy - py
-    local bearing     = math.atan2(dx, -dy)
-
-    -- GetPlayerFacing() works in MoP Classic
-    local facing = GetPlayerFacing()
-    if not facing then
-        -- Fallback: infer from movement direction
-        if self._lastPx and self._lastPy then
-            local mdx = px - self._lastPx
-            local mdy = py - self._lastPy
-            local moved = math.sqrt(mdx * mdx + mdy * mdy)
-            if moved > 0.0001 then
-                facing = math.atan2(mdx, -mdy)
-            else
-                facing = self._lastFacing or 0
-            end
-        else
-            facing = 0
-        end
-    end
+    -- Same circle as GetPlayerFacing: counter-clockwise from north.
+    local bearing     = Arrow.Bearing(dx, dy)
+    local facing      = ResolveFacing(self, px, py)
     self._lastPx = px
     self._lastPy = py
-    self._lastFacing = facing
 
-    local targetAngle = bearing - facing
     local yards = U.ComputeDistance(px, py, cx, cy)
 
     -- ── ARRIVAL STATE ─────────────────────────────────────────────────
@@ -383,21 +398,27 @@ function Arrow:Tick(f)
 
     self._arrived = false
     f.greyTex:Hide()
-    f.arrowTex:Show()
 
-    -- ── DIRECTIONAL COLOR GRADIENT ────────────────────────────────────
-    local perc = math.abs((math.pi - math.abs(targetAngle)) / math.pi)
-    perc = math.max(0, math.min(1, perc))
+    -- No facing: hide the arrow. A guess of "north" aims the wrong way.
+    if facing then
+        self._lastFacing = facing
+        local targetAngle = bearing - facing
+        f.arrowTex:Show()
 
-    local r, g, b = ColorGradient(perc,
-        0.90, 0.20, 0.15,   -- red (facing away)
-        1.00, 0.80, 0.10,   -- yellow (sideways)
-        0.20, 0.92, 0.40    -- green (facing toward)
-    )
+        local perc = math.abs((math.pi - math.abs(targetAngle)) / math.pi)
+        perc = math.max(0, math.min(1, perc))
 
-    -- ── ROTATION (direct) ─────────────────────────────────────────────
-    f.arrowTex:SetRotation(targetAngle)
-    f.arrowTex:SetVertexColor(r, g, b, 1)
+        local r, g, b = ColorGradient(perc,
+            0.90, 0.20, 0.15,   -- red (facing away)
+            1.00, 0.80, 0.10,   -- yellow (sideways)
+            0.20, 0.92, 0.40    -- green (facing toward)
+        )
+
+        f.arrowTex:SetRotation(targetAngle)
+        f.arrowTex:SetVertexColor(r, g, b, 1)
+    else
+        f.arrowTex:Hide()
+    end
 
     -- ── DISTANCE ──────────────────────────────────────────────────────
     f.distF:SetText(U.FormatDistance(yards))
@@ -425,7 +446,9 @@ function Arrow:Tick(f)
             f.etaF:SetText("")
         end
     elseif avgSpeed < -0.5 then
-        f.etaF:SetText("|cFFFF6666moving away|r")
+        -- Body color, one weight. The red color code read as a second style.
+        f.etaF:SetTextColor(0.92, 0.90, 0.87, 1)
+        f.etaF:SetText("moving away")
     else
         local fallbackSpeed = GetTravelSpeed()
         if fallbackSpeed > 0 then
