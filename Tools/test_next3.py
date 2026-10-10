@@ -207,9 +207,19 @@ def test_predict_bar():
         ToonAge.Utils.TEX_PIP_CHARGED = "charged"
         ToonAge.charDB.predictBar = { visible = true }
         InCombatLockdown = function() return false end
+        -- 99 is not the old combo-point power id, so a hard-coded 4 or 5 fails.
+        Enum = { PowerType = { ComboPoints = 99 } }
         POWER = { cur = 0, max = 0 }
-        UnitPower = function() return POWER.cur end
-        UnitPowerMax = function() return POWER.max end
+        SECRET = false
+        UnitPower = function(unit, kind)
+            if unit ~= "player" or kind ~= Enum.PowerType.ComboPoints then return nil end
+            return POWER.cur
+        end
+        UnitPowerMax = function(unit, kind)
+            MAX_CALL = { unit, kind }
+            if unit ~= "player" or kind ~= Enum.PowerType.ComboPoints then return nil end
+            return POWER.max
+        end
         GetUnitChargedPowerPoints = function() return nil end
     """)
     lua.execute((ROOT / "Modules/Combat/Rotation.lua").read_text(encoding="utf-8"))
@@ -310,6 +320,33 @@ def test_predict_bar():
         R:UpdatePips()
         SIX_A = SLOT.border[4]
         SIX_GLOW = SLOT.glow.shown
+        function ToonAge.Utils.IsSecret(v)
+            return SECRET == true and v == POWER.max
+        end
+        local function at(cur, max)
+            R:PaintPredictSlot(SLOT, "Deathstalker's Mark", 457052, false)
+            POWER.cur, POWER.max = cur, max
+            SECRET = false
+            R:UpdatePips()
+            return SLOT.border[4], SLOT.glow.shown
+        end
+        M5A, M5G = at(5, 5)
+        M5PA, M5PG = at(4, 5)
+        M6A, M6G = at(6, 6)
+        M6PA, M6PG = at(5, 6)
+        M7A, M7G = at(7, 7)
+        M7PA, M7PG = at(6, 7)
+        R:PaintPredictSlot(SLOT, "Deathstalker's Mark", 457052, false)
+        POWER.cur, POWER.max = 7, nil
+        SECRET = false
+        R:UpdatePips()
+        NIL_A, NIL_GLOW = SLOT.border[4], SLOT.glow.shown
+        R:PaintPredictSlot(SLOT, "Deathstalker's Mark", 457052, false)
+        POWER.cur, POWER.max = 7, "secret"
+        SECRET = true
+        R:UpdatePips()
+        SEC_A, SEC_GLOW = SLOT.border[4], SLOT.glow.shown
+        ASKED = MAX_CALL and MAX_CALL[2]
     """)
     check("one filled slot uses the narrow tray", lua.eval("W1") == 88, lua.eval("W1"))
     check("the bar is tall enough for two name lines", lua.eval("H1") == 86, lua.eval("H1"))
@@ -339,6 +376,20 @@ def test_predict_bar():
           lua.eval("FIVE_A") == 0.85 and lua.eval("FIVE_GLOW") is False)
     check("six of six combo points is the full cue",
           lua.eval("SIX_A") == 1 and lua.eval("SIX_GLOW") is True)
+    check("max 5 lights the cue only when full",
+          lua.eval("M5A") == 1 and lua.eval("M5G") is True
+          and lua.eval("M5PA") == 0.85 and lua.eval("M5PG") is False)
+    check("max 6 lights the cue only when full",
+          lua.eval("M6A") == 1 and lua.eval("M6G") is True
+          and lua.eval("M6PA") == 0.85 and lua.eval("M6PG") is False)
+    check("max 7 lights the cue only when full",
+          lua.eval("M7A") == 1 and lua.eval("M7G") is True
+          and lua.eval("M7PA") == 0.85 and lua.eval("M7PG") is False)
+    check("a nil combo max does not light the cue",
+          lua.eval("NIL_A") == 0.85 and lua.eval("NIL_GLOW") is False)
+    check("a secret combo max does not light the cue",
+          lua.eval("SEC_A") == 0.85 and lua.eval("SEC_GLOW") is False)
+    check("max is read as combo points", lua.eval("ASKED") == 99)
     check("dropping below full hides the glow and restores the resting border",
           lua.eval("REST_A") == 0.85 and lua.eval("REST_GLOW") is False)
     check("a class without combo points does not repaint the slot",
@@ -354,6 +405,14 @@ def test_predict_bar():
           "SUCCESS" not in pips and "0.20, 0.92, 0.40" not in pips)
     check("the full cue is only cur >= max",
           "cur >= max" in pips and "cur >= 5" not in pips)
+    check("max is UnitPowerMax of combo points",
+          'max = UnitPowerMax("player", Enum.PowerType.ComboPoints)' in pips)
+    check("the cue does not fall back to a hard-coded power type",
+          " or 4" not in pips and " or 5" not in pips)
+    check("the bar comment matches when it is shown",
+          "shown when this spec has at least one pick" in src
+          and "hidden only when it has none" in src
+          and "starts hidden; shown during combat" not in src)
     glow = src[src.index("if i == 1 then"):src.index("icons[i] = frame")]
     check("slot 1 carries a soft additive gold glow",
           "UI-ActionButton-Border" in glow and 'SetBlendMode("ADD")' in glow
