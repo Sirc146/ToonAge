@@ -1,7 +1,8 @@
 -- ToonAge/Modules/Arrow.lua
 -- Draggable, scroll-to-resize, right-click-lockable HUD arrow.
--- Layout: arrow -> white distance -> grey ETA -> gold objective title.
--- A typed /way label sits 2px under the distance, in body text, and hides on arrival.
+-- Layout: arrow -> distance ("249 yd", one weight) -> typed label -> ETA ("18s").
+-- Distance and the ETA are body text. A typed /way label sits 2px under the
+-- distance, and the ETA is the third line under that label. It hides on arrival.
 --
 -- Bearing math (WoW specifics):
 --   Map-y increases SOUTHWARD, so atan2(dx, -dy) gives a clockwise bearing
@@ -369,16 +370,19 @@ function Arrow:InitFrame()
     arrivedTex:Hide()
     f.arrivedTex = arrivedTex
 
+    -- One string, one weight (style guide §19). OUTLINE is this project's bold,
+    -- and on Friz it makes the digits look heavier than "yd".
     local distF = f:CreateFontString(nil, "OVERLAY")
-    distF:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
-    distF:SetTextColor(1, 1, 1, 1)
+    distF:SetFont(STANDARD_TEXT_FONT, 14, "")
+    distF:SetTextColor(0.92, 0.90, 0.87, 1)
     distF:SetPoint("TOP", arrowTex, "BOTTOM", 0, 0)
     distF:SetJustifyH("CENTER")
     f.distF = distF
 
+    -- Same body text. Under a typed label this is the third line ("18s").
     local etaF = f:CreateFontString(nil, "OVERLAY")
-    etaF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-    etaF:SetTextColor(0.80, 0.80, 0.80, 1)
+    etaF:SetFont(STANDARD_TEXT_FONT, 10, "")
+    etaF:SetTextColor(0.92, 0.90, 0.87, 1)
     etaF:SetPoint("TOP", distF, "BOTTOM", 0, -2)
     etaF:SetJustifyH("CENTER")
     f.etaF = etaF
@@ -697,9 +701,8 @@ function Arrow:Tick(f)
         -- Player is actually moving toward the target
         local eta = yards / avgSpeed
         if eta < 3600 then
-            local mins = math.floor(eta / 60)
-            local secs = math.floor(eta % 60)
-            f.etaF:SetText(string.format("|cFFCCCCCC%d:%02d ETA|r", mins, secs))
+            -- Same body string as a standing ETA ("18s"), not a tinted clock.
+            f.etaF:SetText(U.FormatETA(yards, avgSpeed))
         else
             f.etaF:SetText("")
         end

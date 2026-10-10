@@ -485,6 +485,23 @@ local function SuiteGate(S)
     end
     S(PASS, format("%d/%d registered modules gated as expected", okCount, #names))
 
+    -- Manual Safe Mode sets _disabled and _safeSkipped together in InitModules.
+    -- RunModuleSlash refuses _disabled. A skip that left _disabled false would
+    -- still run the command, which is the hole the slash guard exists to close.
+    local safeBroken = {}
+    for _, name in ipairs(names) do
+        local mod = TA.modules[name]
+        if mod._safeSkipped and mod._disabled ~= true then
+            safeBroken[#safeBroken + 1] = name
+        end
+    end
+    if #safeBroken > 0 then
+        S(FAIL, "safe mode skip left _disabled false on " .. concat(safeBroken, ", ")
+            .. " -- the slash guard would still run it")
+    else
+        S(PASS, "a module skipped by manual Safe Mode has _disabled, so the slash guard catches it")
+    end
+
     if not p.allowAll then
         for _, name in ipairs(SortedKeys(p.modules)) do
             if not TA.modules[name] then

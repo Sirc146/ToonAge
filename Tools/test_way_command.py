@@ -445,7 +445,8 @@ def check_arrow_paint(rel, label):
         local A = ToonAge.modules.Arrow
         local f = Frame()
         A.frame = f
-        A:SetWaypoint(84, 0.50, 0.50, "The Bank")
+        -- 0.05 map units east of the player is 100 yards: one "%d yd" string.
+        A:SetWaypoint(84, 0.15, 0.20, "The Bank")
         A:Tick(f)
         FAR_TEX = f.arrowTex.tex
         FAR_ARROW = f.arrowTex.shown
@@ -453,15 +454,21 @@ def check_arrow_paint(rel, label):
         FAR_TITLE = f.titleF.text
         FAR_R, FAR_G, FAR_B = f.titleF.r, f.titleF.g, f.titleF.b
         FAR_DIST = f.distF.text
+        WANT_DIST = ToonAge.Utils.FormatDistance(ToonAge.Utils.ComputeDistance(0.10, 0.20, 0.15, 0.20))
+        FAR_ETA = f.etaF.text
         local a = f.titleF.anchor
         FAR_POINT, FAR_TO, FAR_X, FAR_Y = a[1], a[3], a[4], a[5]
         FAR_ON_DIST = a[2] == f.distF
+        local e = f.etaF.anchor
+        FAR_ETA_POINT, FAR_ETA_TO, FAR_ETA_X, FAR_ETA_Y = e[1], e[3], e[4], e[5]
+        FAR_ETA_ON_TITLE = e[2] == f.titleF
         A:SetWaypoint(84, 0.10, 0.20, "The Bank")
         A:Tick(f)
         NEAR_TEX = f.arrivedTex.tex
         NEAR_ARROW = f.arrowTex.shown
         NEAR_ARRIVED = f.arrivedTex.shown
         NEAR_DIST = f.distF.text
+        NEAR_ETA = f.etaF.text
         NEAR_TITLE = f.titleF.text
         A:ClearWaypoint()
         A:Tick(f)
@@ -480,7 +487,26 @@ def check_arrow_paint(rel, label):
     check(f"{label} /way label is body text, not gold",
           (round(g(lua, "FAR_R"), 2), round(g(lua, "FAR_G"), 2), round(g(lua, "FAR_B"), 2)),
           (0.92, 0.90, 0.87))
-    check(f"{label} distance is showing on the way", g(lua, "FAR_DIST") not in (None, ""))
+    check(f"{label} distance is one string in one weight",
+          g(lua, "FAR_DIST") == g(lua, "WANT_DIST")
+          and str(g(lua, "FAR_DIST")).endswith(" yd")
+          and "|c" not in str(g(lua, "FAR_DIST")))
+    check(f"{label} distance has no color code", "|c" not in (g(lua, "FAR_DIST") or ""))
+    check(f"{label} ETA is body text under the label", g(lua, "FAR_ETA"), "15s")
+    check(f"{label} ETA has no color code", "|c" not in (g(lua, "FAR_ETA") or ""))
+    check(f"{label} the ETA is the third line, 2px under the label",
+          g(lua, "FAR_ETA_ON_TITLE") and g(lua, "FAR_ETA_POINT") == "TOP"
+          and g(lua, "FAR_ETA_TO") == "BOTTOM" and g(lua, "FAR_ETA_X") == 0
+          and g(lua, "FAR_ETA_Y") == -2)
+    src = read(rel)
+    check(f"{label} distance font is body weight, not outline",
+          'distF:SetFont(STANDARD_TEXT_FONT, 14, "")' in src
+          and 'distF:SetTextColor(0.92, 0.90, 0.87, 1)' in src)
+    check(f"{label} ETA font is the same body weight",
+          'etaF:SetFont(STANDARD_TEXT_FONT, 10, "")' in src
+          and 'etaF:SetTextColor(0.92, 0.90, 0.87, 1)' in src)
+    check(f"{label} a moving ETA stays a plain duration",
+          "|cFFCCCCCC" not in src and "ETA|r" not in src)
     check(f"{label} the typed label is 2px under the distance",
           g(lua, "FAR_ON_DIST") and g(lua, "FAR_POINT") == "TOP" and g(lua, "FAR_TO") == "BOTTOM"
           and g(lua, "FAR_X") == 0 and g(lua, "FAR_Y") == -2)
@@ -488,6 +514,7 @@ def check_arrow_paint(rel, label):
     check(f"{label} arrival hides the pointing arrow", g(lua, "NEAR_ARROW"), False)
     check(f"{label} arrival shows the ring", g(lua, "NEAR_ARRIVED"), True)
     check(f"{label} arrival hides the distance text", g(lua, "NEAR_DIST"), "")
+    check(f"{label} arrival hides the ETA", g(lua, "NEAR_ETA"), "")
     check(f"{label} arrival hides the typed label", g(lua, "NEAR_TITLE"), "")
     check(f"{label} a guide step with no waypoint stays gold",
           g(lua, "IDLE_TITLE") == "No Waypoint"
