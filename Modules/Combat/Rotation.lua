@@ -655,9 +655,9 @@ local PREDICTION_COUNT = 3
 local ICON_SIZE = 40
 local ICON_GAP = 6
 local PREDICT_UPDATE_HZ = 0.15 -- refresh rate for prediction bar (slightly slower than CombatState)
-local SLOT_GOLD = { 0.910, 0.702, 0.353 }
+-- gold_accent #E8B35A. Slot borders and filled combo points share it.
+local SLOT_GOLD = { 232 / 255, 179 / 255, 90 / 255 }
 local BODY_TEXT = { 0.92, 0.90, 0.87 }
-local SUCCESS = { 0.20, 0.92, 0.40 }
 -- Icon, a two-line name, and the combo-point cue.
 local BAR_HEIGHT = ICON_SIZE + 46
 
@@ -827,6 +827,19 @@ function Rotation:InitPredictBar()
         if nameLabel.SetMaxLines then nameLabel:SetMaxLines(2) end
         if nameLabel.SetNonSpaceWrap then nameLabel:SetNonSpaceWrap(true) end
         frame.nameLabel = nameLabel
+
+        if i == 1 then
+            -- Soft gold glow behind slot 1. UpdatePips shows it only when
+            -- combo points are full, so the resting 0.85 border stays plain.
+            local glowTex = frame:CreateTexture(nil, "OVERLAY")
+            glowTex:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+            glowTex:SetBlendMode("ADD")
+            glowTex:SetPoint("CENTER")
+            glowTex:SetSize(ICON_SIZE + 18, ICON_SIZE + 18)
+            glowTex:SetVertexColor(SLOT_GOLD[1], SLOT_GOLD[2], SLOT_GOLD[3], 0.45)
+            glowTex:Hide()
+            frame.glow = glowTex
+        end
 
         icons[i] = frame
     end
@@ -1055,10 +1068,14 @@ function Rotation:UpdatePips()
     local chargedList = GetUnitChargedPowerPoints and GetUnitChargedPowerPoints("player")
     local secret = (U.IsSecret and (U.IsSecret(cur) or U.IsSecret(max) or U.IsSecret(chargedList)))
     cur, max = tonumber(cur), tonumber(max)
-    -- No readable combo points: this is not a combo-point cue. Leave the
-    -- slot borders gold.
+    local slot = self.predictIcons and self.predictIcons[1]
+    local function HideFullCue()
+        if slot and slot.glow then slot.glow:Hide() end
+    end
+    -- No readable combo points. Leave the slot borders as they were painted.
     if secret or not cur or not max or max <= 0 then
         row:Hide()
+        HideFullCue()
         return
     end
     local charged = {}
@@ -1066,6 +1083,7 @@ function Rotation:UpdatePips()
         for _, idx in ipairs(chargedList) do
             if U.IsSecret and U.IsSecret(idx) then
                 row:Hide()
+                HideFullCue()
                 return
             end
             charged[tonumber(idx) or -1] = true
@@ -1084,8 +1102,8 @@ function Rotation:UpdatePips()
                 tex:SetVertexColor(1, 1, 1, 1)
             elseif i <= cur then
                 tex:SetTexture(base)
-                -- Green is the combo-point cue only. Slot borders stay gold.
-                tex:SetVertexColor(SUCCESS[1], SUCCESS[2], SUCCESS[3], 1)
+                -- gold_accent #E8B35A
+                tex:SetVertexColor(SLOT_GOLD[1], SLOT_GOLD[2], SLOT_GOLD[3], 1)
             else
                 tex:SetTexture(ring)
                 tex:SetVertexColor(0.70, 0.68, 0.62, 0.85)
@@ -1096,6 +1114,14 @@ function Rotation:UpdatePips()
         end
     end
     row:Show()
+    -- Full combo points: slot 1's border is the same gold at full alpha,
+    -- plus the soft glow, so it reads apart from the 0.85 resting border.
+    if slot and cur >= max then
+        slot:SetBackdropBorderColor(SLOT_GOLD[1], SLOT_GOLD[2], SLOT_GOLD[3], 1)
+        if slot.glow then slot.glow:Show() end
+    else
+        HideFullCue()
+    end
 end
 
 function Rotation:ShowPredictBar()

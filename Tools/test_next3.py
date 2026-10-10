@@ -228,6 +228,11 @@ def test_predict_bar():
             end
             function frame:Show() self.shown = true end
             function frame:Hide() self.shown = false end
+            frame.glow = {
+                Show = function(self) self.shown = true end,
+                Hide = function(self) self.shown = false end,
+                shown = false,
+            }
             return frame
         end
         local bar = { alpha = 1, shown = true, w = 200, h = 68 }
@@ -275,14 +280,36 @@ def test_predict_bar():
         A0O, S0O = bar.alpha, bar.shown
         POWER.cur, POWER.max = 4, 5
         R:UpdatePips()
-        CUE = PIP.r
+        CUE_R, CUE_G, CUE_B = PIP.r, PIP.g, PIP.b
         ROW = R.pipRow.shown
+        PARTIAL_A = SLOT.border[4]
+        PARTIAL_GLOW = SLOT.glow.shown
+        POWER.cur, POWER.max = 5, 5
+        R:UpdatePips()
+        FULL_A = SLOT.border[4]
+        FULL_R, FULL_G, FULL_B = SLOT.border[1], SLOT.border[2], SLOT.border[3]
+        FULL_GLOW = SLOT.glow.shown
+        R:PaintPredictSlot(SLOT, "Deathstalker's Mark", 457052, false)
+        POWER.cur = 3
+        R:UpdatePips()
+        REST_A = SLOT.border[4]
+        REST_GLOW = SLOT.glow.shown
         local before = SLOT.border[1]
         POWER.cur, POWER.max = 0, 0
         R:UpdatePips()
         BORDER_AFTER = SLOT.border[1]
         BORDER_BEFORE = before
         ROW0 = R.pipRow.shown
+        GLOW0 = SLOT.glow.shown
+        R:PaintPredictSlot(SLOT, "Deathstalker's Mark", 457052, false)
+        POWER.cur, POWER.max = 5, 6
+        R:UpdatePips()
+        FIVE_A = SLOT.border[4]
+        FIVE_GLOW = SLOT.glow.shown
+        POWER.cur = 6
+        R:UpdatePips()
+        SIX_A = SLOT.border[4]
+        SIX_GLOW = SLOT.glow.shown
     """)
     check("one filled slot uses the narrow tray", lua.eval("W1") == 88, lua.eval("W1"))
     check("the bar is tall enough for two name lines", lua.eval("H1") == 86, lua.eval("H1"))
@@ -298,17 +325,39 @@ def test_predict_bar():
     check("the slot border stays gold",
           (round(lua.eval("BR"), 3), round(lua.eval("BG"), 3), round(lua.eval("BB"), 3))
           == (0.910, 0.702, 0.353))
-    check("combo points use the green cue", lua.eval("CUE") == 0.20 and lua.eval("ROW") is True)
+    check("filled combo points are gold_accent",
+          (round(lua.eval("CUE_R"), 3), round(lua.eval("CUE_G"), 3), round(lua.eval("CUE_B"), 3))
+          == (0.910, 0.702, 0.353) and lua.eval("ROW") is True)
+    check("a partial combo bar keeps the resting border",
+          lua.eval("PARTIAL_A") == 0.85 and lua.eval("PARTIAL_GLOW") is False)
+    check("full combo points raise slot 1 to full alpha",
+          lua.eval("FULL_A") == 1
+          and (round(lua.eval("FULL_R"), 3), round(lua.eval("FULL_G"), 3), round(lua.eval("FULL_B"), 3))
+          == (0.910, 0.702, 0.353))
+    check("full combo points show the soft gold glow", lua.eval("FULL_GLOW") is True)
+    check("five of six combo points is not full",
+          lua.eval("FIVE_A") == 0.85 and lua.eval("FIVE_GLOW") is False)
+    check("six of six combo points is the full cue",
+          lua.eval("SIX_A") == 1 and lua.eval("SIX_GLOW") is True)
+    check("dropping below full hides the glow and restores the resting border",
+          lua.eval("REST_A") == 0.85 and lua.eval("REST_GLOW") is False)
     check("a class without combo points does not repaint the slot",
-          lua.eval("BORDER_AFTER") == lua.eval("BORDER_BEFORE") and lua.eval("ROW0") is False)
+          lua.eval("BORDER_AFTER") == lua.eval("BORDER_BEFORE")
+          and lua.eval("ROW0") is False and lua.eval("GLOW0") is False)
     src = (ROOT / "Modules/Combat/Rotation.lua").read_text(encoding="utf-8")
     bar = src[src.index('CreateFrame("Button", "TARotationPredictBar"'):src.index("function Rotation:UpdatePrediction")]
     check("predict names wrap onto two lines", "SetWordWrap(true)" in bar and "SetMaxLines" in bar)
     check("the rotation tab says there are no suggestions",
           src.count('SetText("No suggestions for this spec")') >= 2)
     pips = src[src.index("function Rotation:UpdatePips"):src.index("function Rotation:ShowPredictBar")]
-    check("the combo cue is the only green on the bar",
-          "SetBackdropBorderColor(0.20, 0.92, 0.40" not in pips and "SUCCESS" in pips)
+    check("filled combo points are not painted green",
+          "SUCCESS" not in pips and "0.20, 0.92, 0.40" not in pips)
+    check("the full cue is only cur >= max",
+          "cur >= max" in pips and "cur >= 5" not in pips)
+    glow = src[src.index("if i == 1 then"):src.index("icons[i] = frame")]
+    check("slot 1 carries a soft additive gold glow",
+          "UI-ActionButton-Border" in glow and 'SetBlendMode("ADD")' in glow
+          and "0.45" in glow)
 
 
 test_predict_bar()
