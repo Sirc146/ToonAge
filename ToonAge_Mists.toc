@@ -48,6 +48,7 @@ Data\Mists\Spells.lua
 Data\Mists\ItemLevels.lua
 Data\Mists\PetFoods.lua
 Data\Mists\ProfessionSkills.lua
+Data\Mists\RotationLists.lua
 
 # ── Guide Data (Mists) ─────────────────────────────────────────────────
 Data\Mists\Guides\TAG_Exiles_Reach.lua

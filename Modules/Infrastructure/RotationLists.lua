@@ -326,6 +326,50 @@ function RL.Resolve(data, classToken, specName, level, mode)
     }
 end
 
+--- Unique spell ids in this spec's single-target and AoE lists. Emergency
+--- and solo rows are not the rotation, so they are not counted.
+function RL.CountSpecIDs(data, classToken, specName)
+    data = data or (TA.Data and TA.Data.RotationLists)
+    local classNode = RL.ClassNode(data, classToken)
+    if not classNode or type(specName) ~= "string" then return 0 end
+    local spec = SpecNode(classNode, specName)
+    if not spec then return 0 end
+    local seen = {}
+    local function addList(list)
+        local n = 0
+        if type(list) ~= "table" then return 0 end
+        for _, entry in ipairs(list) do
+            if IsEntry(entry) then
+                for _, id in ipairs(RankList(entry)) do
+                    if not seen[id] then
+                        seen[id] = true
+                        n = n + 1
+                    end
+                end
+            end
+        end
+        return n
+    end
+    local function addBands(bands)
+        local n = 0
+        for _, band in ipairs(bands or {}) do
+            n = n + addList(ListFrom(band, "st"))
+            n = n + addList(ListFrom(band, "aoe"))
+        end
+        return n
+    end
+    local bands = BandsOf(spec)
+    if #bands > 0 then return addBands(bands) end
+    local n = 0
+    for key, child in pairs(spec) do
+        if type(key) == "string" and type(child) == "table" and not SKIP_KEY[key]
+            and not ParseLevelKey(key) then
+            n = n + addBands(BandsOf(child))
+        end
+    end
+    return n
+end
+
 --- First three spells for the gold bar. In combat on Retail and Forever the
 --- caller passes Assisted Combat's spell as the first slot. A secret result
 --- is passed as nil, so the fixed list stays as it was set up.

@@ -238,9 +238,10 @@ def test_scaffold_tocs_are_core_only():
         # Classic Era ships the shared profession readout and nothing else.
         # Cata and Wrath stay core-only.
         if name == "ToonAge_Vanilla.toc":
-            check("vanilla: data is only the profession skill list",
+            check("vanilla: data is the profession list and the era rotation list",
                   [f for f in files if f.startswith("Data/")],
-                  ["Data/Vanilla/ProfessionSkills.lua"])
+                  ["Data/Vanilla/ProfessionSkills.lua",
+                   "Data/Vanilla/RotationLists.lua"])
             mods = [f for f in files if f.startswith("Modules/") and f != SELFTEST]
             check("vanilla: ErrorLog, the profession readout, the rotation list and probes",
                   sorted(mods),
@@ -336,6 +337,7 @@ def test_forever_toc_carries_no_retail_content():
     45 guide files, 433 KB of retail rotations, on a Vanilla-era client that
     can use none of it.
     """
+    import re
     p = ROOT / FOREVER_TOC
     check("Forever TOC exists", p.exists(), True)
     if not p.exists():
@@ -370,8 +372,20 @@ def test_forever_toc_carries_no_retail_content():
                 return "unverified = true" in (ROOT / f).read_text(encoding="utf-8")
             except OSError:
                 return False
+        # Chronicler's Forever rotation list. Entries stay verified=false, and
+        # the file flag marks every row approximate. A verified=true entry
+        # drops the exception.
+        if f == "Data/Forever/RotationLists.lua":
+            try:
+                text = (ROOT / f).read_text(encoding="utf-8")
+            except OSError:
+                return False
+            # "unverified = true" contains the letters "verified = true", so
+            # the entry check has to ignore that prefix.
+            bad = re.search(r"(?<![A-Za-z])verified\s*=\s*true", text)
+            return "unverified = true" in text and not bad
         return False
-    check("Forever: ships no game data beyond the manifest, the sourced coach, measured harvest data and the unverified profession list",
+    check("Forever: ships no game data beyond the manifest, the sourced coach, measured harvest data, the unverified profession list and the unverified rotation list",
           [f for f in data if not allowed_data(f)], [])
     coach = ROOT / "Data/Forever/Coach.lua"
     if coach.exists():
