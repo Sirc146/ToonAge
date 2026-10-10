@@ -109,6 +109,7 @@ def test_nonretail_explicit_list():
     # retail-only module (Delves) is NOT.
     check("tbc allows its own Gear",       ta.ModuleInProfile(ta, "Gear"), True)
     check("tbc allows StatCaps",           ta.ModuleInProfile(ta, "StatCaps"), True)
+    check("tbc allows the probe core",     ta.ModuleInProfile(ta, "DataHarvester"), True)
     check("tbc denies retail-only Delves", ta.ModuleInProfile(ta, "Delves"), False)
     allowed, reason = ta.ModuleAllowed(ta, "Delves")
     check("tbc ModuleAllowed(Delves) false", allowed, False)
@@ -121,6 +122,7 @@ def test_scaffolds_inert():
         _, ta = load_profile(pid, ic)
         check(f"{dataname}: scaffold flag", ta.GetProfile(ta).scaffold, True)
         check(f"{dataname}: no modules allowed", ta.ModuleInProfile(ta, "Gear"), False)
+        check(f"{dataname}: probes are allowed", ta.ModuleInProfile(ta, "DataHarvester"), True)
     # 'forever' IS reachable since the 2026-09 beta (Mainline id + 16001). It
     # ships shared infrastructure only: no game-rule module may be allowed,
     # because Data/Forever does not exist yet.
@@ -187,6 +189,11 @@ def test_scaffolds_inert():
           [t.id for t in era.ProfileTabs(era).values()], ["professions", "reputations", "rotation"])
     check("vanilla allows RotationBoard",
           era.ModuleInProfile(era, "RotationBoard"), True)
+    check("vanilla allows the probe core",
+          era.ModuleInProfile(era, "DataHarvester"), True)
+    _, mop = load_profile(19, 50504)
+    check("mists allows the probe core",
+          mop.ModuleInProfile(mop, "DataHarvester"), True)
 
 
 def test_unknown_fallback():

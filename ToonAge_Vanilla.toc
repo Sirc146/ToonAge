@@ -33,6 +33,7 @@ Core\UIModern.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Caps.lua
 Core\Analytics.lua
 Core\Layout.lua
 
@@ -44,6 +45,9 @@ Modules\Progression\FactionTracker.lua
 
 # ── Shared infrastructure (no game-rule content) ───────────────────────
 Modules\Infrastructure\ErrorLog.lua
+# Shared probes (waypoint APIs included). No Era harvest pack, so this
+# records nothing; /ta probe still runs. The arrow is not ported here.
+Modules\Infrastructure\Harvester.lua
 # Shared spell/item button. Hidden until a feature offers a candidate.
 Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\RotationLists.lua

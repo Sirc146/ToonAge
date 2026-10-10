@@ -30,7 +30,7 @@
 --   * Modules/Harvest/Packs/<Client>.lua -- which domains this client runs,
 --     its catalog ranges, its own probes and tab rows. The TOC is the
 --     packaging gate: a client's TOC lists only its own pack. With no pack for
---     this client the module stands down at Init.
+--     this client recording stands down at Init. Shared probes still run.
 
 local TA = ToonAge
 
@@ -1291,8 +1291,101 @@ local CORE_PROBES = {
         end
     end },
 
+    -- Waypoint APIs the arrow would need. Every client runs this section,
+    -- including ones with no arrow yet, so a probe says whether a port is
+    -- possible. The calls live in Core/Compat/API.lua. ApiGuard's HasAPI
+    -- refuses a name the manifest measured as missing; Compat does not call
+    -- a function this client does not have. UnitPosition returns nil inside
+    -- an instance, so the instance line is recorded beside it.
     map = { title = "Map", run = function(P, L)
-        P.Call(L, "C_Map.GetBestMapForUnit(player)", "C_Map.GetBestMapForUnit", "player")
+        local C = TA.Compat
+        local function present(path)
+            return C and C.APIPresent and C.APIPresent(path)
+        end
+        local function emit(label, ok, ...)
+            if not ok then
+                local err = ...
+                if err == "missing" then
+                    L[#L + 1] = label .. "  ->  missing"
+                else
+                    L[#L + 1] = label .. "  ->  error: " .. tostring(err)
+                end
+                return
+            end
+            local res = { ... }
+            local parts = {}
+            for i = 1, math.max(#res, 1) do parts[#parts + 1] = P.Show(res[i]) end
+            L[#L + 1] = label .. "  ->  " .. concat(parts, ", ")
+        end
+        local function call(path, ...)
+            if not C or not C.CallAPI then return false, "missing" end
+            return C.CallAPI(path, ...)
+        end
+
+        if not present("IsInInstance") then
+            L[#L + 1] = "IsInInstance()  ->  missing"
+        else
+            local ok, inside, kind = call("IsInInstance")
+            if not ok then
+                L[#L + 1] = "IsInInstance()  ->  error: " .. tostring(inside)
+            else
+                local line = "IsInInstance()  ->  " .. P.Show(inside) .. ", " .. P.Show(kind)
+                if inside == true then
+                    line = line .. " (inside an instance; UnitPosition returns nil here)"
+                end
+                L[#L + 1] = line
+            end
+        end
+        emit("UnitPosition(player)", call("UnitPosition", "player"))
+        local best = { call("C_Map.GetBestMapForUnit", "player") }
+        emit("C_Map.GetBestMapForUnit(player)", unpack(best))
+        local mapID = (best[1] and type(best[2]) == "number") and best[2] or nil
+
+        -- Each position API gets its own line. MapPositionFn does not fall
+        -- back, so a present global is not reported as the namespaced call.
+        local function exact(path)
+            return C and C.MapPositionFn and C.MapPositionFn(path)
+        end
+        local function exactCall(path, ...)
+            local fn = exact(path)
+            if type(fn) ~= "function" then return false, "missing" end
+            return pcall(fn, ...)
+        end
+
+        local pos
+        if not exact("C_Map.GetPlayerMapPosition") then
+            L[#L + 1] = "C_Map.GetPlayerMapPosition  ->  missing"
+        elseif not mapID then
+            L[#L + 1] = "C_Map.GetPlayerMapPosition  ->  present, no sample (no map id)"
+        else
+            local got = { exactCall("C_Map.GetPlayerMapPosition", mapID, "player") }
+            emit("C_Map.GetPlayerMapPosition(" .. tostring(mapID) .. ", player)", unpack(got))
+            if got[1] then pos = got[2] end
+        end
+
+        local legacy = { exactCall("GetPlayerMapPosition", "player") }
+        emit("GetPlayerMapPosition(player)", unpack(legacy))
+
+        if not present("C_Map.GetWorldPosFromMapPos") then
+            L[#L + 1] = "C_Map.GetWorldPosFromMapPos  ->  missing"
+        elseif not (mapID and pos) then
+            L[#L + 1] = "C_Map.GetWorldPosFromMapPos  ->  present, no sample (no player map position)"
+        else
+            local w = { call("C_Map.GetWorldPosFromMapPos", mapID, pos) }
+            emit("C_Map.GetWorldPosFromMapPos(" .. tostring(mapID) .. ", playerPos)", unpack(w))
+        end
+
+        local rot, rotErr = "missing", nil
+        if C and C.ProbeTextureSetRotation then
+            rot, rotErr = C.ProbeTextureSetRotation()
+        end
+        if rot == "ok" then
+            L[#L + 1] = "Texture:SetRotation(0)  ->  present, sample ok"
+        elseif rot == "error" then
+            L[#L + 1] = "Texture:SetRotation(0)  ->  present, error: " .. tostring(rotErr)
+        else
+            L[#L + 1] = "Texture:SetRotation  ->  missing"
+        end
     end },
 
     -- One line per profession skill line the running client can read:
@@ -1375,6 +1468,7 @@ function H:View()
 end
 
 function H:OnEvent(event, ...)
+    if self._probesOnly then return end
     if event == "SPELL_DATA_LOAD_RESULT" then
         Hv:OnSpellData(...)
         return
@@ -1397,6 +1491,7 @@ function H:OnEvent(event, ...)
 end
 
 function H:OnEnterWorld()
+    if self._probesOnly then return end
     RunEach(Hv:ActiveDomains(), "OnEnterWorld")
     Hv:Request("full", function() Hv:StartScan() end)
 end
@@ -1799,12 +1894,14 @@ end
 function H:Init()
     -- The pack is the packaging gate's runtime half: a client's TOC lists only
     -- its own pack, so no pack (or another client's) means this client does
-    -- not record. Only Forever ships a pack so far (spec T6-T9 add the rest).
+    -- not record. Shared probes still run (/ta probe), including the waypoint
+    -- API checks, on TBC, Era and every other client that loads this file.
     local pack = Hv._pack
     if not pack or pack.client ~= TA.flavor then
-        self._disabled = true
+        self._probesOnly = true
         return
     end
+    self._probesOnly = nil
     Hv:Activate()
 
     -- Combat end resumes a scan that was queued. Skill and trade-skill

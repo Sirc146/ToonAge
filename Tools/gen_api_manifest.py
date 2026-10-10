@@ -86,7 +86,13 @@ BARE_GLOBALS = [
     "GetQuestItemInfo", "GetNumQuestItems", "QuestProgressRequiresGold",
     "GetQuestMoneyToGet", "IsQuestCompletable", "QuestIsFromAreaTrigger",
     "GetNumAvailableQuests", "GetNumActiveQuests", "SelectAvailableQuest",
-    "SelectActiveQuest", "UnitIsInMyGuild", "GetRealmName",
+    "SelectActiveQuest", "UnitIsInMyGuild",     "GetRealmName",
+    # Arrow probe. UnitPosition is nil inside an instance; IsInInstance is
+    # how the probe says so. Both are absent on some clients this addon ships.
+    "IsInInstance", "UnitPosition",
+    # Legacy player position. Measured on its own so ApiGuard can say whether
+    # the global exists. It is not a stand-in for C_Map.GetPlayerMapPosition.
+    "GetPlayerMapPosition",
 ]
 
 RE_BARE = re.compile(r'(?<![\w.:])(' + "|".join(BARE_GLOBALS) + r')\s*\(')

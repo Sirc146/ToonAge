@@ -631,6 +631,100 @@ function C.SpecFromTraitSections()
     return C.SpecFromSections(sections, PlayerClassToken())
 end
 
+-- ── Waypoint APIs (arrow probe) ──────────────────────────────────────────
+-- The harvest map probe asks these on every client. Feature code must not
+-- call them itself: ApiGuard reports a name from the manifest as missing,
+-- and the type check below covers a client whose manifest has not measured
+-- the name yet. A missing function is not called.
+-- Texture:SetRotation is a widget method, not a global, so ApiGuard has no
+-- path for it. ProbeTextureSetRotation is the one place that samples it.
+
+local function WaypointAllowed(path)
+    if TA.HasAPI and not TA:HasAPI(path) then return false end
+    return true
+end
+
+--- One position API, with no fallback. The probe prints a line per name, so
+--- the namespaced function and the legacy global are resolved separately.
+function C.MapPositionFn(path)
+    if not WaypointAllowed(path) then return nil end
+    if path == "C_Map.GetPlayerMapPosition" then
+        if not (C_Map and type(C_Map.GetPlayerMapPosition) == "function") then return nil end
+        return function(mapID, unit) return C_Map.GetPlayerMapPosition(mapID, unit) end
+    end
+    if path == "GetPlayerMapPosition" then
+        if type(GetPlayerMapPosition) ~= "function" then return nil end
+        return function(unit) return GetPlayerMapPosition(unit or "player") end
+    end
+    return nil
+end
+
+--- The function for a waypoint API path, or nil when ApiGuard or this client
+--- says it is not there. C_Map.GetPlayerMapPosition resolves only that
+--- function. The legacy global is a different call, sampled on its own probe
+--- line, and is never returned in its place: the two shapes do not match.
+function C.WaypointFn(path)
+    if path == "C_Map.GetPlayerMapPosition" or path == "GetPlayerMapPosition" then
+        return C.MapPositionFn(path)
+    end
+    if not WaypointAllowed(path) then return nil end
+    if path == "IsInInstance" then
+        if type(IsInInstance) ~= "function" then return nil end
+        return function() return IsInInstance() end
+    end
+    if path == "UnitPosition" then
+        if type(UnitPosition) ~= "function" then return nil end
+        return function(unit) return UnitPosition(unit) end
+    end
+    if path == "C_Map.GetBestMapForUnit" then
+        if not (C_Map and type(C_Map.GetBestMapForUnit) == "function") then return nil end
+        return function(unit) return C_Map.GetBestMapForUnit(unit) end
+    end
+    if path == "C_Map.GetWorldPosFromMapPos" then
+        if not (C_Map and type(C_Map.GetWorldPosFromMapPos) == "function") then return nil end
+        return function(mapID, pos) return C_Map.GetWorldPosFromMapPos(mapID, pos) end
+    end
+    return nil
+end
+
+function C.APIPresent(path)
+    return type(C.WaypointFn(path)) == "function"
+end
+
+--- false, "missing" when the API is absent. Otherwise the pcall result.
+function C.CallAPI(path, ...)
+    local fn = C.WaypointFn(path)
+    if type(fn) ~= "function" then return false, "missing" end
+    return pcall(fn, ...)
+end
+
+--- "ok", or "error", message, or "missing". Samples Texture:SetRotation(0).
+--- The frame and texture are created once and kept on the DataHarvester module.
+function C.ProbeTextureSetRotation()
+    local host = (TA.modules and TA.modules.DataHarvester) or C
+    local tex = host._probeRotationTex
+    if type(tex) ~= "table" then
+        if type(CreateFrame) ~= "function" then return "missing" end
+        local frame = host._probeRotationFrame
+        if type(frame) ~= "table" or type(frame.CreateTexture) ~= "function" then
+            local okF, made = pcall(CreateFrame, "Frame")
+            if not okF or type(made) ~= "table" or type(made.CreateTexture) ~= "function" then
+                return "missing"
+            end
+            frame = made
+            host._probeRotationFrame = frame
+        end
+        local okT, madeT = pcall(frame.CreateTexture, frame)
+        if not okT or type(madeT) ~= "table" then return "missing" end
+        tex = madeT
+        host._probeRotationTex = tex
+    end
+    if type(tex.SetRotation) ~= "function" then return "missing" end
+    local okR, err = pcall(tex.SetRotation, tex, 0)
+    if okR then return "ok" end
+    return "error", err
+end
+
 --- The functions Forever 1.60.1 does not have. Each call is behind a type
 --- check so a missing global is nil, not an error. The call text is what
 --- puts the name in the ApiGuard manifest (Tools/gen_api_manifest.py).

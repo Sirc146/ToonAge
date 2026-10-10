@@ -47,9 +47,9 @@ everything = "\n".join([core, pack] + domains)
 # ── Only where it has a pack ─────────────────────────────────────────────
 check("the core registers the module as DataHarvester", 'TA:RegisterModule("DataHarvester", H)' in core)
 init = core[core.index("function H:Init()"):]
-check("Init stands down without this client's pack",
+check("Init stands down recording without this client's pack",
       "if not pack or pack.client ~= TA.flavor then" in init)
-check("and disables itself when it does", "self._disabled = true" in init)
+check("and keeps shared probes available when it does", "self._probesOnly = true" in init)
 check("the stand-down happens before any event registers",
       init.index("pack.client ~= TA.flavor") < init.index("RegisterEvent"))
 check("Forever's pack names its client", 'client  = "forever"' in pack)
@@ -120,11 +120,9 @@ check("trainer ranks and the spell catalog have copy buttons (R8)",
 check("clearing takes two clicks", "_confirmClear" in core)
 
 # ── Wiring ───────────────────────────────────────────────────────────────
-# Forever's TOC is the ONLY one that ships the recorder (core, domains, pack).
-# It rode along in the retail TOCs while Mainline still claimed 16001 and
-# Forever could fall through to it; neither is true now. D6 (2026-10-04)
-# reverses this for Retail in T9, when Retail gets its own pack; until then
-# shipping it there would just be dead weight on every retail player's disk.
+# Forever is the only client that records (core + domains + pack + Harvest tab).
+# Every other TOC ships the shared probe core so /ta probe can read the
+# waypoint APIs, including TBC and Era. Those TOCs list no harvest domain or pack.
 check("forever ships the harvester", "DataHarvester    = true," in pf)
 check("forever gets a Harvest tab",
       '{ id = "harvest",    label = "Harvest",    module = "DataHarvester" }' in pf)
@@ -133,10 +131,16 @@ check("Forever's TOC lists the core and its pack",
       "Modules\\Infrastructure\\Harvester.lua" in cam and "Modules\\Harvest\\Packs\\Forever.lua" in cam)
 for toc in ("ToonAge.toc", "ToonAge_Mainline.toc"):
     t = read(toc)
-    check(f"{toc} does NOT ship it",
-          "Modules\\Infrastructure\\Harvester.lua" not in t and "Modules\\Harvest\\" not in t)
+    check(f"{toc} ships the probe core", "Modules\\Infrastructure\\Harvester.lua" in t)
+    check(f"{toc} ships no harvest domain or pack", "Modules\\Harvest\\" not in t)
 # It draws through the shared Layout, so the TOC that ships it needs that.
 check("Forever's TOC lists Core\\Layout.lua", "Core\\Layout.lua" in cam)
+# The arrow probe asks Compat, which is what ApiGuard measures. A Caps.Fn
+# lookup of these names would be a raw global read the manifest never sees.
+map_probe = core[core.index('map = { title = "Map"'):core.index("professionLines")]
+check("the map probe calls Compat, not Caps",
+      "C.CallAPI" in map_probe and 'Caps.Fn("UnitPosition")' not in map_probe
+      and 'Caps.Fn("C_Map.GetWorldPosFromMapPos")' not in map_probe)
 
 passed, total = sum(_res), len(_res)
 print(f"[{'OK' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")

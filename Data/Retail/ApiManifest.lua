@@ -103,6 +103,7 @@ TA.Data.ApiManifest = {
             "Modules/NavHud.lua",
             "Modules/QuestTracker.lua",
         },
+        ["C_Map.GetWorldPosFromMapPos"] = { "Core/Compat/API.lua" },
         ["C_Minimap.GetNumTrackingTypes"] = { "Modules/ProfQuesting.lua" },
         ["C_Minimap.GetTrackingInfo"] = { "Modules/ProfQuesting.lua" },
         ["C_MountJournal.GetCollectedDragonridingMounts"] = { "Modules/AutoMount.lua" },
@@ -318,6 +319,7 @@ TA.Data.ApiManifest = {
             "Modules/QuestTracker.lua",
             "Modules/RoleMorph.lua",
         },
+        ["GetPlayerMapPosition"] = { "Core/Compat/API.lua" },
         ["GetProfessionInfo"] = {
             "Core/Utils.lua",
             "Modules/FarmOptimizerHUD.lua",
@@ -370,7 +372,9 @@ TA.Data.ApiManifest = {
         },
         ["GetSpellCooldown"] = { "Core/Utils.lua" },
         ["GetSpellInfo"] = { "Core/Utils.lua" },
+        ["IsInInstance"] = { "Core/Compat/API.lua" },
         ["IsSpellKnown"] = { "Core/Utils.lua", "Data/Spells.lua" },
+        ["UnitPosition"] = { "Core/Compat/API.lua" },
         ["geterrorhandler"] = { "Modules/ErrorLog.lua" },
         ["hooksecurefunc"] = {
             "Core/Init.lua",

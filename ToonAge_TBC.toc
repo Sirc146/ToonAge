@@ -42,6 +42,7 @@ Core\Layout.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Caps.lua
 Core\Analytics.lua
 
 # ── Combat maths (TBC-only Core) ───────────────────────────────────────
@@ -70,6 +71,9 @@ Modules\Automation\AutoQuest.lua
 Modules\Automation\VendorAssist.lua
 
 Modules\Infrastructure\ErrorLog.lua
+# Shared probes (waypoint APIs included). No TBC harvest pack, so this
+# records nothing; /ta probe still runs. The arrow is not ported here.
+Modules\Infrastructure\Harvester.lua
 # Shared Settings drawer (G9, 2026-10-04). Before this the title-bar gear opened
 # an empty drawer on TBC. Every section self-gates on the modules this build
 # registered, so TBC gets Quest Automation (AutoQuest/AutoEquip/VendorAssist),

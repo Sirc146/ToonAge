@@ -37,6 +37,7 @@ Core\UIModern.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Caps.lua
 Core\Analytics.lua
 Core\Layout.lua
 
@@ -60,6 +61,9 @@ Modules\Automation\VendorAssist.lua
 
 Modules\Mists\DevHelpers.lua
 Modules\Infrastructure\ErrorLog.lua
+# Shared probes (waypoint APIs included). No Mists harvest pack, so this
+# records nothing; /ta probe still runs.
+Modules\Infrastructure\Harvester.lua
 Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\RotationLists.lua
 Modules\Infrastructure\RotationBoard.lua

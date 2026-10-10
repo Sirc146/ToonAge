@@ -79,6 +79,52 @@ def boot():
     return lua
 
 
+def check_safe_mode_sets_disabled():
+    """Manual Safe Mode sets _disabled, which is what RunModuleSlash refuses."""
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute(PRELUDE)
+    lua.execute(_read("Core/Init.lua"))
+    lua.execute(r"""
+        ToonAgeDB = { safeMode = true }
+        ToonAge:InitDB()
+        ToonAge.db.safeMode = true
+        _hits = 0
+        ToonAge:RegisterModule("NavHud", {
+            Init = function() _hits = _hits + 1 end,
+            SlashCommands = {
+                farmhud = function() _hits = _hits + 100 end,
+            },
+        })
+        ToonAge:RegisterModule("Arrow", {
+            Init = function() _arrowInit = true end,
+        })
+        ToonAge:InitModules()
+        local skipped = ToonAge.modules.NavHud
+        SKIP_DISABLED = skipped._disabled
+        SKIP_SAFE = skipped._safeSkipped
+        ARROW_DISABLED = ToonAge.modules.Arrow._disabled
+        ARROW_INIT = _arrowInit
+        _printed = {}
+        ToonAge:SlashCommand("farmhud")
+        PRINTED = table.concat(_printed, "\n")
+        HITS = _hits
+    """)
+    check("manual Safe Mode sets _disabled on a skipped module", g(lua, "SKIP_DISABLED"), True)
+    check("manual Safe Mode marks the skip", g(lua, "SKIP_SAFE"), True)
+    check("manual Safe Mode does not initialise the skipped module", g(lua, "HITS"), 0)
+    check("the slash guard catches that Safe Mode skip",
+          "/ta farmhud belongs to NavHud, which is not running here (switched off)." in g(lua, "PRINTED"))
+    check("Arrow stays in the Safe Mode keep list", g(lua, "ARROW_DISABLED"), False)
+    check("a kept module still initialises in Safe Mode", g(lua, "ARROW_INIT"), True)
+    harness = _read("Modules/Infrastructure/TestHarness.lua")
+    check("the gate self-test states the Safe Mode rule",
+          "a module skipped by manual Safe Mode has _disabled, so the slash guard catches it" in harness)
+
+
+def g(lua, name):
+    return lua.eval(name)
+
+
 def main():
     lua = boot()
     run = lua.eval("Run")
@@ -109,6 +155,8 @@ def main():
     check("abbreviation still runs a live module", hits(), "LiveMod:zzarrow:12")
     run("zzarrow 9")
     check("exact command still runs a live module", hits(), "LiveMod:zzarrow:9")
+
+    check_safe_mode_sets_disabled()
 
     passed = sum(_results)
     print(f"[{'OK' if passed == len(_results) else 'FAIL'}] {passed}/{len(_results)} assertions passed.")

@@ -1,7 +1,8 @@
 -- ToonAge/Modules/Arrow.lua (Classic — MoP 50504)
 -- Draggable, scroll-to-resize, right-click-lockable HUD arrow.
--- Layout: arrow -> white distance -> grey ETA -> gold objective title.
--- A typed /way label sits 2px under the distance, in body text, and hides on arrival.
+-- Layout: arrow -> distance ("249 yd", one weight) -> typed label -> ETA ("18s").
+-- Distance and the ETA are body text. A typed /way label sits 2px under the
+-- distance, and the ETA is the third line under that label. It hides on arrival.
 --
 -- Classic adaptation:
 --   - Removed C_QuestLog.GetNextWaypoint (doesn't exist in MoP Classic)
@@ -175,16 +176,19 @@ function Arrow:InitFrame()
     arrivedTex:Hide()
     f.arrivedTex = arrivedTex
 
+    -- One string, one weight (style guide §19). OUTLINE is this project's bold,
+    -- and on Friz it makes the digits look heavier than "yd".
     local distF = f:CreateFontString(nil, "OVERLAY")
-    distF:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
-    distF:SetTextColor(1, 1, 1, 1)
+    distF:SetFont(STANDARD_TEXT_FONT, 14, "")
+    distF:SetTextColor(0.92, 0.90, 0.87, 1)
     distF:SetPoint("TOP", arrowTex, "BOTTOM", 0, 0)
     distF:SetJustifyH("CENTER")
     f.distF = distF
 
+    -- Same body text. Under a typed label this is the third line ("18s").
     local etaF = f:CreateFontString(nil, "OVERLAY")
-    etaF:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-    etaF:SetTextColor(0.80, 0.80, 0.80, 1)
+    etaF:SetFont(STANDARD_TEXT_FONT, 10, "")
+    etaF:SetTextColor(0.92, 0.90, 0.87, 1)
     etaF:SetPoint("TOP", distF, "BOTTOM", 0, -2)
     etaF:SetJustifyH("CENTER")
     f.etaF = etaF
@@ -443,9 +447,8 @@ function Arrow:Tick(f)
     if avgSpeed > 0.5 then
         local eta = yards / avgSpeed
         if eta < 3600 then
-            local mins = math.floor(eta / 60)
-            local secs = math.floor(eta % 60)
-            f.etaF:SetText(string.format("|cFFCCCCCC%d:%02d ETA|r", mins, secs))
+            -- Same body string as a standing ETA ("18s"), not a tinted clock.
+            f.etaF:SetText(U.FormatETA(yards, avgSpeed))
         else
             f.etaF:SetText("")
         end
@@ -773,8 +776,40 @@ function Arrow.ClearBareWay()
     end
 end
 
---- Bare /way, only when nobody else owns it at login. /ta way is unaffected.
+--- True when this arrow is part of the running client: not switched off,
+--- not skipped by the profile, and allowed for this flavor. Checked at
+--- PLAYER_LOGIN, which is before InitModules copies those flags, so the
+--- saved toggle and ModuleAllowed are read here as well.
+function Arrow:WayRunnable()
+    if self._disabled or self._profileSkipped then return false end
+    if TA.TocFlavorMismatch and TA:TocFlavorMismatch() then return false end
+    if TA.ModuleAllowed then
+        local ok, allowed = pcall(TA.ModuleAllowed, TA, "Arrow")
+        if not ok or not allowed then return false end
+    end
+    local db = (type(TA.db) == "table" and TA.db) or (type(ToonAgeDB) == "table" and ToonAgeDB)
+    if type(db) == "table" and type(db.modules) == "table" and db.modules.Arrow == false then
+        return false
+    end
+    return true
+end
+
+--- Bare /way enters the same dispatch as /ta way, so a disabled, safe-skipped
+--- or wrong-client arrow prints the not-running message and does not run.
+--- The text after /way is not lowercased; Dispatch keeps it for the label.
+function Arrow:RunBareWay(msg)
+    local rest = type(msg) == "string" and msg:match("^%s*(.-)%s*$") or ""
+    local text = (rest ~= "") and ("way " .. rest) or "way"
+    if TA.SlashCommand then TA:SlashCommand(text) end
+end
+
+--- Bare /way, only when this arrow is running and nobody else owns it.
+--- /ta way is unaffected: it already goes through dispatch.
 function Arrow:RegisterBareWay()
+    if not self:WayRunnable() then
+        if Arrow.OwnsBareWay() then Arrow.ClearBareWay() end
+        return
+    end
     if Arrow.TomTomLoaded() or Arrow.ForeignWaySlash() then
         if Arrow.OwnsBareWay() then Arrow.ClearBareWay() end
         return
@@ -782,8 +817,7 @@ function Arrow:RegisterBareWay()
     if type(SlashCmdList) ~= "table" then return end
     _G.SLASH_TOONAGEWAY1 = "/way"
     SlashCmdList["TOONAGEWAY"] = function(msg)
-        -- Same handler as /ta way, so the label keeps its capitals.
-        self.SlashCommands.way(self, msg)
+        self:RunBareWay(msg)
     end
 end
 

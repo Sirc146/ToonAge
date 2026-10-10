@@ -35,10 +35,14 @@ Core\UIModern.lua
 Core\MinimapButton.lua
 Core\ApiGuard.lua
 Core\Profile.lua
+Core\Caps.lua
 Core\Analytics.lua
 
 # ── Shared infrastructure (no game-rule content) ───────────────────────
 Modules\Infrastructure\ErrorLog.lua
+# Shared probes (waypoint APIs included). No Cataclysm harvest pack, so this
+# records nothing; /ta probe still runs. The arrow is not ported here.
+Modules\Infrastructure\Harvester.lua
 
 # In-game self-test: /ta test, /tatest, or the Self-test title-bar button. Loads last.
 # Not a registered module (not profile-gated): it only runs when invoked, so
