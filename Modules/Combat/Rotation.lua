@@ -665,7 +665,9 @@ local NAME_GAP = 1
 -- 8 px rings, 3 px apart, 5 px above the bottom edge, 4 px under the names.
 local PIP_SIZE = 8
 local PIP_GAP = 3
-local RING_X = 6
+-- Shared by slot 1 and the rings. A 56 px label centred on the 40 px icon
+-- then starts at x 2, inside the border.
+local RING_X = 10
 local RING_Y = 5
 local RING_LABEL_GAP = 4
 -- The previous bar was ICON_SIZE + 46. The extra 13 px, with the icons
