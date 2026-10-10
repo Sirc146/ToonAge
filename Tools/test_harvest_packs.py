@@ -112,7 +112,7 @@ check("the core registers the DataHarvester module (profile, tab, toggles key on
 
 # ── Behaviour ────────────────────────────────────────────────────────────
 WORLD = read("Tools/fixtures/harvest_world_forever.lua")
-LOAD = ["Core/Caps.lua", "Modules/Infrastructure/HarvestFormat.lua", CORE] + DOMAIN_FILES + [PACK]
+LOAD = ["Core/Caps.lua", "Core/Compat/API.lua", "Modules/Infrastructure/HarvestFormat.lua", CORE] + DOMAIN_FILES + [PACK]
 
 SER = r"""
 function SER(v, drop)
@@ -299,6 +299,16 @@ check("TBC probe report names GetBestMapForUnit", "C_Map.GetBestMapForUnit(playe
 check("TBC probe report names GetPlayerMapPosition", "C_Map.GetPlayerMapPosition" in probe_tbc)
 check("TBC probe report names SetRotation", "Texture:SetRotation" in probe_tbc)
 check("TBC probe report notes an instance", "IsInInstance()" in probe_tbc)
+
+Lguard = world(extra=r"""
+function UnitPosition() return 9, 8, 7, 0 end
+function ToonAge:HasAPI(path) return path ~= "UnitPosition" end
+""")
+Lguard.execute("GUARDED = table.concat(ToonAge.modules.DataHarvester:BuildProbeLines(), '\\n')")
+guarded = Lguard.eval("GUARDED")
+check("ApiGuard missing refuses UnitPosition even when the global exists",
+      "UnitPosition(player)  ->  missing" in guarded)
+check("ApiGuard does not sample a refused API", "9, 8, 7, 0" not in guarded)
 
 Linside = world(extra=r"""
 function IsInInstance() return true, "party" end

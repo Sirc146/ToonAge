@@ -631,6 +631,73 @@ function C.SpecFromTraitSections()
     return C.SpecFromSections(sections, PlayerClassToken())
 end
 
+-- ── Waypoint APIs (arrow probe) ──────────────────────────────────────────
+-- The harvest map probe asks these on every client. Feature code must not
+-- call them itself: ApiGuard reports a name from the manifest as missing,
+-- and the type check below covers a client whose manifest has not measured
+-- the name yet. A missing function is not called.
+-- Texture:SetRotation is a widget method, not a global, so ApiGuard has no
+-- path for it. ProbeTextureSetRotation is the one place that samples it.
+
+local function WaypointAllowed(path)
+    if TA.HasAPI and not TA:HasAPI(path) then return false end
+    return true
+end
+
+--- The function for a waypoint API path, or nil when ApiGuard or this client
+--- says it is not there.
+function C.WaypointFn(path)
+    if not WaypointAllowed(path) then return nil end
+    if path == "IsInInstance" then
+        if type(IsInInstance) ~= "function" then return nil end
+        return function() return IsInInstance() end
+    end
+    if path == "UnitPosition" then
+        if type(UnitPosition) ~= "function" then return nil end
+        return function(unit) return UnitPosition(unit) end
+    end
+    if path == "C_Map.GetBestMapForUnit" then
+        if not (C_Map and type(C_Map.GetBestMapForUnit) == "function") then return nil end
+        return function(unit) return C_Map.GetBestMapForUnit(unit) end
+    end
+    if path == "C_Map.GetPlayerMapPosition" then
+        if not (C_Map and type(C_Map.GetPlayerMapPosition) == "function") then return nil end
+        return function(mapID, unit) return C_Map.GetPlayerMapPosition(mapID, unit) end
+    end
+    if path == "C_Map.GetWorldPosFromMapPos" then
+        if not (C_Map and type(C_Map.GetWorldPosFromMapPos) == "function") then return nil end
+        return function(mapID, pos) return C_Map.GetWorldPosFromMapPos(mapID, pos) end
+    end
+    return nil
+end
+
+function C.APIPresent(path)
+    return type(C.WaypointFn(path)) == "function"
+end
+
+--- false, "missing" when the API is absent. Otherwise the pcall result.
+function C.CallAPI(path, ...)
+    local fn = C.WaypointFn(path)
+    if type(fn) ~= "function" then return false, "missing" end
+    return pcall(fn, ...)
+end
+
+--- "ok", or "error", message, or "missing". Samples Texture:SetRotation(0).
+function C.ProbeTextureSetRotation()
+    if type(CreateFrame) ~= "function" then return "missing" end
+    local okF, frame = pcall(CreateFrame, "Frame")
+    if not okF or type(frame) ~= "table" or type(frame.CreateTexture) ~= "function" then
+        return "missing"
+    end
+    local okT, tex = pcall(frame.CreateTexture, frame)
+    if not okT or type(tex) ~= "table" or type(tex.SetRotation) ~= "function" then
+        return "missing"
+    end
+    local okR, err = pcall(tex.SetRotation, tex, 0)
+    if okR then return "ok" end
+    return "error", err
+end
+
 --- The functions Forever 1.60.1 does not have. Each call is behind a type
 --- check so a missing global is nil, not an error. The call text is what
 --- puts the name in the ApiGuard manifest (Tools/gen_api_manifest.py).

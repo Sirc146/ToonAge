@@ -135,6 +135,12 @@ for toc in ("ToonAge.toc", "ToonAge_Mainline.toc"):
     check(f"{toc} ships no harvest domain or pack", "Modules\\Harvest\\" not in t)
 # It draws through the shared Layout, so the TOC that ships it needs that.
 check("Forever's TOC lists Core\\Layout.lua", "Core\\Layout.lua" in cam)
+# The arrow probe asks Compat, which is what ApiGuard measures. A Caps.Fn
+# lookup of these names would be a raw global read the manifest never sees.
+map_probe = core[core.index('map = { title = "Map"'):core.index("professionLines")]
+check("the map probe calls Compat, not Caps",
+      "C.CallAPI" in map_probe and 'Caps.Fn("UnitPosition")' not in map_probe
+      and 'Caps.Fn("C_Map.GetWorldPosFromMapPos")' not in map_probe)
 
 passed, total = sum(_res), len(_res)
 print(f"[{'OK' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")

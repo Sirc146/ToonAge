@@ -1293,15 +1293,39 @@ local CORE_PROBES = {
 
     -- Waypoint APIs the arrow would need. Every client runs this section,
     -- including ones with no arrow yet, so a probe says whether a port is
-    -- possible. UnitPosition returns nil inside an instance, so the instance
-    -- line is recorded beside it.
+    -- possible. The calls live in Core/Compat/API.lua. ApiGuard's HasAPI
+    -- refuses a name the manifest measured as missing; Compat does not call
+    -- a function this client does not have. UnitPosition returns nil inside
+    -- an instance, so the instance line is recorded beside it.
     map = { title = "Map", run = function(P, L)
-        local Caps = TA.Caps
-        local isIn = Caps and Caps.Fn("IsInInstance")
-        if not isIn then
+        local C = TA.Compat
+        local function present(path)
+            return C and C.APIPresent and C.APIPresent(path)
+        end
+        local function emit(label, ok, ...)
+            if not ok then
+                local err = ...
+                if err == "missing" then
+                    L[#L + 1] = label .. "  ->  missing"
+                else
+                    L[#L + 1] = label .. "  ->  error: " .. tostring(err)
+                end
+                return
+            end
+            local res = { ... }
+            local parts = {}
+            for i = 1, math.max(#res, 1) do parts[#parts + 1] = P.Show(res[i]) end
+            L[#L + 1] = label .. "  ->  " .. concat(parts, ", ")
+        end
+        local function call(path, ...)
+            if not C or not C.CallAPI then return false, "missing" end
+            return C.CallAPI(path, ...)
+        end
+
+        if not present("IsInInstance") then
             L[#L + 1] = "IsInInstance()  ->  missing"
         else
-            local ok, inside, kind = pcall(isIn)
+            local ok, inside, kind = call("IsInInstance")
             if not ok then
                 L[#L + 1] = "IsInInstance()  ->  error: " .. tostring(inside)
             else
@@ -1312,54 +1336,41 @@ local CORE_PROBES = {
                 L[#L + 1] = line
             end
         end
-        P.Call(L, "UnitPosition(player)", "UnitPosition", "player")
-        P.Call(L, "C_Map.GetBestMapForUnit(player)", "C_Map.GetBestMapForUnit", "player")
+        emit("UnitPosition(player)", call("UnitPosition", "player"))
+        local best = { call("C_Map.GetBestMapForUnit", "player") }
+        emit("C_Map.GetBestMapForUnit(player)", unpack(best))
+        local mapID = (best[1] and type(best[2]) == "number") and best[2] or nil
 
-        local mapID
-        local getBest = Caps and Caps.Fn("C_Map.GetBestMapForUnit")
-        if getBest then
-            local ok, id = pcall(getBest, "player")
-            if ok and type(id) == "number" then mapID = id end
-        end
-        local getPos = Caps and Caps.Fn("C_Map.GetPlayerMapPosition")
         local pos
-        if not getPos then
+        if not present("C_Map.GetPlayerMapPosition") then
             L[#L + 1] = "C_Map.GetPlayerMapPosition  ->  missing"
         elseif not mapID then
             L[#L + 1] = "C_Map.GetPlayerMapPosition  ->  present, no sample (no map id)"
         else
-            P.Call(L, "C_Map.GetPlayerMapPosition(" .. tostring(mapID) .. ", player)", getPos, mapID, "player")
-            local okP, sample = pcall(getPos, mapID, "player")
+            local okP, sample = call("C_Map.GetPlayerMapPosition", mapID, "player")
+            emit("C_Map.GetPlayerMapPosition(" .. tostring(mapID) .. ", player)", okP, sample)
             if okP then pos = sample end
         end
 
-        local worldPos = Caps and Caps.Fn("C_Map.GetWorldPosFromMapPos")
-        if not worldPos then
+        if not present("C_Map.GetWorldPosFromMapPos") then
             L[#L + 1] = "C_Map.GetWorldPosFromMapPos  ->  missing"
         elseif not (mapID and pos) then
             L[#L + 1] = "C_Map.GetWorldPosFromMapPos  ->  present, no sample (no player map position)"
         else
-            P.Call(L, "C_Map.GetWorldPosFromMapPos(" .. tostring(mapID) .. ", playerPos)", worldPos, mapID, pos)
+            local w = { call("C_Map.GetWorldPosFromMapPos", mapID, pos) }
+            emit("C_Map.GetWorldPosFromMapPos(" .. tostring(mapID) .. ", playerPos)", unpack(w))
         end
 
-        local create = Caps and Caps.Fn("CreateFrame")
-        local tex
-        if create then
-            local okF, frame = pcall(create, "Frame")
-            if okF and type(frame) == "table" and type(frame.CreateTexture) == "function" then
-                local okT, made = pcall(frame.CreateTexture, frame)
-                if okT then tex = made end
-            end
+        local rot, rotErr = "missing", nil
+        if C and C.ProbeTextureSetRotation then
+            rot, rotErr = C.ProbeTextureSetRotation()
         end
-        if type(tex) ~= "table" or type(tex.SetRotation) ~= "function" then
-            L[#L + 1] = "Texture:SetRotation  ->  missing"
+        if rot == "ok" then
+            L[#L + 1] = "Texture:SetRotation(0)  ->  present, sample ok"
+        elseif rot == "error" then
+            L[#L + 1] = "Texture:SetRotation(0)  ->  present, error: " .. tostring(rotErr)
         else
-            local okR, err = pcall(tex.SetRotation, tex, 0)
-            if okR then
-                L[#L + 1] = "Texture:SetRotation(0)  ->  present, sample ok"
-            else
-                L[#L + 1] = "Texture:SetRotation(0)  ->  present, error: " .. tostring(err)
-            end
+            L[#L + 1] = "Texture:SetRotation  ->  missing"
         end
     end },
 
