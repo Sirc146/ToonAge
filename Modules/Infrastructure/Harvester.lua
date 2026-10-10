@@ -1341,16 +1341,30 @@ local CORE_PROBES = {
         emit("C_Map.GetBestMapForUnit(player)", unpack(best))
         local mapID = (best[1] and type(best[2]) == "number") and best[2] or nil
 
+        -- Each position API gets its own line. MapPositionFn does not fall
+        -- back, so a present global is not reported as the namespaced call.
+        local function exact(path)
+            return C and C.MapPositionFn and C.MapPositionFn(path)
+        end
+        local function exactCall(path, ...)
+            local fn = exact(path)
+            if type(fn) ~= "function" then return false, "missing" end
+            return pcall(fn, ...)
+        end
+
         local pos
-        if not present("C_Map.GetPlayerMapPosition") then
+        if not exact("C_Map.GetPlayerMapPosition") then
             L[#L + 1] = "C_Map.GetPlayerMapPosition  ->  missing"
         elseif not mapID then
             L[#L + 1] = "C_Map.GetPlayerMapPosition  ->  present, no sample (no map id)"
         else
-            local okP, sample = call("C_Map.GetPlayerMapPosition", mapID, "player")
-            emit("C_Map.GetPlayerMapPosition(" .. tostring(mapID) .. ", player)", okP, sample)
-            if okP then pos = sample end
+            local got = { exactCall("C_Map.GetPlayerMapPosition", mapID, "player") }
+            emit("C_Map.GetPlayerMapPosition(" .. tostring(mapID) .. ", player)", unpack(got))
+            if got[1] then pos = got[2] end
         end
+
+        local legacy = { exactCall("GetPlayerMapPosition", "player") }
+        emit("GetPlayerMapPosition(player)", unpack(legacy))
 
         if not present("C_Map.GetWorldPosFromMapPos") then
             L[#L + 1] = "C_Map.GetWorldPosFromMapPos  ->  missing"

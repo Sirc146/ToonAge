@@ -226,6 +226,7 @@ check("Forever's map probe names the waypoint APIs",
           "C_Map.GetWorldPosFromMapPos",
           "C_Map.GetBestMapForUnit(player)",
           "C_Map.GetPlayerMapPosition",
+          "GetPlayerMapPosition(player)  ->  ",
           "Texture:SetRotation",
           "IsInInstance()",
       )))
@@ -297,6 +298,8 @@ check("TBC probe report names UnitPosition", "UnitPosition(player)  ->  " in pro
 check("TBC probe report names GetWorldPosFromMapPos", "C_Map.GetWorldPosFromMapPos" in probe_tbc)
 check("TBC probe report names GetBestMapForUnit", "C_Map.GetBestMapForUnit(player)" in probe_tbc)
 check("TBC probe report names GetPlayerMapPosition", "C_Map.GetPlayerMapPosition" in probe_tbc)
+check("TBC probe report names the legacy global on its own line",
+      "GetPlayerMapPosition(player)  ->  " in probe_tbc)
 check("TBC probe report names SetRotation", "Texture:SetRotation" in probe_tbc)
 check("TBC probe report notes an instance", "IsInInstance()" in probe_tbc)
 
@@ -328,6 +331,41 @@ check("UnitPosition still reports its sample inside an instance",
 check("GetWorldPosFromMapPos reports a sample", "x=10" in inside)
 check("SetRotation reports present plus a sample",
       "Texture:SetRotation(0)  ->  present, sample ok" in inside)
+
+Lpos = world(extra=r"""
+C_Map.GetPlayerMapPosition = nil
+function GetPlayerMapPosition(unit) return 0.2, 0.3 end
+""")
+Lpos.execute("POS = table.concat(ToonAge.modules.DataHarvester:BuildProbeLines(), '\\n')")
+pos = Lpos.eval("POS")
+check("a missing namespaced position is not filled in from the global",
+      "C_Map.GetPlayerMapPosition  ->  missing" in pos)
+check("the legacy global has its own sample",
+      "GetPlayerMapPosition(player)  ->  0.2, 0.3" in pos)
+Lpos.execute("FB_X, FB_Y = ToonAge.Compat.WaypointFn('C_Map.GetPlayerMapPosition')('player')")
+check("WaypointFn falls back to the legacy global",
+      (Lpos.eval("FB_X"), Lpos.eval("FB_Y")), (0.2, 0.3))
+Lpos.execute("C_Map.GetPlayerMapPosition = function() return { x = 1 } end")
+check("WaypointFn prefers C_Map.GetPlayerMapPosition when both exist",
+      Lpos.eval("type(ToonAge.Compat.WaypointFn('C_Map.GetPlayerMapPosition')(10, 'player'))"), "table")
+
+Lrot = world(extra=r"""
+ROT_FRAMES, ROT_TEXTURES = 0, 0
+function CreateFrame()
+    ROT_FRAMES = ROT_FRAMES + 1
+    return { CreateTexture = function()
+        ROT_TEXTURES = ROT_TEXTURES + 1
+        return { SetRotation = function() end }
+    end }
+end
+""")
+Lrot.execute("ToonAge.Compat:ProbeTextureSetRotation(); ToonAge.Compat:ProbeTextureSetRotation()")
+check("the rotation probe creates one frame", Lrot.eval("ROT_FRAMES"), 1)
+check("the rotation probe creates one texture", Lrot.eval("ROT_TEXTURES"), 1)
+check("that frame is kept on the harvester module",
+      Lrot.eval("type(ToonAge.modules.DataHarvester._probeRotationFrame)"), "table")
+check("that texture is kept on the harvester module",
+      Lrot.eval("type(ToonAge.modules.DataHarvester._probeRotationTex)"), "table")
 
 Loutside = world(extra=r"""
 function IsInInstance() return false, "none" end

@@ -319,6 +319,7 @@ TA.Data.ApiManifest = {
             "Modules/QuestTracker.lua",
             "Modules/RoleMorph.lua",
         },
+        ["GetPlayerMapPosition"] = { "Core/Compat/API.lua" },
         ["GetProfessionInfo"] = {
             "Core/Utils.lua",
             "Modules/FarmOptimizerHUD.lua",

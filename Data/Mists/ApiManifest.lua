@@ -80,6 +80,7 @@ TA.Data.ApiManifest = {
         ["GetNumQuestChoices"] = { "Modules/Mists/QuestTracker.lua" },
         ["GetNumQuestLogEntries"] = { "Modules/Mists/DevHelpers.lua", "Modules/Mists/GuideContextMenu.lua", "Modules/Mists/GuideImporter.lua", "Modules/Mists/QuestTracker.lua" },
         ["GetNumTalentTabs"] = { "Core/Compat/API.lua" },
+        ["GetPlayerMapPosition"] = { "Core/Compat/API.lua", "Modules/Infrastructure/Harvester.lua" },
         ["GetProfessionInfo"] = { "Core/Utils.lua" },
         ["GetProfessions"] = { "Core/Utils.lua" },
         ["GetQuestItemLink"] = { "Modules/Mists/QuestTracker.lua" },

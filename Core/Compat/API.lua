@@ -644,9 +644,31 @@ local function WaypointAllowed(path)
     return true
 end
 
+--- One position API, with no fallback. The probe prints a line per name, so
+--- the namespaced function and the legacy global are resolved separately.
+function C.MapPositionFn(path)
+    if not WaypointAllowed(path) then return nil end
+    if path == "C_Map.GetPlayerMapPosition" then
+        if not (C_Map and type(C_Map.GetPlayerMapPosition) == "function") then return nil end
+        return function(mapID, unit) return C_Map.GetPlayerMapPosition(mapID, unit) end
+    end
+    if path == "GetPlayerMapPosition" then
+        if type(GetPlayerMapPosition) ~= "function" then return nil end
+        return function(unit) return GetPlayerMapPosition(unit or "player") end
+    end
+    return nil
+end
+
 --- The function for a waypoint API path, or nil when ApiGuard or this client
---- says it is not there.
+--- says it is not there. Player position tries C_Map.GetPlayerMapPosition
+--- first and falls back to the legacy global.
 function C.WaypointFn(path)
+    if path == "C_Map.GetPlayerMapPosition" then
+        return C.MapPositionFn("C_Map.GetPlayerMapPosition") or C.MapPositionFn("GetPlayerMapPosition")
+    end
+    if path == "GetPlayerMapPosition" then
+        return C.MapPositionFn("GetPlayerMapPosition")
+    end
     if not WaypointAllowed(path) then return nil end
     if path == "IsInInstance" then
         if type(IsInInstance) ~= "function" then return nil end
@@ -659,10 +681,6 @@ function C.WaypointFn(path)
     if path == "C_Map.GetBestMapForUnit" then
         if not (C_Map and type(C_Map.GetBestMapForUnit) == "function") then return nil end
         return function(unit) return C_Map.GetBestMapForUnit(unit) end
-    end
-    if path == "C_Map.GetPlayerMapPosition" then
-        if not (C_Map and type(C_Map.GetPlayerMapPosition) == "function") then return nil end
-        return function(mapID, unit) return C_Map.GetPlayerMapPosition(mapID, unit) end
     end
     if path == "C_Map.GetWorldPosFromMapPos" then
         if not (C_Map and type(C_Map.GetWorldPosFromMapPos) == "function") then return nil end
@@ -683,16 +701,27 @@ function C.CallAPI(path, ...)
 end
 
 --- "ok", or "error", message, or "missing". Samples Texture:SetRotation(0).
+--- The frame and texture are created once and kept on the DataHarvester module.
 function C.ProbeTextureSetRotation()
-    if type(CreateFrame) ~= "function" then return "missing" end
-    local okF, frame = pcall(CreateFrame, "Frame")
-    if not okF or type(frame) ~= "table" or type(frame.CreateTexture) ~= "function" then
-        return "missing"
+    local host = (TA.modules and TA.modules.DataHarvester) or C
+    local tex = host._probeRotationTex
+    if type(tex) ~= "table" then
+        if type(CreateFrame) ~= "function" then return "missing" end
+        local frame = host._probeRotationFrame
+        if type(frame) ~= "table" or type(frame.CreateTexture) ~= "function" then
+            local okF, made = pcall(CreateFrame, "Frame")
+            if not okF or type(made) ~= "table" or type(made.CreateTexture) ~= "function" then
+                return "missing"
+            end
+            frame = made
+            host._probeRotationFrame = frame
+        end
+        local okT, madeT = pcall(frame.CreateTexture, frame)
+        if not okT or type(madeT) ~= "table" then return "missing" end
+        tex = madeT
+        host._probeRotationTex = tex
     end
-    local okT, tex = pcall(frame.CreateTexture, frame)
-    if not okT or type(tex) ~= "table" or type(tex.SetRotation) ~= "function" then
-        return "missing"
-    end
+    if type(tex.SetRotation) ~= "function" then return "missing" end
     local okR, err = pcall(tex.SetRotation, tex, 0)
     if okR then return "ok" end
     return "error", err

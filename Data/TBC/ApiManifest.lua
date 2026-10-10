@@ -73,6 +73,7 @@ TA.Data.ApiManifest = {
         ["GetItemInfo"] = { "Core/Compat/API.lua", "Core/Utils.lua", "Modules/TBC/AutoEquip.lua" },
         ["GetItemStats"] = { "Core/Utils.lua" },
         ["GetNumTalentTabs"] = { "Core/Compat/API.lua" },
+        ["GetPlayerMapPosition"] = { "Core/Compat/API.lua", "Modules/Infrastructure/Harvester.lua" },
         ["GetProfessionInfo"] = { "Core/Utils.lua" },
         ["GetProfessions"] = { "Core/Utils.lua" },
         ["GetRealmName"] = { "Core/Init.lua" },
