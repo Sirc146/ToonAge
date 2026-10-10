@@ -617,8 +617,9 @@ function Arrow:Tick(f)
         facing = tonumber(tostring(rawFacing))
     end
     
-    -- Method 2: Minimap rotation (always available, same coordinate space)
-    if not facing and Minimap and Minimap.GetFacing then
+    -- Minimap:GetFacing is unverified. Call it only when it is a function,
+    -- and only inside pcall. Otherwise skip it and keep going.
+    if not facing and type(Minimap) == "table" and type(Minimap.GetFacing) == "function" then
         local ok, rot = pcall(Minimap.GetFacing, Minimap)
         if ok and rot then
             facing = tonumber(tostring(rot))
