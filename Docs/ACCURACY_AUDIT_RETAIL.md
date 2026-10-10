@@ -71,6 +71,7 @@ Severity: **S1** = shows wrong advice or breaks a feature · **S2** = incomplete
   - **Windwalker:** Zenith, Slicing Winds and Rushing Wind Kick are missing (Midnight IDs not verified).
 - **S3 Import strings:** capture real ones with `/ta talentscan` or "Save Current as X Build".
 - **Weekly "not fully interactive"** — need to know what doesn't respond.
+- **Character tab Versatility percent, Retail Midnight 12.1.0 (unverified, do not fix from this note).** The tab showed Versatility 0.00% while the rating read 171. Suspected cause: `GetCombatRatingBonus` or `GetVersatilityBonus` (`Modules/Character/Character.lua`, `GetVers`) returning a secret value that `SafeNum` turns into 0. The likely fix is an `issecretvalue` guard that shows a dash instead of 0. Not reproduced in this session.
 
 ---
 

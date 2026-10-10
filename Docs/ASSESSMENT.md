@@ -51,7 +51,7 @@ client with a guide engine, a rotation engine, delves, and a weekly view.
 | Professions | Partly working | `Data/Retail/Professions.lua` and a Professions tab. Profession specialization APIs move often. Not confirmed on a current character. |
 | Farm routes | Partly working | There are no route polylines. `Data/Retail/FarmRoutes.lua` is gold-per-item guesses, and the Midnight herb and ore IDs in it are labeled placeholders (`220001` and similar). Using those numbers would score the wrong items. Gathering nodes can be recorded while you play. |
 | Dungeons | Partly working | `Data/Retail/Dungeons.lua`, dungeon gear, dungeon guide, and delves are all on the Retail TOC. Season item levels and crest costs go stale. Needs a pass against the current season. |
-| Character tab | Working | Spec, item level, and stat readout are implemented and covered by the retail data tests. Compare a live character sheet before trusting a weight. |
+| Character tab | Partly working | Spec, item level, and stat readout are implemented and covered by the retail data tests. Unverified, 12.1.0: Versatility showed 0.00% with 171 rating. Suspected secret value from `GetCombatRatingBonus` or `GetVersatilityBonus`. Not fixed. See the retail accuracy note. |
 | Minimap / compartment | Working | The Retail TOC registers the addon compartment, and login still creates the round minimap button. Both should appear. Compartment click handlers are global functions in `Core/Init.lua`. |
 
 `C_Navigation.GetDestination` is gone on 12.1 and the call is guarded, so
@@ -214,3 +214,8 @@ Classic Era or Mists guide content was invented.
 8. After the next Retail season, refresh stat weights, dungeon item
    levels, and rotation data. Treat that as recurring data work, not a
    one-time bug.
+9. Retail Midnight 12.1.0 Character tab: Versatility showed 0.00% with
+   171 rating. Unverified. Suspected cause is `GetCombatRatingBonus` or
+   `GetVersatilityBonus` returning a secret value; the fix would be an
+   `issecretvalue` guard that shows a dash instead of 0. Do not change
+   the readout until that is confirmed on a character sheet.
