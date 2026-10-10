@@ -12,6 +12,7 @@ ToonAge -- Next-3 prediction bar tests (Modules/Combat/CombatState.lua)
 
 Usage:  python Tools/test_next3.py [-v]
 """
+import re
 import sys
 from pathlib import Path
 
@@ -349,7 +350,7 @@ def test_predict_bar():
         ASKED = MAX_CALL and MAX_CALL[2]
     """)
     check("one filled slot uses the narrow tray", lua.eval("W1") == 88, lua.eval("W1"))
-    check("the bar is tall enough for two name lines", lua.eval("H1") == 86, lua.eval("H1"))
+    check("the bar is tall enough for the names and the rings", lua.eval("H1") == 99, lua.eval("H1"))
     check("a filled bar stays shown", lua.eval("S1") is True and lua.eval("A1") == 1)
     check("two filled slots use the middle tray", lua.eval("W2") == 144, lua.eval("W2"))
     check("combat does not resize the bar", lua.eval("W2C") == 144, lua.eval("W2C"))
@@ -397,7 +398,35 @@ def test_predict_bar():
           and lua.eval("ROW0") is False and lua.eval("GLOW0") is False)
     src = (ROOT / "Modules/Combat/Rotation.lua").read_text(encoding="utf-8")
     bar = src[src.index('CreateFrame("Button", "TARotationPredictBar"'):src.index("function Rotation:UpdatePrediction")]
-    check("predict names wrap onto two lines", "SetWordWrap(true)" in bar and "SetMaxLines" in bar)
+    check("predict names wrap onto two lines", "SetWordWrap(true)" in bar and "SetMaxLines(2)" in bar)
+    check("name labels are 56 px wide", "LABEL_W = 56" in src and "SetWidth(LABEL_W)" in bar)
+    check("names wrap on spaces so a word is not broken",
+          "SetNonSpaceWrap(false)" in bar and "SetNonSpaceWrap(true)" not in bar)
+    check("the bar height grew by 13 px to enclose the rings",
+          "ICON_SIZE + 46 + 13" in src and lua.eval("H1") == 99)
+    check("the combo rings sit inside the border under the names",
+          'SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", RING_X, RING_Y)' in bar
+          and "RING_LABEL_GAP = 4" in src
+          and "PIP_SIZE = 8" in src and "PIP_GAP = 3" in src)
+    # Slots and rings both use RING_X, so the label edges follow that inset.
+    # A 56 px label centred on a 40 px icon overhangs 8 px each side.
+    def _num(name):
+        match = re.search(rf"local {name} = (\d+)", src)
+        return int(match.group(1))
+    ring_x = _num("RING_X")
+    icon = _num("ICON_SIZE")
+    gap = _num("ICON_GAP")
+    label_w = _num("LABEL_W")
+    trays = [int(n) for n in re.search(r"local TRAY_WIDTH = \{([^}]+)\}", src).group(1).split(",")]
+    overhang = (label_w - icon) / 2
+    label_left = ring_x - overhang
+    check("slot 1's label starts at or inside x 2",
+          "RING_X +" in bar and label_left >= 2, label_left)
+    for n, width in enumerate(trays, 1):
+        last_left = ring_x + (n - 1) * (icon + gap)
+        label_right = last_left + icon + overhang
+        check(f"the last label stays inside the {n}-slot tray",
+              label_right <= width, (label_right, width))
     check("the rotation tab says there are no suggestions",
           src.count('SetText("No suggestions for this spec")') >= 2)
     pips = src[src.index("function Rotation:UpdatePips"):src.index("function Rotation:ShowPredictBar")]

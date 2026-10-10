@@ -658,8 +658,23 @@ local PREDICT_UPDATE_HZ = 0.15 -- refresh rate for prediction bar (slightly slow
 -- gold_accent #E8B35A. Slot borders and filled combo points share it.
 local SLOT_GOLD = { 232 / 255, 179 / 255, 90 / 255 }
 local BODY_TEXT = { 0.92, 0.90, 0.87 }
--- Icon, a two-line name, and the combo-point cue.
-local BAR_HEIGHT = ICON_SIZE + 46
+-- Names are wider than the icon and centred, so each side can use the gap.
+local LABEL_W = 56
+local LABEL_H = 20
+local NAME_GAP = 1
+-- 8 px rings, 3 px apart, 5 px above the bottom edge, 4 px under the names.
+local PIP_SIZE = 8
+local PIP_GAP = 3
+-- Shared by slot 1 and the rings. A 56 px label centred on the 40 px icon
+-- then starts at x 2, inside the border.
+local RING_X = 10
+local RING_Y = 5
+local RING_LABEL_GAP = 4
+-- The previous bar was ICON_SIZE + 46. The extra 13 px, with the icons
+-- lifted 4 px, leaves 4 px under the names, then the rings, then 5 px of
+-- border. Width still changes only out of combat.
+local BAR_HEIGHT = ICON_SIZE + 46 + 13
+local TOP_INSET = BAR_HEIGHT - (RING_Y + PIP_SIZE + RING_LABEL_GAP + LABEL_H + NAME_GAP + ICON_SIZE)
 
 -- ── Role-aware view labels ─────────────────────────────────────────────────────
 -- Returns context-appropriate names for the 3 prediction bar views based on
@@ -795,7 +810,8 @@ function Rotation:InitPredictBar()
     for i = 1, PREDICTION_COUNT do
         local frame = CreateFrame("Frame", nil, bar, "BackdropTemplate")
         frame:SetSize(ICON_SIZE, ICON_SIZE)
-        frame:SetPoint("LEFT", bar, "LEFT", 8 + (i - 1) * (ICON_SIZE + ICON_GAP), -2)
+        frame:SetPoint("TOPLEFT", bar, "TOPLEFT",
+            RING_X + (i - 1) * (ICON_SIZE + ICON_GAP), -TOP_INSET)
         frame:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8X8",
             edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -817,15 +833,17 @@ function Rotation:InitPredictBar()
 
         local nameLabel = frame:CreateFontString(nil, "OVERLAY")
         nameLabel:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
-        nameLabel:SetPoint("TOP", frame, "BOTTOM", 0, -1)
-        nameLabel:SetWidth(ICON_SIZE + ICON_GAP)
-        nameLabel:SetHeight(20)
+        nameLabel:SetPoint("TOP", frame, "BOTTOM", 0, -NAME_GAP)
+        nameLabel:SetWidth(LABEL_W)
+        nameLabel:SetHeight(LABEL_H)
         nameLabel:SetJustifyH("CENTER")
         nameLabel:SetJustifyV("TOP")
         nameLabel:SetWordWrap(true)
         nameLabel:SetTextColor(BODY_TEXT[1], BODY_TEXT[2], BODY_TEXT[3])
+        -- Two lines. A word that does not fit stays whole; '...' is only on
+        -- the second line, which is the last line SetMaxLines allows.
         if nameLabel.SetMaxLines then nameLabel:SetMaxLines(2) end
-        if nameLabel.SetNonSpaceWrap then nameLabel:SetNonSpaceWrap(true) end
+        if nameLabel.SetNonSpaceWrap then nameLabel:SetNonSpaceWrap(false) end
         frame.nameLabel = nameLabel
 
         if i == 1 then
@@ -850,12 +868,13 @@ function Rotation:InitPredictBar()
     -- texture and do not pulse. A secret power read hides the row.
     local pips = {}
     local pipRow = CreateFrame("Frame", nil, bar)
-    pipRow:SetSize(7 * 10, 10)
-    pipRow:SetPoint("TOP", icons[1].nameLabel, "BOTTOM", 0, -1)
+    pipRow:SetSize(7 * PIP_SIZE + 6 * PIP_GAP, PIP_SIZE)
+    -- Same left edge as slot 1, sitting inside the gold border.
+    pipRow:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", RING_X, RING_Y)
     for i = 1, 7 do
         local tex = pipRow:CreateTexture(nil, "ARTWORK")
-        tex:SetSize(8, 8)
-        tex:SetPoint("LEFT", pipRow, "LEFT", (i - 1) * 10, 0)
+        tex:SetSize(PIP_SIZE, PIP_SIZE)
+        tex:SetPoint("BOTTOMLEFT", pipRow, "BOTTOMLEFT", (i - 1) * (PIP_SIZE + PIP_GAP), 0)
         tex:Hide()
         pips[i] = tex
     end
@@ -1104,7 +1123,7 @@ function Rotation:UpdatePips()
     local base = U.TEX_PIP or "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8.tga"
     local ring = U.TEX_PIP_RING or "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8_ring.tga"
     local glow = U.TEX_PIP_CHARGED or "Interface\\AddOns\\ToonAge\\Media\\icons\\util_pip_8_charged.tga"
-    row:SetWidth(n * 10)
+    row:SetWidth(n * PIP_SIZE + math.max(n - 1, 0) * PIP_GAP)
     for i = 1, 7 do
         local tex = self.pips[i]
         if i <= n then
