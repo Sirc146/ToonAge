@@ -197,6 +197,123 @@ def test_aura_name_fallback():
 test_aura_name_fallback()
 
 
+def test_predict_bar():
+    """TARotationPredictBar: gold slots, full names, fit the filled slots, hide when empty."""
+    lua.execute(r"""
+        ToonAge.Utils.GetSpellTexture = function() return "tex" end
+        ToonAge.Utils.IsSecret = function() return false end
+        ToonAge.Utils.TEX_PIP = "pip"
+        ToonAge.Utils.TEX_PIP_RING = "ring"
+        ToonAge.Utils.TEX_PIP_CHARGED = "charged"
+        ToonAge.charDB.predictBar = { visible = true }
+        InCombatLockdown = function() return false end
+        POWER = { cur = 0, max = 0 }
+        UnitPower = function() return POWER.cur end
+        UnitPowerMax = function() return POWER.max end
+        GetUnitChargedPowerPoints = function() return nil end
+    """)
+    lua.execute((ROOT / "Modules/Combat/Rotation.lua").read_text(encoding="utf-8"))
+    lua.execute(r"""
+        local R = ToonAge.modules.Rotation
+        local function icon()
+            local frame = { shown = false, border = {} }
+            frame.icon = { SetTexture = function() end }
+            frame.nameLabel = {
+                SetText = function(self, t) self.text = t end,
+                SetTextColor = function(self, r, g, b) self.r, self.g, self.b = r, g, b end,
+            }
+            function frame:SetBackdropColor() end
+            function frame:SetBackdropBorderColor(r, g, b, a)
+                self.border = { r, g, b, a }
+            end
+            function frame:Show() self.shown = true end
+            function frame:Hide() self.shown = false end
+            return frame
+        end
+        local bar = { alpha = 1, shown = true, w = 200, h = 68 }
+        function bar:SetAlpha(a) self.alpha = a end
+        function bar:Show() self.shown = true end
+        function bar:Hide() self.shown = false end
+        function bar:IsShown() return self.shown end
+        function bar:SetSize(w, h) self.w, self.h = w, h end
+        R.predictBar = bar
+        R.predictIcons = { icon(), icon(), icon() }
+        local pips = {}
+        for i = 1, 7 do
+            pips[i] = {
+                SetTexture = function() end,
+                SetVertexColor = function(self, r, g, b) self.r, self.g, self.b = r, g, b end,
+                Show = function(self) self.shown = true end,
+                Hide = function(self) self.shown = false end,
+            }
+        end
+        R.pips = pips
+        R.pipRow = {
+            SetWidth = function() end,
+            Show = function(self) self.shown = true end,
+            Hide = function(self) self.shown = false end,
+            shown = false,
+        }
+        BAR = bar
+        SLOT = R.predictIcons[1]
+        PIP = pips[1]
+        R:PaintPredictSlot(SLOT, "Deathstalker's Mark", 457052, false)
+        R:FitPredictBar(1, false)
+        W1, H1, A1, S1 = bar.w, bar.h, bar.alpha, bar.shown
+        NAME, NR, NG, NB = SLOT.nameLabel.text, SLOT.nameLabel.r, SLOT.nameLabel.g, SLOT.nameLabel.b
+        BR, BG, BB = SLOT.border[1], SLOT.border[2], SLOT.border[3]
+        R:FitPredictBar(2, false)
+        W2 = bar.w
+        R:FitPredictBar(2, true)
+        W2C = bar.w
+        R:FitPredictBar(0, true)
+        A0, S0 = bar.alpha, bar.shown
+        bar.shown = false
+        R:FitPredictBar(0, true)
+        S0B = bar.shown
+        R:FitPredictBar(0, false)
+        A0O, S0O = bar.alpha, bar.shown
+        POWER.cur, POWER.max = 4, 5
+        R:UpdatePips()
+        CUE = PIP.r
+        ROW = R.pipRow.shown
+        local before = SLOT.border[1]
+        POWER.cur, POWER.max = 0, 0
+        R:UpdatePips()
+        BORDER_AFTER = SLOT.border[1]
+        BORDER_BEFORE = before
+        ROW0 = R.pipRow.shown
+    """)
+    check("one filled slot uses the narrow tray", lua.eval("W1") == 88, lua.eval("W1"))
+    check("the bar is tall enough for two name lines", lua.eval("H1") == 86, lua.eval("H1"))
+    check("a filled bar stays shown", lua.eval("S1") is True and lua.eval("A1") == 1)
+    check("two filled slots use the middle tray", lua.eval("W2") == 144, lua.eval("W2"))
+    check("combat does not resize the bar", lua.eval("W2C") == 144, lua.eval("W2C"))
+    check("no picks in combat fade the bar", lua.eval("A0") == 0 and lua.eval("S0") is True)
+    check("a hidden bar is shown again to fade in combat", lua.eval("S0B") is True)
+    check("no picks out of combat hide the bar", lua.eval("S0O") is False and lua.eval("A0O") == 1)
+    check("the spell name is not truncated", lua.eval("NAME") == "Deathstalker's Mark")
+    check("the spell name is body colour",
+          (lua.eval("NR"), lua.eval("NG"), lua.eval("NB")) == (0.92, 0.90, 0.87))
+    check("the slot border stays gold",
+          (round(lua.eval("BR"), 3), round(lua.eval("BG"), 3), round(lua.eval("BB"), 3))
+          == (0.910, 0.702, 0.353))
+    check("combo points use the green cue", lua.eval("CUE") == 0.20 and lua.eval("ROW") is True)
+    check("a class without combo points does not repaint the slot",
+          lua.eval("BORDER_AFTER") == lua.eval("BORDER_BEFORE") and lua.eval("ROW0") is False)
+    src = (ROOT / "Modules/Combat/Rotation.lua").read_text(encoding="utf-8")
+    bar = src[src.index('CreateFrame("Button", "TARotationPredictBar"'):src.index("function Rotation:UpdatePrediction")]
+    check("predict names wrap onto two lines", "SetWordWrap(true)" in bar and "SetMaxLines" in bar)
+    check("the rotation tab says there are no suggestions",
+          src.count('SetText("No suggestions for this spec")') >= 2)
+    pips = src[src.index("function Rotation:UpdatePips"):src.index("function Rotation:ShowPredictBar")]
+    check("the combo cue is the only green on the bar",
+          "SetBackdropBorderColor(0.20, 0.92, 0.40" not in pips and "SUCCESS" in pips)
+
+
+test_predict_bar()
+
+
 passed = sum(_results)
 print(f"[{'OK' if passed == len(_results) else 'FAIL'}] {passed}/{len(_results)} assertions passed.")
 sys.exit(0 if passed == len(_results) else 1)
