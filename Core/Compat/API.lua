@@ -683,4 +683,46 @@ function C.WorldPosFromMapPos(mapID, x, y)
     return continentID, north, west
 end
 
+-- ── Player identity ────────────────────────────────────────────────────────
+-- UnitName, UnitClass and UnitRace. The sidebar helpers in Core/Utils.lua
+-- call these rather than the globals. ApiGuard is asked first; a missing
+-- function, a failed call, or a value that is not a plain string comes back
+-- as "". A secret is not read and not converted.
+
+local function Shown(v)
+    local U = TA.Utils
+    if U and type(U.IsSecret) == "function" and U.IsSecret(v) then return "" end
+    if type(v) ~= "string" then return "" end
+    return v
+end
+
+--- @return string name, or "" when the client has no answer
+function C.UnitName(unit)
+    if TA.HasAPI and not TA:HasAPI("UnitName") then return "" end
+    if type(UnitName) ~= "function" then return "" end
+    local ok, name = pcall(UnitName, unit or "player")
+    if not ok then return "" end
+    return Shown(name)
+end
+
+--- Game order: localized name, then English token (for example "Mage", "MAGE").
+--- @return string localized, string token
+function C.UnitClass(unit)
+    if TA.HasAPI and not TA:HasAPI("UnitClass") then return "", "" end
+    if type(UnitClass) ~= "function" then return "", "" end
+    local ok, localized, token = pcall(UnitClass, unit or "player")
+    if not ok then return "", "" end
+    return Shown(localized), Shown(token)
+end
+
+--- Game order: localized name, then English token (for example "Night Elf", "NightElf").
+--- @return string localized, string token
+function C.UnitRace(unit)
+    if TA.HasAPI and not TA:HasAPI("UnitRace") then return "", "" end
+    if type(UnitRace) ~= "function" then return "", "" end
+    local ok, localized, token = pcall(UnitRace, unit or "player")
+    if not ok then return "", "" end
+    return Shown(localized), Shown(token)
+end
+
 return C
