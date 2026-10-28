@@ -17,7 +17,9 @@ except ImportError:
     sys.exit("lupa not installed.  python3 -m pip install --user lupa")
 
 ROOT = Path(__file__).resolve().parent.parent
-BASE = "bccb4cf"
+# Short name bccb4cf. CI clones are shallow, and a short id is not a remote
+# ref, so the fetch uses the full commit.
+BASE = "bccb4cf6f3b6c791b63dc876356ee298505544a5"
 
 
 def check(name, got, want=True):
