@@ -3,15 +3,23 @@
 
 local TA = ToonAge
 local U  = TA.Utils
+local Skin = TA.Theme.active
+
+-- Index reads, not unpack: unpack on colour tables is unreliable in WoW Lua 5.1.
+local function RGBA(c)
+    return c[1], c[2], c[3], c[4]
+end
 
 -- ── Constants ─────────────────────────────────────────────────────────
-local FRAME_WIDTH   = 900
-local FRAME_HEIGHT  = 580
-local SIDEBAR_WIDTH = 210
-local TAB_HEIGHT    = 30
-local TITLEBAR_H    = 34
-local CONTENT_PAD   = 14   -- internal padding for content area
-local ROW_PAD       = 6    -- extra vertical space between rows
+-- Sizes come from the theme. They are numbers, so this is a copy at load.
+-- Colour tables below are read at call time and follow Theme:Select.
+local FRAME_WIDTH   = Skin.metrics.frame_w
+local FRAME_HEIGHT  = Skin.metrics.frame_h
+local SIDEBAR_WIDTH = Skin.metrics.sidebar_w
+local TAB_HEIGHT    = Skin.metrics.tab_h
+local TITLEBAR_H    = Skin.metrics.titlebar_h
+local CONTENT_PAD   = Skin.metrics.content_pad   -- internal padding for content area
+local ROW_PAD       = Skin.metrics.row_pad       -- extra vertical space between rows
 
 -- Ordered for flow: your build (Character/Gear/Talents/Rotation), then
 -- what to do with it (Delves/Weekly), then side systems (Professions/Pets).
@@ -38,11 +46,10 @@ local TAB_GLYPH = {
 local TAB_GLYPH_PX = 20
 
 local function TintTab(btn, hot)
-    local r, g, b = 0.55, 0.52, 0.48
-    if hot then r, g, b = 0.92, 0.90, 0.87 end
-    if btn.label then btn.label:SetTextColor(r, g, b, 1) end
+    local c = hot and Skin.text_primary or Skin.text_tab_idle
+    if btn.label then btn.label:SetTextColor(c[1], c[2], c[3], c[4]) end
     if btn.glyph and btn.glyph.SetVertexColor then
-        btn.glyph:SetVertexColor(r, g, b, 1)
+        btn.glyph:SetVertexColor(c[1], c[2], c[3], c[4])
     end
 end
 
@@ -50,15 +57,16 @@ end
 
 -- ── Backdrop helper ───────────────────────────────────────────────────
 local FLAT_BACKDROP = {
-    bgFile   = "Interface\\Buttons\\WHITE8X8",
-    edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 1,
+    bgFile   = Skin.tex.white,
+    edgeFile = Skin.tex.white,
+    edgeSize = Skin.metrics.edge,
 }
 
 local function ApplyBackdrop(frame, br, bg, bb, ba, er, eg, eb, ea)
     frame:SetBackdrop(FLAT_BACKDROP)
-    frame:SetBackdropColor(br or 0.05, bg or 0.04, bb or 0.02, ba or 0.98)
-    frame:SetBackdropBorderColor(er or 0.55, eg or 0.40, eb or 0.08, ea or 0.70)
+    local fb, fe = Skin.ui_fallback_bg, Skin.ui_fallback_edge
+    frame:SetBackdropColor(br or fb[1], bg or fb[2], bb or fb[3], ba or fb[4])
+    frame:SetBackdropBorderColor(er or fe[1], eg or fe[2], eb or fe[3], ea or fe[4])
 end
 
 -- ── Clean a frame's content completely ───────────────────────────────
@@ -302,8 +310,8 @@ function TA:InitUI()
     frame:SetScript("OnDragStop",  frame.StopMovingOrSizing)
     frame:SetClampedToScreen(true)
     -- Main frame gets glass backdrop (applied after M loads via InitDrawer hook)
-    ApplyBackdrop(frame, 0.05, 0.05, 0.06, 0.94)
-    frame:SetBackdropBorderColor(0.30, 0.30, 0.35, 1.00)
+    ApplyBackdrop(frame, RGBA(Skin.ui_frame_bg))
+    frame:SetBackdropBorderColor(RGBA(Skin.ui_frame_edge))
     frame:Hide()
     -- Esc closes the window (UISpecialFrames is how every Blizzard panel does it).
     -- The frame's Hide override below also closes the settings drawer.
@@ -314,22 +322,22 @@ function TA:InitUI()
     titleBar:SetPoint("TOPLEFT",  frame, "TOPLEFT",  0, 0)
     titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     titleBar:SetHeight(TITLEBAR_H)
-    ApplyBackdrop(titleBar, 0.10, 0.10, 0.12, 1.00)
+    ApplyBackdrop(titleBar, RGBA(Skin.ui_title_bg))
 
     local titleIcon = titleBar:CreateTexture(nil, "ARTWORK")
     titleIcon:SetSize(18, 18)
     titleIcon:SetPoint("LEFT", titleBar, "LEFT", 10, 0)
-    titleIcon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")
+    titleIcon:SetTexture(Skin.tex.title_icon)
     titleIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
     local titleLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    titleLabel:SetFont("Fonts\\FRIZQT__.TTF", 13, "OUTLINE")
+    titleLabel:SetFont(Skin.font, Skin.metrics.title_font, "OUTLINE")
     titleLabel:SetText("ToonAge")
-    titleLabel:SetTextColor(0.92, 0.90, 0.87, 1.00)
+    titleLabel:SetTextColor(RGBA(Skin.text_primary))
     titleLabel:SetPoint("LEFT", titleBar, "LEFT", 34, 0)
 
     local versionLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    versionLabel:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+    versionLabel:SetFont(Skin.font, Skin.metrics.type_caption, "OUTLINE")
     -- Label from the running client, not a hardcoded Retail string (the TBC
     -- Anniversary window used to say "Midnight 12.0.5").
     local FLAVOR_NAME = {
@@ -340,7 +348,7 @@ function TA:InitUI()
     local build = (GetBuildInfo and select(1, GetBuildInfo())) or ""
     versionLabel:SetText("v" .. TA.version .. "  ·  "
         .. (FLAVOR_NAME[TA.flavor] or "WoW") .. (build ~= "" and (" " .. build) or ""))
-    versionLabel:SetTextColor(0.55, 0.52, 0.45, 1.00)
+    versionLabel:SetTextColor(RGBA(Skin.text_version))
     -- Right-to-left anchor chain: Close → Options → Help → Copy → Version
     local closeBtn = CreateFrame("Button", nil, titleBar, "UIPanelCloseButton")
     closeBtn:SetSize(24, 24)
@@ -357,22 +365,22 @@ function TA:InitUI()
     local function TitleButton(anchor, text, width, tip, cmd)
         local b = CreateFrame("Button", nil, titleBar, "BackdropTemplate")
         local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        fs:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+        fs:SetFont(STANDARD_TEXT_FONT, Skin.metrics.tab_font, "OUTLINE")
         fs:SetText(text)
         local textW = (fs.GetStringWidth and fs:GetStringWidth()) or width
         b:SetSize(math.max(textW + 16, width), 20)
         b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
-        fs:SetTextColor(0.62, 0.59, 0.55, 1)
+        fs:SetTextColor(RGBA(Skin.text_secondary))
         fs:SetAllPoints(b)
         fs:SetJustifyH("CENTER")
         b:SetScript("OnEnter", function(self)
-            fs:SetTextColor(0.92, 0.90, 0.87, 1)
+            fs:SetTextColor(RGBA(Skin.text_primary))
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
             GameTooltip:SetText(tip, 1, 0.82, 0)
             GameTooltip:AddLine("/ta " .. cmd, 0.7, 0.7, 0.7)
             GameTooltip:Show()
         end)
-        b:SetScript("OnLeave", function() fs:SetTextColor(0.62, 0.59, 0.55, 1); GameTooltip:Hide() end)
+        b:SetScript("OnLeave", function() fs:SetTextColor(RGBA(Skin.text_secondary)); GameTooltip:Hide() end)
         b:SetScript("OnClick", function() TA:SlashCommand(cmd) end)
         return b
     end
@@ -393,13 +401,13 @@ function TA:InitUI()
     end)
     versionHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
     local optIcon = optionsBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    optIcon:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
+    optIcon:SetFont(STANDARD_TEXT_FONT, Skin.metrics.gear_font, "OUTLINE")
     optIcon:SetText(ToonAge.Utils.Glyph("settings"))  -- gear glyph
-    optIcon:SetTextColor(0.62, 0.59, 0.55, 1)
+    optIcon:SetTextColor(RGBA(Skin.text_secondary))
     optIcon:SetAllPoints(optionsBtn)
     optIcon:SetJustifyH("CENTER")
-    optionsBtn:SetScript("OnEnter", function() optIcon:SetTextColor(0.92, 0.90, 0.87, 1) end)
-    optionsBtn:SetScript("OnLeave", function() optIcon:SetTextColor(0.62, 0.59, 0.55, 1) end)
+    optionsBtn:SetScript("OnEnter", function() optIcon:SetTextColor(RGBA(Skin.text_primary)) end)
+    optionsBtn:SetScript("OnLeave", function() optIcon:SetTextColor(RGBA(Skin.text_secondary)) end)
     optionsBtn:SetScript("OnClick", function() TA:ToggleOptionsPanel() end)
     -- G9 (2026-10-04): no Settings module, no gear. The scaffold builds (Era,
     -- Cata, Wrath) ship none, and the gear opened an empty drawer there.
@@ -419,7 +427,7 @@ function TA:InitUI()
     tabBar:SetPoint("TOPLEFT",  frame, "TOPLEFT",  0, -TITLEBAR_H)
     tabBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -TITLEBAR_H)
     tabBar:SetHeight(TAB_HEIGHT)
-    ApplyBackdrop(tabBar, 0.07, 0.07, 0.09, 1.00)
+    ApplyBackdrop(tabBar, RGBA(Skin.ui_tab_bg))
 
     -- ── Sidebar ───────────────────────────────────────────────────────
     local sidebarTop = -(TITLEBAR_H + TAB_HEIGHT)
@@ -427,7 +435,7 @@ function TA:InitUI()
     sidebar:SetPoint("TOPLEFT",    frame, "TOPLEFT",    0, sidebarTop)
     sidebar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
     sidebar:SetWidth(SIDEBAR_WIDTH)
-    ApplyBackdrop(sidebar, 0.05, 0.05, 0.06, 0.96)
+    ApplyBackdrop(sidebar, RGBA(Skin.ui_sidebar_bg))
 
     local sideScroll = CreateFrame("ScrollFrame", "TASideScrollFrame", sidebar, "UIPanelScrollFrameTemplate")
     sideScroll:SetPoint("TOPLEFT",     sidebar, "TOPLEFT",     4, -4)
@@ -530,8 +538,8 @@ function TA:InitUI()
                 if not ok then
                     -- Surface errors in the content pane instead of silently failing
                     local errF = self.contentChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    errF:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
-                    errF:SetText("|cFFFF4444Error rendering " .. tabID .. " tab:|r\n" .. tostring(err))
+                    errF:SetFont(STANDARD_TEXT_FONT, Skin.metrics.tab_font, "OUTLINE")
+                    errF:SetText(Skin.code.error .. "Error rendering " .. tabID .. " tab:|r\n" .. tostring(err))
                     errF:SetPoint("TOPLEFT", self.contentChild, "TOPLEFT", 14, -14)
                     errF:SetWidth(self.contentWidth - 28)
                     errF:SetWordWrap(true)
@@ -861,7 +869,7 @@ function TA:InitUI()
                 btn:SetPoint("LEFT", tabBar, "LEFT", tabX, 1)
 
                 local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                lbl:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
+                lbl:SetFont(Skin.font, Skin.metrics.tab_font, "")
                 lbl:SetText(tabDef.label)
                 lbl:SetJustifyH("CENTER")
                 btn.label = lbl
@@ -885,7 +893,7 @@ function TA:InitUI()
                 line:SetHeight(2)
                 line:SetPoint("BOTTOMLEFT",  btn, "BOTTOMLEFT",  0, 0)
                 line:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-                line:SetColorTexture(0.40, 0.75, 1.00, 1.00)
+                line:SetColorTexture(RGBA(Skin.text_accent))
                 line:Hide()
                 btn.activeLine = line
 
@@ -939,7 +947,7 @@ function TA:InitUI()
 
             local title = box:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
             title:SetPoint("TOP", 0, -40)
-            title:SetText("|cFFFFD100ToonAge|r")
+            title:SetText(Skin.code.gold .. "ToonAge|r")
 
             local body = box:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             body:SetPoint("TOP", title, "BOTTOM", 0, -16)
@@ -953,7 +961,7 @@ function TA:InitUI()
 
         local version, _, _, iface = GetBuildInfo()
         self.noContent.body:SetText(
-            "Loaded on |cFFFFFFFF" .. label .. "|r (" .. tostring(version)
+            "Loaded on " .. Skin.code.white .. label .. "|r (" .. tostring(version)
             .. ", interface " .. tostring(iface) .. ").\n\n"
             .. "There is no gear, rotation or leveling content for this version yet, so\n"
             .. "ToonAge is deliberately staying quiet rather than giving you another\n"
@@ -964,24 +972,26 @@ function TA:InitUI()
                      .. "for researched data for this version.\n\n")
                 or "")
             .. "Error capture is running, so anything that breaks is still recorded:\n"
-            .. "type |cFFFFD100/ta errors|r to see it, or |cFFFFD100/ta health|r for what loaded.")
+            .. "type " .. Skin.code.gold .. "/ta errors|r to see it, or "
+            .. Skin.code.gold .. "/ta health|r for what loaded.")
         if TA.flavor == "vanilla" then
             if not self.noContent.heirloom then
                 local card = CreateFrame("Frame", nil, self.noContent, "BackdropTemplate")
                 card:SetSize(360, 108)
                 card:SetPoint("TOP", self.noContent.body, "BOTTOM", 0, -18)
-                ApplyBackdrop(card, 0.07, 0.07, 0.08, 0.94, 0.30, 0.28, 0.24, 1)
+                local nb, ne = Skin.ui_notice_bg, Skin.ui_notice_edge
+                ApplyBackdrop(card, nb[1], nb[2], nb[3], nb[4], ne[1], ne[2], ne[3], ne[4])
                 local glyph = card:CreateTexture(nil, "ARTWORK")
                 glyph:SetSize(24, 24)
                 glyph:SetPoint("TOP", 0, -12)
-                glyph:SetTexture("Interface\\AddOns\\ToonAge\\Media\\frame\\ring_32.tga")
-                glyph:SetVertexColor(1, 0.82, 0)
+                glyph:SetTexture(Skin.tex.ring)
+                glyph:SetVertexColor(Skin.gold_heading[1], Skin.gold_heading[2], Skin.gold_heading[3])
                 local heading = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 heading:SetPoint("TOP", glyph, "BOTTOM", 0, -6)
                 heading:SetWidth(330)
                 heading:SetJustifyH("CENTER")
                 heading:SetText("No heirlooms here")
-                heading:SetTextColor(1, 0.82, 0)
+                heading:SetTextColor(Skin.gold_heading[1], Skin.gold_heading[2], Skin.gold_heading[3])
                 local sentence = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
                 sentence:SetPoint("TOP", heading, "BOTTOM", 0, -4)
                 sentence:SetWidth(330)
@@ -1111,12 +1121,12 @@ function TA:ShowCopyWindow(title, text)
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
         f:SetBackdrop({
-            bgFile   = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            edgeSize = 1,
+            bgFile   = Skin.tex.white,
+            edgeFile = Skin.tex.white,
+            edgeSize = Skin.metrics.edge,
         })
-        f:SetBackdropColor(0.05, 0.05, 0.06, 0.96)
-        f:SetBackdropBorderColor(0.85, 0.65, 0.13, 0.85)
+        f:SetBackdropColor(RGBA(Skin.ui_copy_bg))
+        f:SetBackdropBorderColor(RGBA(Skin.ui_copy_edge))
 
         local hdr = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         hdr:SetPoint("TOPLEFT", 12, -10)
@@ -1175,7 +1185,7 @@ function TA:ShowCopyWindow(title, text)
             self.page = n
             local label = tostring(self.baseTitle or "")
             if total > 1 then label = label .. " part " .. n .. "/" .. total end
-            self.header:SetText("|cFFFFD100" .. label .. "|r  (Ctrl+A to select, Ctrl+C to copy)")
+            self.header:SetText(Skin.code.gold .. label .. "|r  (Ctrl+A to select, Ctrl+C to copy)")
             self.editBox:SetText(pages[n] or "")
             self.editBox:SetCursorPosition(0)
             if total > 1 then
@@ -1259,8 +1269,8 @@ function TA:OpenOptionsFrame()
     local of = CreateFrame("Frame", "ToonAgeOptionsFrame", UIParent, "BackdropTemplate")
     of:SetSize(300, 116 + numTabRows * 24)
     of:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
-    ApplyBackdrop(of, 0.05, 0.05, 0.06, 0.94)
-    of:SetBackdropBorderColor(0.30, 0.30, 0.35, 1.00)
+    ApplyBackdrop(of, RGBA(Skin.ui_frame_bg))
+    of:SetBackdropBorderColor(RGBA(Skin.ui_frame_edge))
     -- Apply glass backdrop if Modern is available
     if TA.Modern and TA.Modern.ApplyGlassBackdrop then
         TA.Modern:ApplyGlassBackdrop(of)
@@ -1273,15 +1283,15 @@ function TA:OpenOptionsFrame()
     of:SetScript("OnDragStop", of.StopMovingOrSizing)
 
     local hdr = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    hdr:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-    hdr:SetText("|cFFFFD100ToonAge Options|r")
+    hdr:SetFont(STANDARD_TEXT_FONT, Skin.metrics.type_h2, "OUTLINE")
+    hdr:SetText(Skin.code.gold .. "ToonAge Options|r")
     hdr:SetPoint("TOPLEFT", of, "TOPLEFT", 12, -10)
 
     -- ── UI Layout Toggle ──────────────────────────────────────────────
     local layoutHdr = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    layoutHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    layoutHdr:SetFont(STANDARD_TEXT_FONT, Skin.metrics.type_body, "OUTLINE")
     layoutHdr:SetText("HUD LAYOUT")
-    layoutHdr:SetTextColor(0.55, 0.40, 0.08, 1)
+    layoutHdr:SetTextColor(RGBA(Skin.amber))
     layoutHdr:SetPoint("TOPLEFT", of, "TOPLEFT", 12, -30)
 
     local layoutCb = CreateFrame("CheckButton", nil, of, "UICheckButtonTemplate")
@@ -1290,15 +1300,15 @@ function TA:OpenOptionsFrame()
     layoutCb:SetChecked(TA.db and TA.db.useUnifiedUI ~= false)
 
     local layoutLbl = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    layoutLbl:SetFont(STANDARD_TEXT_FONT, 11, "")
+    layoutLbl:SetFont(STANDARD_TEXT_FONT, Skin.metrics.tab_font, "")
     layoutLbl:SetText("Use Unified Single-Frame HUD Layout")
-    layoutLbl:SetTextColor(0.78, 0.73, 0.48, 1)
+    layoutLbl:SetTextColor(RGBA(Skin.ui_label))
     layoutLbl:SetPoint("LEFT", layoutCb, "RIGHT", 2, 0)
 
     local layoutNote = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    layoutNote:SetFont(STANDARD_TEXT_FONT, 9, "")
+    layoutNote:SetFont(STANDARD_TEXT_FONT, Skin.metrics.type_caption, "")
     layoutNote:SetText("  Unchecked = classic independent windows")
-    layoutNote:SetTextColor(0.50, 0.47, 0.36, 1)
+    layoutNote:SetTextColor(RGBA(Skin.ui_note))
     layoutNote:SetPoint("TOPLEFT", layoutCb, "BOTTOMLEFT", 22, 2)
 
     -- OnShow: sync checkbox to current DB value each time the panel opens
@@ -1315,16 +1325,16 @@ function TA:OpenOptionsFrame()
 
     -- ── Divider ───────────────────────────────────────────────────────
     local divider = of:CreateTexture(nil, "ARTWORK")
-    divider:SetColorTexture(0.55, 0.40, 0.08, 0.40)
+    divider:SetColorTexture(RGBA(Skin.amber_divider))
     divider:SetHeight(1)
     divider:SetPoint("TOPLEFT",  of, "TOPLEFT",  10, -76)
     divider:SetPoint("TOPRIGHT", of, "TOPRIGHT", -10, -76)
 
     -- ── Tab Visibility ────────────────────────────────────────────────
     local tabsHdr = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    tabsHdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
+    tabsHdr:SetFont(STANDARD_TEXT_FONT, Skin.metrics.type_body, "OUTLINE")
     tabsHdr:SetText("VISIBLE TABS")
-    tabsHdr:SetTextColor(0.55, 0.40, 0.08, 1)
+    tabsHdr:SetTextColor(RGBA(Skin.amber))
     tabsHdr:SetPoint("TOPLEFT", of, "TOPLEFT", 12, -84)
 
     local y = -100
@@ -1336,9 +1346,9 @@ function TA:OpenOptionsFrame()
             cb:SetChecked(IsTabEnabled(tabDef.id))
 
             local lbl = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            lbl:SetFont(STANDARD_TEXT_FONT, 11, "")
+            lbl:SetFont(STANDARD_TEXT_FONT, Skin.metrics.tab_font, "")
             lbl:SetText(tabDef.label)
-            lbl:SetTextColor(0.78, 0.73, 0.48, 1)
+            lbl:SetTextColor(RGBA(Skin.ui_label))
             lbl:SetPoint("LEFT", cb, "RIGHT", 2, 0)
 
             cb:SetScript("OnClick", function(self)
@@ -1355,8 +1365,8 @@ function TA:OpenOptionsFrame()
     end
 
     local note = of:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    note:SetFont(STANDARD_TEXT_FONT, 9)
-    note:SetText("|cFF4AFF7AAll changes apply immediately.|r")
+    note:SetFont(STANDARD_TEXT_FONT, Skin.metrics.type_caption)
+    note:SetText(Skin.code.ok .. "All changes apply immediately.|r")
     note:SetPoint("BOTTOMLEFT", of, "BOTTOMLEFT", 12, 10)
 
     local closeBtn = CreateFrame("Button", nil, of, "UIPanelCloseButton")
@@ -1533,15 +1543,15 @@ function TA:ToggleSettingsDrawer()
         drawer:SetScript("OnDragStart", drawer.StartMoving)
         drawer:SetScript("OnDragStop", drawer.StopMovingOrSizing)
         drawer:SetClampedToScreen(true)
-        ApplyBackdrop(drawer, 0.04, 0.04, 0.05, 0.97)
-        drawer:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.8)
+        ApplyBackdrop(drawer, RGBA(Skin.ui_drawer_bg))
+        drawer:SetBackdropBorderColor(RGBA(Skin.ui_drawer_edge))
         drawer:Hide()
         tinsert(UISpecialFrames, "TASettingsDrawer")
 
         -- Title bar
         local titleLbl = drawer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        titleLbl:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
-        titleLbl:SetText("|cFFFFD100ToonAge Settings|r")
+        titleLbl:SetFont(STANDARD_TEXT_FONT, Skin.metrics.tab_font, "OUTLINE")
+        titleLbl:SetText(Skin.code.gold .. "ToonAge Settings|r")
         titleLbl:SetPoint("TOPLEFT", drawer, "TOPLEFT", 10, -8)
 
         local closeBtn = CreateFrame("Button", nil, drawer, "UIPanelCloseButton")
