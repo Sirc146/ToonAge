@@ -21,6 +21,9 @@ SWAPS = [
     ("text_success", "{ 0.30, 0.92, 0.40 }", "L.C_SUCCESS   = { 0.30, 0.92, 0.40 }"),
     ("text_warning", "{ 1.00, 0.65, 0.20 }", "L.C_WARNING   = { 1.00, 0.65, 0.20 }"),
     ("text_danger", "{ 1.00, 0.35, 0.30 }", "L.C_DANGER    = { 1.00, 0.35, 0.30 }"),
+    # bccb4cf Layout.lua:1107. The fourth argument was a literal 1, now read
+    # from the danger token.
+    ("text_danger.4", "1", "lbl:SetTextColor(L.C_DANGER[1], L.C_DANGER[2], L.C_DANGER[3], 1)"),
     ("gold_heading", "{ 1.00, 0.82, 0.00 }", "L.C_HEADER    = { 1.00, 0.82, 0.00 }"),
     ("text_dim", "{ 0.45, 0.43, 0.40 }", "L.C_DIM       = { 0.45, 0.43, 0.40 }"),
     ("stat_base", "{ 0.24, 0.44, 0.60 }", "L.C_STAT_BASE = { 0.24, 0.44, 0.60 }"),
@@ -60,6 +63,7 @@ SWAPS = [
     ("code.muted", '"|cFF555049"', "|cFF555049(%d slots)|r"),
     ("code.muted", '"|cFF555049"', "|cFF555049(inferred)|r"),
     ("tex.white", r'"Interface\\Buttons\\WHITE8X8"', 'bgFile   = "Interface\\\\Buttons\\\\WHITE8X8"'),
+    ("tex.white", r'"Interface\\Buttons\\WHITE8X8"', 'edgeFile = "Interface\\\\Buttons\\\\WHITE8X8"'),
     ("metrics.edge", "1", "edgeSize = 1,"),
     ("layout_edge", "{ 0.3, 0.28, 0.24, 1 }", "er or 0.3, eg or 0.28, eb or 0.24, ea or 1"),
     ("button.danger_hover_bg", "{ 0.18, 0.06, 0.05, 1 }",
