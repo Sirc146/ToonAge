@@ -364,6 +364,7 @@ def test_current_segment_is_gold():
     lua = runtime()
     lua.execute("ToonAge.Utils = {}")
     lua.execute(FRAME)
+    lua.execute(read("Core/Theme.lua"))
     lua.execute(read("Core/Layout.lua"))
     lua.execute(r"""
         PARENT = CreateFrame()
@@ -378,6 +379,43 @@ def test_current_segment_is_gold():
         })
         GOLD_CARD = card
     """)
+    check("layout gold is the theme table",
+          lua.eval("ToonAge.Layout.C_HEADER == ToonAge.Theme.active.gold_heading"),
+          True)
+    check("theme primary is today's warm white",
+          (lua.eval("ToonAge.Theme.active.text_primary[1]"),
+           lua.eval("ToonAge.Theme.active.text_primary[2]"),
+           lua.eval("ToonAge.Theme.active.text_primary[3]"),
+           lua.eval("ToonAge.Theme.active.text_primary[4]")),
+          (0.92, 0.90, 0.87, 1.0))
+    lua.execute(r"""
+        local primary = ToonAge.Theme.active.text_primary
+        ToonAge.Theme:Select("nope")
+        BAD_NAME = ToonAge.Theme.active.name
+        BAD_SAME = primary == ToonAge.Theme.active.text_primary
+        ToonAge.Theme:Select("glass")
+        GLASS_NAME = ToonAge.Theme.active.name
+        GLASS_SAME = primary == ToonAge.Theme.active.text_primary
+        GLASS_KIT = ToonAge.Theme.active.kit.shadow_r16
+        ToonAge.Theme:Select("classic")
+        BACK_NAME = ToonAge.Theme.active.name
+        BACK_SAME = primary == ToonAge.Theme.active.text_primary
+        BACK_KIT = ToonAge.Theme.active.kit
+        MUTED = string.format("Avg item level %d  " .. ToonAge.Theme.active.code.muted .. "(%d slots)|r", 100, 5)
+    """)
+    check("unknown skin name is classic", lua.eval("BAD_NAME"), "classic")
+    check("select keeps the colour table", lua.eval("BAD_SAME"), True)
+    check("glass select names the skin", lua.eval("GLASS_NAME"), "glass")
+    check("glass select keeps the colour table", lua.eval("GLASS_SAME"), True)
+    check("glass kit path is the Media/glass folder",
+          lua.eval("GLASS_KIT"),
+          "Interface\\AddOns\\ToonAge\\Media\\glass\\shadow_r16.tga")
+    check("classic select drops the glass kit", lua.eval("BACK_NAME"), "classic")
+    check("classic select keeps the colour table", lua.eval("BACK_SAME"), True)
+    check("classic select has no kit", lua.eval("BACK_KIT"), None)
+    check("muted slot count string is unchanged",
+          lua.eval("MUTED"),
+          "Avg item level 100  |cFF555049(5 slots)|r")
     check("current segment fill is gold",
           (lua.eval("GOLD_CARD.fills[2]._rgb[1]"),
            lua.eval("GOLD_CARD.fills[2]._rgb[2]"),

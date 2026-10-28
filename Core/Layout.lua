@@ -17,19 +17,33 @@
 
 local TA = ToonAge
 local U  = TA.Utils
+local Skin = TA.Theme.active
 
 local L = {}
 TA.Layout = L
 
+-- Index reads, not unpack: unpack on colour tables is unreliable in WoW Lua 5.1.
+local function RGBA(c)
+    return c[1], c[2], c[3], c[4]
+end
+
+-- One call, eight channels. Two RGBA() calls in one argument list would drop
+-- every return but the first from the earlier call.
+local function Backdrop(frame, bg, edge)
+    TA._ApplyBackdrop(frame, bg[1], bg[2], bg[3], bg[4], edge[1], edge[2], edge[3], edge[4])
+end
+
 -- ─── Palette (.rules.md) ────────────────────────────────────────────────────
-L.C_PRIMARY   = { 0.92, 0.90, 0.87 }
-L.C_SECONDARY = { 0.62, 0.59, 0.55 }
-L.C_ACCENT    = { 0.40, 0.75, 1.00 }
-L.C_SUCCESS   = { 0.30, 0.92, 0.40 }
-L.C_WARNING   = { 1.00, 0.65, 0.20 }
-L.C_DANGER    = { 1.00, 0.35, 0.30 }
-L.C_HEADER    = { 1.00, 0.82, 0.00 }
-L.C_DIM       = { 0.45, 0.43, 0.40 }
+-- These are the theme tables, not copies. Theme:Select writes new numbers
+-- into the same tables, so every module that kept L.C_PRIMARY follows.
+L.C_PRIMARY   = Skin.text_primary
+L.C_SECONDARY = Skin.text_secondary
+L.C_ACCENT    = Skin.text_accent
+L.C_SUCCESS   = Skin.text_success
+L.C_WARNING   = Skin.text_warning
+L.C_DANGER    = Skin.text_danger
+L.C_HEADER    = Skin.gold_heading
+L.C_DIM       = Skin.text_dim
 
 L.STATUS = {
     good    = L.C_SUCCESS,
@@ -45,16 +59,17 @@ L.STATUS = {
 -- for cap states (armour at 75%, a skill below its cap), so colour means one
 -- thing everywhere in the addon. Class colour belongs on identity -- the name
 -- in the sidebar -- not on data.
-L.C_STAT_BASE = { 0.24, 0.44, 0.60 }   -- from level and race
-L.C_STAT_GEAR = { 0.40, 0.75, 1.00 }   -- added by gear and buffs (C_ACCENT)
+L.C_STAT_BASE = Skin.stat_base   -- from level and race
+L.C_STAT_GEAR = Skin.stat_gear   -- added by gear and buffs (same RGB as C_ACCENT)
 
 L.STATUS.stat = L.C_STAT_BASE
 
-L.PAD  = 14   -- side padding
-L.RPAD = 8    -- between rows
+L.PAD  = Skin.metrics.pad    -- side padding
+L.RPAD = Skin.metrics.rpad   -- between rows
 
-local FONT = "Fonts\\FRIZQT__.TTF"
-local MONO = "Fonts\\ARIALN.TTF"
+-- Copied at load. Both skins use these two faces.
+local FONT = Skin.font
+local MONO = Skin.mono
 
 -- ─── Text Helpers ───────────────────────────────────────────────────────────
 
@@ -70,7 +85,9 @@ end
 -- arithmetic raise and take the entire tab down with it (Forever, 2026-09-23 --
 -- the full account is in Core/Utils.lua). Every row in the addon is built here,
 -- so one test here covers every caller, including ones not written yet.
-local SECRET_PLACEHOLDER = "|cFF6E6A62hidden|r"
+local function SecretPlaceholder()
+    return Skin.code.secret .. "hidden|r"
+end
 
 local function IsSecretText(v)
     if not issecretvalue then return false end
@@ -125,7 +142,7 @@ end
 --- 2026-09-28 until every built-in string got a font at creation.
 local function NewFS(frame)
     local fs = frame:CreateFontString(nil, "OVERLAY")
-    fs:SetFont(FONT, 10, "")
+    fs:SetFont(FONT, Skin.metrics.type_body, "")
     return fs
 end
 
@@ -157,7 +174,7 @@ local function TakeRegion(parent, kind, layer)
     if not r then
         if kind == "FontString" then
             r = parent:CreateFontString(nil, layer or "OVERLAY")
-            r:SetFont(FONT, 10, "")
+            r:SetFont(FONT, Skin.metrics.type_body, "")
         else
             r = parent:CreateTexture(nil, layer or "ARTWORK")
         end
@@ -208,11 +225,11 @@ end
 --- Apply text options to an existing FontString (shared by Text and the
 --- pooled rows, whose inner strings are built once and restyled).
 local function StyleText(fs, opts)
-    fs:SetFont(opts.font or FONT, opts.size or 10, opts.flags or "")
+    fs:SetFont(opts.font or FONT, opts.size or Skin.metrics.type_body, opts.flags or "")
     local c = Colour(opts.color)
     fs:SetTextColor(c[1], c[2], c[3], opts.alpha or 1)
     if opts.text ~= nil then
-        fs:SetText(IsSecretText(opts.text) and SECRET_PLACEHOLDER or opts.text)
+        fs:SetText(IsSecretText(opts.text) and SecretPlaceholder() or opts.text)
     end
     if opts.text == nil then fs:SetText("") end
     fs:SetJustifyH(opts.justify or "LEFT")
@@ -279,7 +296,7 @@ function L:SectionHeader(parent, y, title, subtitle)
     line:SetHeight(1)
     line:SetPoint("TOPLEFT",  parent, "TOPLEFT",  L.PAD, y)
     line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -L.PAD, y)
-    line:SetColorTexture(0.30, 0.28, 0.22, 0.60)
+    line:SetColorTexture(RGBA(Skin.layout_rule))
 
     return y - 10
 end
@@ -366,7 +383,8 @@ function L:CapBar(parent, y, opts)
     track:SetSize(w, BAR_H)
     track:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -16)
     if TA._ApplyBackdrop then
-        TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
+        local tb, te = Skin.bar_track_bg, Skin.bar_track_edge
+        TA._ApplyBackdrop(track, tb[1], tb[2], tb[3], tb[4], te[1], te[2], te[3], te[4])
     end
 
     local pct = 0
@@ -383,16 +401,16 @@ function L:CapBar(parent, y, opts)
     fill:SetWidth(math.max(math.floor((w - 2) * pct), 1))
     local rgb = opts.fillRGB
     if type(rgb) == "table" then
-        fill:SetColorTexture(rgb[1], rgb[2], rgb[3], 0.90)
+        fill:SetColorTexture(rgb[1], rgb[2], rgb[3], Skin.bar_fill_a)
     else
         local c = Colour(status)
-        fill:SetColorTexture(c[1] * 0.55, c[2] * 0.55, c[3] * 0.55, 0.85)
+        fill:SetColorTexture(c[1] * Skin.cap_dim, c[2] * Skin.cap_dim, c[3] * Skin.cap_dim, Skin.cap_dim_a)
     end
     fill:Show()
 
     if not card._tickMark then
         card._tickMark = track:CreateTexture(nil, "OVERLAY")
-        card._tickMark:SetColorTexture(0.910, 0.702, 0.353, 1)
+        card._tickMark:SetColorTexture(RGBA(Skin.gilder_gold))
     end
     if opts.tickAt then
         local x = math.floor((w - 2) * opts.tickAt)
@@ -486,7 +504,8 @@ function L:StatBar(parent, y, opts)
     track:SetSize(barW, BAR_H)
     track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, -2)
     if TA._ApplyBackdrop then
-        TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
+        local tb, te = Skin.bar_track_bg, Skin.bar_track_edge
+        TA._ApplyBackdrop(track, tb[1], tb[2], tb[3], tb[4], te[1], te[2], te[3], te[4])
     end
 
     local value = tonumber(opts.value)
@@ -506,7 +525,7 @@ function L:StatBar(parent, y, opts)
         fill:SetPoint("TOPLEFT",    track, "TOPLEFT",    1, -1)
         fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1,  1)
         fill:SetWidth(math.max(math.floor(inner * basePct), 1))
-        fill:SetColorTexture(cBase[1], cBase[2], cBase[3], 0.90)
+        fill:SetColorTexture(cBase[1], cBase[2], cBase[3], Skin.bar_fill_a)
         fill:Show()
 
         if base and value > base and total > basePct then
@@ -516,7 +535,7 @@ function L:StatBar(parent, y, opts)
             extra:SetPoint("TOPLEFT",    fill, "TOPRIGHT",    0, 0)
             extra:SetPoint("BOTTOMLEFT", fill, "BOTTOMRIGHT", 0, 0)
             extra:SetWidth(math.max(math.floor(inner * (total - basePct)), 1))
-            extra:SetColorTexture(g[1], g[2], g[3], 0.90)
+            extra:SetColorTexture(g[1], g[2], g[3], Skin.bar_fill_a)
             extra:Show()
         end
     end
@@ -525,7 +544,7 @@ function L:StatBar(parent, y, opts)
     -- is computed -- same look as a right anchor, without depending on the
     -- parent's right edge being where we think it is.
     StyleText(row.text, {
-        text = opts.text or (value and tostring(value)) or "|cFF6E6A62n/a|r",
+        text = opts.text or (value and tostring(value)) or (Skin.code.secret .. "n/a|r"),
         size = 11, flags = "OUTLINE", color = opts.status, justify = "RIGHT",
     })
     row.text:ClearAllPoints()
@@ -631,7 +650,8 @@ function L:ProfessionCard(parent, y, opts)
     track:SetSize(w, BAR_H)
     track:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -36)
     if TA._ApplyBackdrop then
-        TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
+        local tb, te = Skin.bar_track_bg, Skin.bar_track_edge
+        TA._ApplyBackdrop(track, tb[1], tb[2], tb[3], tb[4], te[1], te[2], te[3], te[4])
     end
 
     card.fill:Hide()
@@ -641,7 +661,7 @@ function L:ProfessionCard(parent, y, opts)
     local segs = type(opts.segments) == "table" and opts.segments or nil
     local hue = L:ProfessionColor(opts.name) or L.C_STAT_BASE
     local function Paint(tex, rgb, alpha)
-        tex:SetColorTexture(rgb[1], rgb[2], rgb[3], alpha or 0.90)
+        tex:SetColorTexture(rgb[1], rgb[2], rgb[3], alpha or Skin.bar_fill_a)
         tex._rgb = rgb
     end
 
@@ -667,9 +687,9 @@ function L:ProfessionCard(parent, y, opts)
             slot:SetSize(segW, BAR_H - 2)
             local current = seg.current and true or false
             if current then
-                Paint(slot, { 0.45, 0.36, 0.08 }, 0.55)
+                Paint(slot, Skin.slot_current, Skin.slot_current_a)
             else
-                Paint(slot, { 0.16, 0.15, 0.13 }, 0.80)
+                Paint(slot, Skin.slot_empty, Skin.slot_empty_a)
             end
             slot:Show()
 
@@ -683,7 +703,7 @@ function L:ProfessionCard(parent, y, opts)
             if fw > 0 then
                 fill:SetPoint("TOPLEFT", track, "TOPLEFT", x, -1)
                 fill:SetSize(fw, BAR_H - 2)
-                Paint(fill, current and L.C_HEADER or hue, 0.95)
+                Paint(fill, current and L.C_HEADER or hue, Skin.prof_fill_a)
                 fill._current = current
                 fill:Show()
             else
@@ -702,7 +722,7 @@ function L:ProfessionCard(parent, y, opts)
         fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
         fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
         fill:SetWidth(math.max(math.floor((w - 2) * pct), 1))
-        Paint(fill, hue, 0.90)
+        Paint(fill, hue, Skin.bar_fill_a)
         fill._current = false
         fill:Show()
     end
@@ -870,7 +890,8 @@ function L:StackBar(parent, y, opts)
     track:SetSize(barW, BAR_H)
     track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, -2)
     if TA._ApplyBackdrop then
-        TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
+        local tb, te = Skin.bar_track_bg, Skin.bar_track_edge
+        TA._ApplyBackdrop(track, tb[1], tb[2], tb[3], tb[4], te[1], te[2], te[3], te[4])
     end
     for _, tex in ipairs(row.segs) do tex:Hide() end
 
@@ -893,7 +914,7 @@ function L:StackBar(parent, y, opts)
                     row.segs[used] = tex
                 end
                 tex:ClearAllPoints()
-                local shade = (i % 2 == 1) and 1.00 or 0.70
+                local shade = (i % 2 == 1) and Skin.stack_shade or Skin.stack_shade_dim
                 if prev then
                     tex:SetPoint("TOPLEFT",    prev, "TOPRIGHT",    0, 0)
                     tex:SetPoint("BOTTOMLEFT", prev, "BOTTOMRIGHT", 0, 0)
@@ -902,7 +923,7 @@ function L:StackBar(parent, y, opts)
                     tex:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1,  1)
                 end
                 tex:SetWidth(math.max(math.floor(inner * (v / scale)), 1))
-                tex:SetColorTexture(c[1] * shade, c[2] * shade, c[3] * shade, 0.90)
+                tex:SetColorTexture(c[1] * shade, c[2] * shade, c[3] * shade, Skin.bar_fill_a)
                 tex:Show()
                 prev = tex
             end
@@ -948,7 +969,7 @@ end
 function L:Paragraph(parent, y, text, opts)
     opts = opts or {}
     y = math.floor(y)
-    local fs = Text(parent, { text = text, size = opts.size or 10, color = opts.color or "dim" })
+    local fs = Text(parent, { text = text, size = opts.size or Skin.metrics.type_body, color = opts.color or "dim" })
     fs:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
     fs:SetWidth(self:Width(parent))
     fs:SetHeight(0)
@@ -982,7 +1003,7 @@ function L:Divider(parent, y)
     line:SetHeight(1)
     line:SetPoint("TOPLEFT",  parent, "TOPLEFT",  L.PAD, y)
     line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -L.PAD, y)
-    line:SetColorTexture(0.25, 0.23, 0.20, 0.50)
+    line:SetColorTexture(RGBA(Skin.layout_divider))
     return y - 8
 end
 
@@ -1054,14 +1075,14 @@ function L:CharacterSidebar(side)
 
     local ilvl, counted = U.GetAverageIlvl()
     local ilvlFS = Text(side, {
-        text = string.format("Avg item level %d  |cFF555049(%d slots)|r", ilvl, counted),
+        text = string.format("Avg item level %d  " .. Skin.code.muted .. "(%d slots)|r", ilvl, counted),
         size = 9, color = L.C_SECONDARY })
     ilvlFS:SetPoint("TOPLEFT", side, "TOPLEFT", 10, y)
     ilvlFS:SetWidth(w)
     y = y - 18
 
     local role = U.InferRole()
-    local roleFS = Text(side, { text = "Role: " .. role .. "  |cFF555049(inferred)|r",
+    local roleFS = Text(side, { text = "Role: " .. role .. "  " .. Skin.code.muted .. "(inferred)|r",
                                 size = 9, color = L.C_DIM })
     roleFS:SetPoint("TOPLEFT", side, "TOPLEFT", 10, y)
     roleFS:SetWidth(w)
@@ -1088,42 +1109,48 @@ function TA._ApplyBackdrop(frame, br, bg, bb, ba, er, eg, eb, ea)
     end
     if not frame.SetBackdrop then return end
     frame:SetBackdrop({
-        bgFile   = "Interface\\Buttons\\WHITE8X8",
-        edgeFile = "Interface\\Buttons\\WHITE8X8",
-        edgeSize = 1,
+        bgFile   = Skin.tex.white,
+        edgeFile = Skin.tex.white,
+        edgeSize = Skin.metrics.edge,
     })
     frame:SetBackdropColor(br, bg, bb, ba or 1)
-    frame:SetBackdropBorderColor(er or 0.3, eg or 0.28, eb or 0.24, ea or 1)
+    local edge = Skin.layout_edge
+    frame:SetBackdropBorderColor(er or edge[1], eg or edge[2], eb or edge[3], ea or edge[4])
 end
 
 local function StyleButton(btn, lbl, active, hover, danger, gold)
     if danger then
         -- Same red as a danger action (L.C_DANGER text, dark red fill).
+        local b = Skin.button
         if hover then
-            TA._ApplyBackdrop(btn, 0.18, 0.06, 0.05, 1, 1.00, 0.45, 0.40, 1)
-            lbl:SetTextColor(1, 0.78, 0.74, 1)
+            Backdrop(btn, b.danger_hover_bg, b.danger_hover_edge)
+            lbl:SetTextColor(RGBA(b.danger_hover_text))
         else
-            TA._ApplyBackdrop(btn, 0.10, 0.04, 0.04, 1, 0.90, 0.30, 0.25, 1)
-            lbl:SetTextColor(L.C_DANGER[1], L.C_DANGER[2], L.C_DANGER[3], 1)
+            Backdrop(btn, b.danger_bg, b.danger_edge)
+            lbl:SetTextColor(L.C_DANGER[1], L.C_DANGER[2], L.C_DANGER[3], L.C_DANGER[4])
         end
     elseif gold then
-        -- Gilder gold (#E8B35A) for the one primary action on a tab.
+        -- Gilder gold for the one primary action on a tab.
+        local b = Skin.button
         if hover then
-            TA._ApplyBackdrop(btn, 0.22, 0.16, 0.06, 1, 0.910, 0.702, 0.353, 1)
-            lbl:SetTextColor(0.98, 0.94, 0.84, 1)
+            Backdrop(btn, b.gold_hover_bg, Skin.gilder_gold)
+            lbl:SetTextColor(RGBA(b.text_on_gold))
         else
-            TA._ApplyBackdrop(btn, 0.16, 0.12, 0.04, 1, 0.910, 0.702, 0.353, 1)
-            lbl:SetTextColor(0.910, 0.702, 0.353, 1)
+            Backdrop(btn, b.gold_bg, Skin.gilder_gold)
+            lbl:SetTextColor(RGBA(Skin.gilder_gold))
         end
     elseif active then
-        TA._ApplyBackdrop(btn, 0.16, 0.13, 0.02, 1, 1.00, 0.82, 0.00, 1)
-        lbl:SetTextColor(1, 0.82, 0, 1)
+        local b = Skin.button
+        Backdrop(btn, b.active_bg, b.active_edge)
+        lbl:SetTextColor(RGBA(Skin.gold_heading))
     elseif hover then
-        TA._ApplyBackdrop(btn, 0.13, 0.11, 0.08, 1, 0.60, 0.52, 0.30, 1)
-        lbl:SetTextColor(0.92, 0.90, 0.87, 1)
+        local b = Skin.button
+        Backdrop(btn, b.hover_bg, b.hover_edge)
+        lbl:SetTextColor(RGBA(Skin.text_primary))
     else
-        TA._ApplyBackdrop(btn, 0.08, 0.07, 0.06, 1, 0.30, 0.28, 0.24, 1)
-        lbl:SetTextColor(0.78, 0.74, 0.68, 1)
+        local b = Skin.button
+        Backdrop(btn, b.idle_bg, Skin.layout_edge)
+        lbl:SetTextColor(RGBA(b.idle_text))
     end
 end
 
@@ -1158,7 +1185,7 @@ function L:ButtonRow(parent, y, buttons, opts)
             return f
         end)
         local lbl = btn.lbl
-        lbl:SetFont(FONT, opts.size or 9, "")
+        lbl:SetFont(FONT, opts.size or Skin.metrics.type_caption, "")
         lbl:SetText(def.label)
         lbl:ClearAllPoints()
         lbl:SetPoint("CENTER")

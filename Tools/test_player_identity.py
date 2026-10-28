@@ -183,6 +183,7 @@ def main():
     lua.execute("GetSpecialization = function() return 1 end")
     check("mists spec label uses the existing name", U.GetSpecLabel(), "Assassination")
 
+    lua.execute(read("Core/Theme.lua"))
     lua.execute(read("Core/Layout.lua"))
     lua.execute(read("Modules/Character/ProfessionBoard.lua"))
     lua.execute(r"""
