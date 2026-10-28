@@ -63,20 +63,12 @@ U.SLOT_NAMES = {
 U.STAT_SLOTS = { 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 }
 
 -- ── Player identity (race + localized class) ───────────────────────────────
+-- U.GetPlayerName, U.GetPlayerClassLocalized, U.GetPlayerRace and
+-- U.GetSpecLabel live in Core/Utils.lua. They call TA.Compat so the
+-- Professions sidebar can draw on every flavor. This file still replaces
+-- U.GetSpecLabel below with the talent-tree label TBC shows.
 
---- Localized class name for display (e.g. "Warrior"), vs U.GetPlayerClass()'s
---- English token (e.g. "WARRIOR") used for table lookups.
-function U.GetPlayerClassLocalized()
-    local localizedClass = UnitClass("player")
-    return localizedClass or "Unknown"
-end
 
---- Race as (token, localizedName) — token matches the English keys used by
---- Data/TBC/TBCRaces.lua's RaceMechanics table ("Human", "Orc", "Dwarf", ...).
-function U.GetPlayerRace()
-    local localizedName, token = UnitRace("player")
-    return token or "Unknown", localizedName or "Unknown"
-end
 
 -- ── Talent trees (old tab-based API — TBC/Classic only) ────────────────────
 
@@ -161,13 +153,13 @@ function U.GetSpecLabel()
         if unspent > 0 then
             return string.format("|cFFFF9A1A%d talent point%s unspent|r", unspent, unspent == 1 and "" or "s")
         end
-        return name
+        return name or ""
     end
     local label = string.format("%s (%d)", name, points)
     if unspent > 0 then
         label = label .. string.format("  |cFFFF9A1A+%d unspent|r", unspent)
     end
-    return label
+    return label or ""
 end
 
 --- Live points spent in a named talent tree, matched case-insensitively.

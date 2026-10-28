@@ -489,8 +489,20 @@ function U.FormatIlvl(ilvl)
 end
 
 -- ── Player identity ───────────────────────────────────────────────────
+-- The Professions sidebar calls these four. They live here, not in
+-- Core/TBCUtils.lua, so a flavor that does not load that file still has
+-- them. Each one asks TA.Compat, and a missing answer is "" rather than nil.
+-- A secret is not an answer we can show.
+
+local function Answer(v)
+    if U.IsSecret(v) then return "" end
+    if type(v) ~= "string" then return "" end
+    return v
+end
+
 function U.GetPlayerName()
-    return UnitName("player") or "Unknown"
+    if not (TA.Compat and type(TA.Compat.UnitName) == "function") then return "" end
+    return Answer(TA.Compat.UnitName("player"))
 end
 
 function U.GetPlayerLevel()
@@ -500,6 +512,22 @@ end
 function U.GetPlayerClass()
     local _, class = UnitClass("player")
     return class or "UNKNOWN"
+end
+
+--- Localized class name for display (for example "Mage"). The English token
+--- stays on U.GetPlayerClass, which table lookups use.
+function U.GetPlayerClassLocalized()
+    if not (TA.Compat and type(TA.Compat.UnitClass) == "function") then return "" end
+    local localized = TA.Compat.UnitClass("player")
+    return Answer(localized)
+end
+
+--- Race as (token, localizedName). The token matches English keys such as
+--- "Human" and "NightElf". Both are "" when the client has no answer.
+function U.GetPlayerRace()
+    if not (TA.Compat and type(TA.Compat.UnitRace) == "function") then return "", "" end
+    local localized, token = TA.Compat.UnitRace("player")
+    return Answer(token), Answer(localized)
 end
 
 function U.GetPlayerSpec()
@@ -567,6 +595,14 @@ function U.GetPlayerSpecID()
     return (U.GetPlayerSpec())
 end
 
+--- Spec line for the shared sidebar. The name is whatever GetPlayerSpec
+--- already resolved for this flavor. This does not call GetSpecialization
+--- and does not add a Mists path. No answer is "".
+function U.GetSpecLabel()
+    local _, name = U.GetPlayerSpec()
+    return Answer(name)
+end
+
 function U.GetPlayerRole()
     if TA.IsClassicEra or TA.IsTBC then return "NONE" end
     local infoFn = (C_SpecializationInfo and type(C_SpecializationInfo.GetSpecializationInfo) == "function"
@@ -596,6 +632,15 @@ end
 function U.IsDPS()
     local role = U.GetPlayerRole()
     return role == "DAMAGER"
+end
+
+--- Role line for the shared sidebar. TBC replaces this from talent trees in
+--- Core/TBCUtils.lua. No specialization API is called here.
+function U.InferRole()
+    local role = U.GetPlayerRole()
+    if U.IsSecret(role) then return "" end
+    if type(role) ~= "string" then return "" end
+    return role
 end
 
 -- ── Group detection ───────────────────────────────────────────────────
