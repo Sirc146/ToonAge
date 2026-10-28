@@ -9,6 +9,15 @@ local TA = ToonAge
 TA.Modern = TA.Modern or {}
 local M = TA.Modern
 
+-- Active palette. Theme:Select mutates these tables in place, so holding the
+-- table (not a copy of its numbers) is what lets a later skin show up.
+local Skin = TA.Theme.active
+
+-- Index reads, not unpack: unpack on colour tables is unreliable in WoW Lua 5.1.
+local function RGBA(c)
+    return c[1], c[2], c[3], c[4]
+end
+
 -- =============================================================================
 -- SECTION 1 — TYPOGRAPHY
 -- =============================================================================
@@ -16,26 +25,27 @@ local M = TA.Modern
 -- at small sizes without looking dated. FRIZQT is the cleanest built-in sans.
 -- NumberFont_OutlineThick_Mono_Small is monospace for data columns.
 
-M.FONT_HEADER  = "Fonts\\FRIZQT__.TTF"   -- clean sans-serif, bold via OUTLINE
-M.FONT_BODY    = "Fonts\\FRIZQT__.TTF"   -- same face, normal weight (no outline)
-M.FONT_CAPTION = "Fonts\\FRIZQT__.TTF"   -- small captions
-M.FONT_MONO    = "Fonts\\ARIALN.TTF"     -- monospace-like for numbers/data
+-- Strings are copied at load. Both skins use the same two faces.
+M.FONT_HEADER  = Skin.font   -- clean sans-serif, bold via OUTLINE
+M.FONT_BODY    = Skin.font   -- same face, normal weight (no outline)
+M.FONT_CAPTION = Skin.font   -- small captions
+M.FONT_MONO    = Skin.mono   -- monospace-like for numbers/data
 
 -- Size hierarchy (establishes visual weight without relying on color alone)
-M.SIZE_H1      = 14
-M.SIZE_H2      = 12
-M.SIZE_H3      = 11
-M.SIZE_BODY    = 10
-M.SIZE_CAPTION = 9
-M.SIZE_TINY    = 8
+M.SIZE_H1      = Skin.metrics.type_h1
+M.SIZE_H2      = Skin.metrics.type_h2
+M.SIZE_H3      = Skin.metrics.type_h3
+M.SIZE_BODY    = Skin.metrics.type_body
+M.SIZE_CAPTION = Skin.metrics.type_caption
+M.SIZE_TINY    = Skin.metrics.type_tiny
 
 -- Color palette — neutral tones replace the gold/amber legacy look
-M.CLR_TEXT_PRIMARY   = { 0.92, 0.90, 0.87, 1.00 }  -- warm white
-M.CLR_TEXT_SECONDARY = { 0.62, 0.59, 0.55, 1.00 }  -- muted gray
-M.CLR_TEXT_ACCENT    = { 0.40, 0.75, 1.00, 1.00 }  -- cool blue accent
-M.CLR_TEXT_SUCCESS   = { 0.30, 0.92, 0.40, 1.00 }  -- green
-M.CLR_TEXT_WARNING   = { 1.00, 0.65, 0.20, 1.00 }  -- orange
-M.CLR_TEXT_DANGER    = { 1.00, 0.35, 0.30, 1.00 }  -- red
+M.CLR_TEXT_PRIMARY   = Skin.text_primary    -- warm white
+M.CLR_TEXT_SECONDARY = Skin.text_secondary  -- muted gray
+M.CLR_TEXT_ACCENT    = Skin.text_accent     -- cool blue accent
+M.CLR_TEXT_SUCCESS   = Skin.text_success    -- green
+M.CLR_TEXT_WARNING   = Skin.text_warning    -- orange
+M.CLR_TEXT_DANGER    = Skin.text_danger     -- red
 
 -- =============================================================================
 -- SECTION 2 — BACKDROP HELPERS
@@ -43,9 +53,9 @@ M.CLR_TEXT_DANGER    = { 1.00, 0.35, 0.30, 1.00 }  -- red
 -- Modern flat backdrops: slightly translucent, thin 1px borders, no textures.
 
 M.BACKDROP_FLAT = {
-    bgFile   = "Interface\\Buttons\\WHITE8X8",
-    edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 1,
+    bgFile   = Skin.tex.white,
+    edgeFile = Skin.tex.white,
+    edgeSize = Skin.metrics.edge,
 }
 
 --- Apply a modern translucent backdrop to a frame.
@@ -55,28 +65,10 @@ function M:ApplyBackdrop(frame, style)
     if not frame or not frame.SetBackdrop then return end
     frame:SetBackdrop(self.BACKDROP_FLAT)
 
-    if style == "card" then
-        frame:SetBackdropColor(0.08, 0.08, 0.10, 0.92)
-        frame:SetBackdropBorderColor(0.28, 0.28, 0.32, 0.60)
-    elseif style == "input" then
-        frame:SetBackdropColor(0.04, 0.04, 0.05, 0.95)
-        frame:SetBackdropBorderColor(0.22, 0.22, 0.26, 0.50)
-    elseif style == "header" then
-        frame:SetBackdropColor(0.12, 0.12, 0.14, 0.96)
-        frame:SetBackdropBorderColor(0.30, 0.30, 0.35, 0.50)
-    elseif style == "success" then
-        frame:SetBackdropColor(0.04, 0.10, 0.04, 0.92)
-        frame:SetBackdropBorderColor(0.20, 0.80, 0.30, 0.55)
-    elseif style == "danger" then
-        frame:SetBackdropColor(0.10, 0.04, 0.04, 0.92)
-        frame:SetBackdropBorderColor(0.90, 0.30, 0.25, 0.55)
-    elseif style == "warning" then
-        frame:SetBackdropColor(0.10, 0.07, 0.02, 0.92)
-        frame:SetBackdropBorderColor(0.90, 0.60, 0.15, 0.50)
-    else  -- "panel" / default
-        frame:SetBackdropColor(0.06, 0.06, 0.08, 0.94)
-        frame:SetBackdropBorderColor(0.24, 0.24, 0.28, 0.50)
-    end
+    local look = Skin.backdrop[style] or Skin.backdrop.panel
+    local bg, edge = look.bg, look.edge
+    frame:SetBackdropColor(bg[1], bg[2], bg[3], bg[4])
+    frame:SetBackdropBorderColor(edge[1], edge[2], edge[3], edge[4])
 end
 
 
@@ -91,21 +83,21 @@ end
 -- options). Card-level elements should continue using M:ApplyBackdrop("card").
 
 M.GLASS_BACKDROP_BASE = {
-    bgFile   = "Interface\\Buttons\\WHITE8X8",
-    edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 1,
+    bgFile   = Skin.tex.white,
+    edgeFile = Skin.tex.white,
+    edgeSize = Skin.metrics.edge,
 }
 
 M.GLASS_BACKDROP_FROST = {
-    bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
+    bgFile   = Skin.tex.tooltip_bg,
     edgeFile = "",
     edgeSize = 0,
 }
 
 M.GLASS_SHADOW_BACKDROP = {
     bgFile   = "",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    edgeSize = 12,
+    edgeFile = Skin.tex.tooltip_edge,
+    edgeSize = Skin.metrics.shadow_edge,
 }
 
 --- Apply the double-pane frosted glass backdrop to a major panel frame.
@@ -118,10 +110,10 @@ function M:ApplyGlassBackdrop(frame, opts)
 
     -- ── Layer 1: Solid dark base (visibility shield) ──────────────────
     frame:SetBackdrop(self.GLASS_BACKDROP_BASE)
-    local bt = opts.baseTint or { 0.05, 0.05, 0.06, 0.90 }
+    local bt = opts.baseTint or Skin.glass_base
     frame:SetBackdropColor(bt[1], bt[2], bt[3], bt[4])
     -- 100% opaque border for sharp definition
-    local bc = opts.borderColor or { 0.30, 0.30, 0.35, 1.00 }
+    local bc = opts.borderColor or Skin.glass_border
     frame:SetBackdropBorderColor(bc[1], bc[2], bc[3], bc[4])
 
     -- ── Layer 2: Frosted glass overlay texture ────────────────────────
@@ -132,7 +124,7 @@ function M:ApplyGlassBackdrop(frame, opts)
         frame._glassFrost = frost
     end
     frame._glassFrost:SetBackdrop(self.GLASS_BACKDROP_FROST)
-    local ft = opts.frostTint or { 0.08, 0.08, 0.10, 0.60 }
+    local ft = opts.frostTint or Skin.glass_frost
     frame._glassFrost:SetBackdropColor(ft[1], ft[2], ft[3], ft[4])
     frame._glassFrost:Show()
 
@@ -140,13 +132,15 @@ function M:ApplyGlassBackdrop(frame, opts)
     if not opts.noShadow then
         if not frame._glassShadow then
             local shadow = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-            shadow:SetPoint("TOPLEFT", frame, "TOPLEFT", -4, 4)
-            shadow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 4, -4)
+            local o = Skin.metrics.shadow_outset
+            shadow:SetPoint("TOPLEFT", frame, "TOPLEFT", -o, o)
+            shadow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", o, -o)
             shadow:SetFrameLevel(math.max(frame:GetFrameLevel() - 1, 0))
             frame._glassShadow = shadow
         end
         frame._glassShadow:SetBackdrop(self.GLASS_SHADOW_BACKDROP)
-        frame._glassShadow:SetBackdropBorderColor(0, 0, 0, 0.70)
+        local sh = Skin.glass_shadow
+        frame._glassShadow:SetBackdropBorderColor(sh[1], sh[2], sh[3], sh[4])
         frame._glassShadow:Show()
     end
 end
@@ -167,25 +161,27 @@ end
 --- @param b number
 --- @param a number|nil
 function M:ApplyGlowBorder(frame, r, g, b, a)
-    a = a or 0.7
+    a = a or Skin.glow_alpha
     if not frame._modernGlow then
         local glow = frame:CreateTexture(nil, "OVERLAY")
-        glow:SetTexture("Interface\\Buttons\\WHITE8X8")
+        glow:SetTexture(Skin.tex.white)
         glow:SetAllPoints(frame)
         glow:SetBlendMode("ADD")
         frame._modernGlow = glow
 
         -- Create inner mask to make it a border effect (inset by 2px)
         local mask = frame:CreateTexture(nil, "OVERLAY", nil, 1)
-        mask:SetTexture("Interface\\Buttons\\WHITE8X8")
-        mask:SetPoint("TOPLEFT", frame, "TOPLEFT", 2, -2)
-        mask:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2, 2)
+        mask:SetTexture(Skin.tex.white)
+        local inset = Skin.metrics.glow_inset
+        mask:SetPoint("TOPLEFT", frame, "TOPLEFT", inset, -inset)
+        mask:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -inset, inset)
         frame._modernGlowMask = mask
     end
-    frame._modernGlow:SetVertexColor(r, g, b, a * 0.35)
+    frame._modernGlow:SetVertexColor(r, g, b, a * Skin.glow_strength)
     frame._modernGlow:Show()
     -- The mask uses the frame's own backdrop color to punch through
-    frame._modernGlowMask:SetVertexColor(0.06, 0.06, 0.08, 0.94)
+    local maskClr = Skin.backdrop.panel.bg
+    frame._modernGlowMask:SetVertexColor(maskClr[1], maskClr[2], maskClr[3], maskClr[4])
     frame._modernGlowMask:Show()
 end
 
@@ -218,22 +214,20 @@ function M:ApplyStatusStrip(frame, status, height)
     strip:SetHeight(height)
     strip:Show()
 
+    local stripClr
     if status == "ok" then
-        strip:SetGradient("HORIZONTAL",
-            CreateColor(0.15, 0.70, 0.30, 0.8),
-            CreateColor(0.15, 0.70, 0.30, 0.0))
+        stripClr = Skin.strip_ok
     elseif status == "upgrade" then
-        strip:SetGradient("HORIZONTAL",
-            CreateColor(0.12, 1.00, 0.00, 0.9),
-            CreateColor(0.12, 1.00, 0.00, 0.0))
+        stripClr = Skin.strip_upgrade
     elseif status == "warning" then
-        strip:SetGradient("HORIZONTAL",
-            CreateColor(1.00, 0.65, 0.10, 0.8),
-            CreateColor(1.00, 0.65, 0.10, 0.0))
+        stripClr = Skin.strip_warning
     elseif status == "danger" then
+        stripClr = Skin.strip_danger
+    end
+    if stripClr then
         strip:SetGradient("HORIZONTAL",
-            CreateColor(1.00, 0.30, 0.25, 0.9),
-            CreateColor(1.00, 0.30, 0.25, 0.0))
+            CreateColor(stripClr[1], stripClr[2], stripClr[3], stripClr[4]),
+            CreateColor(stripClr[1], stripClr[2], stripClr[3], 0))
     else
         strip:Hide()
     end
@@ -407,13 +401,13 @@ function M:CreateCollapsibleSection(parent, opts)
     local arrow = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     arrow:SetFont(self.FONT_BODY, self.SIZE_BODY, "OUTLINE")
     arrow:SetPoint("LEFT", header, "LEFT", 8, 0)
-    arrow:SetTextColor(unpack(self.CLR_TEXT_SECONDARY))
+    arrow:SetTextColor(RGBA(self.CLR_TEXT_SECONDARY))
 
     -- Title text
     local titleF = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     titleF:SetFont(self.FONT_HEADER, self.SIZE_H3, "OUTLINE")
     titleF:SetText(title)
-    titleF:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+    titleF:SetTextColor(RGBA(self.CLR_TEXT_PRIMARY))
     titleF:SetPoint("LEFT", arrow, "RIGHT", 6, 0)
 
     -- Content area
@@ -483,10 +477,10 @@ function M:CreateCollapsibleSection(parent, opts)
 
     -- Hover highlight
     header:SetScript("OnEnter", function()
-        titleF:SetTextColor(unpack(M.CLR_TEXT_ACCENT))
+        titleF:SetTextColor(RGBA(M.CLR_TEXT_ACCENT))
     end)
     header:SetScript("OnLeave", function()
-        titleF:SetTextColor(unpack(M.CLR_TEXT_PRIMARY))
+        titleF:SetTextColor(RGBA(M.CLR_TEXT_PRIMARY))
     end)
 
     -- Initial state
@@ -547,7 +541,7 @@ function M:InitDrawer()
     local drawerLabel = drawerTitle:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     drawerLabel:SetFont(self.FONT_HEADER, self.SIZE_H3, "OUTLINE")
     drawerLabel:SetText("Guide Tracker")
-    drawerLabel:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+    drawerLabel:SetTextColor(RGBA(self.CLR_TEXT_PRIMARY))
     drawerLabel:SetPoint("LEFT", drawerTitle, "LEFT", 10, 0)
 
     -- Arrow toggle button (top-right of drawer title bar)
@@ -561,7 +555,7 @@ function M:InitDrawer()
     arrowLbl:SetAllPoints(arrowBtn)
     arrowLbl:SetJustifyH("CENTER")
     arrowLbl:SetJustifyV("MIDDLE")
-    arrowLbl:SetTextColor(unpack(self.CLR_TEXT_ACCENT))
+    arrowLbl:SetTextColor(RGBA(self.CLR_TEXT_ACCENT))
     arrowLbl:SetText(("Show " .. ToonAge.Utils.Glyph("arrowUp")))
 
     local function UpdateArrowBtnLabel()
@@ -581,14 +575,14 @@ function M:InitDrawer()
         UpdateArrowBtnLabel()
     end)
     arrowBtn:SetScript("OnEnter", function(f)
-        arrowLbl:SetTextColor(1, 1, 1, 1)
+        arrowLbl:SetTextColor(RGBA(Skin.white))
         GameTooltip:SetOwner(f, "ANCHOR_BOTTOM")
         GameTooltip:SetText("Toggle Arrow", 1, 0.82, 0)
         GameTooltip:AddLine("Show/hide the HUD navigation arrow", 0.8, 0.8, 0.8)
         GameTooltip:Show()
     end)
     arrowBtn:SetScript("OnLeave", function()
-        arrowLbl:SetTextColor(unpack(M.CLR_TEXT_ACCENT))
+        arrowLbl:SetTextColor(RGBA(M.CLR_TEXT_ACCENT))
         GameTooltip:Hide()
     end)
 
@@ -614,11 +608,11 @@ function M:InitDrawer()
     self:ApplyBackdrop(toggle, "header")
 
     local toggleArrow = toggle:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    toggleArrow:SetFont(self.FONT_BODY, 14, "OUTLINE")
+    toggleArrow:SetFont(self.FONT_BODY, self.SIZE_H1, "OUTLINE")
     toggleArrow:SetAllPoints(toggle)
     toggleArrow:SetJustifyH("CENTER")
     toggleArrow:SetJustifyV("MIDDLE")
-    toggleArrow:SetTextColor(unpack(self.CLR_TEXT_SECONDARY))
+    toggleArrow:SetTextColor(RGBA(self.CLR_TEXT_SECONDARY))
 
     -- State
     local isOpen = true
@@ -656,10 +650,10 @@ function M:InitDrawer()
         SetDrawerOpen(not isOpen)
     end)
     toggle:SetScript("OnEnter", function()
-        toggleArrow:SetTextColor(unpack(M.CLR_TEXT_ACCENT))
+        toggleArrow:SetTextColor(RGBA(M.CLR_TEXT_ACCENT))
     end)
     toggle:SetScript("OnLeave", function()
-        toggleArrow:SetTextColor(unpack(M.CLR_TEXT_SECONDARY))
+        toggleArrow:SetTextColor(RGBA(M.CLR_TEXT_SECONDARY))
     end)
 
     -- Restore state from DB
@@ -764,7 +758,7 @@ function M:CreateHeader(parent, text, level)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     fs:SetFont(self.FONT_HEADER, size, "OUTLINE")
     fs:SetText(text)
-    fs:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+    fs:SetTextColor(RGBA(self.CLR_TEXT_PRIMARY))
     return fs
 end
 
@@ -776,7 +770,7 @@ function M:CreateBody(parent, text)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     fs:SetFont(self.FONT_BODY, self.SIZE_BODY, "OUTLINE")
     fs:SetText(text or "")
-    fs:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+    fs:SetTextColor(RGBA(self.CLR_TEXT_PRIMARY))
     return fs
 end
 
@@ -788,7 +782,7 @@ function M:CreateCaption(parent, text)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     fs:SetFont(self.FONT_CAPTION, self.SIZE_CAPTION, "OUTLINE")
     fs:SetText(text or "")
-    fs:SetTextColor(unpack(self.CLR_TEXT_SECONDARY))
+    fs:SetTextColor(RGBA(self.CLR_TEXT_SECONDARY))
     return fs
 end
 
@@ -800,7 +794,7 @@ function M:CreateData(parent, text)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     fs:SetFont(self.FONT_MONO, self.SIZE_BODY, "OUTLINE")
     fs:SetText(text or "")
-    fs:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+    fs:SetTextColor(RGBA(self.CLR_TEXT_PRIMARY))
     return fs
 end
 
@@ -818,7 +812,7 @@ function M:CreateStatus(parent, text, status)
     if status == "warning" then clr = self.CLR_TEXT_WARNING end
     if status == "danger"  then clr = self.CLR_TEXT_DANGER  end
     if status == "upgrade" then clr = self.CLR_TEXT_SUCCESS end
-    fs:SetTextColor(unpack(clr))
+    fs:SetTextColor(RGBA(clr))
     return fs
 end
 
@@ -852,7 +846,7 @@ function M:SectionHeader(parent, y, w, title)
     local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     hdr:SetFont(self.FONT_HEADER, self.SIZE_H2, "OUTLINE")
     hdr:SetText(title)
-    hdr:SetTextColor(1.00, 0.82, 0.00, 1)
+    hdr:SetTextColor(RGBA(Skin.gold_heading))
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
     y = y - 16
 
@@ -860,7 +854,7 @@ function M:SectionHeader(parent, y, w, title)
     line:SetHeight(1)
     line:SetPoint("TOPLEFT",  parent, "TOPLEFT",  PAD, y)
     line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -PAD, y)
-    line:SetColorTexture(0.55, 0.40, 0.08, 0.25)
+    line:SetColorTexture(RGBA(Skin.section_rule))
     y = y - RPAD
 
     return y
@@ -872,7 +866,7 @@ function M:SubHeader(parent, y, w, title)
     local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     hdr:SetFont(self.FONT_HEADER, self.SIZE_H3, "OUTLINE")
     hdr:SetText(title)
-    hdr:SetTextColor(0.55, 0.40, 0.08, 1)
+    hdr:SetTextColor(RGBA(Skin.amber))
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
     return y - 16
 end
@@ -910,13 +904,13 @@ function M:DataRow(parent, y, w, opts)
     row:SetSize(w - PAD * 2, rowH)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
     row:SetBackdrop(self.BACKDROP_FLAT)
-    row:SetBackdropColor(0.05, 0.05, 0.06, 0.8)
-    row:SetBackdropBorderColor(0.20, 0.20, 0.22, 0.4)
+    row:SetBackdropColor(RGBA(Skin.datarow_bg))
+    row:SetBackdropBorderColor(RGBA(Skin.row_edge))
 
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetFont(self.FONT_BODY, self.SIZE_BODY, "")
     label:SetText(opts.label or "")
-    label:SetTextColor(unpack(self.CLR_TEXT_SECONDARY))
+    label:SetTextColor(RGBA(self.CLR_TEXT_SECONDARY))
     label:SetPoint("LEFT", row, "LEFT", 10, 0)
 
     local value = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -925,13 +919,13 @@ function M:DataRow(parent, y, w, opts)
     value:SetPoint("RIGHT", row, "RIGHT", -10, 0)
 
     if opts.status == "ok" then
-        value:SetTextColor(unpack(self.CLR_TEXT_SUCCESS))
+        value:SetTextColor(RGBA(self.CLR_TEXT_SUCCESS))
     elseif opts.status == "warning" then
-        value:SetTextColor(unpack(self.CLR_TEXT_WARNING))
+        value:SetTextColor(RGBA(self.CLR_TEXT_WARNING))
     elseif opts.status == "danger" then
-        value:SetTextColor(unpack(self.CLR_TEXT_DANGER))
+        value:SetTextColor(RGBA(self.CLR_TEXT_DANGER))
     else
-        value:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+        value:SetTextColor(RGBA(self.CLR_TEXT_PRIMARY))
     end
 
     return row, y - rowH - 4
@@ -952,14 +946,14 @@ function M:ProgressBar(parent, y, w, opts)
     container:SetSize(barW, barH)
     container:SetPoint("TOPLEFT", parent, "TOPLEFT", PAD, y)
     container:SetBackdrop(self.BACKDROP_FLAT)
-    container:SetBackdropColor(0.04, 0.04, 0.05, 0.9)
-    container:SetBackdropBorderColor(0.20, 0.20, 0.22, 0.4)
+    container:SetBackdropColor(RGBA(Skin.progress_bg))
+    container:SetBackdropBorderColor(RGBA(Skin.row_edge))
 
     -- Label
     local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetFont(self.FONT_BODY, self.SIZE_CAPTION, "")
     label:SetText(opts.label or "")
-    label:SetTextColor(unpack(self.CLR_TEXT_SECONDARY))
+    label:SetTextColor(RGBA(self.CLR_TEXT_SECONDARY))
     label:SetPoint("TOPLEFT", container, "TOPLEFT", 8, -3)
 
     -- Fill
@@ -967,18 +961,18 @@ function M:ProgressBar(parent, y, w, opts)
     local max = opts.max or 1
     local pct = max > 0 and math.min(1, current / max) or 0
     local fillW = math.max(2, math.floor((barW - 4) * pct))
-    local clr = opts.color or { 0.40, 0.75, 1.00 }
+    local clr = opts.color or Skin.text_accent
 
     local fill = container:CreateTexture(nil, "ARTWORK")
     fill:SetSize(fillW, 6)
     fill:SetPoint("BOTTOMLEFT", container, "BOTTOMLEFT", 2, 4)
-    fill:SetColorTexture(clr[1], clr[2], clr[3], 0.9)
+    fill:SetColorTexture(clr[1], clr[2], clr[3], Skin.progress_fill_a)
 
     -- Percentage text
     local pctF = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     pctF:SetFont(self.FONT_MONO, self.SIZE_CAPTION, "OUTLINE")
     pctF:SetText(math.floor(pct * 100) .. "%")
-    pctF:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+    pctF:SetTextColor(RGBA(self.CLR_TEXT_PRIMARY))
     pctF:SetPoint("RIGHT", container, "RIGHT", -8, 0)
 
     return container, y - barH - 4
@@ -1015,11 +1009,11 @@ function M:ActionButton(parent, y, w, opts)
     label:SetJustifyH("CENTER")
 
     if style == "primary" then
-        label:SetTextColor(unpack(self.CLR_TEXT_SUCCESS))
+        label:SetTextColor(RGBA(self.CLR_TEXT_SUCCESS))
     elseif style == "danger" then
-        label:SetTextColor(unpack(self.CLR_TEXT_DANGER))
+        label:SetTextColor(RGBA(self.CLR_TEXT_DANGER))
     else
-        label:SetTextColor(unpack(self.CLR_TEXT_PRIMARY))
+        label:SetTextColor(RGBA(self.CLR_TEXT_PRIMARY))
     end
 
     if opts.onClick then
@@ -1028,19 +1022,19 @@ function M:ActionButton(parent, y, w, opts)
 
     -- Hover feedback
     btn:SetScript("OnEnter", function(f)
-        f:SetBackdropColor(0.12, 0.12, 0.14, 1)
-        label:SetTextColor(1, 1, 1, 1)
+        f:SetBackdropColor(RGBA(Skin.button_hover_bg))
+        label:SetTextColor(RGBA(Skin.white))
     end)
     btn:SetScript("OnLeave", function(f)
         if style == "primary" then
             M:ApplyBackdrop(f, "success")
-            label:SetTextColor(unpack(M.CLR_TEXT_SUCCESS))
+            label:SetTextColor(RGBA(M.CLR_TEXT_SUCCESS))
         elseif style == "danger" then
             M:ApplyBackdrop(f, "danger")
-            label:SetTextColor(unpack(M.CLR_TEXT_DANGER))
+            label:SetTextColor(RGBA(M.CLR_TEXT_DANGER))
         else
             M:ApplyBackdrop(f, "card")
-            label:SetTextColor(unpack(M.CLR_TEXT_PRIMARY))
+            label:SetTextColor(RGBA(M.CLR_TEXT_PRIMARY))
         end
     end)
 
@@ -1071,7 +1065,7 @@ function M:Divider(parent, y, w)
     line:SetHeight(1)
     line:SetPoint("TOPLEFT",  parent, "TOPLEFT",  PAD, y)
     line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -PAD, y)
-    line:SetColorTexture(0.25, 0.25, 0.28, 0.3)
+    line:SetColorTexture(RGBA(Skin.modern_divider))
     return y - 6
 end
 
@@ -1090,7 +1084,7 @@ function M:EmptyState(parent, text)
     local msg = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     msg:SetFont(self.FONT_BODY, self.SIZE_H3, "")
     msg:SetText(text)
-    msg:SetTextColor(unpack(self.CLR_TEXT_SECONDARY))
+    msg:SetTextColor(RGBA(self.CLR_TEXT_SECONDARY))
     msg:SetPoint("CENTER", parent, "CENTER", 0, 20)
     msg:SetWidth(parent:GetWidth() - 60)
     msg:SetWordWrap(true)

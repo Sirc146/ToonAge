@@ -30,6 +30,8 @@ check("a long report is labelled part 1/3", 'label .. " part "' in ui and "Prev"
 
 L = lua51.LuaRuntime(unpack_returned_tuples=True)
 L.execute("ToonAge = { Utils = {} }")
+# UI.lua reads TA.Theme at file load. The palette file has to be in first.
+L.execute(open(os.path.join(ROOT, "Core/Theme.lua"), encoding="utf-8").read())
 L.execute(ui)
 body = "\n".join("row %04d %s" % (i, "x" * 40) for i in range(1, 401))
 pages_t = L.eval("ToonAge.CopyPages(...)", body)
