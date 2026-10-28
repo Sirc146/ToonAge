@@ -62,15 +62,23 @@ def run(label, rel, swaps):
     lua.execute("ToonAge = {}")
     lua.execute((ROOT / "Core/Theme.lua").read_text(encoding="utf-8"))
     lua.execute(r"""
-    local function dig(path)
-        local t = ToonAge.Theme.skins.classic
+    local function step(t, part)
+        local n = tonumber(part)
+        if n then return t[n] end
+        return t[part]
+    end
+    local function dig(root, path)
+        local t = root
         for part in string.gmatch(path, "[^%.]+") do
-            t = t[part]
+            if type(t) ~= "table" then return nil end
+            t = step(t, part)
             if t == nil then return nil end
         end
         return t
     end
-    local function same(got, expect)
+    -- mode "prefix" compares only the channels in the old literal. Used for the
+    -- status-strip fade, whose RGB is the strip token and whose alpha is 0.
+    local function same(got, expect, mode)
         if type(expect) ~= "table" then
             return got == expect
         end
@@ -78,26 +86,23 @@ def run(label, rel, swaps):
         for i = 1, #expect do
             if got[i] ~= expect[i] then return false end
         end
+        if mode == "prefix" then return true end
         for i = #expect + 1, #got do
             if got[i] ~= 1 then return false end
         end
         return true
     end
-    function CheckSwap(path, literal)
-        local got = dig(path)
+    function CheckSwap(path, literal, mode)
         local expect = literal
-        if not same(got, expect) then
+        if not same(dig(ToonAge.Theme.skins.classic, path), expect, mode) then
             return false
         end
-        -- active is a copy of classic, so the table the style file reads matches too
-        local live = ToonAge.Theme.active
-        for part in string.gmatch(path, "[^%.]+") do
-            live = live[part]
-        end
-        return same(live, expect)
+        return same(dig(ToonAge.Theme.active, path), expect, mode)
     end
     """)
-    for token, literal, snippet in swaps:
+    for swap in swaps:
+        token, literal, snippet = swap[0], swap[1], swap[2]
+        mode = swap[3] if len(swap) > 3 else "full"
         in_old = old.count(snippet)
         in_new = new.count(snippet)
         results.append(check(
@@ -110,7 +115,8 @@ def run(label, rel, swaps):
         ))
         # Compare inside Lua so 0.92 == 0.92 uses WoW's parser, not Python's.
         lua.execute(
-            "RESULT = CheckSwap([===[" + token + "]===], " + literal + ")"
+            "RESULT = CheckSwap([===[" + token + "]===], " + literal
+            + ", [===[" + mode + "]===])"
         )
         results.append(check(
             f"{label}: classic {token} == {literal}",
