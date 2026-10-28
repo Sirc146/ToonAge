@@ -28,6 +28,8 @@ Libs\WagoAnalytics\Shim.lua
 Core\Init.lua
 Core\Environment.lua
 Core\Compat\API.lua
+# Palette tokens. Loaded before UI. Does not depend on Layout (Cata/Wrath omit it).
+Core\Theme.lua
 Core\Utils.lua
 Core\State.lua
 Core\UI.lua
