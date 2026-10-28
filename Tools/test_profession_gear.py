@@ -416,6 +416,7 @@ def test_hidden_without_slots_and_combat_lock():
     check("out of combat the button type is item", lua.eval("btn2.type"), "item")
 
     lua.execute(FRAME)
+    lua.execute(read("Core/Theme.lua"))
     lua.execute(read("Core/Layout.lua"))
     lua.execute(r"""
         PARENT = CreateFrame()
