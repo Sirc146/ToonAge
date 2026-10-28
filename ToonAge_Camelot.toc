@@ -73,6 +73,8 @@ Libs\WagoAnalytics\Shim.lua
 Core\Init.lua
 Core\Environment.lua
 Core\Compat\API.lua
+# Palette tokens. Loaded before UI. Does not depend on Layout (Cata/Wrath omit it).
+Core\Theme.lua
 # Harvest capability layer (Docs/SPEC_HARVEST_SENSOR_ARRAY.md, T1): the one place
 # the harvester asks what this client exposes. G3's resolver replaces it later.
 Core\Caps.lua
