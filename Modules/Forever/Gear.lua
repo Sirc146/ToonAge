@@ -74,28 +74,14 @@ local QUALITY_HEX = {
 --- name, itemLevel, quality, link for an item link/id, via C_Item then globals.
 local function ItemInfo(link)
     if not link then return nil end
-    -- C_Item.GetItemInfo is the modern form Forever exposes; the global is the
-    -- fallback for any client that still answers it.
-    local name, _, quality, ilvl
-    if C_Item and C_Item.GetItemInfo then
-        local r = { Try(C_Item.GetItemInfo, link) }
-        name, quality, ilvl = r[1], r[3], r[4]
-    end
-    if not name then
-        local r = { Try(GetItemInfo, link) }
-        name, quality, ilvl = r[1], r[3], r[4]
-    end
-    return name, Num(ilvl), Num(quality)
+    local r = { Try(TA.Compat.GetItemInfo, link) }
+    return r[1], Num(r[4]), Num(r[3])
 end
 
 --- Item stat table for a link, via C_Item.GetItemStats then the global.
 local function ItemStats(link)
     if not link then return nil end
-    if C_Item and C_Item.GetItemStats then
-        local t = Try(C_Item.GetItemStats, link)
-        if type(t) == "table" then return t end
-    end
-    local t = Try(GetItemStats, link)
+    local t = Try(TA.Compat.GetItemStats, link)
     if type(t) == "table" then return t end
     return nil
 end
@@ -235,9 +221,7 @@ for _, sl in ipairs(SLOTS) do SLOT_NAME[sl.id] = sl.name end
 --- Everything the gear check needs about one item.
 local function FullInfo(link)
     if not link then return nil end
-    local r
-    if C_Item and C_Item.GetItemInfo then r = { Try(C_Item.GetItemInfo, link) } end
-    if not (r and r[1]) then r = { Try(GetItemInfo, link) } end
+    local r = { Try(TA.Compat.GetItemInfo, link) }
     if not r[1] then return nil end
     return {
         name = r[1], quality = Num(r[3]), ilvl = Num(r[4]), minLevel = Num(r[5]),
