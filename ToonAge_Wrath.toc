@@ -2,7 +2,7 @@
 ## Title: |cFFFFD100ToonAge|r |cFF888780Wrath|r
 ## Notes: Wrath of the Lich King Classic edition — core engine only while Wrath content is built.
 ## Author: Sirc
-## Version: 2.0.0-dev.1
+## Version: 2.0.0-dev.2
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB, ToonAgeGuard
 ## X-Flavor: Wrath
