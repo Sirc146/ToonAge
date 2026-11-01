@@ -128,6 +128,7 @@ def main():
 
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(BOOT)
+    lua.execute(read("Core/Compat/API.lua"))
     lua.execute(read("Core/Utils.lua"))
     for rel in retail:
         lua.execute(read(rel))
