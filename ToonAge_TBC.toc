@@ -2,7 +2,7 @@
 ## Title: |cFFFFD100ToonAge|r |cFF888780TBC|r
 ## Notes: TBC character advisor — stat caps, weapon skill, cap-aware gear scoring, racials and profession perks.
 ## Author: Sirc
-## Version: 2.0.0-dev.1
+## Version: 2.0.0-dev.2
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB, ToonAgeGuard
 ## X-Flavor: TBC

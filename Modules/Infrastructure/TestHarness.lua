@@ -1373,6 +1373,8 @@ local SUITES = {
 -- RUNNER
 -- ══════════════════════════════════════════════════════════════════════════
 function H:Run(arg)
+    -- First line, before the suites, so a pasted self-test shows the build.
+    print(format("|cFFFFD100[ToonAge]|r build %s", tostring(TA.version or "unknown")))
     if run then print("|cFFFFD100[ToonAge]|r self-test already running") return end
 
     local words = {}
