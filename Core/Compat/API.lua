@@ -172,6 +172,37 @@ function C.GetItemStats(itemLink)
     return nil
 end
 
+--- itemID, itemType, itemSubType, itemEquipLoc, icon, classID, subclassID.
+--- Nil when the item is uncached or neither API exists. Never calls a nil.
+function C.GetItemInfoInstant(item)
+    if item == nil then return nil end
+    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+        return C_Item.GetItemInfoInstant(item)
+    end
+    if type(GetItemInfoInstant) == "function" then return GetItemInfoInstant(item) end
+    return nil
+end
+
+function C.GetDetailedItemLevelInfo(item)
+    if item == nil then return nil end
+    if C_Item and type(C_Item.GetDetailedItemLevelInfo) == "function" then
+        return C_Item.GetDetailedItemLevelInfo(item)
+    end
+    if type(GetDetailedItemLevelInfo) == "function" then return GetDetailedItemLevelInfo(item) end
+    return nil
+end
+
+--- Whether this player can equip the item. Nil when the API is missing,
+--- which is not the same as "no".
+function C.IsEquippableItem(item)
+    if item == nil then return nil end
+    if C_Item and type(C_Item.IsEquippableItem) == "function" then
+        return C_Item.IsEquippableItem(item)
+    end
+    if type(IsEquippableItem) == "function" then return IsEquippableItem(item) end
+    return nil
+end
+
 -- ── Addons ───────────────────────────────────────────────────────────────
 
 function C.IsAddOnLoaded(name)
