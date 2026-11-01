@@ -377,7 +377,9 @@ function U.IsUnboundBindable(bag, slot)
     local link = C_Container and C_Container.GetContainerItemLink
         and C_Container.GetContainerItemLink(bag, slot)
     if not link then return nil end
-    local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local getInfo = (TA.Compat and TA.Compat.GetItemInfo)
+        or (C_Item and C_Item.GetItemInfo)
+        or GetItemInfo
     local info = getInfo and { pcall(getInfo, link) }
     local bindType = info and info[1] and info[15]   -- GetItemInfo's 14th return
     if bindType == nil then return nil end
@@ -932,8 +934,15 @@ local function StatNum(v)
     return tonumber(tostring(v):match("([%d%.%-]+)")) or 0
 end
 function U.ReadItemStats(itemLink)
-    local raw = (itemLink and C_Item and C_Item.GetItemStats and C_Item.GetItemStats(itemLink))
-             or (itemLink and GetItemStats and GetItemStats(itemLink)) or {}
+    local raw
+    if itemLink and TA.Compat and type(TA.Compat.GetItemStats) == "function" then
+        raw = TA.Compat.GetItemStats(itemLink)
+    end
+    if type(raw) ~= "table" then
+        raw = (itemLink and C_Item and C_Item.GetItemStats and C_Item.GetItemStats(itemLink))
+           or (itemLink and GetItemStats and GetItemStats(itemLink))
+           or {}
+    end
     return {
         INT     = StatNum(raw["ITEM_MOD_INTELLECT_SHORT"]),
         AGI     = StatNum(raw["ITEM_MOD_AGILITY_SHORT"]),

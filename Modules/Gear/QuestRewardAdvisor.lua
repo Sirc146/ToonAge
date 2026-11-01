@@ -12,6 +12,7 @@
 --   • All external calls wrapped in pcall for resilience.
 
 local TA = ToonAge
+
 local U  = TA.Utils
 
 local QuestRewardAdvisor = {}
@@ -76,7 +77,7 @@ end
 --- Returns whether an item link corresponds to equippable gear.
 local function IsEquipment(itemLink)
     if not itemLink then return false end
-    local ok, _, _, _, _, _, _, _, _, equipLoc = pcall(C_Item.GetItemInfo or GetItemInfo, itemLink)
+    local ok, _, _, _, _, _, _, _, _, equipLoc = pcall(TA.Compat.GetItemInfo, itemLink)
     if not ok then return false end
     if not equipLoc or equipLoc == "" or equipLoc == "INVTYPE_BAG" or equipLoc == "INVTYPE_AMMO" then
         return false
@@ -86,7 +87,7 @@ end
 
 --- Get the best equipped score across all slots that an item could go into.
 local function GetEquippedScore(itemLink, specID)
-    local _, _, _, _, _, _, _, _, equipLoc = GetItemInfo(itemLink)
+    local _, _, _, _, _, _, _, _, equipLoc = TA.Compat.GetItemInfo(itemLink)
     if not equipLoc then return 0 end
     local slots = EQUIP_LOC_TO_SLOT[equipLoc]
     if not slots then return 0 end

@@ -13,6 +13,7 @@
 --        /ta gear assign <name> <spec|pvp> — auto-swap trigger binding
 
 local TA = ToonAge
+
 local U  = TA.Utils
 
 local GS = {}
@@ -48,7 +49,7 @@ end
 --- @return number|nil, number|nil
 local function FindInBags(itemLink)
     if not itemLink then return nil, nil end
-    local targetID = GetItemInfoInstant(itemLink)
+    local targetID = TA.Compat.GetItemInfoInstant(itemLink)
     if not targetID then return nil, nil end
 
     -- First pass: exact link match (catches enchant/gem differences)
