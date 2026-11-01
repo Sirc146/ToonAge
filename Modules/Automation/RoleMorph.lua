@@ -51,29 +51,131 @@ end
 -- Alert when player levels past the cap so they know to replace the gear.
 
 local HEIRLOOM_QUALITY = 7
--- Heirloom upgrade tier caps (approximate — covers most cases)
-local HEIRLOOM_CAPS = { 35, 40, 45, 50, 60, 70, 80 }
 
-local function GetHeirloomCap(itemLink)
-    if not itemLink then return 999 end
-    -- Check if item has heirloom quality
-    local _, _, quality = TA.Compat.GetItemInfo(itemLink)
-    if quality ~= HEIRLOOM_QUALITY then return 999 end
+local function IsSecret(v)
+    if U and type(U.IsSecret) == "function" then return U.IsSecret(v) end
+    if type(issecretvalue) ~= "function" then return false end
+    local ok, secret = pcall(issecretvalue, v)
+    return ok and secret == true
+end
 
-    -- Heirloom effective ilvl stops increasing past its cap.
-    -- We detect this by checking if the ilvl matches what it would be at cap.
-    -- Simpler approach: check the item's max level via tooltip scan or
-    -- C_Heirloom API if available.
-    if C_Heirloom and C_Heirloom.GetHeirloomMaxUpgradeLevel then
-        local itemID = TA.Compat.GetItemInfoInstant(itemLink)
-        if itemID then
-            local maxLevel = C_Heirloom.GetHeirloomMaxUpgradeLevel(itemID)
-            if maxLevel then return maxLevel end
+local function ItemID(itemLink)
+    local fn = TA.Compat and TA.Compat.GetItemInfoInstant
+    if type(fn) == "function" then
+        local ok, id = pcall(fn, itemLink)
+        if ok and type(id) == "number" and not IsSecret(id) then return id end
+    end
+    if type(itemLink) == "string" then
+        local digits = itemLink:match("item:(%d+)")
+        if digits then return tonumber(digits) end
+    end
+    return nil
+end
+
+--- UNVERIFIED on 12.x. GetHeirloomMaxUpgradeLevel is an upgrade-tier count,
+--- not a player level, and GetHeirloomInfo's returns are not confirmed.
+--- Nothing here is turned into a level cap. nil means unknown, and the
+--- dead-heirloom warning stays off. There is no fallback level.
+function RM.GetHeirloomCap(itemLink)
+    if type(itemLink) ~= "string" or itemLink == "" then return nil end
+    local infoFn = TA.Compat and TA.Compat.GetItemInfo
+    if type(infoFn) ~= "function" then return nil end
+    local ok, _, _, quality = pcall(infoFn, itemLink)
+    if not ok or IsSecret(quality) or quality ~= HEIRLOOM_QUALITY then return nil end
+    local itemID = ItemID(itemLink)
+    local heirloom = C_Heirloom
+    if itemID and type(heirloom) == "table" then
+        local maxUp = heirloom.GetHeirloomMaxUpgradeLevel
+        if type(maxUp) == "function" then pcall(maxUp, itemID) end
+        local info = heirloom.GetHeirloomInfo
+        if type(info) == "function" then pcall(info, itemID) end
+    end
+    return nil
+end
+
+local function ShowValue(v)
+    if IsSecret(v) then return "secret" end
+    if v == nil then return "nil" end
+    local ok, text = pcall(tostring, v)
+    if not ok then return "unprintable" end
+    return text
+end
+
+local function Capture(fn, itemID)
+    local box = { n = 0 }
+    local ok, err = pcall(function()
+        local function take(...)
+            box.n = select("#", ...)
+            for i = 1, box.n do box[i] = select(i, ...) end
+        end
+        take(fn(itemID))
+    end)
+    if not ok then return { false, err } end
+    local out = { true, n = box.n + 1 }
+    for i = 1, box.n do out[i + 1] = box[i] end
+    return out
+end
+
+local function ShowReturns(label, res)
+    if not res[1] then
+        return label .. " -> error: " .. ShowValue(res[2])
+    end
+    local first = res[2]
+    if type(first) == "table" and not IsSecret(first) then
+        local keys = {}
+        for k in pairs(first) do keys[#keys + 1] = tostring(k) end
+        table.sort(keys)
+        local parts = {}
+        for _, k in ipairs(keys) do parts[#parts + 1] = k .. "=" .. ShowValue(first[k]) end
+        if #parts == 0 then return label .. " -> {}" end
+        return label .. " -> { " .. table.concat(parts, ", ") .. " }"
+    end
+    local parts = {}
+    local n = res.n or 2
+    for i = 2, n do parts[#parts + 1] = ShowValue(res[i]) end
+    return label .. " -> " .. table.concat(parts, ", ")
+end
+
+--- One equipped heirloom, raw and secret-safe. /ta heirlooms probe.
+--- UNVERIFIED on 12.x until Christopher's run is read.
+function RM.HeirloomProbe()
+    local lines = {}
+    local function add(text) lines[#lines + 1] = text end
+    local heirloom = C_Heirloom
+    local maxUp = type(heirloom) == "table" and heirloom.GetHeirloomMaxUpgradeLevel
+    local info = type(heirloom) == "table" and heirloom.GetHeirloomInfo
+    add("C_Heirloom.GetHeirloomMaxUpgradeLevel " .. (type(maxUp) == "function" and "present" or "absent"))
+    add("C_Heirloom.GetHeirloomInfo " .. (type(info) == "function" and "present" or "absent"))
+    local itemID, slotID
+    local linkFn = GetInventoryItemLink
+    if type(linkFn) == "function" then
+        for slot = 1, 17 do
+            local ok, link = pcall(linkFn, "player", slot)
+            if ok and type(link) == "string" then
+                local read = TA.Compat and TA.Compat.GetItemInfo
+                local qok, _, _, quality = false, nil, nil, nil
+                if type(read) == "function" then qok, _, _, quality = pcall(read, link) end
+                if qok and not IsSecret(quality) and quality == HEIRLOOM_QUALITY then
+                    local id = ItemID(link)
+                    if id then itemID, slotID = id, slot break end
+                end
+            end
         end
     end
-
-    -- Fallback: assume current highest cap
-    return 80
+    if not itemID then
+        add("no equipped heirloom")
+        add("UNVERIFIED on 12.x. The heirloom cap warning stays off.")
+        return lines
+    end
+    add("equipped heirloom item " .. tostring(itemID) .. " slot " .. tostring(slotID))
+    if type(maxUp) == "function" then
+        add(ShowReturns("GetHeirloomMaxUpgradeLevel(" .. tostring(itemID) .. ")", Capture(maxUp, itemID)))
+    end
+    if type(info) == "function" then
+        add(ShowReturns("GetHeirloomInfo(" .. tostring(itemID) .. ")", Capture(info, itemID)))
+    end
+    add("UNVERIFIED on 12.x. The heirloom cap warning stays off.")
+    return lines
 end
 
 function RM:CheckHeirlooms()
@@ -84,9 +186,11 @@ function RM:CheckHeirlooms()
         local link = GetInventoryItemLink("player", slotID)
         if link then
             local _, _, quality = TA.Compat.GetItemInfo(link)
-            if quality == HEIRLOOM_QUALITY then
-                local cap = GetHeirloomCap(link)
-                if playerLevel >= cap then
+            if not IsSecret(quality) and quality == HEIRLOOM_QUALITY then
+                local cap = RM.GetHeirloomCap(link)
+                -- nil is unknown. A number is only a cap once 12.x is verified.
+                if type(cap) == "number" and not IsSecret(cap) and not IsSecret(playerLevel)
+                    and playerLevel >= cap then
                     local name = TA.Compat.GetItemInfo(link) or "Heirloom"
                     table.insert(deadSlots, { slot = slotID, name = name, cap = cap })
                 end

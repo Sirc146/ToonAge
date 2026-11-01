@@ -703,7 +703,18 @@ function M:Redraw()
 end
 
 M.SlashCommands = {
-    heirlooms = function(mod)
+    heirlooms = function(mod, args)
+        if args == "probe" then
+            local rm = TA.GetModule and TA:GetModule("RoleMorph")
+            local lines = (rm and rm.HeirloomProbe and rm.HeirloomProbe())
+                or { "RoleMorph is not running." }
+            if TA.Print then
+                for _, line in ipairs(lines) do
+                    TA:Print(TA.LOG and TA.LOG.OUTPUT, nil, line)
+                end
+            end
+            return
+        end
         if mod._mode ~= "off" and mod._mode ~= "skip" then mod:Scan() end
         mod:Redraw()
         if TA.Print then

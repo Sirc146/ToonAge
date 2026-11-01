@@ -304,7 +304,6 @@ TA.Data.ApiManifest = {
             "Modules/TooltipScorer.lua",
         },
         ["GetItemInfo"] = {
-            "Core/Utils.lua",
             "Modules/AutoEquip.lua",
             "Modules/Gear.lua",
             "Modules/Professions.lua",
@@ -370,8 +369,6 @@ TA.Data.ApiManifest = {
             "Modules/TalentsPvP.lua",
             "Modules/TooltipScorer.lua",
         },
-        ["GetSpellCooldown"] = { "Core/Utils.lua" },
-        ["GetSpellInfo"] = { "Core/Utils.lua" },
         ["IsSpellKnown"] = { "Core/Utils.lua", "Data/Spells.lua" },
         ["geterrorhandler"] = { "Modules/ErrorLog.lua" },
         ["hooksecurefunc"] = {
