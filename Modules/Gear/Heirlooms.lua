@@ -403,6 +403,13 @@ function M.JournalClickEnabled()
     return type(_G["C_Heirloom"]) == "table"
 end
 
+--- Gold wash shown only while the pointer is over a clickable row.
+--- Nil where the journal click is off, so the row does not look clickable.
+function M.RowHover()
+    if not M.JournalClickEnabled() then return nil end
+    return 1, 0.82, 0, 0.18
+end
+
 --- Item name for the journal search. Compat item info first, then the
 --- heirloom collection. Nil when neither answers.
 function M.HeirloomName(item)
@@ -1214,13 +1221,24 @@ function M:Draw(parent, y, width)
                 btn = MakePlainButton(line, "Equip", nil, true, true)
             end
             if btn then btn:SetPoint("RIGHT", line, "RIGHT", 0, 0) end
-            if item.where ~= "bag" and item.where ~= "bank" and M.JournalClickEnabled() then
+            local hr, hg, hb, ha = M.RowHover()
+            if item.where ~= "bag" and item.where ~= "bank" and hr then
                 -- The row is the control. CreateHeirloom stays on Blizzard's button.
+                local highlight = line:CreateTexture(nil, "HIGHLIGHT")
+                highlight:SetAllPoints(line)
+                if highlight.SetColorTexture then
+                    highlight:SetColorTexture(hr, hg, hb, ha)
+                else
+                    highlight:SetTexture("Interface\\Buttons\\WHITE8X8")
+                    if highlight.SetVertexColor then highlight:SetVertexColor(hr, hg, hb, ha) end
+                end
+                highlight:Hide()
                 line:EnableMouse(true)
                 line:SetScript("OnMouseUp", function()
                     M.OpenHeirloom(item)
                 end)
                 line:SetScript("OnEnter", function(row)
+                    if highlight.Show then highlight:Show() end
                     if not (GameTooltip and GameTooltip.SetOwner) then return end
                     GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
                     if GameTooltip.SetText then
@@ -1229,6 +1247,7 @@ function M:Draw(parent, y, width)
                     if GameTooltip.Show then GameTooltip:Show() end
                 end)
                 line:SetScript("OnLeave", function()
+                    if highlight.Hide then highlight:Hide() end
                     if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
                 end)
             end

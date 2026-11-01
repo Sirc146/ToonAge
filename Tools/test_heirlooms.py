@@ -254,6 +254,19 @@ for _, flavor in ipairs({ "tbc", "vanilla", "forever" }) do
 end
 ToonAge.flavor = "retail"
 eq("retail click is on when C_Heirloom exists", M.JournalClickEnabled(), true)
+local hr, hg, hb, ha = M.RowHover()
+eq("hover is gold", hr, 1)
+eq("hover gold green", hg, 0.82)
+eq("hover gold blue", hb, 0)
+eq("hover alpha is low", ha ~= nil and ha > 0 and ha < 0.4, true)
+C_Heirloom = nil
+eq("no hover without C_Heirloom", M.RowHover(), nil)
+C_Heirloom = {}
+for _, flavor in ipairs({ "tbc", "vanilla", "forever" }) do
+    ToonAge.flavor = flavor
+    eq(flavor .. " has no hover", M.RowHover(), nil)
+end
+ToonAge.flavor = "retail"
 
 local ids = M.BankContainers(4, 7, -1)
 eq("main bank plus seven bags", #ids, 8)
@@ -347,7 +360,9 @@ check("self-test reports the tab index", "Heirloom tab index " in harness, True)
 check("self-test records CreateHeirloom", "CreateHeirloom" in harness, True)
 check("closed journal is not opened with Show", "frame.Show" not in src, True)
 check("click is gated on C_Heirloom", "function M.JournalClickEnabled()" in src, True)
-check("row click checks the gate", 'item.where ~= "bank" and M.JournalClickEnabled()' in src, True)
+check("row click checks the hover gate", 'item.where ~= "bank" and hr' in src, True)
+check("hover gold is 1, 0.82, 0", "return 1, 0.82, 0, 0.18" in src, True)
+check("hover starts hidden", "highlight:Hide()" in src, True)
 check("fallback tab is marked unverified", "UNVERIFIED" in src, True)
 profile = read("Core/Profile.lua")
 check("tbc profile allows the module", "Heirlooms" in profile, True)
