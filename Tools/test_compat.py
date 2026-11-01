@@ -227,6 +227,107 @@ C_Container = { PickupContainerItem = function(b, s) picked = b .. ":" .. s end 
     check("no pickup API returns false", C.PickupContainerItem(1, 1), False)
 
 
+def test_item_api_both_clients():
+    """Each new item wrapper, loaded twice, plus neither API present.
+
+    global only: C_Item is nil (Classic Era / TBC / Wrath / Cata where the
+    method is absent). C_Item only: the global is nil (current Retail).
+    Both missing returns nil and does not throw. GetItemQualityColor is the
+    four values r, g, b, hex on every one of those clients.
+    """
+    section("item API: global present, C_Item absent")
+    _, C = load(r"""
+ToonAge = {}
+C_Item = nil
+GetItemInfo = function(item)
+    if item == "missing" then return nil end
+    return "GlobalName", "global-link", 7, 42
+end
+GetItemInfoInstant = function(item) return 99, "Armor", "Plate", "INVTYPE_HEAD", 135, 4, 4 end
+GetItemCount = function(item, bank) if bank then return 5 end return 2 end
+GetDetailedItemLevelInfo = function(item) return 200, 180, 190 end
+IsEquippableItem = function(item) return item == "eq" end
+GetItemQualityColor = function(q) return 1, 0, 0, "ffff0000" end
+""")
+    name, link, quality, ilvl = C.GetItemInfo("item:1")
+    check("global GetItemInfo name", name, "GlobalName")
+    check("global GetItemInfo quality", quality, 7)
+    check("global GetItemInfo ilvl", ilvl, 42)
+    check("global uncached item is nil", C.GetItemInfo("missing"), None)
+    iid, _, _, eloc, _, classID, subID = C.GetItemInfoInstant("item:1")
+    check("global instant id", iid, 99)
+    check("global instant loc", eloc, "INVTYPE_HEAD")
+    check("global instant class", classID, 4)
+    check("global instant subclass", subID, 4)
+    check("global count bags", C.GetItemCount(1, False), 2)
+    check("global count bank", C.GetItemCount(1, True), 5)
+    actual, preview, sparse = C.GetDetailedItemLevelInfo("item:1")
+    check("global detailed ilvl", actual, 200)
+    check("global detailed preview", preview, 180)
+    check("global detailed sparse", sparse, 190)
+    check("global equippable true", C.IsEquippableItem("eq"), True)
+    check("global equippable false", C.IsEquippableItem("no"), False)
+    r, g, b, hx = C.GetItemQualityColor(5)
+    check("global quality r", r, 1)
+    check("global quality g", g, 0)
+    check("global quality b", b, 0)
+    check("global quality hex", hx, "ffff0000")
+
+    section("item API: global absent, C_Item present")
+    lua, C = load(r"""
+ToonAge = {}
+GetItemInfo = nil
+GetItemInfoInstant = nil
+GetItemCount = nil
+GetDetailedItemLevelInfo = nil
+IsEquippableItem = nil
+GetItemQualityColor = nil
+C_Item = {
+    GetItemInfo = function(item)
+        if item == "missing" then return nil end
+        return "RetailName", "retail-link", 4, 80
+    end,
+    GetItemInfoInstant = function(item) return 50, "Weapon", "Sword", "INVTYPE_WEAPON", 1, 2, 7 end,
+    GetItemCount = function(item, bank) return bank and 9 or 3 end,
+    GetDetailedItemLevelInfo = function(item) return 415, 400, 390 end,
+    IsEquippableItem = function(item) return true end,
+    GetItemQualityColor = function(q) return 0.1, 0.2, 0.3, "ff010203" end,
+}
+""")
+    check("quality color global is nil", lua.eval("GetItemQualityColor"), None)
+    name, _, quality, ilvl = C.GetItemInfo("item:9")
+    check("citem GetItemInfo name", name, "RetailName")
+    check("citem GetItemInfo quality", quality, 4)
+    check("citem uncached item is nil", C.GetItemInfo("missing"), None)
+    iid, _, _, eloc, _, classID, subID = C.GetItemInfoInstant("item:9")
+    check("citem instant id", iid, 50)
+    check("citem instant loc", eloc, "INVTYPE_WEAPON")
+    check("citem instant class", classID, 2)
+    check("citem count bank", C.GetItemCount(9, True), 9)
+    actual = C.GetDetailedItemLevelInfo("item:9")
+    if isinstance(actual, tuple):
+        actual = actual[0]
+    check("citem detailed ilvl", actual, 415)
+    check("citem equippable", C.IsEquippableItem("x"), True)
+    r, g, b, hx = C.GetItemQualityColor(3)
+    check("citem quality r", r, 0.1)
+    check("citem quality g", g, 0.2)
+    check("citem quality b", b, 0.3)
+    check("citem quality hex", hx, "ff010203")
+
+    section("item API: both absent returns nil")
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute("ToonAge = {}")
+    lua.execute(_read("Core/Compat/API.lua"))
+    C = lua.globals().ToonAge.Compat
+    check("neither info", C.GetItemInfo(1), None)
+    check("neither instant", C.GetItemInfoInstant(1), None)
+    check("neither count", C.GetItemCount(1), None)
+    check("neither ilvl", C.GetDetailedItemLevelInfo(1), None)
+    check("neither equippable", C.IsEquippableItem(1), None)
+    check("neither quality color", C.GetItemQualityColor(1), None)
+
+
 def test_missing_api_degrades():
     section("missing API degrades safely, does not error")
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
@@ -244,6 +345,7 @@ def main():
     test_retail_spell_shape()
     test_classic_spell_shape()
     test_item_and_addon()
+    test_item_api_both_clients()
     test_talent_tabs()
     test_spec_from_talents()
     test_pickup_container_item()

@@ -172,6 +172,51 @@ function C.GetItemStats(itemLink)
     return nil
 end
 
+--- Nil when the item is uncached or neither API exists. Never calls a nil.
+function C.GetItemInfoInstant(item)
+    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+        return C_Item.GetItemInfoInstant(item)
+    end
+    if type(GetItemInfoInstant) == "function" then return GetItemInfoInstant(item) end
+    return nil
+end
+
+--- Extra flags (includeBank and the rest) are passed through. A missing API
+--- returns nil, which is not the same as "the player has zero".
+function C.GetItemCount(item, ...)
+    if C_Item and type(C_Item.GetItemCount) == "function" then
+        return C_Item.GetItemCount(item, ...)
+    end
+    if type(GetItemCount) == "function" then return GetItemCount(item, ...) end
+    return nil
+end
+
+function C.GetDetailedItemLevelInfo(item)
+    if C_Item and type(C_Item.GetDetailedItemLevelInfo) == "function" then
+        return C_Item.GetDetailedItemLevelInfo(item)
+    end
+    if type(GetDetailedItemLevelInfo) == "function" then return GetDetailedItemLevelInfo(item) end
+    return nil
+end
+
+function C.IsEquippableItem(item)
+    if C_Item and type(C_Item.IsEquippableItem) == "function" then
+        return C_Item.IsEquippableItem(item)
+    end
+    if type(IsEquippableItem) == "function" then return IsEquippableItem(item) end
+    return nil
+end
+
+--- r, g, b, hex. Retail 10.2.6+, Forever, Mists, TBC, and Era all return
+--- those four values from C_Item.GetItemQualityColor and from the global.
+function C.GetItemQualityColor(quality)
+    if C_Item and type(C_Item.GetItemQualityColor) == "function" then
+        return C_Item.GetItemQualityColor(quality)
+    end
+    if type(GetItemQualityColor) == "function" then return GetItemQualityColor(quality) end
+    return nil
+end
+
 -- ── Addons ───────────────────────────────────────────────────────────────
 
 function C.IsAddOnLoaded(name)
