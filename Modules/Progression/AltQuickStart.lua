@@ -11,6 +11,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+
 local U  = TA.Utils
 
 local AQS = {}
@@ -632,7 +633,7 @@ function AQS:PopulatePanel()
                     lowestIlvl = 0
                     break
                 else
-                    local ilvl = GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(link) or 0
+                    local ilvl = TA.Compat.GetDetailedItemLevelInfo(link) or 0
                     if ilvl < lowestIlvl then
                         lowestIlvl = ilvl
                         lowestSlot = slotID
