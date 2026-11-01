@@ -136,6 +136,35 @@ eq("unknown class excluded", M.CanWear(nil, 4, 4, "WARRIOR", nil, "retail"), fal
 eq("unknown subclass excluded", M.CanWear(4, nil, 1, "WARLOCK", nil, "retail"), false)
 eq("weapon kept", M.CanWear(2, 7, 1, "WARLOCK", nil, "retail"), true)
 
+InCombatLockdown = function() return true end
+eq("combat does not open the journal", M.OpenHeirloom({ itemID = 9, name = "Helm" }), "combat")
+InCombatLockdown = function() return false end
+local calls = {}
+CollectionsJournal_LoadUI = function() calls[#calls + 1] = "load" end
+ToggleCollectionsJournal = function(tab) calls[#calls + 1] = "tab:" .. tostring(tab) end
+C_Heirloom = {
+    GetHeirloomInfo = function() return "Tattered Dreadmist" end,
+    SetSearch = function(name) calls[#calls + 1] = "search:" .. tostring(name) end,
+    CreateHeirloom = function() calls[#calls + 1] = "create" end,
+}
+ToonAge.Compat = { GetItemInfo = function() return "Tattered Dreadmist Robe" end }
+eq("row searches the journal", M.OpenHeirloom({ itemID = 9, link = "item:9" }), "searched")
+eq("loaded the journal UI", calls[1], "load")
+eq("switched to the heirlooms tab", calls[2], "tab:4")
+eq("searched the item name", calls[3], "search:Tattered Dreadmist Robe")
+eq("did not create the heirloom", calls[4], nil)
+C_Heirloom.SetSearch = nil
+calls = {}
+eq("missing SetSearch still opens the tab", M.OpenHeirloom({ itemID = 9 }), "opened")
+eq("fallback still loaded the UI", calls[1], "load")
+eq("fallback did not search", calls[3], nil)
+ToonAge.Compat.GetItemInfo = function() return nil end
+eq("name falls back to GetHeirloomInfo", M.HeirloomName({ itemID = 9 }), "Tattered Dreadmist")
+local probe = table.concat(M.JournalProbe(), "\n")
+eq("probe names LoadUI", probe:find("CollectionsJournal_LoadUI present", 1, true) ~= nil, true)
+eq("probe names SetSearch", probe:find("C_Heirloom.SetSearch absent", 1, true) ~= nil, true)
+eq("probe does not create", probe:find("CreateHeirloom present, not called", 1, true) ~= nil, true)
+
 local ids = M.BankContainers(4, 7, -1)
 eq("main bank plus seven bags", #ids, 8)
 eq("main bank is first", ids[1], -1)
@@ -180,7 +209,9 @@ check("literal PlayerHasHeirloom", "C_Heirloom.PlayerHasHeirloom" in src, True)
 check("literal GetHeirloomInfo", "C_Heirloom.GetHeirloomInfo" in src, True)
 check("literal GetHeirloomMaxUpgradeLevel", "C_Heirloom.GetHeirloomMaxUpgradeLevel" in src, True)
 check("does not call CreateHeirloom", "pcall(C_Heirloom.CreateHeirloom" not in src, True)
-check("journal label", "Open Heirloom Journal" in src, True)
+check("journal hint", "Click it in the journal to create it." in src, True)
+check("row opens the journal", "M.OpenHeirloom(item)" in src, True)
+check("no separate journal button", "Open Heirloom Journal" not in src, True)
 check("name colour", "00CCFF" in src, True)
 check("pip texture", "util_pip_8.tga" in src, True)
 check("lock texture", "util_lock_16.tga" in src, True)
@@ -215,6 +246,9 @@ ui = read("Core/UI.lua")
 check("era empty card", "Classic Era has no heirloom items" in ui, True)
 harness = read("Modules/Infrastructure/TestHarness.lua")
 check("self-test probes the collection API", "C_Heirloom collection API" in harness, True)
+check("self-test reports SetSearch", "Heirloom.SetSearch" in harness, True)
+check("self-test reports journal load", "CollectionsJournal_LoadUI" in harness, True)
+check("self-test reports the tab switch", "ToggleCollectionsJournal" in harness, True)
 check("self-test records CreateHeirloom", "CreateHeirloom" in harness, True)
 profile = read("Core/Profile.lua")
 check("tbc profile allows the module", "Heirlooms" in profile, True)

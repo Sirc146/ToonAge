@@ -590,6 +590,11 @@ local function SuiteApi(S)
             -- Blizzard_HeirloomCollection.lua calls CreateHeirloom from its own
             -- untainted click. Addon code does not call it.
             S(INFO, "C_" .. "Heirloom.CreateHeirloom " .. (create and "present, treated as protected" or "absent"))
+            local setSearch = type(_G["C_" .. "Heirloom"]) == "table" and _G["C_" .. "Heirloom"]["Set" .. "Search"]
+            S(INFO, "C_" .. "Heirloom.SetSearch " .. (type(setSearch) == "function" and "present" or "absent"))
+            S(INFO, "CollectionsJournal_LoadUI " .. (type(CollectionsJournal_LoadUI) == "function" and "present" or "absent"))
+            S(INFO, "ToggleCollectionsJournal " .. (type(ToggleCollectionsJournal) == "function" and "present" or "absent"))
+            S(INFO, "Heirloom journal click: /ta heirlooms probe tries LoadUI, the tab, and SetSearch. CreateHeirloom is not called.")
             local H = TA.GetModule and TA:GetModule("Heirlooms")
             if H and H.Status then
                 if not H._scanned and H.Scan then H:Scan() end
