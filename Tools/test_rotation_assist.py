@@ -123,6 +123,42 @@ def main():
     check("a verified spec is not forced to one slot", lua.eval("VERIFIED_SKIP"), True)
     check("a verified three-slot tray stays 200", lua.eval("VERIFIED_W"), 200)
 
+    lua.execute((ROOT / "Modules/Forever/Rotation.lua").read_text(encoding="utf-8"))
+    lua.execute(r"""
+        local F = ToonAge.modules.ForeverRotation
+        local sized = {}
+        local bar = {}
+        function bar:SetSize(w, h) sized.w, sized.h = w, h end
+        function bar:Show() self.shown = true end
+        function bar:Hide() self.shown = false end
+        local icons = {}
+        for i = 1, 3 do
+            icons[i] = {
+                shown = false,
+                Hide = function(self) self.shown = false end,
+                Show = function(self) self.shown = true end,
+                icon = { SetTexture = function() end },
+                nameLabel = { SetText = function(self, t) self.text = t end },
+                SetBackdropBorderColor = function(self, r, g, b, a) self.a = a end,
+            }
+        end
+        F._bar = bar
+        F._barIcons = icons
+        ToonAge.Utils.GetSpellTexture = function() return "tex" end
+        C_AssistedCombat = { GetNextCastSpell = function() return 133 end }
+        F:PaintBar()
+        FOREVER_W, FOREVER_H = sized.w, sized.h
+        FOREVER_SHOWN = bar.shown
+        SLOT2 = icons[2].shown
+        SLOT3 = icons[3].shown
+        BORDER_A = icons[1].a
+    """)
+    check("the forever bar shrinks to one slot", lua.eval("FOREVER_W"), 56)
+    check("the forever bar keeps its height", lua.eval("FOREVER_H"), 68)
+    check("the forever bar is shown for one spell", lua.eval("FOREVER_SHOWN"), True)
+    check("forever slot 2 stays hidden", lua.eval("SLOT2"), False)
+    check("forever slot 3 stays hidden", lua.eval("SLOT3"), False)
+
     lua.execute((ROOT / "Modules/Infrastructure/Harvester.lua").read_text(encoding="utf-8"))
     lua.execute(r"""
         C_AssistedCombat = nil

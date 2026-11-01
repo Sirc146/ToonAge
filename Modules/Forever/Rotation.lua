@@ -823,12 +823,15 @@ local function InCombat()
     return false
 end
 
---- Fixed gold bar. The list sets the three slots. In combat the first slot
---- is Assisted Combat when that spell id is not secret.
+-- One 40 px icon plus the 8 px inset on each side. Slots 2 and 3 stay hidden.
+local ONE_SLOT_W = 56
+local BAR_H = 68
+
+--- Fixed gold bar. No spec is verified yet, so the bar is one slot wide.
 function M:Init()
     if self._bar or type(CreateFrame) ~= "function" or not UIParent then return end
     local bar = CreateFrame("Frame", "TAForeverRotationBar", UIParent, "BackdropTemplate")
-    bar:SetSize(200, 68)
+    bar:SetSize(ONE_SLOT_W, BAR_H)
     bar:SetFrameStrata("MEDIUM")
     bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 180)
     if bar.SetBackdrop then
@@ -893,6 +896,7 @@ function M:PaintBar()
         return
     end
     if bar.Show then bar:Show() end
+    if bar.SetSize then bar:SetSize(ONE_SLOT_W, BAR_H) end
     local gold = { 0.910, 0.702, 0.353 }
     for i = 1, 3 do
         local frame = self._barIcons[i]
