@@ -28,6 +28,7 @@
 -- approximations and are labelled as such in the UI — see Data/TBCWeights.lua.
 
 local TA = ToonAge
+
 local U  = TA.Utils
 local L  = TA.Layout
 
@@ -95,9 +96,9 @@ end
 --- @param gaps table from GetCapGaps
 --- @return number score, table breakdown, number unknownKeys
 function M:ScoreItem(link, role, gaps)
-    if not link or not GetItemStats then return 0, {}, 0 end
+    if not link then return 0, {}, 0 end
 
-    local ok, raw = pcall(GetItemStats, link)
+    local ok, raw = pcall(TA.Compat.GetItemStats, link)
     if not ok or type(raw) ~= "table" then return 0, {}, 0 end
 
     local stats, unknown = TA.Data.NormaliseStats(raw)

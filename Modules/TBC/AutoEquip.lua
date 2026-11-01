@@ -19,6 +19,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+
 local U  = TA.Utils
 
 local AE = {}
@@ -78,13 +79,10 @@ end
 -- wrong for scaled/upgraded/timewalking items on Retail. GetDetailedItemLevelInfo
 -- reads the link's bonus IDs; used when the client has it, base level otherwise.
 local function EffectiveIlvl(link)
-    local detailed = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
-    if detailed then
-        local ok, eff = pcall(detailed, link)
-        if ok and type(eff) == "number" and eff > 0 then return eff end
-    end
+    local ok, eff = pcall(TA.Compat.GetDetailedItemLevelInfo, link)
+    if ok and type(eff) == "number" and eff > 0 then return eff end
     -- TBC has no item upgrades or scaling: the base level IS the level.
-    local _, _, _, ilvl = GetItemInfo(link)
+    local _, _, _, ilvl = TA.Compat.GetItemInfo(link)
     return ilvl or 0
 end
 
@@ -151,7 +149,7 @@ local function ItemIsWearableByClass(itemLink, equipLoc)
     local allowed = CLASS_ARMOUR[classFile]
     if not allowed then return true end  -- unknown class: allow
 
-    local _, _, _, _, _, _, itemSubType = GetItemInfo(itemLink)
+    local _, _, _, _, _, _, itemSubType = TA.Compat.GetItemInfo(itemLink)
     if not itemSubType then return true end  -- cache miss: allow
 
     for _, a in ipairs(allowed) do
@@ -230,9 +228,7 @@ local BIND_ON_EQUIP, BIND_ON_USE = 2, 3
 AE._combatQueue = AE._combatQueue or {}
 
 local function BindType(itemLink)
-    local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-    if not getInfo then return nil end
-    local info = { pcall(getInfo, itemLink) }
+    local info = { pcall(TA.Compat.GetItemInfo, itemLink) }
     if not info[1] then return nil end
     return info[15]   -- pcall's ok flag shifts GetItemInfo's 14th return to 15
 end
@@ -242,7 +238,7 @@ local function EvaluateItem(itemLink)
     if IsShiftKeyDown() then return end
     if InPvPInstance() then return end
 
-    local _, _, _, ilvl, _, _, _, _, equipLoc = GetItemInfo(itemLink)
+    local _, _, _, ilvl, _, _, _, _, equipLoc = TA.Compat.GetItemInfo(itemLink)
     if ilvl then ilvl = EffectiveIlvl(itemLink) end
     if not ilvl then return end   -- level unknown on this client: skip, don't guess
     if not ilvl or ilvl == 0 then return end
@@ -285,7 +281,7 @@ local function EvaluateItem(itemLink)
         return
     end
 
-    local itemName = GetItemInfo(itemLink) or itemLink
+    local itemName = TA.Compat.GetItemInfo(itemLink) or itemLink
     TA:Raw(TA.LOG.OUTPUT, string.format(("|cFFFFD100[TA]|r Auto-equipped |cFF1EFF00%s|r (ilvl %d " .. ToonAge.Utils.Glyph("arrow") .. " slot %d)."),
         itemName, ilvl, targetSlot))
 end
