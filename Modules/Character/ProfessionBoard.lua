@@ -50,28 +50,40 @@ function B:Render(content, side)
     end
 
     for _, card in ipairs(cards) do
-        local name = card.shownName or card.name
+        -- The title stays the base profession. The tier name is a subtitle.
+        local name = card.name
+        local subtitle = card.shownName
+        if subtitle == name then subtitle = nil end
         local rank, max, text
         if card.unlearned then
-            name = card.name
             rank, max = 0, 0
             text = "Not learned"
+            subtitle = nil
         else
             if card.shownRank ~= nil then
                 rank, max = card.shownRank, card.shownMax
             else
                 rank, max = RankOf(card)
             end
-            text = string.format("%d / %d", rank or 0, max or 0)
-            if card.secondary then text = text .. "  Secondary" end
+            if (tonumber(max) or 0) <= 0 then
+                rank, max = 0, 0
+                text = "Not learned"
+                subtitle = nil
+            else
+                text = string.format("%d / %d", rank or 0, max or 0)
+                if card.secondary then text = text .. "  Secondary" end
+            end
         end
         y = L:ProfessionCard(content, y, {
-            name     = name,
-            icon     = card.icon,
-            rankText = text,
-            rank     = rank,
-            max      = max,
-            segments = card.unlearned and nil or card.segments,
+            name      = name,
+            subtitle  = subtitle,
+            colorName = card.name,
+            skillLine = card.id,
+            icon      = card.icon,
+            rankText  = text,
+            rank      = rank,
+            max       = max,
+            segments  = (text == "Not learned") and nil or card.segments,
         })
         if gear and gear.Draw then
             y = gear:Draw(content, y, card)

@@ -561,10 +561,29 @@ L.PROFESSION_COLORS = {
     ["first aid"]  = { 0.92, 0.92, 0.92 },
 }
 
---- Colour for a profession by the name the client reported, or nil when the
---- name is not one we have a colour for (any localised client, or a profession
---- this game added). nil means "use the default" -- never a wrong colour.
-function L:ProfessionColor(name)
+-- Parent skill line ids. A tier name such as "Midnight Alchemy" is not a key.
+L.PROFESSION_COLOR_BY_ID = {
+    [171] = L.PROFESSION_COLORS.alchemy,
+    [164] = L.PROFESSION_COLORS.blacksmithing,
+    [185] = L.PROFESSION_COLORS.cooking,
+    [333] = L.PROFESSION_COLORS.enchanting,
+    [202] = L.PROFESSION_COLORS.engineering,
+    [356] = L.PROFESSION_COLORS.fishing,
+    [182] = L.PROFESSION_COLORS.herbalism,
+    [165] = L.PROFESSION_COLORS.leatherworking,
+    [186] = L.PROFESSION_COLORS.mining,
+    [393] = L.PROFESSION_COLORS.skinning,
+    [197] = L.PROFESSION_COLORS.tailoring,
+    [129] = L.PROFESSION_COLORS["first aid"],
+}
+
+--- Colour for a profession by parent skill line id, then by the base English
+--- name. A full tier name is not a key. nil means "use the default".
+function L:ProfessionColor(name, skillLine)
+    if type(skillLine) == "number" then
+        local byId = L.PROFESSION_COLOR_BY_ID[skillLine]
+        if byId then return byId end
+    end
     if type(name) ~= "string" then return nil end
     return L.PROFESSION_COLORS[name:lower()]
 end
@@ -586,6 +605,7 @@ function L:ProfessionCard(parent, y, opts)
         local f = CreateFrame("Frame", nil, HOLDER)
         f.icon  = f:CreateTexture(nil, "ARTWORK")
         f.name  = NewFS(f)
+        f.sub   = NewFS(f)
         f.rank  = NewFS(f)
         f.track = CreateFrame("Frame", nil, f)
         f.fill  = f.track:CreateTexture(nil, "ARTWORK")
@@ -615,6 +635,29 @@ function L:ProfessionCard(parent, y, opts)
     card.name:SetPoint("TOPLEFT", card, "TOPLEFT", textX, -2)
     card.name:SetWidth(math.max(w - textX, 40))
     card.name:SetHeight(0)
+    if card.name.SetWordWrap then card.name:SetWordWrap(false) end
+    if card.name.SetMaxLines then card.name:SetMaxLines(1) end
+
+    local subtitle = opts.subtitle
+    local hasSub = type(subtitle) == "string" and subtitle ~= ""
+    local rankY = hasSub and -30 or -18
+    local barY = hasSub and -48 or -36
+    local rowH = hasSub and 72 or ROW_H
+    card:SetSize(w, rowH)
+    if card.sub then
+        if hasSub then
+            StyleText(card.sub, { text = subtitle, size = 10, color = L.C_SECONDARY })
+            card.sub:ClearAllPoints()
+            card.sub:SetPoint("TOPLEFT", card, "TOPLEFT", textX, -16)
+            card.sub:SetWidth(math.max(w - textX, 40))
+            card.sub:SetHeight(0)
+            if card.sub.SetWordWrap then card.sub:SetWordWrap(false) end
+            if card.sub.SetMaxLines then card.sub:SetMaxLines(1) end
+            card.sub:Show()
+        else
+            card.sub:Hide()
+        end
+    end
 
     local rankText = opts.rankText
     if rankText == nil then
@@ -622,14 +665,14 @@ function L:ProfessionCard(parent, y, opts)
     end
     StyleText(card.rank, { text = rankText, size = 10, color = L.C_SECONDARY })
     card.rank:ClearAllPoints()
-    card.rank:SetPoint("TOPLEFT", card, "TOPLEFT", textX, -18)
+    card.rank:SetPoint("TOPLEFT", card, "TOPLEFT", textX, rankY)
     card.rank:SetWidth(math.max(w - textX, 40))
     card.rank:SetHeight(0)
 
     local track = card.track
     track:ClearAllPoints()
     track:SetSize(w, BAR_H)
-    track:SetPoint("TOPLEFT", card, "TOPLEFT", 0, -36)
+    track:SetPoint("TOPLEFT", card, "TOPLEFT", 0, barY)
     if TA._ApplyBackdrop then
         TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
     end
@@ -639,18 +682,24 @@ function L:ProfessionCard(parent, y, opts)
     for _, tex in ipairs(card.fills) do tex:Hide() end
 
     local segs = type(opts.segments) == "table" and opts.segments or nil
-    local hue = L:ProfessionColor(opts.name) or L.C_STAT_BASE
+    local shown = {}
+    if segs then
+        for _, seg in ipairs(segs) do
+            if (tonumber(seg.max) or 0) > 0 then shown[#shown + 1] = seg end
+        end
+    end
+    local hue = L:ProfessionColor(opts.colorName or opts.name, opts.skillLine) or L.C_STAT_BASE
     local function Paint(tex, rgb, alpha)
         tex:SetColorTexture(rgb[1], rgb[2], rgb[3], alpha or 0.90)
         tex._rgb = rgb
     end
 
-    if segs and #segs > 1 then
-        local n = #segs
+    if #shown > 1 then
+        local n = #shown
         local inner = math.max(w - 2, n)
         local gap = 1
         local segW = math.max(math.floor((inner - gap * (n - 1)) / n), 1)
-        for i, seg in ipairs(segs) do
+        for i, seg in ipairs(shown) do
             local slot = card.slots[i]
             if not slot then
                 slot = track:CreateTexture(nil, "ARTWORK")
@@ -698,21 +747,34 @@ function L:ProfessionCard(parent, y, opts)
             pct = math.min(math.max((tonumber(opts.rank) or 0) / cap, 0), 1)
         end
         local fill = card.fill
-        fill:ClearAllPoints()
-        fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
-        fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
-        fill:SetWidth(math.max(math.floor((w - 2) * pct), 1))
-        Paint(fill, hue, 0.90)
-        fill._current = false
-        fill:Show()
+        -- A cap of 0 is "not learned". The old floor of 1 drew a one-pixel sliver.
+        if cap <= 0 then
+            track:Hide()
+            fill:Hide()
+        else
+            track:Show()
+            local fw = math.floor((w - 2) * pct)
+            if fw > 0 then
+                fill:ClearAllPoints()
+                fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
+                fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
+                fill:SetWidth(fw)
+                Paint(fill, hue, 0.90)
+                fill._current = false
+                fill:Show()
+            else
+                fill:Hide()
+            end
+        end
     end
 
-    if segs and #segs > 0 then
+    if #shown > 0 then
+        track:Show()
         card:EnableMouse(true)
         card:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(tostring(opts.name or ""), 1, 0.82, 0)
-            for _, seg in ipairs(segs) do
+            for _, seg in ipairs(shown) do
                 local label = tostring(seg.label or seg.name or "")
                 local value = string.format("%d / %d", tonumber(seg.rank) or 0, tonumber(seg.max) or 0)
                 if seg.current then label = label .. " (current)" end
@@ -725,7 +787,7 @@ function L:ProfessionCard(parent, y, opts)
         card:EnableMouse(false)
     end
 
-    return y - ROW_H - L.RPAD, card
+    return y - rowH - L.RPAD, card
 end
 
 --- Three profession gear slots under a card: tool, then accessories.

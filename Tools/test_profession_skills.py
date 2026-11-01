@@ -437,7 +437,8 @@ def test_retail_expansion_tier():
         local L = ToonAge.Layout
         local orig = L.ProfessionCard
         function L:ProfessionCard(parent, y, opts)
-            TEXTS[#TEXTS + 1] = (opts.name or "") .. "|" .. (opts.rankText or "")
+            TEXTS[#TEXTS + 1] = (opts.name or "") .. "|" .. (opts.subtitle or "")
+                .. "|" .. (opts.rankText or "")
             return orig(self, parent, y, opts)
         end
         function L:SectionHeader(_, y) return y end
@@ -448,10 +449,10 @@ def test_retail_expansion_tier():
         SHOWN = table.concat(TEXTS, "\n")
     """)
     shown = lua.eval("SHOWN") or ""
-    check("the tab shows Khaz Algar Herbalism 4/100", "Khaz Algar Herbalism|4 / 100" in shown, True)
-    check("the tab shows Dragon Isles Fishing", "Dragon Isles Fishing|1 / 100" in shown, True)
-    check("the tab says Cooking is not learned", "Cooking|Not learned" in shown, True)
-    check("the tab says Archaeology is not learned", "Archaeology|Not learned" in shown, True)
+    check("the tab title stays Herbalism", "Herbalism|Khaz Algar Herbalism|4 / 100" in shown, True)
+    check("the tab title stays Fishing", "Fishing|Dragon Isles Fishing|1 / 100" in shown, True)
+    check("the tab says Cooking is not learned", "Cooking||Not learned" in shown, True)
+    check("the tab says Archaeology is not learned", "Archaeology||Not learned" in shown, True)
     check("the tab does not show the parent 0/100", "Herbalism|0 / 100" in shown, False)
 
 
@@ -565,6 +566,92 @@ def test_current_segment_is_gold():
           lua.eval("SINGLE.fill._current"), False)
 
 
+def test_card_art():
+    lua = runtime()
+    lua.execute("ToonAge.Utils = {}")
+    lua.execute(r"""
+        local function Rec()
+            local o = { shown = true, lines = {} }
+            function o:SetFont() end
+            function o:SetTextColor(r, g, b) self.r, self.g, self.b = r, g, b end
+            function o:SetText(t) self.text = t end
+            function o:SetJustifyH() end
+            function o:ClearAllPoints() end
+            function o:SetPoint() end
+            function o:SetWidth() end
+            function o:SetHeight() end
+            function o:SetSize() end
+            function o:SetWordWrap(v) self.wrap = v end
+            function o:SetMaxLines(n) self.maxLines = n end
+            function o:Show() self.shown = true end
+            function o:Hide() self.shown = false end
+            function o:SetParent() end
+            function o:EnableMouse() end
+            function o:SetScript(name, fn)
+                self.scripts = self.scripts or {}
+                self.scripts[name] = fn
+            end
+            function o:GetScript(name)
+                return self.scripts and self.scripts[name]
+            end
+            function o:SetTexture() end
+            function o:SetTexCoord() end
+            function o:SetColorTexture(r, g, b, a) self._rgb = { r, g, b, a } end
+            function o:CreateTexture() return Rec() end
+            function o:CreateFontString() return Rec() end
+            return o
+        end
+        CreateFrame = function() return Rec() end
+        TIP = { lines = {} }
+        function TIP:SetOwner() end
+        function TIP:SetText() end
+        function TIP:AddDoubleLine(label, value) self.lines[#self.lines + 1] = label .. "=" .. value end
+        function TIP:Show() end
+        function TIP:Hide() self.lines = {} end
+        GameTooltip = TIP
+    """)
+    lua.execute(read("Core/Layout.lua"))
+    lua.execute(r"""
+        PARENT = CreateFrame()
+        PARENT.GetWidth = function() return 480 end
+        local _, blank = ToonAge.Layout:ProfessionCard(PARENT, -8, {
+            name = "Cooking", rankText = "Not learned", rank = 0, max = 0,
+        })
+        BLANK_TRACK, BLANK_FILL = blank.track.shown, blank.fill.shown
+        BLANK_RANK, BLANK_R, BLANK_G, BLANK_B = blank.rank.text, blank.rank.r, blank.rank.g, blank.rank.b
+        BLANK_WRAP, BLANK_LINES = blank.name.wrap, blank.name.maxLines
+        local _, titled = ToonAge.Layout:ProfessionCard(PARENT, -80, {
+            name = "Alchemy", subtitle = "Midnight Alchemy",
+            colorName = "Alchemy", skillLine = 171,
+            rankText = "90 / 100", rank = 90, max = 100,
+            segments = {
+                { label = "Classic", rank = 0, max = 0 },
+                { label = "Midnight", rank = 90, max = 100, current = true },
+            },
+        })
+        TITLED = titled
+        if titled:GetScript("OnEnter") then titled:GetScript("OnEnter")(titled) end
+        TIP_LINES = table.concat(TIP.lines, "|")
+        HUE = titled.fill._rgb or (titled.fills[1] and titled.fills[1]._rgb)
+    """)
+    check("a zero cap hides the bar", lua.eval("BLANK_TRACK"), False)
+    check("a zero cap hides the fill", lua.eval("BLANK_FILL"), False)
+    check("not learned is the rank text", lua.eval("BLANK_RANK"), "Not learned")
+    check("not learned is muted",
+          (round(lua.eval("BLANK_R"), 2), round(lua.eval("BLANK_G"), 2), round(lua.eval("BLANK_B"), 2)),
+          (0.62, 0.59, 0.55))
+    check("the name does not wrap", lua.eval("BLANK_WRAP"), False)
+    check("the name is one line", lua.eval("BLANK_LINES"), 1)
+    check("the tier is the subtitle", lua.eval("TITLED.sub.text"), "Midnight Alchemy")
+    check("the title stays the base name", lua.eval("TITLED.name.text"), "Alchemy")
+    check("colour follows the parent id, not the tier name",
+          (round(lua.eval("HUE[1]"), 2), round(lua.eval("HUE[2]"), 2), round(lua.eval("HUE[3]"), 2)),
+          (0.62, 0.36, 0.86))
+    check("a zero cap segment is left out of the tooltip",
+          "Classic" not in (lua.eval("TIP_LINES") or ""), True)
+    check("a real tier is in the tooltip", "Midnight (current)=90 / 100" in (lua.eval("TIP_LINES") or ""), True)
+
+
 def main():
     test_source_has_no_version_branch()
     test_retail_segments()
@@ -575,6 +662,7 @@ def main():
     test_header_filter("Data/Vanilla/ProfessionSkills.lua", 300, "era")
     test_forever_skillinfo()
     test_current_segment_is_gold()
+    test_card_art()
     passed = sum(1 for ok in _results if ok)
     total = len(_results)
     print()
