@@ -158,6 +158,7 @@ def main():
     check("the forever bar is shown for one spell", lua.eval("FOREVER_SHOWN"), True)
     check("forever slot 2 stays hidden", lua.eval("SLOT2"), False)
     check("forever slot 3 stays hidden", lua.eval("SLOT3"), False)
+    check("the assisted slot border is fully gold", lua.eval("BORDER_A"), 1)
 
     lua.execute((ROOT / "Modules/Infrastructure/Harvester.lua").read_text(encoding="utf-8"))
     lua.execute(r"""

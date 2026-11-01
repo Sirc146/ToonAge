@@ -812,7 +812,7 @@ local function AssistedSpell()
     if type(id) ~= "number" or id <= 0 then return nil end
     local name = U.GetSpellName and U.GetSpellName(id) or ""
     if U.IsSecret and U.IsSecret(name) then name = "" end
-    return { spellID = id, name = name or "" }
+    return { spellID = id, name = name or "", suggested = true }
 end
 
 local function InCombat()
