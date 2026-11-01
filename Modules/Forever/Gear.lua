@@ -76,12 +76,15 @@ local function ItemInfo(link)
     if not link then return nil end
     -- C_Item.GetItemInfo is the modern form Forever exposes; the global is the
     -- fallback for any client that still answers it.
-    local name, _, quality, ilvl
-    if C_Item and C_Item.GetItemInfo then
-        local r = { Try(C_Item.GetItemInfo, link) }
+    local fn = (TA.Compat and TA.Compat.GetItemInfo)
+        or (C_Item and C_Item.GetItemInfo)
+        or GetItemInfo
+    local name, quality, ilvl
+    if type(fn) == "function" then
+        local r = { Try(fn, link) }
         name, quality, ilvl = r[1], r[3], r[4]
     end
-    if not name then
+    if not name and type(GetItemInfo) == "function" and fn ~= GetItemInfo then
         local r = { Try(GetItemInfo, link) }
         name, quality, ilvl = r[1], r[3], r[4]
     end
@@ -91,12 +94,17 @@ end
 --- Item stat table for a link, via C_Item.GetItemStats then the global.
 local function ItemStats(link)
     if not link then return nil end
-    if C_Item and C_Item.GetItemStats then
-        local t = Try(C_Item.GetItemStats, link)
+    local fn = (TA.Compat and TA.Compat.GetItemStats)
+        or (C_Item and C_Item.GetItemStats)
+        or GetItemStats
+    if type(fn) == "function" then
+        local t = Try(fn, link)
         if type(t) == "table" then return t end
     end
-    local t = Try(GetItemStats, link)
-    if type(t) == "table" then return t end
+    if type(GetItemStats) == "function" and fn ~= GetItemStats then
+        local t = Try(GetItemStats, link)
+        if type(t) == "table" then return t end
+    end
     return nil
 end
 
@@ -235,10 +243,15 @@ for _, sl in ipairs(SLOTS) do SLOT_NAME[sl.id] = sl.name end
 --- Everything the gear check needs about one item.
 local function FullInfo(link)
     if not link then return nil end
+    local fn = (TA.Compat and TA.Compat.GetItemInfo)
+        or (C_Item and C_Item.GetItemInfo)
+        or GetItemInfo
     local r
-    if C_Item and C_Item.GetItemInfo then r = { Try(C_Item.GetItemInfo, link) } end
-    if not (r and r[1]) then r = { Try(GetItemInfo, link) } end
-    if not r[1] then return nil end
+    if type(fn) == "function" then r = { Try(fn, link) } end
+    if not (r and r[1]) and type(GetItemInfo) == "function" and fn ~= GetItemInfo then
+        r = { Try(GetItemInfo, link) }
+    end
+    if not (r and r[1]) then return nil end
     return {
         name = r[1], quality = Num(r[3]), ilvl = Num(r[4]), minLevel = Num(r[5]),
         equipLoc = r[9], classID = Num(r[12]), subclassID = Num(r[13]),

@@ -7,6 +7,16 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local DG = {}
@@ -130,7 +140,7 @@ function DG:GetFormattedSuggestions()
         if slotID ~= 4 then  -- skip shirt
             local link = GetInventoryItemLink("player", slotID)
             if link then
-                local ilvl = GetDetailedItemLevelInfo(link) or 0
+                local ilvl = ItemAPI("GetDetailedItemLevelInfo", link) or 0
                 table.insert(weakSlots, { slotID = slotID, score = ilvl })
             else
                 -- Empty slot is the weakest
@@ -182,7 +192,7 @@ function DG:RankDungeons(maxDungeons)
                 local mode = (TA.charDB and TA.charDB.pvxMode) or "pve"
                 slotScores[slotID] = Gear.CalculateItemScore(link, specID, mode) or 0
             else
-                slotScores[slotID] = link and (GetDetailedItemLevelInfo(link) or 0) * 3 or 0
+                slotScores[slotID] = link and (ItemAPI("GetDetailedItemLevelInfo", link) or 0) * 3 or 0
             end
         end
     end

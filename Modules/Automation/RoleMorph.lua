@@ -3,6 +3,16 @@
 -- heirloom alerts, pre-pull audit, healer triage.
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 local SW = TA.Data.StatWeights
 
@@ -57,7 +67,7 @@ local HEIRLOOM_CAPS = { 35, 40, 45, 50, 60, 70, 80 }
 local function GetHeirloomCap(itemLink)
     if not itemLink then return 999 end
     -- Check if item has heirloom quality
-    local _, _, quality = GetItemInfo(itemLink)
+    local _, _, quality = ItemAPI("GetItemInfo", itemLink)
     if quality ~= HEIRLOOM_QUALITY then return 999 end
 
     -- Heirloom effective ilvl stops increasing past its cap.
@@ -65,7 +75,7 @@ local function GetHeirloomCap(itemLink)
     -- Simpler approach: check the item's max level via tooltip scan or
     -- C_Heirloom API if available.
     if C_Heirloom and C_Heirloom.GetHeirloomMaxUpgradeLevel then
-        local itemID = GetItemInfoInstant(itemLink)
+        local itemID = ItemAPI("GetItemInfoInstant", itemLink)
         if itemID then
             local maxLevel = C_Heirloom.GetHeirloomMaxUpgradeLevel(itemID)
             if maxLevel then return maxLevel end
@@ -83,11 +93,11 @@ function RM:CheckHeirlooms()
     for slotID = 1, 17 do
         local link = GetInventoryItemLink("player", slotID)
         if link then
-            local _, _, quality = GetItemInfo(link)
+            local _, _, quality = ItemAPI("GetItemInfo", link)
             if quality == HEIRLOOM_QUALITY then
                 local cap = GetHeirloomCap(link)
                 if playerLevel >= cap then
-                    local name = GetItemInfo(link) or "Heirloom"
+                    local name = ItemAPI("GetItemInfo", link) or "Heirloom"
                     table.insert(deadSlots, { slot = slotID, name = name, cap = cap })
                 end
             end

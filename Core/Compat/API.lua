@@ -172,6 +172,47 @@ function C.GetItemStats(itemLink)
     return nil
 end
 
+--- Same multi-return as GetItemInfo / C_Item.GetItemInfoInstant.
+--- Nil when the item is uncached or neither API exists. Never calls a nil.
+function C.GetItemInfoInstant(item)
+    local fn = FirstFn(C_Item and C_Item.GetItemInfoInstant, GetItemInfoInstant)
+    if not fn then return nil end
+    return fn(item)
+end
+
+--- includeBank and the later flags are passed through. A missing API is nil,
+--- not 0, so a caller can tell "no function" from "the player has none".
+function C.GetItemCount(item, ...)
+    local fn = FirstFn(C_Item and C_Item.GetItemCount, GetItemCount)
+    if not fn then return nil end
+    return fn(item, ...)
+end
+
+--- actual, preview, sparse. Retail moved this to C_Item; classic still has
+--- the global. Missing on both sides returns nil.
+function C.GetDetailedItemLevelInfo(item)
+    local fn = FirstFn(C_Item and C_Item.GetDetailedItemLevelInfo, GetDetailedItemLevelInfo)
+    if not fn then return nil end
+    return fn(item)
+end
+
+function C.IsEquippableItem(item)
+    local fn = FirstFn(C_Item and C_Item.IsEquippableItem, IsEquippableItem)
+    if not fn then return nil end
+    return fn(item)
+end
+
+--- C_Item.GetItemQualityColor and the global both return r, g, b, hex on
+--- Retail 10.2.6+, Forever, Mists, TBC, and Era. Pass those four values
+--- through unchanged. Unpack r/g/b/hex only when the first return is a table.
+function C.GetItemQualityColor(quality)
+    local fn = FirstFn(C_Item and C_Item.GetItemQualityColor, GetItemQualityColor)
+    if not fn then return nil end
+    local r, g, b, hex = fn(quality)
+    if type(r) ~= "table" then return r, g, b, hex end
+    return r.r, r.g, r.b, r.hex
+end
+
 -- ── Addons ───────────────────────────────────────────────────────────────
 
 function C.IsAddOnLoaded(name)

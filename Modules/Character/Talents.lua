@@ -2,6 +2,16 @@
 -- Role-aware talent advisor: match scoring, role badges, debounced refresh
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 local T  = TA.Data.Talents
 local TAPI = TA.TalentsAPI
@@ -653,11 +663,11 @@ function Talents:RenderContent(content, activeSpecID)
         local ohLink  = GetInventoryItemLink("player", 17)
         local mhEquipLoc, ohEquipLoc
         if mhLink then
-            local _, _, _, _, _, _, _, _, loc = GetItemInfo(mhLink)
+            local _, _, _, _, _, _, _, _, loc = ItemAPI("GetItemInfo", mhLink)
             mhEquipLoc = loc
         end
         if ohLink then
-            local _, _, _, _, _, _, _, _, loc = GetItemInfo(ohLink)
+            local _, _, _, _, _, _, _, _, loc = ItemAPI("GetItemInfo", ohLink)
             ohEquipLoc = loc
         end
 
@@ -775,7 +785,7 @@ function Talents:RenderContent(content, activeSpecID)
                         else
                             local link = GetInventoryItemLink("player", slotID)
                             if link then
-                                local rawStats = C_Item.GetItemStats(link)
+                                local rawStats = ItemAPI("GetItemStats", link)
                                 if rawStats then
                                     local stats = U.ReadItemStats(link)
                                     local weights = sw[pvxMode] or sw.pve

@@ -49,7 +49,10 @@ for api in ("AcceptQuest", "CompleteQuest", "GetQuestReward", "IsQuestCompletabl
             "GetNumQuestChoices", "GetQuestItemLink", "GetQuestID"):
     check(f"{api} goes through Try", f"Try({api}" in aq)
 check("C_GossipInfo presence is checked", "if not C_GossipInfo then return end" in aq)
-check("C_Item is probed before use", "if C_Item and C_Item.GetItemInfo then" in aq)
+check("item info prefers Compat, then C_Item, then the global",
+      "TA.Compat and TA.Compat.GetItemInfo" in aq
+      and "(C_Item and C_Item.GetItemInfo)" in aq)
+check("GetItemInfo is not called as a raw global", "Try(GetItemInfo" not in aq and "GetItemInfo(" not in aq)
 
 # ── AutoQuest: nothing is on by default, and nothing is pre-created ──────
 # charDB.tracker being nil is how onboarding knows no preset was applied, so
