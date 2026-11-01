@@ -35,6 +35,7 @@
 -- The Camelot TOC does not load this file. Era and TBC have no heirlooms.
 
 local TA = ToonAge
+
 local M = {}
 TA:RegisterModule("Heirlooms", M)
 
@@ -305,14 +306,9 @@ end
 
 local function ItemLevel(link)
     if not link then return nil end
-    if type(GetDetailedItemLevelInfo) == "function" then
-        local ok, level = pcall(GetDetailedItemLevelInfo, link)
-        if ok and type(level) == "number" and level > 0 then return level end
-    end
-    if C_Item and type(C_Item.GetDetailedItemLevelInfo) == "function" then
-        local ok, level = pcall(C_Item.GetDetailedItemLevelInfo, link)
-        if ok and type(level) == "number" and level > 0 then return level end
-    end
+    -- Compat returns nil for an uncached item and when neither API exists.
+    local ok, level = pcall(TA.Compat.GetDetailedItemLevelInfo, link)
+    if ok and type(level) == "number" and level > 0 then return level end
     local U = TA.Utils
     if U and U.GetItemIlvl then
         local level = U.GetItemIlvl(link)
@@ -330,18 +326,20 @@ local function PlayerArmor()
 end
 
 local function Equippable(link, classID, subclassID)
-    if link and type(IsEquippableItem) == "function" then
-        local ok, yes = pcall(IsEquippableItem, link)
-        if ok then return yes and true or false end
+    if link then
+        local ok, yes = pcall(TA.Compat.IsEquippableItem, link)
+        -- nil means the API is missing or the item is not cached yet. Fall
+        -- through to the armor-class check instead of treating that as "no".
+        if ok and yes ~= nil then return yes and true or false end
     end
     return M.CanWear(classID, subclassID, PlayerArmor())
 end
 
 local function Meta(linkOrID)
-    if type(GetItemInfoInstant) ~= "function" or not linkOrID then
+    if not linkOrID then
         return nil, nil, nil, nil
     end
-    local ok, id, _, _, equipLoc, _, classID, subclassID = pcall(GetItemInfoInstant, linkOrID)
+    local ok, id, _, _, equipLoc, _, classID, subclassID = pcall(TA.Compat.GetItemInfoInstant, linkOrID)
     if not ok then return nil, nil, nil, nil end
     return id, equipLoc, classID, subclassID
 end
@@ -432,11 +430,8 @@ end
 local function QualityOf(link)
     local U = TA.Utils
     if U and U.GetItemQuality then return U.GetItemQuality(link) end
-    if type(GetItemInfo) == "function" then
-        local _, _, quality = GetItemInfo(link)
-        return quality
-    end
-    return nil
+    local _, _, quality = TA.Compat.GetItemInfo(link)
+    return quality
 end
 
 --- item table, false when the slot is occupied but its quality is not
@@ -455,10 +450,10 @@ local function ReadHeirloom(U, bag, slot, where)
     local quality = QualityOf(link)
     if quality ~= M.HEIRLOOM_QUALITY then return nil end
     local _, equipLoc, classID, subclassID = Meta(link)
-    if not equipLoc and type(GetItemInfo) == "function" then
-        equipLoc = select(9, GetItemInfo(link))
+    if not equipLoc then
+        equipLoc = select(9, TA.Compat.GetItemInfo(link))
     end
-    local name = (type(GetItemInfo) == "function" and GetItemInfo(link)) or link
+    local name = TA.Compat.GetItemInfo(link) or link
     local itemID = Meta(link)
     if not itemID and U.GetContainerItemID then
         itemID = U.GetContainerItemID(bag, slot)

@@ -7,6 +7,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+
 local U  = TA.Utils
 
 local DG = {}
@@ -130,7 +131,7 @@ function DG:GetFormattedSuggestions()
         if slotID ~= 4 then  -- skip shirt
             local link = GetInventoryItemLink("player", slotID)
             if link then
-                local ilvl = GetDetailedItemLevelInfo(link) or 0
+                local ilvl = TA.Compat.GetDetailedItemLevelInfo(link) or 0
                 table.insert(weakSlots, { slotID = slotID, score = ilvl })
             else
                 -- Empty slot is the weakest
@@ -182,7 +183,7 @@ function DG:RankDungeons(maxDungeons)
                 local mode = (TA.charDB and TA.charDB.pvxMode) or "pve"
                 slotScores[slotID] = Gear.CalculateItemScore(link, specID, mode) or 0
             else
-                slotScores[slotID] = link and (GetDetailedItemLevelInfo(link) or 0) * 3 or 0
+                slotScores[slotID] = link and (TA.Compat.GetDetailedItemLevelInfo(link) or 0) * 3 or 0
             end
         end
     end
