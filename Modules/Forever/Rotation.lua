@@ -879,21 +879,16 @@ function M:Init()
 end
 
 function M:PaintBar()
-    local RL = TA.RotationLists
     local bar = self._bar
-    if not RL or not bar or not self._barIcons then return end
-    local class = U.GetPlayerClass and U.GetPlayerClass() or nil
-    local _, specName = U.GetPlayerSpec()
-    local level = tonumber(Try(UnitLevel, "player"))
-    local view = RL.Resolve(nil, class, specName, level, "st")
-    if not view then
-        if bar.Hide then bar:Hide() end
-        return
-    end
-    local inCombat = InCombat()
-    local assisted = inCombat and AssistedSpell() or nil
-    local plan = RL.BarPlan(view.spells, assisted, inCombat)
-    if #plan == 0 then
+    if not bar or not self._barIcons then return end
+    -- No spec here is in VERIFIED_SPEC yet, so the bar is one assisted spell.
+    -- Slots 2 and 3 stay hidden until a verified list exists.
+    local spell = AssistedSpell()
+    if not spell then
+        for i = 1, 3 do
+            local frame = self._barIcons[i]
+            if frame and frame.Hide then frame:Hide() end
+        end
         if bar.Hide then bar:Hide() end
         return
     end
@@ -901,8 +896,9 @@ function M:PaintBar()
     local gold = { 0.910, 0.702, 0.353 }
     for i = 1, 3 do
         local frame = self._barIcons[i]
-        local spell = plan[i]
-        if spell and frame then
+        if i > 1 then
+            if frame and frame.Hide then frame:Hide() end
+        elseif frame then
             local tex = spell.spellID and U.GetSpellTexture and U.GetSpellTexture(spell.spellID)
             if frame.icon and frame.icon.SetTexture then
                 frame.icon:SetTexture(tex or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -914,8 +910,6 @@ function M:PaintBar()
                 frame:SetBackdropBorderColor(gold[1], gold[2], gold[3], spell.suggested and 1 or 0.70)
             end
             if frame.Show then frame:Show() end
-        elseif frame and frame.Hide then
-            frame:Hide()
         end
     end
 end

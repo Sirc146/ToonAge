@@ -555,6 +555,38 @@ local function SuiteApi(S)
     if #present > 0 then S(INFO, "present: " .. concat(present, ", ")) end
     if #absent  > 0 then S(INFO, "absent:  " .. concat(absent, ", ")) end
 
+    -- Same line as /ta probe. Unverified on every client until that probe passes.
+    do
+        local line = "C_AssistedCombat.GetNextCastSpell  ->  absent"
+        local reporter = TA.AssistCastLine
+        if type(reporter) ~= "function" then
+            reporter = function()
+                local fn = C_AssistedCombat and C_AssistedCombat.GetNextCastSpell
+                if type(fn) ~= "function" then
+                    return "C_AssistedCombat.GetNextCastSpell  ->  absent"
+                end
+                local ok, id = pcall(fn)
+                if not ok then
+                    return "C_AssistedCombat.GetNextCastSpell  ->  present, error: " .. tostring(id)
+                end
+                if type(issecretvalue) == "function" then
+                    local sok, secret = pcall(issecretvalue, id)
+                    if sok and secret == true then
+                        return "C_AssistedCombat.GetNextCastSpell  ->  present, called, secret"
+                    end
+                end
+                if id == nil then
+                    return "C_AssistedCombat.GetNextCastSpell  ->  present, called, nil"
+                end
+                return "C_AssistedCombat.GetNextCastSpell  ->  present, called, " .. tostring(id)
+            end
+        end
+        local ok, text = pcall(reporter)
+        if ok and type(text) == "string" then line = text
+        elseif not ok then line = "C_AssistedCombat.GetNextCastSpell  ->  error: " .. tostring(text) end
+        S(INFO, line)
+    end
+
     -- AutoEquip needs some way to pick an item up.
     if TA:GetModule("AutoEquip") then
         local pick = (C_Container and C_Container.PickupContainerItem) or _G.PickupContainerItem

@@ -133,8 +133,9 @@ end
 --- @return table|nil priorities, boolean usedFallback
 -- Retail Rogue is the verified path (Assassination, Outlaw, Subtlety).
 -- Every other spec still has legacy rows in Data/Retail/Rotations.lua; those
--- are not shown. Assisted Combat, when the client has it and the value is
--- not secret, is the source of truth for the next cast on Retail and Forever.
+-- are not shown. Where the client has C_AssistedCombat.GetNextCastSpell, that
+-- spell fills slot 1 until a verified list exists. The call is unverified on
+-- every client until /ta probe passes there.
 local VERIFIED_SPEC = { [259] = true, [260] = true, [261] = true }
 local TRAY_WIDTH = { 88, 144, 200 }
 
@@ -143,7 +144,6 @@ function Rotation:HasVerified(specID)
 end
 
 function Rotation:AssistedNext()
-    if not (TA.IsRetail or TA.IsForever) then return nil end
     local fn = C_AssistedCombat and C_AssistedCombat.GetNextCastSpell
     if type(fn) ~= "function" then return nil end
     local ok, id = pcall(fn)
@@ -154,6 +154,18 @@ function Rotation:AssistedNext()
     local name = U.GetSpellName(id)
     if U.IsSecret and U.IsSecret(name) then name = "" end
     return { entry = { spellID = id, name = name or "" } }
+end
+
+--- nil when this spec has a verified list. {} when an unverified spec has
+--- no assisted spell (the tab says so). One entry fills slot 1; slots 2 and
+--- 3 stay empty until a verified list exists.
+function Rotation:FallbackSlots(specID)
+    if self:HasVerified(specID) then return nil end
+    local assisted = self:AssistedNext()
+    if not assisted or type(assisted.entry) ~= "table" or not assisted.entry.spellID then
+        return {}
+    end
+    return { assisted.entry }
 end
 
 --- The per-version list for this spec and level. nil when that class is not
@@ -455,6 +467,29 @@ function Rotation:RenderContent(content, rotData, specID, level)
         line:SetColorTexture(0.30, 0.30, 0.35, 0.35)
         y = y - 8
         table.insert(self.frames, line)
+    end
+
+    local fallback = self:FallbackSlots(specID)
+    if fallback then
+        local entry = fallback[1]
+        if not entry then
+            local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            f:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+            f:SetText("No suggestions for this spec")
+            f:SetTextColor(0.85, 0.86, 0.88, 1)
+            f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            f:SetWidth(w)
+            table.insert(self.frames, f)
+            content:SetHeight(80)
+            return
+        end
+        y = y - self:RenderSpellRow(content, y, w, padL, {
+            name = entry.name,
+            spellID = entry.spellID,
+            priority = 1,
+        }, false, false)
+        content:SetHeight(math.abs(y) + 20)
+        return
     end
 
     local listed = self:ListedView()
@@ -990,6 +1025,22 @@ function Rotation:UpdatePrediction()
 
     local specID = self.currentSpecID or U.GetPlayerSpec()
     local level = self.currentLevel or U.GetPlayerLevel()
+
+    local fallback = self:FallbackSlots(specID)
+    if fallback then
+        local entry = fallback[1]
+        for i = 1, PREDICTION_COUNT do
+            local iconFrame = self.predictIcons and self.predictIcons[i]
+            if i == 1 and entry then
+                self:PaintPredictSlot(iconFrame, entry.name, entry.spellID, true)
+            elseif iconFrame then
+                iconFrame:Hide()
+            end
+        end
+        self:FitPredictBar(entry and 1 or 0, inCombat)
+        self:UpdatePips()
+        return
+    end
 
     -- The version's list sets the bar. In combat the first slot is Assisted
     -- Combat when that value is not secret. Out of combat the list is the
