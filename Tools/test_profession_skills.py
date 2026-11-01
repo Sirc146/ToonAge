@@ -151,8 +151,8 @@ def test_retail_segments():
           lua.eval("#result.cards[1].segments"), 12)
     check("classic segment is the published id",
           lua.eval("result.cards[1].segments[1].id"), 2477)
-    check("classic segment uses the data-file cap when the API max is 0",
-          lua.eval("result.cards[1].segments[1].max"), 300)
+    check("classic segment does not invent a cap when the API max is 0",
+          lua.eval("result.cards[1].segments[1].max"), 0)
     check("classic segment is not current",
           lua.eval("result.cards[1].segments[1].current"), False)
     check("midnight segment is the published id",
@@ -170,9 +170,13 @@ def test_retail_segments():
     lua.execute(r"""
         midnight, arch, bad = false, false, 0
         for i = 2, #probe do
+            if probe[i]:find("GetProfessionInfoBySkillLineID", 1, true) then
+                API_LINE = probe[i]
+            else
             local n = 1
             for _ in string.gmatch(probe[i], "\t") do n = n + 1 end
             if n ~= 5 then bad = bad + 1 end
+            end
             if probe[i] == "2907\tMidnight Blacksmithing\t25\t100\tMidnight" then midnight = true end
             if probe[i] == "794\tArchaeology\t50\t950\tSecondary Skills" then arch = true end
         end
@@ -180,6 +184,8 @@ def test_retail_segments():
     check("retail probe midnight line", lua.eval("midnight"), True)
     check("retail probe archaeology line", lua.eval("arch"), True)
     check("retail probe lines have five fields", lua.eval("bad"), 0)
+    check("probe reports the child skill call",
+          "GetProfessionInfoBySkillLineID -> present, called" in (lua.eval("API_LINE") or ""), True)
 
     # The child-skill call going missing falls through to the single bar.
     lua.execute("C_TradeSkillUI = nil; result = ToonAge.ProfessionSkills.Collect()")
@@ -449,6 +455,70 @@ def test_retail_expansion_tier():
     check("the tab does not show the parent 0/100", "Herbalism|0 / 100" in shown, False)
 
 
+def test_christopher_midnight():
+    """Midnight caps come from maxSkillLevel. Fishing is 108/300, not 0/100.
+    Archaeology stays the parent line, 803/950.
+    """
+    lua = runtime()
+    lua.execute(read("Core/Compat/API.lua"))
+    lua.execute(r"""
+        function GetProfessions() return 1, 2, 3, 4, nil, nil end
+        function GetProfessionInfo(i)
+            if i == 1 then return "Alchemy", 136240, 0, 100, 0, 0, 171 end
+            if i == 2 then return "Herbalism", 136065, 0, 100, 0, 0, 182 end
+            if i == 3 then return "Archaeology", 441139, 803, 950, 0, 0, 794 end
+            if i == 4 then return "Fishing", 136245, 0, 100, 0, 0, 356 end
+        end
+        local SKILL = {
+            [2485] = { professionName = "Classic Alchemy", skillLevel = 300,
+                       maxSkillLevel = 300, expansionName = "Classic" },
+            [2906] = { professionName = "Midnight Alchemy", skillLevel = 90,
+                       maxSkillLevel = 100, expansionName = "Classic" },
+            [2912] = { professionName = "Midnight Herbalism", skillLevel = 100,
+                       maxSkillLevel = 100, expansionName = "The War Within" },
+            [2592] = { professionName = "Classic Fishing", skillLevel = 300,
+                       maxSkillLevel = 300 },
+            [2911] = { professionName = "Midnight Fishing", skillLevel = 108,
+                       maxSkillLevel = 300 },
+        }
+        C_TradeSkillUI = {
+            GetProfessionInfoBySkillLineID = function(id)
+                return SKILL[id] or { professionName = "Unknown", skillLevel = 0, maxSkillLevel = 0 }
+            end,
+        }
+    """)
+    load_reader(lua, "Data/Retail/ProfessionSkills.lua")
+    lua.execute(r"""
+        result = ToonAge.ProfessionSkills.Collect()
+        local by = {}
+        for _, card in ipairs(result.cards) do by[card.name] = card end
+        ALCH, HERB, FISH, ARCH = by["Alchemy"], by["Herbalism"], by["Fishing"], by["Archaeology"]
+        local lines = ToonAge.Data.ProfessionSkills.lines
+        local byId = {}
+        for _, line in ipairs(lines) do byId[line.id] = line end
+        local tw = { 2871, 2872, 2873, 2874, 2875, 2876, 2877, 2878, 2879, 2880, 2881, 2882, 2883 }
+        local mid = { 2906, 2907, 2908, 2909, 2910, 2911, 2912, 2913, 2914, 2915, 2916, 2917, 2918 }
+        local parents = { 171, 164, 185, 333, 202, 356, 182, 773, 755, 165, 186, 393, 197 }
+        BAD_ID = 0
+        for i, parent in ipairs(parents) do
+            local kids = byId[parent] and byId[parent].children
+            if not kids or kids[11] ~= tw[i] or kids[12] ~= mid[i] then BAD_ID = BAD_ID + 1 end
+        end
+    """)
+    check("midnight and war within child ids match", lua.eval("BAD_ID"), 0)
+    check("alchemy shows the midnight child", lua.eval("ALCH.shownName"), "Midnight Alchemy")
+    check("alchemy is 90", lua.eval("ALCH.shownRank"), 90)
+    check("alchemy cap is the API max", lua.eval("ALCH.shownMax"), 100)
+    check("herbalism is 100", lua.eval("HERB.shownRank"), 100)
+    check("herbalism cap is the API max", lua.eval("HERB.shownMax"), 100)
+    check("fishing shows midnight, not an older tier", lua.eval("FISH.shownName"), "Midnight Fishing")
+    check("fishing rank is 108", lua.eval("FISH.shownRank"), 108)
+    check("fishing cap is 300", lua.eval("FISH.shownMax"), 300)
+    check("archaeology rank is 803", lua.eval("ARCH.rank"), 803)
+    check("archaeology cap is 950", lua.eval("ARCH.max"), 950)
+    check("archaeology has no child segments", lua.eval("ARCH.segments"), None)
+
+
 def test_current_segment_is_gold():
     lua = runtime()
     lua.execute("ToonAge.Utils = {}")
@@ -499,6 +569,7 @@ def main():
     test_source_has_no_version_branch()
     test_retail_segments()
     test_retail_expansion_tier()
+    test_christopher_midnight()
     test_mists_single_bar()
     test_header_filter("Data/TBC/ProfessionSkills.lua", 375, "tbc")
     test_header_filter("Data/Vanilla/ProfessionSkills.lua", 300, "era")

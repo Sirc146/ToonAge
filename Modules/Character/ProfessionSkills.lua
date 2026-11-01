@@ -208,11 +208,14 @@ local function ReadProfessionSlots(data, children)
                     local segs = {}
                     for i, childId in ipairs(spec.children) do
                         local exp = data.expansions and data.expansions[i] or nil
-                        local childRank, childMax, childName = 0, exp and exp.cap or data.cap, nil
+                        -- The cap is the API's maxSkillLevel. expansionName is not
+                        -- read, and a data-file cap is not substituted.
+                        local childRank, childMax, childName = 0, 0, nil
                         local okChild, info = pcall(getBy, childId)
                         if okChild and type(info) == "table" then
                             childRank = Num(info.skillLevel) or Num(info.rank) or 0
-                            childMax = Ceiling(info.maxSkillLevel or info.maxRank, exp and exp.cap or data.cap)
+                            childMax = Num(info.maxSkillLevel) or Num(info.maxRank) or 0
+                            if childMax < 0 then childMax = 0 end
                             childName = UsefulName(info.professionName) or UsefulName(info.name)
                         elseif okChild and type(info) == "string" then
                             childName = UsefulName(info)
@@ -228,20 +231,12 @@ local function ReadProfessionSlots(data, children)
                         }
                     end
                     card.segments = segs
-                    -- GetProfessionInfo's rank is the parent skill line. On
-                    -- Retail that parent stays 0/100 after the per-expansion
-                    -- split, so the number Blizzard shows is the latest child
-                    -- that actually has points (Khaz Algar at 4, not Midnight
-                    -- at 0). A learned profession with no points yet uses the
-                    -- current expansion's child.
+                    -- The parent line stays 0 after the split. Show the newest
+                    -- child whose maxSkillLevel is above 0. An earlier child
+                    -- with points does not hide a later one that has a cap.
                     local tier
                     for _, seg in ipairs(segs) do
-                        if (seg.rank or 0) > 0 then tier = seg end
-                    end
-                    if not tier then
-                        for _, seg in ipairs(segs) do
-                            if seg.current then tier = seg end
-                        end
+                        if (seg.max or 0) > 0 then tier = seg end
                     end
                     if tier then
                         card.shownName = tier.name
@@ -493,6 +488,21 @@ function PS.ProbeLines()
             end
         else
             lines[#lines + 1] = DumpLine(card.id, card.name, card.rank, card.max, card.header)
+        end
+    end
+    local byLine = ProfFn("GetProfessionInfoBySkillLineID",
+        "C_TradeSkillUI.GetProfessionInfoBySkillLineID")
+    if type(byLine) ~= "function" then
+        lines[#lines + 1] = "C_TradeSkillUI.GetProfessionInfoBySkillLineID -> absent"
+    else
+        local okCall, info = pcall(byLine, 2906)
+        if not okCall then
+            lines[#lines + 1] = "C_TradeSkillUI.GetProfessionInfoBySkillLineID -> present, error: " .. tostring(info)
+        elseif type(info) ~= "table" then
+            lines[#lines + 1] = "C_TradeSkillUI.GetProfessionInfoBySkillLineID -> present, called, nil"
+        else
+            lines[#lines + 1] = "C_TradeSkillUI.GetProfessionInfoBySkillLineID -> present, called, skillLevel="
+                .. tostring(info.skillLevel) .. ", maxSkillLevel=" .. tostring(info.maxSkillLevel)
         end
     end
     if #(result.cards or {}) == 0 then
