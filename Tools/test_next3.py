@@ -273,11 +273,20 @@ def test_predict_bar():
         BAR = bar
         SLOT = R.predictIcons[1]
         PIP = pips[1]
-        -- Rogue is verified, so the tray still follows the filled slot count.
+        -- Rogue is verified. The tray follows how many spells this level can fill.
         R.currentSpecID = 259
+        R.currentLevel = 10
+        R.currentView = "solo"
+        SLOTN = 1
+        ToonAge.Data.Rotations = { Get = function()
+            local t = {}
+            for i = 1, SLOTN do t[i] = { spellID = i } end
+            return { priorities = t }
+        end }
         R:PaintPredictSlot(SLOT, "Deathstalker's Mark", 457052, false)
         R:FitPredictBar(1, false)
         W1, H1, A1, S1 = bar.w, bar.h, bar.alpha, bar.shown
+        SLOTN = 2
         NAME, NR, NG, NB = SLOT.nameLabel.text, SLOT.nameLabel.r, SLOT.nameLabel.g, SLOT.nameLabel.b
         BR, BG, BB = SLOT.border[1], SLOT.border[2], SLOT.border[3]
         R:FitPredictBar(2, false)

@@ -100,28 +100,105 @@ def main():
         InCombatLockdown = function() return true end
         R.currentSpecID = 1468
         R:FitPredictBar(1, false)
-        R:ApplyUnverifiedWidth()
+        R:ApplyCombatWidth()
         R:OnBarEvent("PLAYER_REGEN_ENABLED")
         R:OnEvent("PLAYER_SPECIALIZATION_CHANGED")
         LOCKED_SIZE, LOCKED_WIDTH = sizeCalls, widthCalls
         InCombatLockdown = function() return false end
         R.currentSpecID = 1468
-        R:ApplyUnverifiedWidth()
+        R:ApplyCombatWidth()
         R:OnBarEvent("PLAYER_REGEN_ENABLED")
         R:OnEvent("PLAYER_SPECIALIZATION_CHANGED")
         UNVERIFIED_W = bar.w
+        -- Verified, but every spell is above this level, so combat has one slot.
         R.currentSpecID = 259
-        local before = sizeCalls
-        R:ApplyUnverifiedWidth()
-        VERIFIED_SKIP = (sizeCalls == before)
-        R:FitPredictBar(3, false)
-        VERIFIED_W = bar.w
+        R.currentLevel = 10
+        R.currentView = "solo"
+        ToonAge.Data.Rotations = { Get = function(_, specID)
+            if specID == 260 then
+                return { priorities = { { spellID = 1 }, { spellID = 2 } } }
+            end
+            return { priorities = {
+                { spellID = 1, unlockLv = 60 },
+                { spellID = 2, unlockLv = 60 },
+                { spellID = 3, unlockLv = 60 },
+            } }
+        end }
+        R:ApplyCombatWidth()
+        EMPTY_W = bar.w
+        ToonAge.Utils.GetPlayerLevel = function() return 10 end
+        ToonAge.Utils.GetPlayerSpec = function() return 259 end
+        R:OnEvent("PLAYER_LEVEL_UP")
+        LEVEL_STILL = bar.w
+        ToonAge.Utils.GetPlayerLevel = function() return 70 end
+        R:OnEvent("PLAYER_LEVEL_UP")
+        LEVEL_UP_W = bar.w
+        ToonAge.Utils.GetPlayerSpec = function() return 260 end
+        R:OnEvent("PLAYER_SPECIALIZATION_CHANGED")
+        SPEC_W = bar.w
+        R.currentSpecID = 259
+        R.currentLevel = 70
+        R:OnBarEvent("PLAYER_REGEN_ENABLED")
+        REGEN_W = bar.w
     """)
     check("combat lockdown never resizes the bar", lua.eval("LOCKED_SIZE"), 0)
     check("combat lockdown never calls SetWidth", lua.eval("LOCKED_WIDTH"), 0)
     check("an unverified spec is 88 out of combat", lua.eval("UNVERIFIED_W"), 88)
-    check("a verified spec is not forced to one slot", lua.eval("VERIFIED_SKIP"), True)
-    check("a verified three-slot tray stays 200", lua.eval("VERIFIED_W"), 200)
+    check("a verified spec with nothing usable yet is 88", lua.eval("EMPTY_W"), 88)
+    check("level up below the gates stays 88", lua.eval("LEVEL_STILL"), 88)
+    check("level up into the list widens to three slots", lua.eval("LEVEL_UP_W"), 200)
+    check("spec change recomputes the tray", lua.eval("SPEC_W"), 144)
+    check("leaving combat recomputes the tray", lua.eval("REGEN_W"), 200)
+
+    lua.execute(r"""
+        local function widget()
+            local f = { sized = 0, widthCalls = 0, sizes = {} }
+            local function noop() end
+            setmetatable(f, { __index = function() return noop end })
+            function f:SetSize(w, h)
+                self.sized = self.sized + 1
+                self.sizes[#self.sizes + 1] = w
+                self.w, self.h = w, h
+            end
+            function f:SetWidth(w)
+                self.widthCalls = self.widthCalls + 1
+                self.w = w
+            end
+            function f:CreateFontString() return widget() end
+            function f:CreateTexture() return widget() end
+            return f
+        end
+        local buttons = {}
+        CreateFrame = function(kind)
+            local f = widget()
+            if kind == "Button" then buttons[#buttons + 1] = f end
+            return f
+        end
+        UIParent = {}
+        STANDARD_TEXT_FONT = "Fonts\\FRIZQT__.TTF"
+        GameTooltip = nil
+        local R = ToonAge.modules.Rotation
+        InCombatLockdown = function() return true end
+        R.predictBar = nil
+        R.currentSpecID = 259
+        R:InitPredictBar()
+        local lockedBar = buttons[1]
+        LOCK_CALLS = lockedBar.sized
+        LOCK_WIDTH_CALLS = lockedBar.widthCalls
+        LOCK_W = lockedBar.w or 0
+        InCombatLockdown = function() return false end
+        R.predictBar = nil
+        R.currentLevel = 10
+        R:InitPredictBar()
+        local born = buttons[2]
+        BORN_FIRST = born.sizes[1]
+        BORN_W = born.w
+    """)
+    check("creating the bar in combat does not resize it", lua.eval("LOCK_CALLS"), 0)
+    check("creating the bar in combat does not SetWidth", lua.eval("LOCK_WIDTH_CALLS"), 0)
+    check("a bar created in combat is not 200 px", lua.eval("LOCK_W") != 200)
+    check("a new bar starts at 88", lua.eval("BORN_FIRST"), 88)
+    check("an empty verified list stays 88 after creation", lua.eval("BORN_W"), 88)
 
     lua.execute((ROOT / "Modules/Forever/Rotation.lua").read_text(encoding="utf-8"))
     lua.execute(r"""

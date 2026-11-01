@@ -86,7 +86,7 @@ function Rotation:OnEvent(event, ...)
             self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end
         if self.predictBar then
-            self:ApplyUnverifiedWidth()
+            self:ApplyCombatWidth()
             self:UpdatePrediction()
         end
     end
@@ -141,6 +141,10 @@ end
 -- every client until /ta probe passes there.
 local VERIFIED_SPEC = { [259] = true, [260] = true, [261] = true }
 local TRAY_WIDTH = { 88, 144, 200 }
+
+local function BarLocked()
+    return type(InCombatLockdown) == "function" and InCombatLockdown() and true or false
+end
 
 function Rotation:HasVerified(specID)
     return VERIFIED_SPEC[specID] == true
@@ -758,13 +762,10 @@ function Rotation:InitPredictBar()
     end
 
     local bar = CreateFrame("Button", "TARotationPredictBar", UIParent, "BackdropTemplate")
-    -- Three tray widths, padding included: 88, 144, 200. A spec with no
-    -- verified list only shows slot 1, so it is created at 88. Width still
-    -- changes only out of combat: SetSize is not called while locked.
-    local specID = self.currentSpecID or (U.GetPlayerSpec and U.GetPlayerSpec())
-    if not (type(InCombatLockdown) == "function" and InCombatLockdown()) then
-        local startW = self:HasVerified(specID) and TRAY_WIDTH[3] or TRAY_WIDTH[1]
-        bar:SetSize(startW, BAR_HEIGHT)
+    -- Born at one slot. A /reload in combat must not leave a 200 px frame,
+    -- and SetSize is not called while the client is locked.
+    if not BarLocked() then
+        bar:SetSize(TRAY_WIDTH[1], BAR_HEIGHT)
     end
     bar:SetFrameStrata("HIGH")
     bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 180)
@@ -964,6 +965,7 @@ function Rotation:InitPredictBar()
 
     bar:Hide() -- shown when this spec has at least one pick; hidden only when it has none
     self.predictBar = bar
+    self:ApplyCombatWidth()
 end
 
 --- Slot chrome for one filled icon. Borders stay gold. The name is the
@@ -980,23 +982,54 @@ function Rotation:PaintPredictSlot(iconFrame, name, spellID, suggested)
     iconFrame:Show()
 end
 
-local function BarLocked()
-    return type(InCombatLockdown) == "function" and InCombatLockdown() and true or false
+--- How many slots combat can fill. A verified list with nothing usable at
+--- this level leaves only the assist fallback, which is one slot.
+function Rotation:CombatSlotCount()
+    local specID = self.currentSpecID or (U.GetPlayerSpec and U.GetPlayerSpec())
+    if not self:HasVerified(specID) then return 1 end
+    local level = tonumber(self.currentLevel)
+    if not level and U.GetPlayerLevel then level = tonumber(U.GetPlayerLevel()) end
+    level = level or 1
+    local data = TA.Data and TA.Data.Rotations
+    local view = self.currentView or "solo"
+    local pack
+    if data and type(data.Get) == "function" then
+        pack = data:Get(specID, view)
+        if not (pack and pack.priorities) and view ~= "solo" then
+            pack = data:Get(specID, "solo")
+        end
+    end
+    local priorities = pack and pack.priorities
+    local n = 0
+    if type(priorities) == "table" then
+        for _, entry in ipairs(priorities) do
+            if type(entry) == "table" and entry.spellID and not entry.isCd and not entry.isMajorCd then
+                local gate = tonumber(entry.unlockLv)
+                if not gate or level >= gate then
+                    n = n + 1
+                    if n >= 3 then break end
+                end
+            end
+        end
+    end
+    if n < 1 then return 1 end
+    return n
 end
 
---- Slot 1 is the only slot an unverified spec can show, so the tray is 88.
---- SetSize and SetWidth are never called while the client is locked.
-function Rotation:ApplyUnverifiedWidth()
-    local specID = self.currentSpecID or (U.GetPlayerSpec and U.GetPlayerSpec())
-    if self:HasVerified(specID) then return end
+--- Width follows the slots combat can fill. Never SetSize or SetWidth
+--- while the client is locked.
+function Rotation:ApplyCombatWidth()
     local bar = self.predictBar
     if not bar or BarLocked() then return end
-    if type(bar.SetSize) == "function" then bar:SetSize(TRAY_WIDTH[1], BAR_HEIGHT) end
+    local slots = self:CombatSlotCount()
+    if type(bar.SetSize) == "function" then
+        bar:SetSize(TRAY_WIDTH[slots] or TRAY_WIDTH[1], BAR_HEIGHT)
+    end
 end
 
 function Rotation:OnBarEvent(event)
     if event == "PLAYER_REGEN_ENABLED" then
-        self:ApplyUnverifiedWidth()
+        self:ApplyCombatWidth()
     end
     if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
         self:UpdatePrediction()
@@ -1032,10 +1065,10 @@ function Rotation:FitPredictBar(filled, inCombat)
         bar:Show()
     end
     if inCombat or BarLocked() then return end
-    local specID = self.currentSpecID or (U.GetPlayerSpec and U.GetPlayerSpec())
-    local w = TRAY_WIDTH[filled] or TRAY_WIDTH[#TRAY_WIDTH]
-    if not self:HasVerified(specID) then w = TRAY_WIDTH[1] end
-    if type(bar.SetSize) == "function" then bar:SetSize(w, BAR_HEIGHT) end
+    local slots = self:CombatSlotCount()
+    if type(bar.SetSize) == "function" then
+        bar:SetSize(TRAY_WIDTH[slots] or TRAY_WIDTH[1], BAR_HEIGHT)
+    end
 end
 
 function Rotation:UpdatePrediction()
