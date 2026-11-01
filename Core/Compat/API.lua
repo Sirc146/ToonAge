@@ -202,16 +202,15 @@ function C.IsEquippableItem(item)
     return fn(item)
 end
 
---- Retail's C_Item.GetItemQualityColor may return a color table. Classic's
---- global returns r, g, b, hex. Callers always receive the four-value form.
+--- C_Item.GetItemQualityColor and the global both return r, g, b, hex on
+--- Retail 10.2.6+, Forever, Mists, TBC, and Era. Pass those four values
+--- through unchanged. Unpack r/g/b/hex only when the first return is a table.
 function C.GetItemQualityColor(quality)
     local fn = FirstFn(C_Item and C_Item.GetItemQualityColor, GetItemQualityColor)
     if not fn then return nil end
     local r, g, b, hex = fn(quality)
-    if type(r) == "table" then
-        return r.r, r.g, r.b, r.hex or r.colorStr
-    end
-    return r, g, b, hex
+    if type(r) ~= "table" then return r, g, b, hex end
+    return r.r, r.g, r.b, r.hex
 end
 
 -- ── Addons ───────────────────────────────────────────────────────────────
