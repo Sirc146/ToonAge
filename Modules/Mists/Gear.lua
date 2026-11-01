@@ -11,6 +11,16 @@
 --   - Uses TA.Data.StatWeights for weights
 
 local TA   = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U    = TA.Utils
 local SW   = TA.Data.StatWeights
 
@@ -103,7 +113,7 @@ local function CalculateItemScore(itemLink, specID, mode)
     if not specID then return 0 end
 
     -- GetItemStats is a global in Classic, returns a table of stat keys
-    local rawStats = GetItemStats(itemLink) or {}
+    local rawStats = ItemAPI("GetItemStats", itemLink) or {}
     local stats = {
         INT     = CleanProxyValue(rawStats["ITEM_MOD_INTELLECT_SHORT"]),
         AGI     = CleanProxyValue(rawStats["ITEM_MOD_AGILITY_SHORT"]),
@@ -150,7 +160,7 @@ local function ScanBagsForUpgrades(slotID, specID, mode, currentScore, itemDef, 
             for slot = 1, numSlots do
                 local link = U.GetContainerItemLink(bag, slot)
                 if link then
-                    local _, _, _, _, _, _, _, _, eLoc, _, _, cID, scID = GetItemInfo(link)
+                    local _, _, _, _, _, _, _, _, eLoc, _, _, cID, scID = ItemAPI("GetItemInfo", link)
                     table.insert(Gear.bagCache.items, {
                         bag  = bag,
                         slot = slot,
@@ -301,7 +311,7 @@ function Gear:InjectTooltipScore(tooltip, itemLink)
     local score   = CalculateItemScore(itemLink, specID, pvxMode)
     if not score or score <= 0 then return end
 
-    local _, _, _, equipLoc = GetItemInfoInstant(itemLink)
+    local _, _, _, equipLoc = ItemAPI("GetItemInfoInstant", itemLink)
     if not equipLoc or equipLoc == "" then return end
     local slotID = EQUIP_LOC_TO_SLOT[equipLoc]
     if not slotID then return end
@@ -392,7 +402,7 @@ function Gear:Render(content, sidebar)
     for slot = 1, 17 do
         local link = GetInventoryItemLink("player", slot)
         if link then
-            local name, _, quality = GetItemInfo(link)
+            local name, _, quality = ItemAPI("GetItemInfo", link)
             if name then
                 local score = CalculateItemScore(link, specID, pvxMode)
                 local colour = U.QualityColour(quality or 1)

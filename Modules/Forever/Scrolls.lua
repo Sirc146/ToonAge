@@ -444,8 +444,11 @@ local function IsScrollName(name)
 end
 
 local function IsEquipment(link)
-    if not (C_Item and C_Item.GetItemInfoInstant) then return false end
-    local ok, _, _, _, equipLoc = pcall(C_Item.GetItemInfoInstant, link)
+    local fn = (TA.Compat and TA.Compat.GetItemInfoInstant)
+        or (C_Item and C_Item.GetItemInfoInstant)
+        or GetItemInfoInstant
+    if type(fn) ~= "function" then return false end
+    local ok, _, _, _, equipLoc = pcall(fn, link)
     if not ok or type(equipLoc) ~= "string" then return false end
     -- Modern clients report consumables as INVTYPE_NON_EQUIP_IGNORE, not "".
     return equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE"

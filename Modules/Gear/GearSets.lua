@@ -13,6 +13,16 @@
 --        /ta gear assign <name> <spec|pvp> — auto-swap trigger binding
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local GS = {}
@@ -48,7 +58,7 @@ end
 --- @return number|nil, number|nil
 local function FindInBags(itemLink)
     if not itemLink then return nil, nil end
-    local targetID = GetItemInfoInstant(itemLink)
+    local targetID = ItemAPI("GetItemInfoInstant", itemLink)
     if not targetID then return nil, nil end
 
     -- First pass: exact link match (catches enchant/gem differences)

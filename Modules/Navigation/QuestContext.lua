@@ -13,6 +13,16 @@
 -- This file stays off Forever: it names quest-log APIs that client does not ship.
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 TA.modules = TA.modules or {}
 
 local QC = {}
@@ -83,14 +93,8 @@ end
 
 function QC.Count(itemID)
     if type(itemID) ~= "number" then return nil end
-    if C_Item and type(C_Item.GetItemCount) == "function" then
-        local ok, n = pcall(C_Item.GetItemCount, itemID)
-        if ok and type(n) == "number" then return n end
-    end
-    if type(GetItemCount) == "function" then
-        local ok, n = pcall(GetItemCount, itemID)
-        if ok and type(n) == "number" then return n end
-    end
+    local ok, n = pcall(ItemAPI, "GetItemCount", itemID)
+    if ok and type(n) == "number" then return n end
     return nil
 end
 

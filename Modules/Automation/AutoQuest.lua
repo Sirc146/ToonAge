@@ -43,6 +43,15 @@ local function Try(fn, ...)
     return a, b, c, d, e, f, g
 end
 
+--- Item name and type fields. Retail has no global GetItemInfo.
+local function ItemInfo(...)
+    local fn = (TA.Compat and TA.Compat.GetItemInfo)
+        or (C_Item and C_Item.GetItemInfo)
+        or GetItemInfo
+    if type(fn) ~= "function" then return nil end
+    return Try(fn, ...)
+end
+
 -- ── Settings access ───────────────────────────────────────────────────────
 --
 -- Read without creating: charDB.tracker being nil is how onboarding knows no
@@ -159,14 +168,7 @@ function AQ:OnQuestProgress()
         if numRequired and numRequired > 0 then
             local link = Try(GetQuestItemLink, "required", i)
             if link then
-                local itemType, itemSubType
-                if C_Item and C_Item.GetItemInfo then
-                    local _, _, _, _, _, t, s = Try(C_Item.GetItemInfo, link)
-                    itemType, itemSubType = t, s
-                else
-                    local _, _, _, _, _, t, s = Try(GetItemInfo, link)
-                    itemType, itemSubType = t, s
-                end
+                local _, _, _, _, _, itemType, itemSubType = ItemInfo(link)
                 if itemType == "Tradeskill" or itemSubType == "Reagent" then return end
             end
         end
@@ -212,7 +214,7 @@ function AQ:OnQuestComplete()
     end
 
     local bestLink = Try(GetQuestItemLink, "choice", bestIdx)
-    local name = (bestLink and Try(GetItemInfo, bestLink)) or ("choice " .. bestIdx)
+    local name = (bestLink and ItemInfo(bestLink)) or ("choice " .. bestIdx)
     TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100[ToonAge]|r %d rewards to choose from — paused for you. ")
           :format(numChoices)
           .. ("Best for you looks like |cFF4AFF7A%s|r."):format(tostring(name)))

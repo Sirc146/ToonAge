@@ -8,6 +8,16 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local GatherTracker = {}
@@ -48,7 +58,7 @@ local function DetectGatherType()
         local link = GetLootSlotLink(i)
         if link then
             -- GetItemInfoInstant is available in MoP Classic
-            local _, _, _, _, _, classID, subclassID = GetItemInfoInstant(link)
+            local _, _, _, _, _, classID, subclassID = ItemAPI("GetItemInfoInstant", link)
             if classID == 7 then
                 if subclassID == GATHER_SUBCLASS_HERB then return "herb" end
                 if subclassID == GATHER_SUBCLASS_ORE  then return "ore" end

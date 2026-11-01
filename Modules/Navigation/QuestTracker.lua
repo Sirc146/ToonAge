@@ -10,6 +10,16 @@
 --   Arrow Integration — live distance/ETA from Arrow.lua displayed inline in the status bar
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local QT = {}
@@ -245,7 +255,7 @@ function QT:IsLootMet(step)
     if not step.lootItem then return false end
     local itemID = step.lootItem[1]
     local needed = step.lootItem[2] or 1
-    local count = C_Item.GetItemCount(itemID, true) or 0
+    local count = ItemAPI("GetItemCount", itemID, true) or 0
     return count >= needed
 end
 
@@ -1134,7 +1144,7 @@ function QT:HandleAutoQuest(event)
             if numRequired and numRequired > 0 then
                 local link = GetQuestItemLink("required", i)
                 if link then
-                    local _, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(link)
+                    local _, _, _, _, _, itemType, itemSubType = ItemAPI("GetItemInfo", link)
                     -- Block if it's a trade good / crafting reagent
                     if itemType == "Tradeskill" or itemSubType == "Reagent" then return end
                 end
@@ -1161,7 +1171,7 @@ function QT:HandleAutoQuest(event)
                 for i = 1, numChoices do
                     local link = GetQuestItemLink("choice", i)
                     if link then
-                        local itemID = GetItemInfoInstant(link)
+                        local itemID = ItemAPI("GetItemInfoInstant", link)
                         if itemID == step.reward then
                             GetQuestReward(i)
                             return
@@ -1217,7 +1227,7 @@ function QT:HandleAutoQuest(event)
         -- without the click being taken away. Name it rather than saying
         -- "choice 3", because the window's order is not obvious mid-sentence.
         local bestLink = GetQuestItemLink("choice", bestIdx)
-        local name = bestLink and (GetItemInfo(bestLink)) or ("choice " .. bestIdx)
+        local name = bestLink and (ItemAPI("GetItemInfo", bestLink)) or ("choice " .. bestIdx)
         TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100[ToonAge]|r %d rewards to choose from — paused for you. "):format(numChoices)
               .. ("Best for your spec looks like |cFF4AFF7A%s|r."):format(tostring(name)))
         TA:Raw(TA.LOG.OUTPUT, "  |cFF888780Pick one to finish the turn-in. "

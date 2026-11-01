@@ -28,6 +28,16 @@
 -- approximations and are labelled as such in the UI — see Data/TBCWeights.lua.
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 local L  = TA.Layout
 
@@ -97,7 +107,7 @@ end
 function M:ScoreItem(link, role, gaps)
     if not link or not GetItemStats then return 0, {}, 0 end
 
-    local ok, raw = pcall(GetItemStats, link)
+    local ok, raw = pcall(ItemAPI, "GetItemStats", link)
     if not ok or type(raw) ~= "table" then return 0, {}, 0 end
 
     local stats, unknown = TA.Data.NormaliseStats(raw)

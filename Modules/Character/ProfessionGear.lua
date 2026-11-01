@@ -11,6 +11,16 @@
 -- Classic-era skill bonuses (a fishing pole, mining gloves) are later work.
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 TA.modules = TA.modules or {}
 
 local PG = {}
@@ -379,16 +389,13 @@ end
 local function ItemInfo(item)
     local U = TA.Utils
     if U and type(U.GetItemInfo) == "function" then return U.GetItemInfo(item) end
-    if type(GetItemInfo) == "function" then return GetItemInfo(item) end
+    return ItemAPI("GetItemInfo", item)
 end
 
 local function StatsOf(link, itemID)
-    local fn
-    if C_Item and type(C_Item.GetItemStats) == "function" then
-        fn = C_Item.GetItemStats
-    elseif type(GetItemStats) == "function" then
-        fn = GetItemStats
-    end
+    local fn = (TA.Compat and TA.Compat.GetItemStats)
+        or (C_Item and C_Item.GetItemStats)
+        or GetItemStats
     if not fn then return nil end
     local function Read(arg)
         if arg == nil then return nil end

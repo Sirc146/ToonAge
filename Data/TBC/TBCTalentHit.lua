@@ -117,7 +117,9 @@ local function IsDualWielding()
     if type(GetInventoryItemLink) ~= "function" then return false end
     local link = GetInventoryItemLink("player", 17)
     if not link then return false end
-    local getInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    local getInstant = (TA.Compat and TA.Compat.GetItemInfoInstant)
+        or (C_Item and C_Item.GetItemInfoInstant)
+        or GetItemInfoInstant
     if getInstant then
         local ok, _, _, _, equipLoc = pcall(getInstant, link)
         if ok and equipLoc then

@@ -9,6 +9,16 @@
 
 local TA = ToonAge
 
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
+
 local DR = {}
 TA:RegisterModule("DeathRecovery", DR)
 
@@ -34,7 +44,7 @@ local function EstimateAverageItemLevel()
         if slot ~= 4 then  -- skip shirt
             local link = GetInventoryItemLink("player", slot)
             if link then
-                local _, _, _, ilvl = GetItemInfo(link)
+                local _, _, _, ilvl = ItemAPI("GetItemInfo", link)
                 if ilvl and ilvl > 0 then
                     totalIlvl = totalIlvl + ilvl
                     count = count + 1

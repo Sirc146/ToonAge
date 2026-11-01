@@ -6,6 +6,16 @@
 -- C_TaskQuest.GetQuestsForPlayerByMapID (deprecated but present on 12.0.x).
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local WQ = {}
@@ -71,20 +81,11 @@ local function ClassifyReward(questID)
         if GetQuestLogRewardInfo then
             local ok, name, _, count, _, _, itemID = pcall(GetQuestLogRewardInfo, i, questID)
             if ok and itemID then
-                local equipLoc, classID
-                if C_Item and C_Item.GetItemInfoInstant then
-                    local _, _, _, eLoc, _, cID = C_Item.GetItemInfoInstant(itemID)
-                    equipLoc, classID = eLoc, cID
-                elseif GetItemInfoInstant then
-                    local _, _, _, eLoc, _, cID = GetItemInfoInstant(itemID)
-                    equipLoc, classID = eLoc, cID
-                end
+                local _, _, _, equipLoc, _, classID = ItemAPI("GetItemInfoInstant", itemID)
                 if equipLoc and equipLoc ~= "" and equipLoc ~= "INVTYPE_NON_EQUIP_IGNORE" then
                     local ilvl = 0
-                    if C_Item and C_Item.GetDetailedItemLevelInfo then
-                        local okL, lv = pcall(C_Item.GetDetailedItemLevelInfo, itemID)
-                        if okL and lv then ilvl = lv end
-                    end
+                    local okL, lv = pcall(ItemAPI, "GetDetailedItemLevelInfo", itemID)
+                    if okL and type(lv) == "number" and lv > 0 then ilvl = lv end
                     if ilvl >= gearIlvl then gearIlvl, gearName = ilvl, name or "Gear" end
                 elseif classID == 7 then
                     matsName, matsCount = name or "Materials", matsCount + (count or 1)

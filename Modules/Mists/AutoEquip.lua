@@ -12,6 +12,16 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local AE = {}
@@ -69,7 +79,9 @@ end
 -- wrong for scaled/upgraded/timewalking items on Retail. GetDetailedItemLevelInfo
 -- reads the link's bonus IDs; used when the client has it, base level otherwise.
 local function EffectiveIlvl(link)
-    local detailed = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
+    local detailed = (TA.Compat and TA.Compat.GetDetailedItemLevelInfo)
+        or (C_Item and C_Item.GetDetailedItemLevelInfo)
+        or GetDetailedItemLevelInfo
     if detailed then
         local ok, eff = pcall(detailed, link)
         if ok and type(eff) == "number" and eff > 0 then return eff end
@@ -145,8 +157,8 @@ local function ItemIsWearableByClass(itemLink, equipLoc)
     -- Level-aware check (Plate/Mail at 40, Armor Specialization at 50) shared
     -- with the Gear tab. Falls back to the static table below if unavailable.
     local GearMod = TA:GetModule("Gear")
-    if GearMod and GearMod.ArmorSubclassAllowed and GetItemInfoInstant then
-        local _, _, _, _, _, classID, subClassID = GetItemInfoInstant(itemLink)
+    if GearMod and GearMod.ArmorSubclassAllowed then
+        local _, _, _, _, _, classID, subClassID = ItemAPI("GetItemInfoInstant", itemLink)
         if classID == 4 then
             if equipLoc == "INVTYPE_SHIELD" or equipLoc == "INVTYPE_HOLDABLE" then return true end
             return GearMod.ArmorSubclassAllowed(subClassID, classFile, UnitLevel("player"))
@@ -160,7 +172,7 @@ local function ItemIsWearableByClass(itemLink, equipLoc)
     local allowed = CLASS_ARMOUR[classFile]
     if not allowed then return true end  -- unknown class: allow
 
-    local _, _, _, _, _, _, itemSubType = GetItemInfo(itemLink)
+    local _, _, _, _, _, _, itemSubType = ItemAPI("GetItemInfo", itemLink)
     if not itemSubType then return true end  -- cache miss: allow
 
     for _, a in ipairs(allowed) do
@@ -239,7 +251,9 @@ local BIND_ON_EQUIP, BIND_ON_USE = 2, 3
 AE._combatQueue = AE._combatQueue or {}
 
 local function BindType(itemLink)
-    local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
+    local getInfo = (TA.Compat and TA.Compat.GetItemInfo)
+        or (C_Item and C_Item.GetItemInfo)
+        or GetItemInfo
     if not getInfo then return nil end
     local info = { pcall(getInfo, itemLink) }
     if not info[1] then return nil end
@@ -251,7 +265,7 @@ local function EvaluateItem(itemLink)
     if IsShiftKeyDown() then return end
     if InPvPInstance() then return end
 
-    local _, _, _, ilvl, _, _, _, _, equipLoc = GetItemInfo(itemLink)
+    local _, _, _, ilvl, _, _, _, _, equipLoc = ItemAPI("GetItemInfo", itemLink)
     if ilvl then ilvl = EffectiveIlvl(itemLink) end
     if not ilvl then return end   -- level unknown on this client: skip, don't guess
     if not ilvl or ilvl == 0 then return end
@@ -294,7 +308,7 @@ local function EvaluateItem(itemLink)
         return
     end
 
-    local itemName = GetItemInfo(itemLink) or itemLink
+    local itemName = ItemAPI("GetItemInfo", itemLink) or itemLink
     TA:Raw(TA.LOG.OUTPUT, string.format(("|cFFFFD100[TA]|r Auto-equipped |cFF1EFF00%s|r (ilvl %d " .. ToonAge.Utils.Glyph("arrow") .. " slot %d)."),
         itemName, ilvl, targetSlot))
 end

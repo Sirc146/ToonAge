@@ -12,6 +12,16 @@
 -- Keeps: tracker window, step display, auto-quest, fast-forward sync, guide auto-select
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local QT = {}
@@ -504,7 +514,7 @@ function QT:HandleAutoQuest(event)
         for i = 1, numChoices do
             local link = GetQuestItemLink("choice", i)
             if link then
-                local _, _, _, ilvl = GetItemInfo(link)
+                local _, _, _, ilvl = ItemAPI("GetItemInfo", link)
                 ilvl = ilvl or 0
                 if ilvl > bestIlvl then
                     bestIlvl = ilvl

@@ -52,7 +52,14 @@ function PQ:AnalyzeQuestRewards()
     for i = 1, numChoices do
         local link = GetQuestItemLink("choice", i)
         if link then
-            local _, _, _, _, _, itemType, itemSubType = C_Item.GetItemInfo(link)
+            local fn = (TA.Compat and TA.Compat.GetItemInfo)
+                or (C_Item and C_Item.GetItemInfo)
+                or GetItemInfo
+            local itemType, itemSubType
+            if type(fn) == "function" then
+                local ok, _, _, _, _, _, t, s = pcall(fn, link)
+                if ok then itemType, itemSubType = t, s end
+            end
             -- Check if it's a tradeskill material
             if itemType == "Tradeskill" or itemType == "Trade Goods" then
                 -- It's a reagent — check if it matches our professions

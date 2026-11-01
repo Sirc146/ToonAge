@@ -12,6 +12,16 @@
 --   • All external calls wrapped in pcall for resilience.
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local QuestRewardAdvisor = {}
@@ -76,7 +86,7 @@ end
 --- Returns whether an item link corresponds to equippable gear.
 local function IsEquipment(itemLink)
     if not itemLink then return false end
-    local ok, _, _, _, _, _, _, _, _, equipLoc = pcall(C_Item.GetItemInfo or GetItemInfo, itemLink)
+    local ok, _, _, _, _, _, _, _, _, equipLoc = pcall(ItemAPI, "GetItemInfo", itemLink)
     if not ok then return false end
     if not equipLoc or equipLoc == "" or equipLoc == "INVTYPE_BAG" or equipLoc == "INVTYPE_AMMO" then
         return false
@@ -86,7 +96,7 @@ end
 
 --- Get the best equipped score across all slots that an item could go into.
 local function GetEquippedScore(itemLink, specID)
-    local _, _, _, _, _, _, _, _, equipLoc = GetItemInfo(itemLink)
+    local _, _, _, _, _, _, _, _, equipLoc = ItemAPI("GetItemInfo", itemLink)
     if not equipLoc then return 0 end
     local slots = EQUIP_LOC_TO_SLOT[equipLoc]
     if not slots then return 0 end

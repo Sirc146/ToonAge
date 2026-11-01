@@ -11,6 +11,16 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local AQS = {}
@@ -632,7 +642,7 @@ function AQS:PopulatePanel()
                     lowestIlvl = 0
                     break
                 else
-                    local ilvl = GetDetailedItemLevelInfo and GetDetailedItemLevelInfo(link) or 0
+                    local ilvl = ItemAPI("GetDetailedItemLevelInfo", link) or 0
                     if ilvl < lowestIlvl then
                         lowestIlvl = ilvl
                         lowestSlot = slotID

@@ -6,6 +6,16 @@
 -- Reference: Pawn\Pawn.lua ~line 2716 (PawnUpdateTooltip)
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local TooltipScorer = {}
@@ -162,7 +172,7 @@ function TooltipScorer:EvaluateItem(tooltip, itemLink)
     end
 
     -- Get equip location
-    local ok, itemName, _, _, _, _, _, _, equipLoc = pcall(GetItemInfo, itemLink)
+    local ok, itemName, _, _, _, _, _, _, equipLoc = pcall(ItemAPI, "GetItemInfo", itemLink)
     if not ok then return end
     if not equipLoc or equipLoc == "" then return end
 

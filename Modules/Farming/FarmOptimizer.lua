@@ -7,6 +7,16 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+
+-- Retail removed the item globals. Compat prefers C_Item and falls back to
+-- the global, and returns nil instead of calling a function that is not there.
+local function ItemAPI(name, ...)
+    local compat = TA.Compat
+    local fn = compat and compat[name]
+    if type(fn) ~= "function" then fn = _G[name] end
+    if type(fn) ~= "function" then return nil end
+    return fn(...)
+end
 local U  = TA.Utils
 
 local FarmOpt = {}
@@ -117,7 +127,7 @@ local function DetectGatherType()
     for i = 1, numItems do
         local ok, link = pcall(GetLootSlotLink, i)
         if ok and link then
-            local ok2, _, _, _, _, classID, subclassID = pcall(GetItemInfoInstant, link)
+            local ok2, _, _, _, _, classID, subclassID = pcall(ItemAPI, "GetItemInfoInstant", link)
             if ok2 and classID == 7 then
                 if subclassID == GATHER_SUBCLASS.HERB then return "herb" end
                 if subclassID == GATHER_SUBCLASS.ORE  then return "ore" end
@@ -135,7 +145,7 @@ local function DetectSkinning()
         for i = 1, numItems do
             local ok, link = pcall(GetLootSlotLink, i)
             if ok and link then
-                local ok2, _, _, _, _, classID, subclassID = pcall(GetItemInfoInstant, link)
+                local ok2, _, _, _, _, classID, subclassID = pcall(ItemAPI, "GetItemInfoInstant", link)
                 if ok2 and classID == 7 and subclassID == GATHER_SUBCLASS.LEATHER then
                     return true
                 end
@@ -153,7 +163,7 @@ local function ComputeLootValue()
     for i = 1, numItems do
         local ok, link = pcall(GetLootSlotLink, i)
         if ok and link then
-            local ok2, itemID = pcall(GetItemInfoInstant, link)
+            local ok2, itemID = pcall(ItemAPI, "GetItemInfoInstant", link)
             if ok2 and itemID then
                 local qty = select(3, GetLootSlotInfo(i)) or 1
                 local value = ITEM_VALUES[itemID] or DEFAULT_VALUE
