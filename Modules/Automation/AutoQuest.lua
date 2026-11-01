@@ -159,14 +159,7 @@ function AQ:OnQuestProgress()
         if numRequired and numRequired > 0 then
             local link = Try(GetQuestItemLink, "required", i)
             if link then
-                local itemType, itemSubType
-                if C_Item and C_Item.GetItemInfo then
-                    local _, _, _, _, _, t, s = Try(C_Item.GetItemInfo, link)
-                    itemType, itemSubType = t, s
-                else
-                    local _, _, _, _, _, t, s = Try(GetItemInfo, link)
-                    itemType, itemSubType = t, s
-                end
+                local _, _, _, _, _, itemType, itemSubType = Try(TA.Compat.GetItemInfo, link)
                 if itemType == "Tradeskill" or itemSubType == "Reagent" then return end
             end
         end
@@ -212,7 +205,7 @@ function AQ:OnQuestComplete()
     end
 
     local bestLink = Try(GetQuestItemLink, "choice", bestIdx)
-    local name = (bestLink and Try(GetItemInfo, bestLink)) or ("choice " .. bestIdx)
+    local name = (bestLink and Try(TA.Compat.GetItemInfo, bestLink)) or ("choice " .. bestIdx)
     TA:Raw(TA.LOG.OUTPUT, ("|cFFFFD100[ToonAge]|r %d rewards to choose from — paused for you. ")
           :format(numChoices)
           .. ("Best for you looks like |cFF4AFF7A%s|r."):format(tostring(name)))

@@ -227,6 +227,7 @@ def main():
     check("86528 says the coordinate is approximate", lua.eval("TIP"), True)
 
     lua.execute(read("Modules/Infrastructure/ContextAction.lua"))
+    lua.execute(read("Core/Compat/API.lua"))
     lua.execute(read("Modules/Navigation/QuestContext.lua"))
     lua.execute(read("Modules/Navigation/QuestTracker.lua"))
     lua.execute(r"""
