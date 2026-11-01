@@ -273,6 +273,8 @@ def test_predict_bar():
         BAR = bar
         SLOT = R.predictIcons[1]
         PIP = pips[1]
+        -- Rogue is verified, so the tray still follows the filled slot count.
+        R.currentSpecID = 259
         R:PaintPredictSlot(SLOT, "Deathstalker's Mark", 457052, false)
         R:FitPredictBar(1, false)
         W1, H1, A1, S1 = bar.w, bar.h, bar.alpha, bar.shown

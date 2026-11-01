@@ -81,6 +81,48 @@ def main():
     check("no assist spell is an empty fallback", lua.eval("EMPTY_N"), 0)
     check("a missing function is no suggestion", lua.eval("MISSING"), None)
 
+    lua.execute(r"""
+        function ToonAge:GetModule(name) return self.modules[name] end
+        local R = ToonAge.modules.Rotation
+        local sizeCalls, widthCalls = 0, 0
+        local bar = { w = 200, h = 99, shown = true, alpha = 1 }
+        function bar:SetSize(w, h) sizeCalls = sizeCalls + 1; self.w, self.h = w, h end
+        function bar:SetWidth() widthCalls = widthCalls + 1 end
+        function bar:SetAlpha(a) self.alpha = a end
+        function bar:Show() self.shown = true end
+        function bar:Hide() self.shown = false end
+        function bar:IsShown() return self.shown end
+        R.predictBar = bar
+        R.predictIcons = {}
+        ToonAge.Utils.GetPlayerSpec = function() return 1468 end
+        ToonAge.Utils.GetPlayerLevel = function() return 80 end
+        UnitGroupRolesAssigned = function() return "DAMAGER" end
+        InCombatLockdown = function() return true end
+        R.currentSpecID = 1468
+        R:FitPredictBar(1, false)
+        R:ApplyUnverifiedWidth()
+        R:OnBarEvent("PLAYER_REGEN_ENABLED")
+        R:OnEvent("PLAYER_SPECIALIZATION_CHANGED")
+        LOCKED_SIZE, LOCKED_WIDTH = sizeCalls, widthCalls
+        InCombatLockdown = function() return false end
+        R.currentSpecID = 1468
+        R:ApplyUnverifiedWidth()
+        R:OnBarEvent("PLAYER_REGEN_ENABLED")
+        R:OnEvent("PLAYER_SPECIALIZATION_CHANGED")
+        UNVERIFIED_W = bar.w
+        R.currentSpecID = 259
+        local before = sizeCalls
+        R:ApplyUnverifiedWidth()
+        VERIFIED_SKIP = (sizeCalls == before)
+        R:FitPredictBar(3, false)
+        VERIFIED_W = bar.w
+    """)
+    check("combat lockdown never resizes the bar", lua.eval("LOCKED_SIZE"), 0)
+    check("combat lockdown never calls SetWidth", lua.eval("LOCKED_WIDTH"), 0)
+    check("an unverified spec is 88 out of combat", lua.eval("UNVERIFIED_W"), 88)
+    check("a verified spec is not forced to one slot", lua.eval("VERIFIED_SKIP"), True)
+    check("a verified three-slot tray stays 200", lua.eval("VERIFIED_W"), 200)
+
     lua.execute((ROOT / "Modules/Infrastructure/Harvester.lua").read_text(encoding="utf-8"))
     lua.execute(r"""
         C_AssistedCombat = nil
