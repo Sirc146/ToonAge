@@ -165,6 +165,29 @@ eq("probe names LoadUI", probe:find("CollectionsJournal_LoadUI present", 1, true
 eq("probe names SetSearch", probe:find("C_Heirloom.SetSearch absent", 1, true) ~= nil, true)
 eq("probe does not create", probe:find("CreateHeirloom present, not called", 1, true) ~= nil, true)
 
+InCombatLockdown = function() return true end
+local notes = {}
+ToonAge.LOG = { OUTPUT = 1 }
+ToonAge.Print = function(_, _, _, text) notes[#notes + 1] = text end
+local combatProbe = M.JournalProbe()
+eq("probe in combat does nothing", #combatProbe, 1)
+eq("probe in combat hint", combatProbe[1], "Leave combat to open the Heirloom Journal.")
+eq("probe in combat prints the hint", notes[1], "Leave combat to open the Heirloom Journal.")
+InCombatLockdown = function() return false end
+
+calls = {}
+C_Heirloom.SetSearch = function(name) calls[#calls + 1] = "search:" .. tostring(name) end
+ToonAge.Compat.GetItemInfo = function() return "Tattered Dreadmist Robe" end
+local toggled = 0
+ToggleCollectionsJournal = function() toggled = toggled + 1 end
+CollectionsJournal = {
+    IsShown = function() return true end,
+    GetSelectedTab = function() return 4 end,
+}
+eq("shown journal is searched", M.OpenHeirloom({ itemID = 9, link = "item:9" }), "searched")
+eq("shown journal is not toggled", toggled, 0)
+eq("shown journal searched", calls[1], "search:Tattered Dreadmist Robe")
+
 local ids = M.BankContainers(4, 7, -1)
 eq("main bank plus seven bags", #ids, 8)
 eq("main bank is first", ids[1], -1)

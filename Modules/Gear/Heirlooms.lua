@@ -418,8 +418,69 @@ local function CombatLocked()
     return ok and locked and true or false
 end
 
+local function FrameShown(frame)
+    if type(frame) ~= "table" or type(frame.IsShown) ~= "function" then return false end
+    local ok, shown = pcall(frame.IsShown, frame)
+    return ok and shown and true or false
+end
+
+local function SelectedTab(frame)
+    if type(frame) ~= "table" then return nil end
+    if type(frame.GetSelectedTab) == "function" then
+        local ok, tab = pcall(frame.GetSelectedTab, frame)
+        if ok and type(tab) == "number" then return tab end
+    end
+    if type(PanelTemplates_GetSelectedTab) == "function" then
+        local ok, tab = pcall(PanelTemplates_GetSelectedTab, frame)
+        if ok and type(tab) == "number" then return tab end
+    end
+    return nil
+end
+
+--- Show the Heirlooms tab without closing a journal that is already open.
+--- ToggleCollectionsJournal is only used when the frame is hidden.
+local function ShowHeirloomTab()
+    local tab = M.HeirloomTab()
+    local frame = _G.CollectionsJournal
+    -- Already on the Heirlooms tab. Leave it open and let the caller search.
+    if FrameShown(frame) and SelectedTab(frame) == tab then return true end
+    if type(CollectionsJournal_LoadUI) == "function" then
+        pcall(CollectionsJournal_LoadUI)
+    end
+    frame = _G.CollectionsJournal
+    if FrameShown(frame) then
+        if SelectedTab(frame) == tab then return true end
+        if type(CollectionsJournal_SetTab) == "function" then
+            local ok = pcall(CollectionsJournal_SetTab, frame, tab)
+            if ok then return true end
+        end
+        if type(frame.SetTab) == "function" then
+            local ok = pcall(frame.SetTab, frame, tab)
+            if ok then return true end
+        end
+        return true
+    end
+    if type(frame) == "table" and type(frame.Show) == "function" then
+        local ok = pcall(frame.Show, frame)
+        if ok then
+            if type(CollectionsJournal_SetTab) == "function" then
+                pcall(CollectionsJournal_SetTab, frame, tab)
+            elseif type(frame.SetTab) == "function" then
+                pcall(frame.SetTab, frame, tab)
+            end
+            return true
+        end
+    end
+    if type(ToggleCollectionsJournal) == "function" then
+        local ok = pcall(ToggleCollectionsJournal, tab)
+        return ok and true or false
+    end
+    return false
+end
+
 --- Open the Heirlooms tab and search for this item. Out of combat only.
 --- Does not call CreateHeirloom and does not click Blizzard's buttons.
+--- An open Heirlooms tab stays open; the click only sets the search.
 --- "combat" when locked. "searched" when the filter was set. "opened" when
 --- the tab is up but SetSearch is missing or has no name. "unavailable"
 --- when the journal cannot be shown.
@@ -428,16 +489,7 @@ function M.OpenHeirloom(item)
         M.Note("Leave combat to open the Heirloom Journal.")
         return "combat"
     end
-    if type(CollectionsJournal_LoadUI) == "function" then
-        pcall(CollectionsJournal_LoadUI)
-    end
-    local tab = M.HeirloomTab()
-    local opened = false
-    if type(ToggleCollectionsJournal) == "function" then
-        local ok = pcall(ToggleCollectionsJournal, tab)
-        opened = ok and true or false
-    end
-    if not opened then
+    if not ShowHeirloomTab() then
         M.Note("The Heirloom Journal is not available on this client.")
         return "unavailable"
     end
@@ -459,20 +511,25 @@ end
 --- Presence and a guarded call for each journal step. CreateHeirloom is
 --- reported and not called. /ta heirlooms probe prints the lines.
 function M.JournalProbe()
+    if CombatLocked() then
+        M.Note("Leave combat to open the Heirloom Journal.")
+        return { "Leave combat to open the Heirloom Journal." }
+    end
     local lines = {}
     local function add(text) lines[#lines + 1] = text end
     local loadUI = type(CollectionsJournal_LoadUI) == "function"
     add("CollectionsJournal_LoadUI " .. (loadUI and "present" or "absent"))
-    if loadUI then
-        local ok, err = pcall(CollectionsJournal_LoadUI)
-        add("CollectionsJournal_LoadUI " .. (ok and "called" or ("failed: " .. tostring(err))))
-    end
     local toggle = type(ToggleCollectionsJournal) == "function"
     add("ToggleCollectionsJournal " .. (toggle and "present" or "absent"))
     add("Heirloom tab index " .. tostring(M.HeirloomTab()))
-    if toggle then
-        local ok, err = pcall(ToggleCollectionsJournal, M.HeirloomTab())
-        add("ToggleCollectionsJournal " .. (ok and "called" or ("failed: " .. tostring(err))))
+    local wasShown = FrameShown(_G.CollectionsJournal)
+    local ok = ShowHeirloomTab()
+    if wasShown then
+        add("Heirloom journal already open, left open")
+    elseif ok then
+        add("Heirloom journal shown")
+    else
+        add("Heirloom journal unavailable")
     end
     local heirloom = _G["C_Heirloom"]
     local search = type(heirloom) == "table" and heirloom.SetSearch
