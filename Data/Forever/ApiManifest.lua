@@ -93,6 +93,8 @@ TA.Data.ApiManifest = {
     },
     globals = {
         ["GetAverageItemLevel"] = { "Modules/Automation/DeathRecovery.lua" },
+        ["GetCombatRating"] = { "Core/Compat/API.lua" },
+        ["GetCombatRatingBonus"] = { "Core/Compat/API.lua" },
         ["GetInventoryItemLink"] = { "Core/Utils.lua" },
         ["GetItemInfo"] = { "Core/Compat/API.lua", "Core/Utils.lua" },
         ["GetItemStats"] = { "Core/Compat/API.lua", "Core/Utils.lua" },
@@ -109,6 +111,7 @@ TA.Data.ApiManifest = {
         ["GetSpellLevelLearned"] = { "Core/Compat/API.lua", "Modules/Harvest/Domains/Spellbook.lua" },
         ["GetTalentInfo"] = { "Core/Compat/API.lua" },
         ["GetTalentTabInfo"] = { "Core/Compat/API.lua" },
+        ["GetVersatilityBonus"] = { "Core/Compat/API.lua" },
         ["IsSpellKnown"] = { "Core/Compat/API.lua", "Core/Utils.lua", "Modules/Harvest/Packs/Forever.lua" },
         ["UnitAttackBothHands"] = { "Core/Compat/API.lua", "Modules/Infrastructure/Harvester.lua" },
         ["UnitDefense"] = { "Core/Compat/API.lua", "Modules/Infrastructure/Harvester.lua" },
