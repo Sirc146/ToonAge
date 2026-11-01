@@ -593,9 +593,27 @@ local function SuiteApi(S)
             local setSearch = type(_G["C_" .. "Heirloom"]) == "table" and _G["C_" .. "Heirloom"]["Set" .. "Search"]
             S(INFO, "C_" .. "Heirloom.SetSearch " .. (type(setSearch) == "function" and "present" or "absent"))
             S(INFO, "CollectionsJournal_LoadUI " .. (type(CollectionsJournal_LoadUI) == "function" and "present" or "absent"))
+            S(INFO, "CollectionsJournal_SetTab " .. (type(CollectionsJournal_SetTab) == "function" and "present" or "absent"))
+            S(INFO, "PanelTemplates_GetSelectedTab " .. (type(PanelTemplates_GetSelectedTab) == "function" and "present" or "absent"))
+            local journal = _G.CollectionsJournal
+            local journalSet = type(journal) == "table" and type(journal.SetTab) == "function"
+            S(INFO, "CollectionsJournal.SetTab " .. (journalSet and "present" or "absent"))
             S(INFO, "ToggleCollectionsJournal " .. (type(ToggleCollectionsJournal) == "function" and "present" or "absent"))
-            S(INFO, "Heirloom journal click: /ta heirlooms probe tries LoadUI, the tab, and SetSearch. CreateHeirloom is not called.")
+            S(INFO, "C_Heirloom " .. (type(_G["C_Heirloom"]) == "table" and "present" or "absent"))
             local H = TA.GetModule and TA:GetModule("Heirlooms")
+            local tab = (H and type(H.HeirloomTab) == "function") and H:HeirloomTab() or nil
+            if type(tab) ~= "number" then
+                tab = _G.COLLECTIONS_JOURNAL_TAB_INDEX_HEIRLOOMS
+                if type(tab) ~= "number" and type(Enum) == "table" and type(Enum.CollectionsJournalTab) == "table" then
+                    tab = Enum.CollectionsJournalTab.Heirlooms
+                end
+                -- UNVERIFIED. Same fallback as Heirlooms.HeirloomTab.
+                if type(tab) ~= "number" then tab = 4 end
+            end
+            S(INFO, "Heirloom tab index " .. tostring(tab))
+            local clickOn = H and type(H.JournalClickEnabled) == "function" and H:JournalClickEnabled()
+            S(INFO, "Heirloom journal click " .. (clickOn and "on" or "off"))
+            S(INFO, "Heirloom journal click: /ta heirlooms probe reports the journal functions. CreateHeirloom is not called.")
             if H and H.Status then
                 if not H._scanned and H.Scan then H:Scan() end
                 S(INFO, H:Status())
