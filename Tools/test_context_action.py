@@ -50,6 +50,7 @@ def runtime():
         end
     """)
     lua.execute(read("Modules/Infrastructure/ContextAction.lua"))
+    lua.execute(read("Core/Compat/API.lua"))
     lua.execute(read("Modules/Navigation/QuestContext.lua"))
     return lua
 
