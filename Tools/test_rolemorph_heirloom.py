@@ -66,14 +66,21 @@ def main():
         end
         local function run(maxFn, infoFn)
             NOTES = {}
+            CALLS = 0
+            local function count(fn)
+                return function(...)
+                    CALLS = CALLS + 1
+                    return fn(...)
+                end
+            end
             C_Heirloom = {
-                GetHeirloomMaxUpgradeLevel = maxFn,
-                GetHeirloomInfo = infoFn or function() return "Name", "INVTYPE_HEAD" end,
+                GetHeirloomMaxUpgradeLevel = count(maxFn),
+                GetHeirloomInfo = count(infoFn or function() return "Name", "INVTYPE_HEAD" end),
             }
             local ok, cap = pcall(RM.GetHeirloomCap, "item:9")
             RAN, CAP = ok, cap
             local okCheck = pcall(RM.CheckHeirlooms, RM)
-            CHECK_OK, WARNS = okCheck, warnCount()
+            CHECK_OK, WARNS, CAP_CALLS = okCheck, warnCount(), CALLS
             local probe = table.concat(RM.HeirloomProbe(), "\n")
             PROBE = probe
         end
@@ -93,6 +100,7 @@ def main():
         NUM_PROBE = PROBE
     """)
     check("an erroring upgrade call does not escape", lua.eval("ERR_OK"), True)
+    check("the cap does not call C_Heirloom", lua.eval("CAP_CALLS"), 0)
     check("an erroring upgrade call is unknown", lua.eval("ERR_CAP"), None)
     check("check still runs after an error", lua.eval("ERR_CHECK"), True)
     check("an error does not warn", lua.eval("ERR_WARNS"), 0)

@@ -74,22 +74,9 @@ end
 
 --- UNVERIFIED on 12.x. GetHeirloomMaxUpgradeLevel is an upgrade-tier count,
 --- not a player level, and GetHeirloomInfo's returns are not confirmed.
---- Nothing here is turned into a level cap. nil means unknown, and the
---- dead-heirloom warning stays off. There is no fallback level.
-function RM.GetHeirloomCap(itemLink)
-    if type(itemLink) ~= "string" or itemLink == "" then return nil end
-    local infoFn = TA.Compat and TA.Compat.GetItemInfo
-    if type(infoFn) ~= "function" then return nil end
-    local ok, _, _, quality = pcall(infoFn, itemLink)
-    if not ok or IsSecret(quality) or quality ~= HEIRLOOM_QUALITY then return nil end
-    local itemID = ItemID(itemLink)
-    local heirloom = C_Heirloom
-    if itemID and type(heirloom) == "table" then
-        local maxUp = heirloom.GetHeirloomMaxUpgradeLevel
-        if type(maxUp) == "function" then pcall(maxUp, itemID) end
-        local info = heirloom.GetHeirloomInfo
-        if type(info) == "function" then pcall(info, itemID) end
-    end
+--- This does not call C_Heirloom. nil means unknown, so the dead-heirloom
+--- warning stays off. /ta heirlooms probe prints the raw returns.
+function RM.GetHeirloomCap()
     return nil
 end
 
