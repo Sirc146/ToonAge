@@ -648,16 +648,24 @@ function Talents:RenderContent(content, activeSpecID)
         local bestSpec, bestScore = nil, 0
         local weaponNotes = {}  -- [specID] = note about weapon incompatibility
 
-        -- Determine equipped weapon types for compatibility checks
+        -- Determine equipped weapon types for compatibility checks.
+        -- Retail has no global GetItemInfo. Compat returns nil for an
+        -- uncached item, which leaves the slot unknown instead of throwing.
+        local readInfo = TA.Compat and TA.Compat.GetItemInfo
+        local readStats = TA.Compat and TA.Compat.GetItemStats
+        if type(readInfo) ~= "function" or type(readStats) ~= "function" then
+            AddLine()
+            AddText("|cFF888780Gear suggestion is off on this client: item data is not available.|r", 9, 0.5, 0.5, 0.5)
+        else
         local mhLink  = GetInventoryItemLink("player", 16)
         local ohLink  = GetInventoryItemLink("player", 17)
         local mhEquipLoc, ohEquipLoc
         if mhLink then
-            local _, _, _, _, _, _, _, _, loc = GetItemInfo(mhLink)
+            local _, _, _, _, _, _, _, _, loc = readInfo(mhLink)
             mhEquipLoc = loc
         end
         if ohLink then
-            local _, _, _, _, _, _, _, _, loc = GetItemInfo(ohLink)
+            local _, _, _, _, _, _, _, _, loc = readInfo(ohLink)
             ohEquipLoc = loc
         end
 
@@ -775,7 +783,7 @@ function Talents:RenderContent(content, activeSpecID)
                         else
                             local link = GetInventoryItemLink("player", slotID)
                             if link then
-                                local rawStats = C_Item.GetItemStats(link)
+                                local rawStats = readStats(link)
                                 if rawStats then
                                     local stats = U.ReadItemStats(link)
                                     local weights = sw[pvxMode] or sw.pve
@@ -835,6 +843,7 @@ function Talents:RenderContent(content, activeSpecID)
                 end
                 y = y - 4
             end
+        end
         end
     end
 

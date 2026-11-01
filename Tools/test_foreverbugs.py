@@ -46,11 +46,11 @@ check("Try swallows errors", "pcall(fn, ...)" in gt)
 
 det = gt[gt.index("local function DetectGatherType"):]
 det = det[:det.index("\nend")]
-for api in ("GetNumLootItems", "GetLootSlotLink", "GetItemInfoInstant"):
-    # Item classification moved into a helper above DetectGatherType; the
-    # guarded C_Item call there is what Forever needs (the global is nil).
-    scope = gt if api == "GetItemInfoInstant" else det
-    check(f"{api} goes through Try", f"Try({api}" in scope or f"Try(C_Item.{api}" in scope)
+for api in ("GetNumLootItems", "GetLootSlotLink"):
+    check(f"{api} goes through Try", f"Try({api}" in det)
+# Item classification goes through Compat. The global GetItemInfoInstant is nil
+# on Forever, and Try still refuses a non-function.
+check("GetItemInfoInstant goes through Compat", "Try(TA.Compat.GetItemInfoInstant" in gt)
 check("no unguarded loot call remains",
       not any(f"= {api}(" in det for api in
               ("GetNumLootItems", "GetLootSlotLink", "GetItemInfoInstant")))
