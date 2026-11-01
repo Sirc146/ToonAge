@@ -2,6 +2,7 @@
 -- Caching, PvP/PvE persistence, tooltip injection, bag-claim logic, enchant audit
 
 local TA   = ToonAge
+
 local U    = TA.Utils
 local SW   = TA.Data.StatWeights
 local EMap = TA.Data.EnchantProfessionMap or {}
@@ -150,15 +151,25 @@ local SCORE_SLOT = {
 --- it replaces are measured from the SAME starting point. Without this the
 --- equipped item's own stats were counted twice (once in the live rating,
 --- once as "added"), pushing it deeper into DR than any alternative.
+--- itemID, itemType, itemSubType, equipLoc. Nil when Retail has removed the
+--- global and Compat has no function. Never calls a nil.
+local function ReadItemInstant(item)
+    local fn = TA.Compat and TA.Compat.GetItemInfoInstant
+    if type(fn) ~= "function" or item == nil then return nil end
+    local ok, itemID, itemType, itemSubType, equipLoc = pcall(fn, item)
+    if not ok then return nil end
+    return itemID, itemType, itemSubType, equipLoc
+end
+
 local function ReplacedItemStats(itemLink)
-    local equipLoc = select(4, GetItemInfoInstant(itemLink))
+    local _, _, _, equipLoc = ReadItemInstant(itemLink)
     local slots = equipLoc and SCORE_SLOT[equipLoc]
     if not slots then return nil end
-    local itemID = GetItemInfoInstant(itemLink)
+    local itemID = ReadItemInstant(itemLink)
     local chosen
     for _, s in ipairs(slots) do
         local link = GetInventoryItemLink("player", s)
-        if link and GetItemInfoInstant(link) == itemID then chosen = link; break end
+        if link and ReadItemInstant(link) == itemID then chosen = link; break end
     end
     if not chosen then
         local weakest, weakestSum
@@ -383,8 +394,7 @@ local OFFHAND_WEAPON_LOC = { INVTYPE_WEAPON=true, INVTYPE_WEAPONOFFHAND=true,
 local function IsEnchantableSlot(slotID, itemLink)
     if not ENCHANTABLE_SLOT[slotID] then return false end
     if slotID == 17 and itemLink then
-        local getInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
-        local ok, _, _, _, equipLoc = pcall(getInstant, itemLink)
+        local ok, _, _, _, equipLoc = pcall(TA.Compat.GetItemInfoInstant, itemLink)
         if ok and equipLoc and not OFFHAND_WEAPON_LOC[equipLoc] then return false end
     end
     return true
@@ -412,13 +422,11 @@ local function AuditItemEnchants(itemLink, isEnchantable)
         end
         local Z = TA.Data and TA.Data.Zones
         local floor = Z and Z.TRACKS and Z.TRACKS.champion and Z.TRACKS.champion.ilvlMin
-        local getIlvl = (C_Item and C_Item.GetDetailedItemLevelInfo) or GetDetailedItemLevelInfo
-        local okI, ilvl = pcall(getIlvl, itemLink)
+        local okI, ilvl = pcall(TA.Compat.GetDetailedItemLevelInfo, itemLink)
         if floor and okI and type(ilvl) == "number" and ilvl < floor then
             return true, "|cFF888780No enchant (optional below ilvl " .. floor .. ")|r"
         end
-        local getInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
-        local okL, _, _, _, equipLoc = pcall(getInstant, itemLink)
+        local okL, _, _, _, equipLoc = pcall(TA.Compat.GetItemInfoInstant, itemLink)
         if okL and equipLoc and equipLoc:find("WEAPON") then
             return false, "|cFFFF4444Missing Weapon Enchant|r"
         end
@@ -789,7 +797,7 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
         local twoHandBaseline = nil
 
         if slotDef.slotID == 16 then
-            local _, _, _, _, _, _, _, _, mhEquipLoc = currentLink and GetItemInfo(currentLink)
+            local _, _, _, _, _, _, _, _, mhEquipLoc = currentLink and TA.Compat.GetItemInfo(currentLink)
             twoHandEquipped = (mhEquipLoc == "INVTYPE_2HWEAPON")
             mainHandEmpty   = (currentLink == nil)
             -- A 2H candidate must beat Main Hand + Off Hand combined (both
@@ -860,10 +868,10 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
         local nameF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         nameF:SetFont(STANDARD_TEXT_FONT, 11, "")
         if currentLink then
-            local itemName, _, quality = GetItemInfo(currentLink)
-            local r, g, b = GetItemQualityColor(quality or 1)
+            local itemName, _, quality = TA.Compat.GetItemInfo(currentLink)
+            local r, g, b = TA.Compat.GetItemQualityColor(quality or 1)
             nameF:SetText(U.Truncate(itemName or "Loading...", 24))
-            nameF:SetTextColor(r, g, b, 1)
+            if r and g and b then nameF:SetTextColor(r, g, b, 1) end
         else
             nameF:SetText("|cFFFF4444Empty Slot|r")
         end
@@ -1214,10 +1222,10 @@ function Gear:RenderTargetGrid(content, sidebar, padL, y, w)
         local nameF = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         nameF:SetFont(STANDARD_TEXT_FONT, 11, "")
         if currentLink then
-            local itemName, _, quality = GetItemInfo(currentLink)
-            local r, g, b = GetItemQualityColor(quality or 1)
+            local itemName, _, quality = TA.Compat.GetItemInfo(currentLink)
+            local r, g, b = TA.Compat.GetItemQualityColor(quality or 1)
             nameF:SetText(U.Truncate(itemName or "Loading...", 24))
-            nameF:SetTextColor(r, g, b, 1)
+            if r and g and b then nameF:SetTextColor(r, g, b, 1) end
         else
             nameF:SetText("|cFF888780Empty Slot|r")
         end
@@ -1285,7 +1293,7 @@ function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, up
 
     if isTarget then
         SLabel("TARGET INSPECTION", 11, 1, 0.82, 0)
-        SLabel(curLink and (GetItemInfo(curLink) or "Equipped Item") or "Empty Slot",
+        SLabel(curLink and (TA.Compat.GetItemInfo(curLink) or "Equipped Item") or "Empty Slot",
                10, curLink and 1 or 0.5, curLink and 1 or 0.5, curLink and 1 or 0.5)
         parent:SetHeight(math.abs(y) + 10)
         return
@@ -1296,7 +1304,7 @@ function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, up
         local wI, pI = GetItemIlvls(curLink)
         SLabel("|cFF8B7040Score:|r " .. curScore, 10)
         SLabel("iLvl: " .. wI .. (pI and ("  |cFF00FF00PvP: " .. pI .. "|r") or "  |cFF555555(no PvP)|r"), 9)
-        local equippedName = GetItemInfo(curLink) or "Equipped Item"
+        local equippedName = TA.Compat.GetItemInfo(curLink) or "Equipped Item"
         if upLink and upScore > curScore then
             equippedName = U.MarkItemName(equippedName, "downgrade", true)
         end
@@ -1308,7 +1316,7 @@ function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, up
     y = y - 4
     if upLink then
         SLabel("|cFF1EFF00[+] Upgrade Ready|r", 10, 0.12, 1.0, 0.0)
-        SLabel(U.MarkItemName(GetItemInfo(upLink) or "Upgrade Item", "upgrade", true), 10, 1, 1, 1)
+        SLabel(U.MarkItemName(TA.Compat.GetItemInfo(upLink) or "Upgrade Item", "upgrade", true), 10, 1, 1, 1)
         SLabel("Score: " .. upScore .. "  |cFF1EFF00(+" .. math.floor(upScore - curScore) .. ")|r", 9, 0.12, 1.0, 0.0)
         SButton("Equip Now", function()
             local ok, why = U.SafeEquip(bag, slot, slotID, { allowPrompt = true })
@@ -1317,7 +1325,7 @@ function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, up
     elseif claimedBy then
         SLabel("|cFFAAAAAA[!] Best upgrade claimed by " .. claimedBy .. "|r", 10)
         if claimedLink and claimedBag and claimedSlot then
-            SLabel(GetItemInfo(claimedLink) or "Claimed Item", 9, 0.8, 0.8, 0.8)
+            SLabel(TA.Compat.GetItemInfo(claimedLink) or "Claimed Item", 9, 0.8, 0.8, 0.8)
             SButton("Force Override", function()
                 local ok, why = U.SafeEquip(claimedBag, claimedSlot, slotID, { allowPrompt = true })
                 if not ok then TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA]|r Not equipped: " .. why .. ".") end
@@ -1381,8 +1389,9 @@ local function InjectTooltipScore(tooltip, itemLink)
     local score   = CalculateItemScore(itemLink, specID, pvxMode)
     if not score or score <= 0 then return end
 
-    -- Determine the equip slot to compare against
-    local _, _, _, equipLoc = GetItemInfoInstant(itemLink)
+    -- Retail removed the GetItemInfoInstant global. The TooltipDataProcessor
+    -- hook (below) lands here. ReadItemInstant does not call a nil.
+    local _, _, _, equipLoc = ReadItemInstant(itemLink)
     if not equipLoc or equipLoc == "" then return end
     local slotID = EQUIP_LOC_TO_SLOT[equipLoc]
     if not slotID then return end
@@ -1411,7 +1420,7 @@ local function InjectTooltipScore(tooltip, itemLink)
     if equipLoc == "INVTYPE_2HWEAPON" or equipLoc == "INVTYPE_WEAPONOFFHAND"
         or equipLoc == "INVTYPE_HOLDABLE" or equipLoc == "INVTYPE_SHIELD" then
         local mhLink = GetInventoryItemLink("player", 16)
-        local _, _, _, _, _, _, _, _, mhEquipLoc = mhLink and GetItemInfo(mhLink)
+        local _, _, _, _, _, _, _, _, mhEquipLoc = mhLink and TA.Compat.GetItemInfo(mhLink)
         local mhTwoHand = (mhEquipLoc == "INVTYPE_2HWEAPON")
         local mhScore = CalculateItemScore(mhLink, specID, pvxMode)
 

@@ -377,8 +377,7 @@ function U.IsUnboundBindable(bag, slot)
     local link = C_Container and C_Container.GetContainerItemLink
         and C_Container.GetContainerItemLink(bag, slot)
     if not link then return nil end
-    local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-    local info = getInfo and { pcall(getInfo, link) }
+    local info = { pcall(TA.Compat.GetItemInfo, link) }
     local bindType = info and info[1] and info[15]   -- GetItemInfo's 14th return
     if bindType == nil then return nil end
     if bindType ~= 2 and bindType ~= 3 then return false end   -- 2 BoE, 3 BoU
@@ -674,14 +673,8 @@ end
 -- ── Spell utilities ───────────────────────────────────────────────────
 function U.GetSpellName(spellID)
     if not spellID then return nil end
-    if C_Spell and type(C_Spell.GetSpellName) == "function" then
-        local ok, name = pcall(C_Spell.GetSpellName, spellID)
-        if ok and name then return name end
-    end
-    if type(GetSpellInfo) == "function" then
-        local ok, name = pcall(GetSpellInfo, spellID)
-        if ok then return name end
-    end
+    local ok, name = pcall(TA.Compat.GetSpellName, spellID)
+    if ok then return name end
     return nil
 end
 
@@ -712,30 +705,19 @@ end
 --- C_Spell.GetSpellCooldown or the bare global directly — see .rules.md.
 --- @return number start, number duration — both 0 when off cooldown/unknown
 function U.GetSpellCooldown(spellID)
-    if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
-        local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
-        if not ok or not info then return 0, 0 end
-        return info.startTime or 0, info.duration or 0
-    end
-    if type(GetSpellCooldown) ~= "function" then return 0, 0 end
-    local ok, start, duration = pcall(GetSpellCooldown, spellID)
-    if not ok or not start then return 0, 0 end
-    return start, duration
+    local ok, start, duration = pcall(TA.Compat.GetSpellCooldown, spellID)
+    if not ok or (start == nil and duration == nil) then return 0, 0 end
+    return start or 0, duration or 0
 end
 
---- Spell name/icon/castTime lookup. C_Spell.GetSpellInfo returns a table in
---- 11.0+; the bare global is a compat shim that Blizzard has been retiring
---- API-by-API, so route through here instead of calling either directly.
+--- Spell name, icon, and cast time. Compat returns the legacy GetSpellInfo
+--- order (name, rank, icon, castTime, ...), so the rank is skipped and the
+--- second value stays the icon. `local name, _, icon = GetSpellInfo(id)`
+--- against Compat itself sees the same icon.
 --- @return string|nil name, number|nil iconID, number|nil castTime
 function U.GetSpellInfo(spellID)
     if not spellID then return nil end
-    if C_Spell and type(C_Spell.GetSpellInfo) == "function" then
-        local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
-        if not ok or not info then return nil end
-        return info.name, info.iconID, info.castTime
-    end
-    if type(GetSpellInfo) ~= "function" then return nil end
-    local ok, name, _, icon, castTime = pcall(GetSpellInfo, spellID)
+    local ok, name, _, icon, castTime = pcall(TA.Compat.GetSpellInfo, spellID)
     if not ok then return nil end
     return name, icon, castTime
 end
@@ -796,19 +778,11 @@ function U.GetEquippedItemID(slot)
     return GetInventoryItemID("player", slot)
 end
 
---- Single call site for GetItemInfo. The bare global is still current at
---- Interface 120007, but C_Item is where Blizzard is moving it — keeping one
---- wrapper means a future removal is a one-line fix, not a 19-site hunt.
+--- Item data. Retail has no global GetItemInfo. Compat prefers C_Item and
+--- falls back to the global. Nil means the item is not cached yet.
 function U.GetItemInfo(item)
     if not item then return nil end
-    if TA.Compat and TA.Compat.GetItemInfo then
-        return TA.Compat.GetItemInfo(item)
-    end
-    if C_Item and type(C_Item.GetItemInfo) == "function" then
-        return C_Item.GetItemInfo(item)
-    end
-    if type(GetItemInfo) ~= "function" then return nil end
-    return GetItemInfo(item)
+    return TA.Compat.GetItemInfo(item)
 end
 
 -- ── Async item data ───────────────────────────────────────────────────
@@ -932,8 +906,7 @@ local function StatNum(v)
     return tonumber(tostring(v):match("([%d%.%-]+)")) or 0
 end
 function U.ReadItemStats(itemLink)
-    local raw = (itemLink and C_Item and C_Item.GetItemStats and C_Item.GetItemStats(itemLink))
-             or (itemLink and GetItemStats and GetItemStats(itemLink)) or {}
+    local raw = (itemLink and TA.Compat.GetItemStats(itemLink)) or {}
     return {
         INT     = StatNum(raw["ITEM_MOD_INTELLECT_SHORT"]),
         AGI     = StatNum(raw["ITEM_MOD_AGILITY_SHORT"]),
