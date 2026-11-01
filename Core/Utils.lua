@@ -710,13 +710,14 @@ function U.GetSpellCooldown(spellID)
     return start or 0, duration or 0
 end
 
---- Spell name/icon/castTime lookup. C_Spell.GetSpellInfo returns a table in
---- 11.0+; the bare global is a compat shim that Blizzard has been retiring
---- API-by-API, so route through here instead of calling either directly.
+--- Spell name, icon, and cast time. Compat returns the legacy GetSpellInfo
+--- order (name, rank, icon, castTime, ...), so the rank is skipped and the
+--- second value stays the icon. `local name, _, icon = GetSpellInfo(id)`
+--- against Compat itself sees the same icon.
 --- @return string|nil name, number|nil iconID, number|nil castTime
 function U.GetSpellInfo(spellID)
     if not spellID then return nil end
-    local ok, name, icon, castTime = pcall(TA.Compat.GetSpellInfo, spellID)
+    local ok, name, _, icon, castTime = pcall(TA.Compat.GetSpellInfo, spellID)
     if not ok then return nil end
     return name, icon, castTime
 end

@@ -98,10 +98,27 @@ function C.PickupContainerItem(bag, slot)
 end
 
 -- ── Spells ───────────────────────────────────────────────────────────────
--- Normalized to a stable shape regardless of flavor:
---   GetSpellName(id)    -> string|nil
---   GetSpellTexture(id) -> number|nil (icon file id)
---   GetSpellInfo(id)    -> name, icon, castTime   (three values, both flavors)
+-- GetSpellName(id)    -> string|nil
+-- GetSpellTexture(id) -> number|nil (icon file id)
+-- GetSpellInfo(id)    -> the legacy multi-return, on every client:
+--   name, rank, icon, castTime, minRange, maxRange, spellID, originalIcon
+-- Retail C_Spell.GetSpellInfo returns a table (or nil when the spell is
+-- missing). Rank has no field there, so it is nil. originalIcon is
+-- originalIconID. Callers that write `local name, _, icon = GetSpellInfo(id)`
+-- keep working.
+-- GetSpellCooldown(id) -> start, duration, enabled, modRate
+-- isEnabled on the C_Spell table is a boolean. The legacy third value is
+-- 1 or 0. A secret is returned as-is: comparing it would throw.
+
+local function LegacyEnabled(v)
+    if type(issecretvalue) == "function" then
+        local ok, secret = pcall(issecretvalue, v)
+        if ok and secret == true then return v end
+    end
+    if v == true then return 1 end
+    if v == false then return 0 end
+    return v
+end
 
 function C.GetSpellName(spellID)
     if C_Spell and C_Spell.GetSpellName then
@@ -121,14 +138,14 @@ function C.GetSpellTexture(spellID)
 end
 
 function C.GetSpellInfo(spellID)
-    if C_Spell and C_Spell.GetSpellInfo then
+    if C_Spell and type(C_Spell.GetSpellInfo) == "function" then
         local info = C_Spell.GetSpellInfo(spellID)
-        if info then return info.name, info.iconID, info.castTime end
-        return nil
+        if type(info) ~= "table" then return nil end
+        return info.name, nil, info.iconID, info.castTime,
+            info.minRange, info.maxRange, info.spellID, info.originalIconID
     end
-    if GetSpellInfo then
-        local name, _, icon, castTime = GetSpellInfo(spellID)
-        return name, icon, castTime
+    if type(GetSpellInfo) == "function" then
+        return GetSpellInfo(spellID)
     end
     return nil
 end
@@ -136,8 +153,8 @@ end
 function C.GetSpellCooldown(spellID)
     if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
         local info = C_Spell.GetSpellCooldown(spellID)
-        if info then return info.startTime, info.duration, info.isEnabled end
-        return nil
+        if type(info) ~= "table" then return nil end
+        return info.startTime, info.duration, LegacyEnabled(info.isEnabled), info.modRate
     end
     if type(GetSpellCooldown) == "function" then
         return GetSpellCooldown(spellID)

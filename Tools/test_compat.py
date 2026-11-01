@@ -54,8 +54,11 @@ C_Container = {
 }
 C_Spell = {
     GetSpellName = function(id) return "RetailSpell"..id end,
-    GetSpellInfo = function(id) return { name = "RetailSpell"..id, iconID = 700 + id, castTime = 1500 } end,
-    GetSpellCooldown = function(id) return { startTime = 10, duration = 20, isEnabled = true } end,
+    GetSpellInfo = function(id) return {
+        name = "RetailSpell"..id, iconID = 700 + id, originalIconID = 900 + id,
+        castTime = 1500, minRange = 0, maxRange = 30, spellID = id,
+    } end,
+    GetSpellCooldown = function(id) return { startTime = 10, duration = 20, isEnabled = true, modRate = 1 } end,
 }
 C_SpellBook = { IsSpellKnown = function(id) return id == 42 end }
 C_Item = { GetItemInfo = function(item) return "RetailItem" end }
@@ -129,24 +132,31 @@ def test_classic_container():
 
 
 def test_retail_spell_shape():
-    section("retail: spell shim normalizes C_Spell table -> name/icon/castTime")
+    section("retail: C_Spell table unpacks to legacy GetSpellInfo order")
     _, C = load(RETAIL_ENV)
     check("spell name",  C.GetSpellName(5), "RetailSpell5")
-    name, icon, cast = C.GetSpellInfo(5)
+    # name, rank, icon, castTime, minRange, maxRange, spellID, originalIcon
+    name, rank, icon, cast, min_r, max_r, sid, orig = C.GetSpellInfo(5)
     check("GetSpellInfo name",     name, "RetailSpell5")
+    check("GetSpellInfo rank",     rank, None)
     check("GetSpellInfo icon",     icon, 705)
     check("GetSpellInfo castTime", cast, 1500)
+    check("GetSpellInfo minRange", min_r, 0)
+    check("GetSpellInfo maxRange", max_r, 30)
+    check("GetSpellInfo spellID",  sid, 5)
+    check("GetSpellInfo original", orig, 905)
     check("spell texture (iconID)", C.GetSpellTexture(5), 705)
     check("IsSpellKnown true for 42",  C.IsSpellKnown(42), True)
     check("IsSpellKnown false for 1",  C.IsSpellKnown(1), False)
 
 
 def test_classic_spell_shape():
-    section("classic: spell shim normalizes global tuple -> name/icon/castTime")
+    section("classic: global GetSpellInfo stays name, rank, icon, castTime")
     _, C = load(CLASSIC_ENV)
     check("spell name",  C.GetSpellName(5), "ClassicSpell5")
-    name, icon, cast = C.GetSpellInfo(5)
+    name, rank, icon, cast = C.GetSpellInfo(5)
     check("GetSpellInfo name",     name, "ClassicSpell5")
+    check("GetSpellInfo rank",     rank, "rank")
     check("GetSpellInfo icon",     icon, 805)
     check("GetSpellInfo castTime", cast, 2000)
     check("IsSpellKnown true for 99", C.IsSpellKnown(99), True)
@@ -331,48 +341,98 @@ C_Item = {
 def test_spell_api_both_clients():
     """Spell wrappers: C_Spell tables, classic multi-return, or neither.
 
-    C_Spell.GetSpellInfo and C_Spell.GetSpellCooldown return tables. Callers
-    still receive name/icon/castTime and start/duration/enabled. A missing
-    function is nil, not a call.
+    C_Spell.GetSpellInfo returns {name, iconID, originalIconID, castTime,
+    minRange, maxRange, spellID} or nil. Compat unpacks that to the legacy
+    order name, rank, icon, castTime, minRange, maxRange, spellID, originalIcon
+    so `local name, _, icon = GetSpellInfo(id)` still gets the icon.
+    C_Spell.GetSpellCooldown returns {startTime, duration, isEnabled, modRate}.
+    isEnabled is a boolean; the legacy third value is 1 or 0.
     """
-    section("spell API: C_Spell only, globals nil")
+    section("spell API: C_Spell table, globals nil")
     lua, C = load(r"""
 ToonAge = {}
 GetSpellInfo = nil
 GetSpellCooldown = nil
 C_Spell = {
-    GetSpellInfo = function(id) return { name = "OnlySpell"..id, iconID = 11, castTime = 1500 } end,
-    GetSpellCooldown = function(id) return { startTime = 3, duration = 8, isEnabled = true } end,
+    GetSpellInfo = function(id)
+        if id == 0 then return nil end
+        return {
+            name = "OnlySpell"..id, iconID = 11, originalIconID = 99,
+            castTime = 1500, minRange = 0, maxRange = 40, spellID = id,
+        }
+    end,
+    GetSpellCooldown = function(id)
+        if id == 0 then return nil end
+        if id == 7 then return { startTime = 0, duration = 0, isEnabled = false, modRate = 1 } end
+        return { startTime = 3, duration = 8, isEnabled = true, modRate = 1.5 }
+    end,
     GetSpellName = function(id) return "OnlySpell"..id end,
 }
 """)
     check("spell global is nil", lua.eval("GetSpellInfo"), None)
     check("cooldown global is nil", lua.eval("GetSpellCooldown"), None)
-    name, icon, cast = C.GetSpellInfo(4)
+    name, rank, icon, cast, min_r, max_r, sid, orig = C.GetSpellInfo(4)
     check("cspell info name", name, "OnlySpell4")
+    check("cspell info rank is nil", rank, None)
     check("cspell info icon", icon, 11)
     check("cspell info cast", cast, 1500)
-    start, duration, enabled = C.GetSpellCooldown(4)
+    check("cspell info minRange", min_r, 0)
+    check("cspell info maxRange", max_r, 40)
+    check("cspell info spellID", sid, 4)
+    check("cspell info originalIcon", orig, 99)
+    lua.execute("local n, _, i = ToonAge.Compat.GetSpellInfo(4); PAT_N, PAT_I = n, i")
+    check("name,_,icon name", lua.eval("PAT_N"), "OnlySpell4")
+    check("name,_,icon icon", lua.eval("PAT_I"), 11)
+    check("cspell missing spell is nil", C.GetSpellInfo(0), None)
+    start, duration, enabled, mod = C.GetSpellCooldown(4)
     check("cspell cooldown start", start, 3)
     check("cspell cooldown duration", duration, 8)
-    check("cspell cooldown enabled", enabled, True)
+    check("cspell cooldown enabled is 1", enabled, 1)
+    check("cspell cooldown modRate", mod, 1.5)
+    _, _, off, _ = C.GetSpellCooldown(7)
+    check("cspell cooldown disabled is 0", off, 0)
+    check("cspell missing cooldown is nil", C.GetSpellCooldown(0), None)
     check("cspell name", C.GetSpellName(4), "OnlySpell4")
+    lua.execute(r"""
+        issecretvalue = function(v) return v == "secret" end
+        C_Spell.GetSpellCooldown = function()
+            return { startTime = 1, duration = 2, isEnabled = "secret", modRate = 1 }
+        end
+        local s, d, e, m = ToonAge.Compat.GetSpellCooldown(1)
+        SEC_S, SEC_E = s, e
+    """)
+    check("secret cooldown start passes through", lua.eval("SEC_S"), 1)
+    check("secret isEnabled is not compared", lua.eval("SEC_E"), "secret")
 
-    section("spell API: globals only, C_Spell absent")
+    section("spell API: legacy globals only, C_Spell absent")
     _, C = load(r"""
 ToonAge = {}
 C_Spell = nil
-GetSpellInfo = function(id) return "GlobalSpell"..id, "rank", 22, 2500 end
-GetSpellCooldown = function(id) return 1, 4, 1 end
+GetSpellInfo = function(id)
+    if id == 0 then return nil end
+    return "GlobalSpell"..id, "Rank 2", 22, 2500, 8, 35, id, 23
+end
+GetSpellCooldown = function(id)
+    if id == 0 then return nil end
+    return 1, 4, 1, 1
+end
 """)
-    name, icon, cast = C.GetSpellInfo(2)
+    name, rank, icon, cast, min_r, max_r, sid, orig = C.GetSpellInfo(2)
     check("global spell name", name, "GlobalSpell2")
+    check("global spell rank", rank, "Rank 2")
     check("global spell icon", icon, 22)
     check("global spell cast", cast, 2500)
-    start, duration, enabled = C.GetSpellCooldown(2)
+    check("global spell minRange", min_r, 8)
+    check("global spell maxRange", max_r, 35)
+    check("global spell id", sid, 2)
+    check("global spell original", orig, 23)
+    check("global missing spell is nil", C.GetSpellInfo(0), None)
+    start, duration, enabled, mod = C.GetSpellCooldown(2)
     check("global cooldown start", start, 1)
     check("global cooldown duration", duration, 4)
     check("global cooldown enabled", enabled, 1)
+    check("global cooldown modRate", mod, 1)
+    check("global missing cooldown is nil", C.GetSpellCooldown(0), None)
 
     section("spell API: both absent returns nil")
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
