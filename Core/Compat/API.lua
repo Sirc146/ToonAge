@@ -145,6 +145,32 @@ function C.GetSpellCooldown(spellID)
     return nil
 end
 
+--- Two primaries, then archaeology, fishing, cooking, first aid.
+--- Nil when this client has no GetProfessions.
+function C.GetProfessions()
+    if type(GetProfessions) ~= "function" then return nil end
+    return GetProfessions()
+end
+
+--- name, icon, rank, maxRank, numAbilities, spellOffset, skillLine, ...
+function C.GetProfessionInfo(index)
+    if type(index) ~= "number" then return nil end
+    if type(GetProfessionInfo) ~= "function" then return nil end
+    return GetProfessionInfo(index)
+end
+
+--- Retail expansion skill line. The table's skillLevel is the rank Blizzard
+--- shows for that tier. Nil when the call does not exist.
+function C.GetProfessionInfoBySkillLineID(skillLineID)
+    if skillLineID == nil then return nil end
+    if TA.HasAPI and not TA:HasAPI("C_TradeSkillUI.GetProfessionInfoBySkillLineID") then
+        return nil
+    end
+    local fn = C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID
+    if type(fn) ~= "function" then return nil end
+    return fn(skillLineID)
+end
+
 function C.IsSpellKnown(spellID)
     if C_SpellBook and C_SpellBook.IsSpellKnown then
         if C_SpellBook.IsSpellKnown(spellID) then return true end

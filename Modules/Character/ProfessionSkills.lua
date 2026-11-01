@@ -151,12 +151,29 @@ local function Keep(data, spec, name, id)
     return true
 end
 
+--- Prefer the Compat wrapper. The raw global is the fallback for a test or
+--- a client that has not loaded Compat yet.
+local function ProfFn(compatName, path)
+    local fn = TA.Compat and TA.Compat[compatName]
+    if type(fn) == "function" then return fn end
+    return Lookup(path)
+end
+
+-- Secondaries the Retail tab always lists. A nil GetProfessions slot means
+-- the character has not learned that skill.
+local ALWAYS_SECONDARY = {
+    Cooking = true,
+    Fishing = true,
+    Archaeology = true,
+}
+
 --- Known professions from GetProfessions / GetProfessionInfo. `children`
 --- is true only for the segmented reader, which then asks for each expansion.
 local function ReadProfessionSlots(data, children)
-    local getP = Lookup("GetProfessions")
-    local getInfo = Lookup("GetProfessionInfo")
-    local getBy = children and Lookup("C_TradeSkillUI.GetProfessionInfoBySkillLineID") or nil
+    local getP = ProfFn("GetProfessions", "GetProfessions")
+    local getInfo = ProfFn("GetProfessionInfo", "GetProfessionInfo")
+    local getBy = children and ProfFn("GetProfessionInfoBySkillLineID",
+        "C_TradeSkillUI.GetProfessionInfoBySkillLineID") or nil
     if not getP or not getInfo then return nil end
     if children and not getBy then return nil end
 
@@ -211,10 +228,53 @@ local function ReadProfessionSlots(data, children)
                         }
                     end
                     card.segments = segs
+                    -- GetProfessionInfo's rank is the parent skill line. On
+                    -- Retail that parent stays 0/100 after the per-expansion
+                    -- split, so the number Blizzard shows is the latest child
+                    -- that actually has points (Khaz Algar at 4, not Midnight
+                    -- at 0). A learned profession with no points yet uses the
+                    -- current expansion's child.
+                    local tier
+                    for _, seg in ipairs(segs) do
+                        if (seg.rank or 0) > 0 then tier = seg end
+                    end
+                    if not tier then
+                        for _, seg in ipairs(segs) do
+                            if seg.current then tier = seg end
+                        end
+                    end
+                    if tier then
+                        card.shownName = tier.name
+                        card.shownRank = tier.rank
+                        card.shownMax  = tier.max
+                    end
                 end
                 if Keep(data, spec, card.name, card.id) then
                     cards[#cards + 1] = card
                 end
+            end
+        end
+    end
+    -- Retail lists Cooking, Fishing and Archaeology even when the slot is
+    -- empty. TBC, Era and Mists use the other readers and never reach this.
+    if children and type(data.lines) == "table" then
+        local have = {}
+        for _, card in ipairs(cards) do
+            if type(card.name) == "string" then have[card.name] = true end
+            if card.id ~= nil then have[card.id] = true end
+        end
+        for _, line in ipairs(data.lines) do
+            if type(line) == "table" and line.secondary and ALWAYS_SECONDARY[line.name]
+                and not have[line.name] and not have[line.id] then
+                cards[#cards + 1] = {
+                    id        = line.id,
+                    name      = line.name,
+                    unlearned = true,
+                    secondary = true,
+                    header    = "Secondary Skills",
+                    rank      = 0,
+                    max       = 0,
+                }
             end
         end
     end

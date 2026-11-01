@@ -50,16 +50,28 @@ function B:Render(content, side)
     end
 
     for _, card in ipairs(cards) do
-        local rank, max = RankOf(card)
-        local text = string.format("%d / %d", rank or 0, max or 0)
-        if card.secondary then text = text .. "  Secondary" end
+        local name = card.shownName or card.name
+        local rank, max, text
+        if card.unlearned then
+            name = card.name
+            rank, max = 0, 0
+            text = "Not learned"
+        else
+            if card.shownRank ~= nil then
+                rank, max = card.shownRank, card.shownMax
+            else
+                rank, max = RankOf(card)
+            end
+            text = string.format("%d / %d", rank or 0, max or 0)
+            if card.secondary then text = text .. "  Secondary" end
+        end
         y = L:ProfessionCard(content, y, {
-            name     = card.name,
+            name     = name,
             icon     = card.icon,
             rankText = text,
             rank     = rank,
             max      = max,
-            segments = card.segments,
+            segments = card.unlearned and nil or card.segments,
         })
         if gear and gear.Draw then
             y = gear:Draw(content, y, card)
