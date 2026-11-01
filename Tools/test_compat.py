@@ -328,6 +328,62 @@ C_Item = {
     check("neither quality color", C.GetItemQualityColor(1), None)
 
 
+def test_spell_api_both_clients():
+    """Spell wrappers: C_Spell tables, classic multi-return, or neither.
+
+    C_Spell.GetSpellInfo and C_Spell.GetSpellCooldown return tables. Callers
+    still receive name/icon/castTime and start/duration/enabled. A missing
+    function is nil, not a call.
+    """
+    section("spell API: C_Spell only, globals nil")
+    lua, C = load(r"""
+ToonAge = {}
+GetSpellInfo = nil
+GetSpellCooldown = nil
+C_Spell = {
+    GetSpellInfo = function(id) return { name = "OnlySpell"..id, iconID = 11, castTime = 1500 } end,
+    GetSpellCooldown = function(id) return { startTime = 3, duration = 8, isEnabled = true } end,
+    GetSpellName = function(id) return "OnlySpell"..id end,
+}
+""")
+    check("spell global is nil", lua.eval("GetSpellInfo"), None)
+    check("cooldown global is nil", lua.eval("GetSpellCooldown"), None)
+    name, icon, cast = C.GetSpellInfo(4)
+    check("cspell info name", name, "OnlySpell4")
+    check("cspell info icon", icon, 11)
+    check("cspell info cast", cast, 1500)
+    start, duration, enabled = C.GetSpellCooldown(4)
+    check("cspell cooldown start", start, 3)
+    check("cspell cooldown duration", duration, 8)
+    check("cspell cooldown enabled", enabled, True)
+    check("cspell name", C.GetSpellName(4), "OnlySpell4")
+
+    section("spell API: globals only, C_Spell absent")
+    _, C = load(r"""
+ToonAge = {}
+C_Spell = nil
+GetSpellInfo = function(id) return "GlobalSpell"..id, "rank", 22, 2500 end
+GetSpellCooldown = function(id) return 1, 4, 1 end
+""")
+    name, icon, cast = C.GetSpellInfo(2)
+    check("global spell name", name, "GlobalSpell2")
+    check("global spell icon", icon, 22)
+    check("global spell cast", cast, 2500)
+    start, duration, enabled = C.GetSpellCooldown(2)
+    check("global cooldown start", start, 1)
+    check("global cooldown duration", duration, 4)
+    check("global cooldown enabled", enabled, 1)
+
+    section("spell API: both absent returns nil")
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    lua.execute("ToonAge = {}")
+    lua.execute(_read("Core/Compat/API.lua"))
+    C = lua.globals().ToonAge.Compat
+    check("neither spell info", C.GetSpellInfo(1), None)
+    check("neither spell cooldown", C.GetSpellCooldown(1), None)
+    check("neither spell name", C.GetSpellName(1), None)
+
+
 def test_missing_api_degrades():
     section("missing API degrades safely, does not error")
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
@@ -346,6 +402,7 @@ def main():
     test_classic_spell_shape()
     test_item_and_addon()
     test_item_api_both_clients()
+    test_spell_api_both_clients()
     test_talent_tabs()
     test_spec_from_talents()
     test_pickup_container_item()
