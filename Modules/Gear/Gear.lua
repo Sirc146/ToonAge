@@ -151,15 +151,25 @@ local SCORE_SLOT = {
 --- it replaces are measured from the SAME starting point. Without this the
 --- equipped item's own stats were counted twice (once in the live rating,
 --- once as "added"), pushing it deeper into DR than any alternative.
+--- itemID, itemType, itemSubType, equipLoc. Nil when Retail has removed the
+--- global and Compat has no function. Never calls a nil.
+local function ReadItemInstant(item)
+    local fn = TA.Compat and TA.Compat.GetItemInfoInstant
+    if type(fn) ~= "function" or item == nil then return nil end
+    local ok, itemID, itemType, itemSubType, equipLoc = pcall(fn, item)
+    if not ok then return nil end
+    return itemID, itemType, itemSubType, equipLoc
+end
+
 local function ReplacedItemStats(itemLink)
-    local equipLoc = select(4, TA.Compat.GetItemInfoInstant(itemLink))
+    local _, _, _, equipLoc = ReadItemInstant(itemLink)
     local slots = equipLoc and SCORE_SLOT[equipLoc]
     if not slots then return nil end
-    local itemID = TA.Compat.GetItemInfoInstant(itemLink)
+    local itemID = ReadItemInstant(itemLink)
     local chosen
     for _, s in ipairs(slots) do
         local link = GetInventoryItemLink("player", s)
-        if link and TA.Compat.GetItemInfoInstant(link) == itemID then chosen = link; break end
+        if link and ReadItemInstant(link) == itemID then chosen = link; break end
     end
     if not chosen then
         local weakest, weakestSum
@@ -1379,8 +1389,9 @@ local function InjectTooltipScore(tooltip, itemLink)
     local score   = CalculateItemScore(itemLink, specID, pvxMode)
     if not score or score <= 0 then return end
 
-    -- Determine the equip slot to compare against
-    local _, _, _, equipLoc = TA.Compat.GetItemInfoInstant(itemLink)
+    -- Retail removed the GetItemInfoInstant global. The TooltipDataProcessor
+    -- hook (below) lands here. ReadItemInstant does not call a nil.
+    local _, _, _, equipLoc = ReadItemInstant(itemLink)
     if not equipLoc or equipLoc == "" then return end
     local slotID = EQUIP_LOC_TO_SLOT[equipLoc]
     if not slotID then return end
