@@ -404,6 +404,41 @@ C_Spell = {
     check("secret cooldown start passes through", lua.eval("SEC_S"), 1)
     check("secret isEnabled is not compared", lua.eval("SEC_E"), "secret")
 
+    section("spell API: C_Spell returns the legacy multi-return")
+    _, C = load(r"""
+ToonAge = {}
+GetSpellInfo = nil
+GetSpellCooldown = nil
+GetSpellTexture = nil
+C_Spell = {
+    GetSpellInfo = function(id)
+        if id == 0 then return nil end
+        return "LegacySpell"..id, "Rank 4", 44, 900, 2, 12, id, 45
+    end,
+    GetSpellCooldown = function(id)
+        if id == 0 then return nil end
+        return 9, 12, 1, 1
+    end,
+}
+""")
+    name, rank, icon, cast, min_r, max_r, sid, orig = C.GetSpellInfo(6)
+    check("legacy cspell name", name, "LegacySpell6")
+    check("legacy cspell rank", rank, "Rank 4")
+    check("legacy cspell icon", icon, 44)
+    check("legacy cspell cast", cast, 900)
+    check("legacy cspell minRange", min_r, 2)
+    check("legacy cspell maxRange", max_r, 12)
+    check("legacy cspell spellID", sid, 6)
+    check("legacy cspell original", orig, 45)
+    check("legacy cspell texture", C.GetSpellTexture(6), 44)
+    check("legacy cspell missing is nil", C.GetSpellInfo(0), None)
+    start, duration, enabled, mod = C.GetSpellCooldown(6)
+    check("legacy cspell cooldown start", start, 9)
+    check("legacy cspell cooldown duration", duration, 12)
+    check("legacy cspell cooldown enabled", enabled, 1)
+    check("legacy cspell cooldown modRate", mod, 1)
+    check("legacy cspell missing cooldown is nil", C.GetSpellCooldown(0), None)
+
     section("spell API: legacy globals only, C_Spell absent")
     _, C = load(r"""
 ToonAge = {}
