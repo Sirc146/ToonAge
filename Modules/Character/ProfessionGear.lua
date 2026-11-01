@@ -11,6 +11,7 @@
 -- Classic-era skill bonuses (a fishing pole, mining gloves) are later work.
 
 local TA = ToonAge
+
 TA.modules = TA.modules or {}
 
 local PG = {}
@@ -379,16 +380,11 @@ end
 local function ItemInfo(item)
     local U = TA.Utils
     if U and type(U.GetItemInfo) == "function" then return U.GetItemInfo(item) end
-    if type(GetItemInfo) == "function" then return GetItemInfo(item) end
+    return TA.Compat.GetItemInfo(item)
 end
 
 local function StatsOf(link, itemID)
-    local fn
-    if C_Item and type(C_Item.GetItemStats) == "function" then
-        fn = C_Item.GetItemStats
-    elseif type(GetItemStats) == "function" then
-        fn = GetItemStats
-    end
+    local fn = TA.Compat and TA.Compat.GetItemStats
     if not fn then return nil end
     local function Read(arg)
         if arg == nil then return nil end

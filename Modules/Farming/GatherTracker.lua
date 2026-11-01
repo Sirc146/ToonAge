@@ -70,19 +70,12 @@ end
 --- classID and subclassID, and .rules.md records the verification that
 --- C_Item.GetItemInfo mirrors the global exactly, so positional reads are safe.
 local function ItemClass(link)
-    if C_Item and C_Item.GetItemInfoInstant then
-        local _, _, _, _, _, classID, subclassID = Try(C_Item.GetItemInfoInstant, link)
-        if classID then return classID, subclassID end
-    end
-    if GetItemInfoInstant then
-        local _, _, _, _, _, classID, subclassID = Try(GetItemInfoInstant, link)
-        if classID then return classID, subclassID end
-    end
-    local getInfo = (C_Item and C_Item.GetItemInfo) or GetItemInfo
-    if getInfo then
-        local r = { Try(getInfo, link) }
-        if r[12] then return r[12], r[13] end
-    end
+    local _, _, _, _, _, classID, subclassID = Try(TA.Compat.GetItemInfoInstant, link)
+    if classID then return classID, subclassID end
+    -- Try() only forwards seven returns. classID is GetItemInfo's 12th,
+    -- so read the pcall table directly (index 13 after the ok flag).
+    local res = { pcall(TA.Compat.GetItemInfo, link) }
+    if res[1] and res[13] then return res[13], res[14] end
     return nil, nil
 end
 

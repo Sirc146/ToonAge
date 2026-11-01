@@ -220,6 +220,7 @@ ToonAge.charDB = {
 
 
 def load_gear(lua):
+    lua.execute(read("Core/Compat/API.lua"))
     lua.execute(read("Core/Utils.lua"))
     lua.execute("REAL_MARK = ToonAge.Utils.MarkItemName")
     lua.execute(read("Data/Retail/ProfessionSkills.lua"))
