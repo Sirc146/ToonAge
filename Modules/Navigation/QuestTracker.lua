@@ -494,14 +494,33 @@ end
 --- Without a specificity measure the winner came down to whichever had the lower
 --- minLevel (and then alphabetical id), so the broad parent guide could beat the
 --- specific zone guide. Callers should prefer the smallest distance.
+--- Map info, or nil when the client has no C_Map answer. Never calls a missing API.
+local function MapInfo(mapID)
+    if mapID == nil or mapID == 0 then return nil end
+    if TA.HasAPI and not TA:HasAPI("C_Map.GetMapInfo") then return nil end
+    if not (C_Map and type(C_Map.GetMapInfo) == "function") then return nil end
+    local ok, info = pcall(C_Map.GetMapInfo, mapID)
+    if not ok or type(info) ~= "table" then return nil end
+    return info
+end
+
+--- The player's current ui map, from C_Map. Nil when the client cannot say.
+local function PlayerMap()
+    if TA.HasAPI and not TA:HasAPI("C_Map.GetBestMapForUnit") then return nil end
+    if not (C_Map and type(C_Map.GetBestMapForUnit) == "function") then return nil end
+    local ok, id = pcall(C_Map.GetBestMapForUnit, "player")
+    if ok and type(id) == "number" and id > 0 then return id end
+    return nil
+end
+
 local function MapZoneDistance(playerMapID, guideZone)
     if not guideZone or guideZone == 0 or not playerMapID then return nil end
     if playerMapID == guideZone then return 0 end
-    local info, depth = C_Map.GetMapInfo(playerMapID), 0
+    local info, depth = MapInfo(playerMapID), 0
     while info and info.parentMapID and info.parentMapID > 0 and depth < 12 do
         depth = depth + 1
         if info.parentMapID == guideZone then return depth end
-        info = C_Map.GetMapInfo(info.parentMapID)
+        info = MapInfo(info.parentMapID)
     end
     return nil
 end
@@ -567,143 +586,102 @@ function QT:SetGuide(guideID)
     end
 end
 
-function QT:SmartMatchGuideFromLog()
-    if not TA.Guides then return false end
-    local numEntries = C_QuestLog.GetNumQuestLogEntries()
-    if numEntries == 0 then return false end
-
-    local activeIDs = {}
+--- Quest ids currently in the log. Headers are not quests. A missing
+--- quest-log API yields an empty set rather than a throw.
+local function ActiveQuestIDs()
+    local ids = {}
+    if TA.HasAPI and not TA:HasAPI("C_QuestLog.GetNumQuestLogEntries") then return ids end
+    if not (C_QuestLog and type(C_QuestLog.GetNumQuestLogEntries) == "function") then return ids end
+    if type(C_QuestLog.GetInfo) ~= "function" then return ids end
+    local ok, numEntries = pcall(C_QuestLog.GetNumQuestLogEntries)
+    if not ok or type(numEntries) ~= "number" or numEntries < 1 then return ids end
     for i = 1, numEntries do
-        local info = C_QuestLog.GetInfo(i)
-        if info and not info.isHeader and info.questID then
-            activeIDs[info.questID] = true
+        local okInfo, info = pcall(C_QuestLog.GetInfo, i)
+        if okInfo and type(info) == "table" and not info.isHeader and info.questID then
+            ids[info.questID] = true
         end
     end
+    return ids
+end
 
-    local bestID, bestCount = nil, 0
+--- How many of this guide's steps are quests the player actually has.
+local function QuestHits(guide, activeIDs)
+    local count = 0
+    if type(guide) ~= "table" or type(guide.steps) ~= "table" then return 0 end
+    for _, step in ipairs(guide.steps) do
+        if step.questID and activeIDs[step.questID] then count = count + 1 end
+    end
+    return count
+end
+
+--- The guide for where the player is standing, confirmed by the quest log.
+---
+--- A level check is not enough. A level 90 player in Khaz Algar (Isle of
+--- Dorn is levels 70-80) used to fail the zone pass, then a level-only pass
+--- picked whichever Midnight guide's midpoint was closest: Zul'Aman (80-90)
+--- first, then Void Assaults (86-90) once that file loaded. Fast-forward
+--- then opened a step hundreds of rows into the wrong campaign. A guide is
+--- eligible only when C_Map walks the player onto its zone AND at least one
+--- of its quests is in the log. Closer level bands in another expansion are
+--- not a match. Ties break on the closer map, then more log quests, then id,
+--- so a second call cannot flip to a different guide.
+function QT:BestGuideForHere()
+    if not TA.Guides then return nil end
+    local mapID = PlayerMap()
+    local active = ActiveQuestIDs()
+    local bestID, bestDist, bestHits = nil, math.huge, 0
     for id, guide in pairs(TA.Guides) do
-        local count = 0
-        for _, step in ipairs(guide.steps) do
-            if step.questID and activeIDs[step.questID] then count = count + 1 end
-        end
-        if count > bestCount then bestCount = count; bestID = id end
-    end
-
-    -- Require at least 2 matching quests. A single match could be a quest that
-    -- appears across multiple guides or a coincidental questID overlap — not
-    -- strong enough signal to commit the player to a specific guide.
-    if bestID and bestCount >= 2 then
-        self:SetGuide(bestID)
-        return true
-    end
-
-    -- Single match: accept it only if it's the ONLY guide with any match
-    -- (unambiguous even at count=1).
-    if bestID and bestCount == 1 then
-        local ambiguous = false
-        for id, guide in pairs(TA.Guides) do
-            if id ~= bestID then
-                for _, step in ipairs(guide.steps) do
-                    if step.questID and activeIDs[step.questID] then
-                        ambiguous = true; break
-                    end
-                end
+        local dist = MapZoneDistance(mapID, guide.zone)
+        local hits = QuestHits(guide, active)
+        if dist and hits > 0 then
+            local better = bestID == nil
+                or dist < bestDist
+                or (dist == bestDist and hits > bestHits)
+                or (dist == bestDist and hits == bestHits and id < bestID)
+            if better then
+                bestID, bestDist, bestHits = id, dist, hits
             end
-            if ambiguous then break end
-        end
-        if not ambiguous then
-            self:SetGuide(bestID)
-            return true
         end
     end
+    return bestID
+end
 
-    return false
+--- True when this saved guide is the player's zone and has a log quest.
+--- A saved Midnight guide does not stay selected in Khaz Algar.
+function QT:GuideFits(guideID)
+    local guide = TA.Guides and guideID and TA.Guides[guideID]
+    if type(guide) ~= "table" then return false end
+    if not MapZoneDistance(PlayerMap(), guide.zone) then return false end
+    return QuestHits(guide, ActiveQuestIDs()) > 0
+end
+
+function QT:NoZoneGuideMessage()
+    return "No guide for this zone"
+end
+
+function QT:SmartMatchGuideFromLog()
+    local bestID = self:BestGuideForHere()
+    if not bestID then return false end
+    self._noZoneGuide = false
+    if self.guideID ~= bestID then
+        self:SetGuide(bestID)
+    end
+    return true
 end
 
 function QT:AutoSelectGuide()
     if self:SmartMatchGuideFromLog() then return end
 
-    local level      = UnitLevel("player") or 1
-    local currentMap = C_Map.GetBestMapForUnit("player")
-    local list       = self:GetSortedGuideList()
-
-    -- Pass 1: level + zone match, most specific zone wins.
-    -- `list` is sorted by ascending minLevel, so iterating and taking the first
-    -- hit would let a broad parent-zone guide beat the guide for the exact zone
-    -- you're standing in. Score every candidate and keep the closest instead.
-    local bestZoneID, bestDist = nil, math.huge
-    for _, entry in ipairs(list) do
-        local g = TA.Guides[entry.id]
-        local levelMatch = level >= (g.minLevel or 1) and level <= (g.maxLevel or 999)
-        if levelMatch then
-            local dist = MapZoneDistance(currentMap, g.zone)
-            -- Strict < keeps the existing sort order as the tie-breaker.
-            if dist and dist < bestDist then
-                bestDist   = dist
-                bestZoneID = entry.id
-            end
-        end
-    end
-    if bestZoneID then
-        self:SetGuide(bestZoneID)
-        return
-    end
-
-    -- Pass 2: level match only — zone IDs on PTR guides are often placeholder
-    -- map IDs (0 or wrong zone). If the zone doesn't match but the level does,
-    -- pick the best level-range fit rather than leaving the player with nothing.
-    local bestLevelID, bestLevelDiff = nil, math.huge
-    for _, entry in ipairs(list) do
-        local g = TA.Guides[entry.id]
-        local gMin = g.minLevel or 1
-        local gMax = g.maxLevel or 999
-        if level >= gMin and level <= gMax then
-            -- Prefer the guide whose midpoint is closest to the player's level
-            local mid  = (gMin + gMax) / 2
-            local diff = math.abs(level - mid)
-            if diff < bestLevelDiff then
-                bestLevelDiff = diff
-                bestLevelID   = entry.id
-            end
-        end
-    end
-    if bestLevelID then
-        self:SetGuide(bestLevelID)
-        return
-    end
-
-    -- Pass 3: Universal starter fallback — if player is level 1-10 and nothing
-    -- matched (e.g. in a race-specific starter zone with no dedicated guide),
-    -- switch to Quest Log Follow mode. The tracker will show the player's
-    -- supertracked quest from Blizzard's system directly.
-    if level <= 10 then
-        -- Try exiles_reach first (it covers the most common case)
-        if TA.Guides["exiles_reach"] then
-            -- Check if any Exile's Reach quests are in the log
-            local erGuide = TA.Guides["exiles_reach"]
-            for _, step in ipairs(erGuide.steps) do
-                if step.questID and C_QuestLog.GetLogIndexForQuestID(step.questID) then
-                    self:SetGuide("exiles_reach")
-                    return
-                end
-            end
-        end
-        -- No Exile's Reach quests — player is in a race-specific zone.
-        -- Set guideID to a special sentinel so the tracker shows quest-log mode.
+    -- Nothing in this zone shares a quest with the log. Do not fall through
+    -- to a level band or to "any guide": that is what opened Dirty Deeds
+    -- hundreds of steps into Zul'Aman, then flipped to Void Assaults.
+    self._noZoneGuide = true
+    self._questLogFollowMode = false
+    if self.guideID ~= nil then
         self.guideID = nil
         self.stepIdx = 1
-        self._questLogFollowMode = true
-        return
+        self:SaveState()
     end
-
-    -- Pass 4: Any guide at all — absolute last resort for edge cases
-    if #list > 0 then
-        self:SetGuide(list[1].id)
-        return
-    end
-
-    self.guideID = nil
-    self.stepIdx = 1
 end
 
 -- ── Tracker diagnostic ────────────────────────────────────────────────────────
@@ -721,8 +699,8 @@ function QT:Diagnose()
 
 
     local level      = UnitLevel("player") or 1
-    local currentMap = C_Map.GetBestMapForUnit("player")
-    local mapInfo    = currentMap and C_Map.GetMapInfo(currentMap)
+    local currentMap = PlayerMap()
+    local mapInfo    = MapInfo(currentMap)
     local mapName    = mapInfo and mapInfo.name or "unknown"
 
     p(string.format("Player: level %d  |  map %s (ID %s)",
@@ -1376,28 +1354,31 @@ function QT:Init()
     if t.useTomTomWaypoints   == nil then t.useTomTomWaypoints   = false end
     if t.accountBound         == nil then t.accountBound         = false end
 
-    if t.guideID and TA.Guides and TA.Guides[t.guideID] then
+    if t.guideID and TA.Guides and TA.Guides[t.guideID] and self:GuideFits(t.guideID) then
         self.guideID = t.guideID
         self.stepIdx = t.stepIdx or 1
+        self._noZoneGuide = false
         if t.campaignSkip and TA.Chromie and t.guideID == TA.Chromie.DF_GUIDE_ID then
             self._campaignSkip = { active = true, idx = t.campaignSkipIdx or 1 }
         end
         self:FastForward(true)   -- re-sync on login in case progress happened offline
-    elseif t.guideID then
+    elseif t.guideID and not (TA.Guides and TA.Guides[t.guideID]) then
         -- Guide was saved but isn't loaded yet (e.g. BtWQuests LoadOnDemand).
         -- Try a deferred restore after 2 seconds when imports may have finished.
+        -- Keep it only when it is this zone and has a quest from the log.
         self.guideID = nil
         self.stepIdx = 1
         C_Timer.After(2, function()
-            if not QT.guideID and t.guideID and TA.Guides and TA.Guides[t.guideID] then
+            if not QT.guideID and t.guideID and TA.Guides and TA.Guides[t.guideID]
+                and QT:GuideFits(t.guideID) then
                 QT.guideID = t.guideID
                 QT.stepIdx = t.stepIdx or 1
+                QT._noZoneGuide = false
                 QT:FastForward(true)
                 QT:UpdateWindow()
             elseif not QT.guideID then
-                -- Still no guide after deferred wait — scan quest log
                 QT:AutoSelectGuide()
-                if QT.guideID then QT:UpdateWindow() end
+                QT:UpdateWindow()
             end
         end)
     else
@@ -1857,6 +1838,21 @@ function QT:UpdateWindow()
     local guide = self.guideID and TA.Guides and TA.Guides[self.guideID]
 
     if not guide then
+        -- A level match in another expansion is not a guide for this zone.
+        -- Say so. Do not keep a step number from a campaign the player is
+        -- not in.
+        if self._noZoneGuide then
+            local msg = self:NoZoneGuideMessage()
+            if win.guideTitleF then win.guideTitleF:SetText("|cFFFFD100" .. msg .. "|r") end
+            if win.stepNumF then win.stepNumF:SetText("") end
+            if win.stepBadgeF then win.stepBadgeF:SetText("") end
+            if win.stepTextF then win.stepTextF:SetText(msg) end
+            if win.questStatusF then win.questStatusF:SetText("") end
+            if win.nextStepF then win.nextStepF:SetText("") end
+            self:PaintStepRing(nil)
+            return
+        end
+
         -- Instead of showing a dead "No Active Guide" state, actively try to
         -- find a guide from the quest log. The player should NEVER see this
         -- state for more than a brief moment.
@@ -3517,8 +3513,10 @@ function QT:ShowTrackerMenuModern(anchor)
 
         rootDescription:CreateButton("Auto-Select Best Guide", function()
             self:AutoSelectGuide()
-            if self.guideID then
+            if self.guideID and TA.Guides and TA.Guides[self.guideID] then
                 self:ShowToast("Following: " .. (TA.Guides[self.guideID].title or self.guideID))
+            else
+                self:ShowToast(self:NoZoneGuideMessage())
             end
             self:UpdateWindow()
         end)
@@ -3694,8 +3692,10 @@ function QT:ShowTrackerMenuLegacy(anchor)
     AddButton("Re-Sync Position", function() self:FastForward(false) end)
     AddButton("Auto-Select Best Guide", function()
         self:AutoSelectGuide()
-        if self.guideID then
+        if self.guideID and TA.Guides and TA.Guides[self.guideID] then
             self:ShowToast("Following: " .. (TA.Guides[self.guideID].title or self.guideID))
+        else
+            self:ShowToast(self:NoZoneGuideMessage())
         end
         self:UpdateWindow()
     end)
@@ -3758,7 +3758,7 @@ QT.SlashCommands = {
                 g.title, self.stepIdx, #g.steps))
             TA:Raw(TA.LOG.INFO, "|cFF888780Use /ta diag to see why this guide was chosen.|r")
         else
-            TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA Tracker]|r No guide matched. Run |cFFFFD100/ta diag|r to see what the tracker sees.")
+            TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA Tracker]|r " .. self:NoZoneGuideMessage())
         end
     end,
 

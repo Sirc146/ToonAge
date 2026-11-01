@@ -252,11 +252,11 @@ function Settings:Render(content, sidebar)
                 if NH and NH.ApplySettings then NH:ApplySettings() end
             end
 
-            y = MakeSliderRow(content, y, w, "  NavHud Scale", 0.5, 2.5, 0.1,
+            y = MakeSliderRow(content, y, w, "  NavHud Scale", 0.5, 2.0, 0.1,
                 function() return NHGet("scale") or 1.4 end,
                 function(v) NHSet("scale", v) end)
 
-            y = MakeSliderRow(content, y, w, "  NavHud Opacity", 0.1, 1.0, 0.05,
+            y = MakeSliderRow(content, y, w, "  NavHud Opacity", 0.25, 1.0, 0.05,
                 function() return NHGet("opacity") or 0.85 end,
                 function(v) NHSet("opacity", v) end)
 
