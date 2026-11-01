@@ -8,6 +8,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════════
 
 local TA = ToonAge
+
 local U  = TA.Utils
 
 local GatherTracker = {}
@@ -48,7 +49,7 @@ local function DetectGatherType()
         local link = GetLootSlotLink(i)
         if link then
             -- GetItemInfoInstant is available in MoP Classic
-            local _, _, _, _, _, classID, subclassID = GetItemInfoInstant(link)
+            local _, _, _, _, _, classID, subclassID = TA.Compat.GetItemInfoInstant(link)
             if classID == 7 then
                 if subclassID == GATHER_SUBCLASS_HERB then return "herb" end
                 if subclassID == GATHER_SUBCLASS_ORE  then return "ore" end

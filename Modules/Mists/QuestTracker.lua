@@ -12,6 +12,7 @@
 -- Keeps: tracker window, step display, auto-quest, fast-forward sync, guide auto-select
 
 local TA = ToonAge
+
 local U  = TA.Utils
 
 local QT = {}
@@ -504,7 +505,7 @@ function QT:HandleAutoQuest(event)
         for i = 1, numChoices do
             local link = GetQuestItemLink("choice", i)
             if link then
-                local _, _, _, ilvl = GetItemInfo(link)
+                local _, _, _, ilvl = TA.Compat.GetItemInfo(link)
                 ilvl = ilvl or 0
                 if ilvl > bestIlvl then
                     bestIlvl = ilvl
