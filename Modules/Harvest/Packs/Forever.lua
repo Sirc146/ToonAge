@@ -74,15 +74,18 @@ probes.skillinfo = { title = "Skill lines: C_SkillInfo", run = function(P, L)
             P.Call(L, ("  C_SkillInfo.GetSkillLineInfo(%d)"):format(i), "C_SkillInfo.GetSkillLineInfo", i)
         end
     end
-    -- UNVERIFIED. Every return is printed. Chronicler saw the names on the
-    -- beta and nothing about the values is confirmed.
-    L[#L + 1] = "UNVERIFIED raw returns (UnitDefenseSkill, UnitWeaponAttackPower, skill 95):"
+    -- UNVERIFIED on live build 70790. Every return is printed, including nils.
+    -- UnitRangedAttackPower worked in the beta for a Hunter at 72.
+    -- UnitRangedDamage is expected to return speed, minDmg, maxDmg, ...
+    L[#L + 1] = "UNVERIFIED raw returns (UnitDefenseSkill, UnitWeaponAttackPower, skill 95, UnitRangedAttackPower, UnitRangedDamage):"
     P.Call(L, "C_SkillInfo.GetSkillLineInfoByID(95) [Defense]", "C_SkillInfo.GetSkillLineInfoByID", 95)
     P.Call(L, "C_SkillInfo.GetSkillLineInfoByID(45) [Bows]", "C_SkillInfo.GetSkillLineInfoByID", 45)
     P.Call(L, "C_SkillInfo.GetSkillLineInfoByID(43) [Swords]", "C_SkillInfo.GetSkillLineInfoByID", 43)
     P.Call(L, "C_SkillInfo.GetSelectedSkill()", "C_SkillInfo.GetSelectedSkill")
     P.Call(L, "UNVERIFIED UnitDefenseSkill(player)", "UnitDefenseSkill", "player")
     P.Call(L, "UNVERIFIED UnitWeaponAttackPower(player)", "UnitWeaponAttackPower", "player")
+    P.Call(L, "UNVERIFIED UnitRangedAttackPower(player)", "UnitRangedAttackPower", "player")
+    P.Call(L, "UNVERIFIED UnitRangedDamage(player)", "UnitRangedDamage", "player")
     P.Call(L, "C_PaperDollInfo.OffhandHasWeapon()", "C_PaperDollInfo.OffhandHasWeapon")
 end }
 

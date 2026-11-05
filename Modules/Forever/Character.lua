@@ -376,6 +376,18 @@ end
 -- near-empty bar is correct: it is four percent of what is possible.
 local PERCENT_SCALE = 100
 
+--- Speed, then min-max. Each missing piece is n/a on its own. A speed that
+--- is missing or zero is n/a, so the row never shows 0.0 as a real swing.
+local function RangedDamageText(speed, minDmg, maxDmg)
+    local unavailable = "|cFF6E6A62n/a|r"
+    local speedText = (speed and speed >= 0.01) and string.format("%.2f", speed) or unavailable
+    local function piece(n)
+        if not n then return unavailable end
+        return string.format("%d", math.floor(n + 0.5))
+    end
+    return speedText .. "  " .. piece(minDmg) .. "-" .. piece(maxDmg)
+end
+
 -- Shared drawing scales, sticky within a session like the attribute one.
 local offenseScale, defenseScale, resistScale
 
@@ -386,11 +398,25 @@ local function RenderOffense(content, y)
     local ap = Num(base)
     if ap then ap = ap + (Num(posBuff) or 0) + (Num(negBuff) or 0) end
 
+    -- UNVERIFIED on live build 70790. The beta answered this for a Hunter
+    -- at 72. UnitRangedAttack is still missing, so it is not a fallback.
+    -- A failed read leaves rap nil. Nil is not turned into 0.
     local rap
-    if TA.Compat and TA.Compat.ShowRangedAttackRow and TA.Compat.ShowRangedAttackRow() then
-        local rBase, rPos, rNeg = Try(UnitRangedAttackPower, "player")
-        rap = Num(rBase)
-        if rap then rap = rap + (Num(rPos) or 0) + (Num(rNeg) or 0) end
+    local readRap = TA.Compat and TA.Compat.ReadRangedAttackPower
+    if type(readRap) == "function" then
+        local okR, rBase, rPos, rNeg = pcall(readRap, "player")
+        if okR then
+            rBase = Num(rBase)
+            if rBase then rap = rBase + (Num(rPos) or 0) + (Num(rNeg) or 0) end
+        end
+    end
+
+    -- UNVERIFIED on live build 70790. Expected returns: speed, minDmg, maxDmg.
+    local rSpeed, rMin, rMax
+    local readDmg = TA.Compat and TA.Compat.ReadRangedDamage
+    if type(readDmg) == "function" then
+        local okD, speed, minDmg, maxDmg = pcall(readDmg, "player")
+        if okD then rSpeed, rMin, rMax = Num(speed), Num(minDmg), Num(maxDmg) end
     end
 
     -- Spell power is reported per school; arcane (6) stands in for "magic", the
@@ -408,11 +434,15 @@ local function RenderOffense(content, y)
         label = "Attack Power", value = ap, scale = offenseScale, text = Show(ap),
     })
 
-    if rap and rap > 0 then
-        y = L:StatBar(content, y, {
-            label = "Ranged Attack Power", value = rap, scale = offenseScale, text = Show(rap),
-        })
-    end
+    -- The row stays when a reading is missing. Only that value is n/a.
+    -- A missing swing speed must not be formatted as 0.0.
+    y = L:StatBar(content, y, {
+        label = "Ranged Attack Power", value = rap, scale = offenseScale, text = Show(rap),
+    })
+    y = L:DataRow(content, y, {
+        label = "Ranged Damage",
+        value = RangedDamageText(rSpeed, rMin, rMax),
+    })
 
     -- UNVERIFIED. UnitWeaponAttackPower is only called when it exists.
     -- The guessed returns are mainBase, mainMod, offBase, offMod.

@@ -775,9 +775,28 @@ function C.ReadWeaponAttackPower(unit)
     return mainBase, mainMod, offBase, offMod
 end
 
---- Forever has no ranged attack row. Other clients keep theirs.
+--- UNVERIFIED on live build 70790. UnitRangedAttackPower worked in the beta
+--- for a Hunter at 72. Returns base, positive buff, negative buff.
+--- UnitRangedAttack is not a fallback: that global is still missing.
+function C.ReadRangedAttackPower(unit)
+    if type(UnitRangedAttackPower) ~= "function" then return nil end
+    local ok, base, pos, neg = pcall(UnitRangedAttackPower, unit or "player")
+    if not ok then return nil end
+    return base, pos, neg
+end
+
+--- UNVERIFIED on live build 70790. Expected returns are speed, minDmg,
+--- maxDmg, and whatever follows. Nil when the function is missing or throws.
+function C.ReadRangedDamage(unit)
+    if type(UnitRangedDamage) ~= "function" then return nil end
+    local ok, speed, minDmg, maxDmg, posBuff, negBuff, percent = pcall(UnitRangedDamage, unit or "player")
+    if not ok then return nil end
+    return speed, minDmg, maxDmg, posBuff, negBuff, percent
+end
+
+--- The ranged row stays on Forever. A value the client does not answer is
+--- shown as unavailable on that row. UnitRangedAttack stays unused.
 function C.ShowRangedAttackRow()
-    if ForeverClient() then return false end
     return true
 end
 
