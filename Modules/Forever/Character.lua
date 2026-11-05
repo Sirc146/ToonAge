@@ -99,9 +99,35 @@ local HIDDEN_TEXT = "—"
 local HIDDEN_FOOTNOTE = "Health and mana are secret in combat, so those rows show a dash until you leave combat."
 
 --- "n/a" for a missing answer, the formatted number otherwise.
+--- Nil is never formatted, so a missing speed or percent cannot become 0.0.
+--- Nothing here remembers a previous reading.
+local UNAVAILABLE = "|cFF6E6A62n/a|r"
 local function Show(value, fmt)
     if value == nil then return "|cFF6E6A62n/a|r" end
     return string.format(fmt or "%d", value)
+end
+
+--- A swing speed. Zero is not a weapon speed, so it is n/a rather than 0.00.
+local function SpeedText(speed)
+    if not speed or speed < 0.01 then return UNAVAILABLE end
+    return string.format("%.2f", speed)
+end
+
+--- One damage bound. A missing or non-positive bound is n/a, not 0.
+local function BoundText(n)
+    if not n or n <= 0 then return UNAVAILABLE end
+    return string.format("%d", math.floor(n + 0.5))
+end
+
+local function SpanText(minDmg, maxDmg)
+    return BoundText(minDmg) .. "-" .. BoundText(maxDmg)
+end
+
+--- DPS only when both bounds and the speed are real. Otherwise n/a, never 0.0.
+local function DpsValue(minDmg, maxDmg, speed)
+    if not speed or speed < 0.01 then return nil end
+    if not minDmg or not maxDmg or minDmg <= 0 or maxDmg <= 0 then return nil end
+    return ((minDmg + maxDmg) / 2) / speed
 end
 
 local STAT_ORDER = { "STR", "AGI", "STA", "INT", "SPI" }
@@ -164,7 +190,9 @@ local function ReadSkillLines()
             local info = Try(C_SkillInfo.GetSkillLineInfo, i)
             if type(info) == "table" and info.name then
                 local rank, max = Num(info.rank), Num(info.maxRank)
-                if rank and (not max or max <= 0) then max = LevelSkillCap() end
+                -- A missing cap is not level * 5. That number would be ours,
+                -- not the client's, and it would survive as if it had been read.
+                if max and max <= 0 then max = nil end
                 out[#out + 1] = {
                     name = tostring(info.name), rank = rank, max = max,
                     mod = Num(info.modifier) or 0, id = Num(info.skillID),
@@ -240,11 +268,11 @@ local function SkillByID(skillID)
         local ok, info = pcall(C_SkillInfo.GetSkillLineInfoByID, skillID)
         if not ok or info == nil or type(info) ~= "table" then return nil end
         local rank, max = Num(info.rank), Num(info.maxRank)
-        if rank and (not max or max <= 0) then max = LevelSkillCap() end
-        if not max or max <= 0 then return nil end
+        if not rank then return nil end
+        if max and max <= 0 then max = nil end
         return {
             name = tostring(info.name or ""),
-            rank = rank or 0,
+            rank = rank,
             max = max,
             mod = Num(info.modifier) or 0,
             id = skillID,
@@ -283,6 +311,10 @@ local function RenderHeadline(content, y)
         secretNote = true
     end
 
+    if not (cur and max and max > 0) and not secretNote then
+        y = L:DataRow(content, y, { label = "Experience", value = UNAVAILABLE, status = "dim" })
+    end
+
     if cur and max and max > 0 then
         local rested = Num(GetXPExhaustion and GetXPExhaustion())
         -- A bar, not a row. Experience is one of the very few things on this
@@ -311,6 +343,8 @@ local function RenderHeadline(content, y)
             label = "Health", value = HIDDEN_TEXT, status = "dim",
         })
         secretNote = true
+    else
+        y = L:DataRow(content, y, { label = "Health", value = UNAVAILABLE, status = "dim" })
     end
 
     -- Power type 0 is mana. A class without it reports 0 max, and a bar of
@@ -322,12 +356,28 @@ local function RenderHeadline(content, y)
             label = "Mana", value = string.format("%d / %d", mp, mpMax),
             current = mp, cap = mpMax, capped = mp >= mpMax,
         })
+    elseif mpMax == 0 then
+        -- The client answered: this class has no mana pool. Omit the bar
+        -- rather than print 0 / 0.
     elseif rawMP ~= nil and isSecret(rawMP) then
         y = L:DataRow(content, y, {
             label = "Mana", value = HIDDEN_TEXT, status = "dim",
         })
         secretNote = true
+    else
+        y = L:DataRow(content, y, { label = "Mana", value = UNAVAILABLE, status = "dim" })
     end
+
+    -- Regen is per second. A missing call is n/a. A numeric 0 is the client's
+    -- own zero and is not invented by us.
+    local regenBase, regenCast = Try(GetManaRegen)
+    regenBase, regenCast = Num(regenBase), Num(regenCast)
+    local regenText = UNAVAILABLE
+    if regenBase then
+        regenText = regenCast and string.format("%.1f (%.1f casting)", regenBase, regenCast)
+            or string.format("%.1f", regenBase)
+    end
+    y = L:DataRow(content, y, { label = "Mana Regen", value = regenText, status = "dim" })
     if secretNote then
         y = L:Paragraph(content, y, HIDDEN_FOOTNOTE, { color = L.C_DIM, size = 9 })
     end
@@ -377,6 +427,8 @@ end
 local PERCENT_SCALE = 100
 
 -- Shared drawing scales, sticky within a session like the attribute one.
+-- The scale is only how wide the bars are. The number on the row is always
+-- this render's read. A missing read is n/a, not the previous number.
 local offenseScale, defenseScale, resistScale
 
 local function RenderOffense(content, y)
@@ -386,9 +438,33 @@ local function RenderOffense(content, y)
     local ap = Num(base)
     if ap then ap = ap + (Num(posBuff) or 0) + (Num(negBuff) or 0) end
 
-    local rBase, rPos, rNeg = Try(UnitRangedAttackPower, "player")
-    local rap = Num(rBase)
-    if rap then rap = rap + (Num(rPos) or 0) + (Num(rNeg) or 0) end
+    -- UNVERIFIED on live build 70790. The beta answered ranged attack power
+    -- for a Hunter at 72. UnitRangedAttack is still missing, so it is not a
+    -- fallback. A failed read leaves the value nil. Nil is not turned into 0.
+    local rap
+    local readRap = TA.Compat and TA.Compat.ReadRangedAttackPower
+    if type(readRap) == "function" then
+        local okR, rBase, rPos, rNeg = pcall(readRap, "player")
+        if okR then
+            rBase = Num(rBase)
+            if rBase then rap = rBase + (Num(rPos) or 0) + (Num(rNeg) or 0) end
+        end
+    end
+
+    -- UNVERIFIED on live build 70790. Expected returns: speed, minDmg, maxDmg.
+    local rSpeed, rMin, rMax
+    local readDmg = TA.Compat and TA.Compat.ReadRangedDamage
+    if type(readDmg) == "function" then
+        local okD, speed, minDmg, maxDmg = pcall(readDmg, "player")
+        if okD then rSpeed, rMin, rMax = Num(speed), Num(minDmg), Num(maxDmg) end
+    end
+
+    -- Melee damage and speed. UNVERIFIED on 70790. UnitDamage is
+    -- min, max, offMin, offMax, ... and UnitAttackSpeed is main, off.
+    local mMin, mMax, oMin, oMax = Try(UnitDamage, "player")
+    mMin, mMax, oMin, oMax = Num(mMin), Num(mMax), Num(oMin), Num(oMax)
+    local mSpeed, oSpeed = Try(UnitAttackSpeed, "player")
+    mSpeed, oSpeed = Num(mSpeed), Num(oSpeed)
 
     -- Spell power is reported per school; arcane (6) stands in for "magic", the
     -- same way the character sheet does.
@@ -401,15 +477,48 @@ local function RenderOffense(content, y)
     -- UnitAttackBothHands, which used to stand in for it, is missing.
     offenseScale = L:StatScale({ ap, rap, sp }, offenseScale)
 
+    local function speedPair(main, off)
+        local a = (main and main >= 0.01) and string.format("%.2f", main) or nil
+        local b = (off and off >= 0.01) and string.format("%.2f", off) or nil
+        if a and b then return a .. " / " .. b end
+        return a or b or UNAVAILABLE
+    end
+
+    y = L:DataRow(content, y, {
+        label = "Melee Damage", value = SpanText(mMin, mMax),
+    })
+    if (oMin and oMin > 0) or (oMax and oMax > 0) then
+        y = L:DataRow(content, y, {
+            label = "Off Hand Damage", value = SpanText(oMin, oMax),
+        })
+    end
+    y = L:DataRow(content, y, {
+        label = "Melee Speed", value = speedPair(mSpeed, oSpeed),
+    })
+    y = L:DataRow(content, y, {
+        label = "Melee DPS", value = Show(DpsValue(mMin, mMax, mSpeed), "%.1f"),
+    })
+
     y = L:StatBar(content, y, {
         label = "Attack Power", value = ap, scale = offenseScale, text = Show(ap),
     })
 
-    if rap and rap > 0 then
-        y = L:StatBar(content, y, {
-            label = "Ranged Attack Power", value = rap, scale = offenseScale, text = Show(rap),
-        })
+    -- UNVERIFIED. The row stays when the call fails. Nil is n/a, not 0.
+    local shownMelee
+    local readMelee = TA.Compat and TA.Compat.ReadWeaponAttackPower
+    if type(readMelee) == "function" then
+        local okM, mainBase, mainMod = pcall(readMelee, "player")
+        mainBase, mainMod = okM and Num(mainBase) or nil, okM and Num(mainMod) or nil
+        if mainBase then shownMelee = mainBase + (mainMod or 0) end
     end
+    y = L:StatBar(content, y, {
+        label = "Melee Attack", value = shownMelee, scale = offenseScale, text = Show(shownMelee),
+    })
+
+    local hit = Num(Try(GetHitModifier))
+    y = L:StatBar(content, y, {
+        label = "Hit", value = hit, scale = PERCENT_SCALE, text = Show(hit, "%.2f%%"),
+    })
 
     local crit = Num(Try(GetCritChance))
     y = L:StatBar(content, y, {
@@ -417,16 +526,46 @@ local function RenderOffense(content, y)
         text = Show(crit, "%.2f%%"),
     })
 
-    if sp and sp > 0 then
-        y = L:StatBar(content, y, {
-            label = "Spell Power", value = sp, scale = offenseScale, text = Show(sp),
-        })
-        local spCrit = Num(Try(GetSpellCritChance, 6))
-        y = L:StatBar(content, y, {
-            label = "Spell Critical Strike", value = spCrit, scale = PERCENT_SCALE,
-            text = Show(spCrit, "%.2f%%"),
-        })
+    local expMain, expOff = Try(GetExpertise)
+    expMain, expOff = Num(expMain), Num(expOff)
+    local expText = UNAVAILABLE
+    if expMain and expOff and expOff ~= expMain then
+        expText = string.format("%d / %d", expMain, expOff)
+    elseif expMain then
+        expText = Show(expMain)
     end
+    y = L:DataRow(content, y, { label = "Expertise", value = expText })
+
+    -- Each ranged value is its own row. A miss on one does not blank the others
+    -- and does not become 0.0.
+    y = L:DataRow(content, y, { label = "Ranged Damage", value = SpanText(rMin, rMax) })
+    y = L:DataRow(content, y, { label = "Ranged Speed", value = SpeedText(rSpeed) })
+    y = L:DataRow(content, y, {
+        label = "Ranged DPS", value = Show(DpsValue(rMin, rMax, rSpeed), "%.1f"),
+    })
+    y = L:StatBar(content, y, {
+        label = "Ranged Attack Power", value = rap, scale = offenseScale, text = Show(rap),
+    })
+    -- Forever folds ranged hit into the one Hit row above. Ranged crit is only
+    -- whatever GetRangedCritChance returns. Melee crit is not copied here.
+    local rCrit = Num(Try(GetRangedCritChance))
+    y = L:StatBar(content, y, {
+        label = "Ranged Crit", value = rCrit, scale = PERCENT_SCALE,
+        text = Show(rCrit, "%.2f%%"),
+    })
+
+    y = L:StatBar(content, y, {
+        label = "Spell Power", value = sp, scale = offenseScale, text = Show(sp),
+    })
+    local spCrit = Num(Try(GetSpellCritChance, 6))
+    y = L:StatBar(content, y, {
+        label = "Spell Critical Strike", value = spCrit, scale = PERCENT_SCALE,
+        text = Show(spCrit, "%.2f%%"),
+    })
+    local heal = Num(Try(GetSpellBonusHealing))
+    y = L:StatBar(content, y, {
+        label = "Spell Healing", value = heal, scale = offenseScale, text = Show(heal),
+    })
 
     -- Weapon skill for what you are actually holding. Forever keeps Vanilla's
     -- capped weapon skills (5 x level), one per weapon type. UnitAttackBothHands
@@ -436,10 +575,19 @@ local function RenderOffense(content, y)
     -- means more misses and more glancing blows; it rises only by hitting
     -- things with THAT weapon type.
     local shown = {}
-    for _, hand in ipairs({ { 16, "Main hand" }, { 17, "Off hand" }, { 18, "Ranged" } }) do
+    local hands = { { 16, "Main hand" }, { 17, "Off hand" } }
+    if TA.Compat and TA.Compat.ShowRangedAttackRow and TA.Compat.ShowRangedAttackRow() then
+        hands[#hands + 1] = { 18, "Ranged" }
+    end
+    for _, hand in ipairs(hands) do
         local id = WeaponSkillFor(hand[1])
         local line = id and SkillByID(id)
-        if line and line.rank and line.max and line.max > 0 and not shown[id] then
+        -- An empty off hand or ranged slot has no skill to show. The main
+        -- hand always has a row: Unarmed when nothing is equipped, n/a when
+        -- the skill line itself cannot be read.
+        if not id and hand[1] ~= 16 then
+            -- nothing equipped in this slot
+        elseif line and line.rank and line.max and line.max > 0 and not shown[id] then
             shown[id] = true
             local eff = line.rank + (line.mod or 0)
             local short = line.max - line.rank
@@ -455,6 +603,11 @@ local function RenderOffense(content, y)
                 note    = short > 0 and string.format(
                     "%d below the cap for your level -- fight with this weapon type to raise it",
                     short) or nil,
+            })
+        elseif not (id and shown[id]) then
+            local value = (line and line.rank) and string.format("%d / %s", line.rank, UNAVAILABLE) or UNAVAILABLE
+            y = L:DataRow(content, y, {
+                label = hand[2] .. " skill", value = value,
             })
         end
     end
@@ -479,19 +632,27 @@ local function RenderDefense(content, y)
     local armorBase, armorEff = Try(UnitArmor, "player")
     local armor = Num(armorEff) or Num(armorBase)
 
-    -- UnitDefense is missing. Defense rank and cap come from C_SkillInfo
-    -- (skill 95, maxRank = 5 per level). GetSkillLineInfoByID nil means this
-    -- character has no Defense line -- that is not a rank of 0. UnitDefenseSkill
-    -- still answers and is only the fallback when C_SkillInfo itself is absent.
-    local defLine = SkillByID(SKILL_DEFENSE)
+    -- UNVERIFIED. Order is UnitDefenseSkill, then skill line 95, then a
+    -- line named Defense. UnitDefense is never called on Forever. A reading
+    -- far from 5 per level (1/5 at level 1, 42/45 at level 9) hides the row.
     local defBase, defMod, defCap, defTotal
-    if defLine then
-        defBase, defMod, defCap = defLine.rank, defLine.mod, defLine.max
-        defTotal = (defBase or 0) + (defMod or 0)
-    elseif not (C_SkillInfo and type(C_SkillInfo.GetSkillLineInfoByID) == "function") then
-        defBase, defMod = Try(UnitDefenseSkill, "player")
-        defBase, defMod = Num(defBase), Num(defMod)
-        if defBase then defTotal = defBase + (defMod or 0) end
+    local readDef = TA.Compat and TA.Compat.ReadDefenseSkill
+    local inRange = TA.Compat and TA.Compat.DefenseInRange
+    if type(readDef) == "function" then
+        local okD, base, mod, cap = pcall(readDef, "player")
+        if okD then
+            defBase, defMod, defCap = Num(base), Num(mod), Num(cap)
+        end
+    end
+    local level = Num(Try(UnitLevel, "player")) or 1
+    if defBase and not defCap then
+        local expect = (level < 1 and 1 or level) * 5
+        if defBase >= 0 and defBase <= expect + 5 then defCap = expect end
+    end
+    if defBase and defCap and type(inRange) == "function" and inRange(defBase, defCap, level) then
+        defTotal = defBase + (defMod or 0)
+    else
+        defBase, defMod, defCap, defTotal = nil, nil, nil, nil
     end
 
     defenseScale = L:StatScale({ armor, defTotal }, defenseScale)
@@ -520,11 +681,10 @@ local function RenderDefense(content, y)
             note    = short > 0 and string.format(
                 "%d below the cap for your level -- it rises by being hit", short) or nil,
         })
-    elseif defTotal then
-        y = L:StatBar(content, y, {
-            label = "Defense Skill", value = defTotal, scale = defenseScale,
-            text  = Show(defTotal),
-        })
+    else
+        -- Out of range, or the client did not answer. The row stays so the
+        -- last good reading cannot linger, and the wild number is not shown.
+        y = L:DataRow(content, y, { label = "Defense Skill", value = UNAVAILABLE })
     end
 
     local dodge = Num(Try(GetDodgeChance))
@@ -534,17 +694,13 @@ local function RenderDefense(content, y)
     })
 
     local parry = Num(Try(GetParryChance))
-    if parry and parry > 0 then
-        y = L:StatBar(content, y, {
-            label = "Parry", value = parry, scale = PERCENT_SCALE, text = Show(parry, "%.2f%%"),
-        })
-    end
+    y = L:StatBar(content, y, {
+        label = "Parry", value = parry, scale = PERCENT_SCALE, text = Show(parry, "%.2f%%"),
+    })
     local block = Num(Try(GetBlockChance))
-    if block and block > 0 then
-        y = L:StatBar(content, y, {
-            label = "Block", value = block, scale = PERCENT_SCALE, text = Show(block, "%.2f%%"),
-        })
-    end
+    y = L:StatBar(content, y, {
+        label = "Block", value = block, scale = PERCENT_SCALE, text = Show(block, "%.2f%%"),
+    })
 
     y = L:Paragraph(content, y,
         "Armour caps at 75% physical reduction -- around 17265 against a raid "
@@ -642,7 +798,7 @@ local function RenderSkills(content, y, professionNames)
         -- has its own row.
         if not l.header and l.cat == CAT_WEAPON and l.id ~= SKILL_DEFENSE
            and not CLASS_SKILL_LINE[l.id]
-           and l.rank and l.max and l.max > 0 and not professionNames[l.name] then
+           and l.rank and not professionNames[l.name] then
             rows[#rows + 1] = l
         end
     end
@@ -655,16 +811,22 @@ local function RenderSkills(content, y, professionNames)
         -- A skill sitting below its cap for your level is the one thing on this
         -- tab worth acting on, and it needs no researched data to say: the cap
         -- is whatever the client reports.
-        local short = row.max - row.rank
-        y = L:CapBar(content, y, {
-            label   = row.name,
-            value   = string.format("%d / %d", row.rank, row.max),
-            current = row.rank,
-            cap     = row.max,
-            capped  = short == 0,
-            urgent  = short > 0 and (row.rank / row.max) < 0.75 or nil,
-            note    = short > 0 and string.format("%d below the cap for your level", short) or nil,
-        })
+        if row.max and row.max > 0 then
+            local short = row.max - row.rank
+            y = L:CapBar(content, y, {
+                label   = row.name,
+                value   = string.format("%d / %d", row.rank, row.max),
+                current = row.rank,
+                cap     = row.max,
+                capped  = short == 0,
+                urgent  = short > 0 and (row.rank / row.max) < 0.75 or nil,
+                note    = short > 0 and string.format("%d below the cap for your level", short) or nil,
+            })
+        else
+            y = L:DataRow(content, y, {
+                label = row.name, value = string.format("%d / %s", row.rank, UNAVAILABLE),
+            })
+        end
     end
     return y
 end
@@ -678,8 +840,8 @@ local function RenderFooter(content, y)
         .. "what your character IS and stays quiet about what to do until those "
         .. "numbers exist.")
     y = L:Paragraph(content, y,
-        "Anything reading n/a means this client did not answer that call — worth "
-        .. "reporting, since it maps what the API actually exposes here.")
+        "Anything reading n/a was not answered by this client on this open. "
+        .. "ToonAge does not keep the previous number and does not fill the gap with 0.")
     return y
 end
 

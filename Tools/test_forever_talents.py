@@ -536,7 +536,9 @@ local function widget()
     return f
 end
 
+FRAMES = 0
 CreateFrame = function(kind, name, parent, template)
+    FRAMES = FRAMES + 1
     local f = widget()
     f.kind, f.name, f.template = kind, name, template
     f.parent = parent
@@ -567,9 +569,9 @@ ToonAge.UI = { frame = { GetWidth = function() return 900 end } }
 
 local function buttons(root)
     local n = 0
-    for _, holder in ipairs(root.kids or {}) do
+        for _, holder in ipairs(root.kids or {}) do
         for _, c in ipairs(holder.kids or {}) do
-            if c.kind == "Button" then n = n + 1 end
+            if c.kind == "Button" and not c.hidden then n = n + 1 end
         end
     end
     return n
@@ -597,11 +599,15 @@ local function show(nodes, conds)
 end
 
 warSnap = show(wnodes, wconds)
+local before = FRAMES
+show(wnodes, wconds)
+warSnap.stable = FRAMES - before
 rogueSnap = show(nodes, conds)
 """)
     g = lua.globals()
     war, rogue = g.warSnap, g.rogueSnap
     check("warlock draws 52 buttons", war.buttons, 52)
+    check("a second talents render creates no frames", war.stable, 0)
     check("warlock scroll child is the 424px tree", war.tree, 424)
     check("warlock pane is 368px", war.pane, 368)
     check("warlock scroll range is the overflow", war.range, 56)
