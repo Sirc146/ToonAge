@@ -386,9 +386,12 @@ local function RenderOffense(content, y)
     local ap = Num(base)
     if ap then ap = ap + (Num(posBuff) or 0) + (Num(negBuff) or 0) end
 
-    local rBase, rPos, rNeg = Try(UnitRangedAttackPower, "player")
-    local rap = Num(rBase)
-    if rap then rap = rap + (Num(rPos) or 0) + (Num(rNeg) or 0) end
+    local rap
+    if TA.Compat and TA.Compat.ShowRangedAttackRow and TA.Compat.ShowRangedAttackRow() then
+        local rBase, rPos, rNeg = Try(UnitRangedAttackPower, "player")
+        rap = Num(rBase)
+        if rap then rap = rap + (Num(rPos) or 0) + (Num(rNeg) or 0) end
+    end
 
     -- Spell power is reported per school; arcane (6) stands in for "magic", the
     -- same way the character sheet does.
@@ -409,6 +412,21 @@ local function RenderOffense(content, y)
         y = L:StatBar(content, y, {
             label = "Ranged Attack Power", value = rap, scale = offenseScale, text = Show(rap),
         })
+    end
+
+    -- UNVERIFIED. UnitWeaponAttackPower is only called when it exists.
+    -- The guessed returns are mainBase, mainMod, offBase, offMod.
+    local readMelee = TA.Compat and TA.Compat.ReadWeaponAttackPower
+    if type(readMelee) == "function" then
+        local okM, mainBase, mainMod = pcall(readMelee, "player")
+        mainBase, mainMod = okM and Num(mainBase) or nil, okM and Num(mainMod) or nil
+        if mainBase then
+            local shownMelee = mainBase + (mainMod or 0)
+            y = L:StatBar(content, y, {
+                label = "Melee Attack", value = shownMelee, scale = offenseScale,
+                text = Show(shownMelee),
+            })
+        end
     end
 
     local crit = Num(Try(GetCritChance))
@@ -436,7 +454,11 @@ local function RenderOffense(content, y)
     -- means more misses and more glancing blows; it rises only by hitting
     -- things with THAT weapon type.
     local shown = {}
-    for _, hand in ipairs({ { 16, "Main hand" }, { 17, "Off hand" }, { 18, "Ranged" } }) do
+    local hands = { { 16, "Main hand" }, { 17, "Off hand" } }
+    if TA.Compat and TA.Compat.ShowRangedAttackRow and TA.Compat.ShowRangedAttackRow() then
+        hands[#hands + 1] = { 18, "Ranged" }
+    end
+    for _, hand in ipairs(hands) do
         local id = WeaponSkillFor(hand[1])
         local line = id and SkillByID(id)
         if line and line.rank and line.max and line.max > 0 and not shown[id] then
@@ -479,19 +501,27 @@ local function RenderDefense(content, y)
     local armorBase, armorEff = Try(UnitArmor, "player")
     local armor = Num(armorEff) or Num(armorBase)
 
-    -- UnitDefense is missing. Defense rank and cap come from C_SkillInfo
-    -- (skill 95, maxRank = 5 per level). GetSkillLineInfoByID nil means this
-    -- character has no Defense line -- that is not a rank of 0. UnitDefenseSkill
-    -- still answers and is only the fallback when C_SkillInfo itself is absent.
-    local defLine = SkillByID(SKILL_DEFENSE)
+    -- UNVERIFIED. Order is UnitDefenseSkill, then skill line 95, then a
+    -- line named Defense. UnitDefense is never called on Forever. A reading
+    -- far from 5 per level (1/5 at level 1, 42/45 at level 9) hides the row.
     local defBase, defMod, defCap, defTotal
-    if defLine then
-        defBase, defMod, defCap = defLine.rank, defLine.mod, defLine.max
-        defTotal = (defBase or 0) + (defMod or 0)
-    elseif not (C_SkillInfo and type(C_SkillInfo.GetSkillLineInfoByID) == "function") then
-        defBase, defMod = Try(UnitDefenseSkill, "player")
-        defBase, defMod = Num(defBase), Num(defMod)
-        if defBase then defTotal = defBase + (defMod or 0) end
+    local readDef = TA.Compat and TA.Compat.ReadDefenseSkill
+    local inRange = TA.Compat and TA.Compat.DefenseInRange
+    if type(readDef) == "function" then
+        local okD, base, mod, cap = pcall(readDef, "player")
+        if okD then
+            defBase, defMod, defCap = Num(base), Num(mod), Num(cap)
+        end
+    end
+    local level = Num(Try(UnitLevel, "player")) or 1
+    if defBase and not defCap then
+        local expect = (level < 1 and 1 or level) * 5
+        if defBase >= 0 and defBase <= expect + 5 then defCap = expect end
+    end
+    if defBase and defCap and type(inRange) == "function" and inRange(defBase, defCap, level) then
+        defTotal = defBase + (defMod or 0)
+    else
+        defBase, defMod, defCap, defTotal = nil, nil, nil, nil
     end
 
     defenseScale = L:StatScale({ armor, defTotal }, defenseScale)

@@ -702,6 +702,85 @@ function C.SpecFromTraitSections()
     return C.SpecFromSections(sections, PlayerClassToken())
 end
 
+local DEFENSE_SKILL_ID = 95
+
+local function ForeverClient()
+    return TA.IsForever or TA.flavor == "forever"
+end
+
+--- Defense rank, modifier, max, source.
+--- UNVERIFIED. Chronicler only saw UnitDefenseSkill on the Forever beta.
+--- It probably returns base, modifier. Nothing about the returns is confirmed.
+--- Forever never calls UnitDefense. The order there is UnitDefenseSkill, then
+--- C_SkillInfo.GetSkillLineInfoByID(95), then a skill line named Defense.
+function C.ReadDefenseSkill(unit)
+    unit = unit or "player"
+    if not ForeverClient() and type(UnitDefense) == "function" then
+        local ok, base, mod = pcall(UnitDefense, unit)
+        if ok and base ~= nil then return base, mod, nil, "UnitDefense" end
+    end
+    -- UNVERIFIED. Probably base, modifier.
+    if type(UnitDefenseSkill) == "function" then
+        local ok, base, mod = pcall(UnitDefenseSkill, unit)
+        if ok and base ~= nil then return base, mod, nil, "UnitDefenseSkill" end
+    end
+    local byID = C_SkillInfo and C_SkillInfo.GetSkillLineInfoByID
+    if type(byID) == "function" then
+        local ok, info = pcall(byID, DEFENSE_SKILL_ID)
+        if ok and type(info) == "table" and info.rank ~= nil then
+            return info.rank, info.modifier, info.maxRank, "GetSkillLineInfoByID"
+        end
+    end
+    local count = C_SkillInfo and C_SkillInfo.GetNumSkillLines
+    local line = C_SkillInfo and C_SkillInfo.GetSkillLineInfo
+    if type(count) == "function" and type(line) == "function" then
+        local okN, n = pcall(count)
+        if okN and type(n) == "number" and n > 0 then
+            local last = n
+            if last > 80 then last = 80 end
+            for i = 1, last do
+                local ok, info = pcall(line, i)
+                if ok and type(info) == "table" and type(info.name) == "string"
+                    and not info.isHeader and info.name:lower() == "defense" then
+                    return info.rank, info.modifier, info.maxRank, "skill-name"
+                end
+            end
+        end
+    end
+    return nil
+end
+
+--- True when rank and max look like 5 defense per level.
+--- 1/5 at level 1 and 42/45 at level 9 are inside. A reading far from
+--- level * 5 is hidden rather than shown.
+function C.DefenseInRange(rank, max, level)
+    rank = tonumber(rank)
+    max = tonumber(max)
+    level = tonumber(level) or 1
+    if level < 1 then level = 1 end
+    if not rank or not max then return false end
+    local expect = level * 5
+    if max < expect - 5 or max > expect + 5 then return false end
+    if rank < 0 or rank > max + 5 then return false end
+    return true
+end
+
+--- UNVERIFIED. Chronicler only saw UnitWeaponAttackPower on the Forever beta.
+--- The guess is mainBase, mainMod, offBase, offMod. Nothing is confirmed.
+--- Nil when the function does not exist. UnitAttackBothHands is not a fallback.
+function C.ReadWeaponAttackPower(unit)
+    if type(UnitWeaponAttackPower) ~= "function" then return nil end
+    local ok, mainBase, mainMod, offBase, offMod = pcall(UnitWeaponAttackPower, unit or "player")
+    if not ok then return nil end
+    return mainBase, mainMod, offBase, offMod
+end
+
+--- Forever has no ranged attack row. Other clients keep theirs.
+function C.ShowRangedAttackRow()
+    if ForeverClient() then return false end
+    return true
+end
+
 --- The functions Forever 1.60.1 does not have. Each call is behind a type
 --- check so a missing global is nil, not an error. The call text is what
 --- puts the name in the ApiGuard manifest (Tools/gen_api_manifest.py).

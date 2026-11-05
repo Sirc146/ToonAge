@@ -74,12 +74,15 @@ probes.skillinfo = { title = "Skill lines: C_SkillInfo", run = function(P, L)
             P.Call(L, ("  C_SkillInfo.GetSkillLineInfo(%d)"):format(i), "C_SkillInfo.GetSkillLineInfo", i)
         end
     end
+    -- UNVERIFIED. Every return is printed. Chronicler saw the names on the
+    -- beta and nothing about the values is confirmed.
+    L[#L + 1] = "UNVERIFIED raw returns (UnitDefenseSkill, UnitWeaponAttackPower, skill 95):"
     P.Call(L, "C_SkillInfo.GetSkillLineInfoByID(95) [Defense]", "C_SkillInfo.GetSkillLineInfoByID", 95)
     P.Call(L, "C_SkillInfo.GetSkillLineInfoByID(45) [Bows]", "C_SkillInfo.GetSkillLineInfoByID", 45)
     P.Call(L, "C_SkillInfo.GetSkillLineInfoByID(43) [Swords]", "C_SkillInfo.GetSkillLineInfoByID", 43)
     P.Call(L, "C_SkillInfo.GetSelectedSkill()", "C_SkillInfo.GetSelectedSkill")
-    P.Call(L, "UnitDefenseSkill(player)", "UnitDefenseSkill", "player")
-    P.Call(L, "UnitWeaponAttackPower(player)", "UnitWeaponAttackPower", "player")
+    P.Call(L, "UNVERIFIED UnitDefenseSkill(player)", "UnitDefenseSkill", "player")
+    P.Call(L, "UNVERIFIED UnitWeaponAttackPower(player)", "UnitWeaponAttackPower", "player")
     P.Call(L, "C_PaperDollInfo.OffhandHasWeapon()", "C_PaperDollInfo.OffhandHasWeapon")
 end }
 

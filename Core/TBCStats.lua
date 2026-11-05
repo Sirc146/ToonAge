@@ -306,12 +306,16 @@ end
 
 --- Defense skill: base (5 per level) plus whatever defense rating converts to.
 function S:GetDefenseSkill()
-    -- UnitDefense returns (base, modifier) in TBC.
-    if UnitDefense then
-        local base, mod = UnitDefense("player")
-        base = U.SafeNum(base)
-        mod  = U.SafeNum(mod)
-        if base > 0 then return base + mod, base, mod end
+    -- Compat never calls UnitDefense on Forever. On TBC the same wrapper
+    -- still reads UnitDefense when that global exists.
+    local read = TA.Compat and TA.Compat.ReadDefenseSkill
+    if type(read) == "function" then
+        local ok, base, mod = pcall(read, "player")
+        if ok then
+            base = U.SafeNum(base)
+            mod  = U.SafeNum(mod)
+            if base > 0 then return base + mod, base, mod end
+        end
     end
     local level = U.GetPlayerLevel()
     return level * 5, level * 5, 0

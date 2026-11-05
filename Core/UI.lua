@@ -180,8 +180,12 @@ local TabConditions = {
         if TA.flavor == "mists" and (token == "MAGE" or token == "DEATHKNIGHT")
            and type(GetSpecialization) == "function"
            and type(GetSpecializationInfo) == "function" then
-            local idx = GetSpecialization()
-            local specID = idx and GetSpecializationInfo(idx)
+            local ok, idx = pcall(GetSpecialization)
+            local specID
+            if ok and idx then
+                local okInfo, id = pcall(GetSpecializationInfo, idx)
+                if okInfo then specID = id end
+            end
             return specID == 64 or specID == 252
         end
         return false
@@ -202,9 +206,12 @@ local function RetailPetTabWanted()
     local list = db and db[token]
     if type(list) ~= "table" then return false end
     local specName
-    if GetSpecialization and GetSpecializationInfo then
-        local idx = GetSpecialization()
-        if idx then specName = select(2, GetSpecializationInfo(idx)) end
+    if type(GetSpecialization) == "function" and type(GetSpecializationInfo) == "function" then
+        local ok, idx = pcall(GetSpecialization)
+        if ok and idx then
+            local okInfo, _, name = pcall(GetSpecializationInfo, idx)
+            if okInfo then specName = name end
+        end
     end
     for _, p in ipairs(list) do
         if p.summonType == "Permanent" and (p.spec == "All" or p.spec == specName) then
