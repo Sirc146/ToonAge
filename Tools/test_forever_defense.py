@@ -157,7 +157,7 @@ C_SkillInfo = {
 }
 level = 9
 render()
-hiddenWild = has("Defense Skill")
+hiddenWild = row("Defense Skill")
 
 -- UnitDefenseSkill absent: skill line 95.
 UnitDefenseSkill = nil
@@ -192,16 +192,18 @@ C_SkillInfo = {
 }
 level = 9
 render()
-hiddenCap = has("Defense Skill")
+hiddenCap = row("Defense Skill")
 
 -- No melee function: no melee row. The ranged rows stay.
 UnitWeaponAttackPower = nil
 UnitDefenseSkill = function() return 42, 0 end
 C_SkillInfo = nil
 render()
-noMelee = has("Melee Attack")
+noMelee = row("Melee Attack")
 rapStill = row("Ranged Attack Power")
 dmgStill = row("Ranged Damage")
+speedStill = row("Ranged Speed")
+dpsStill = row("Ranged DPS")
 
 -- A full ranged read. Power is base + pos + neg. Damage is speed, min, max.
 UnitRangedAttackPower = function() return 72, 5, -1 end
@@ -209,18 +211,24 @@ UnitRangedDamage = function() return 2.8, 45, 62, 0, 0, 1 end
 render()
 rapFull = row("Ranged Attack Power")
 dmgFull = row("Ranged Damage")
+speedFull = row("Ranged Speed")
+dpsFull = row("Ranged DPS")
 
 -- One damage return is nil. That piece is n/a. The row and the other
 -- numbers stay. Nothing is formatted as 0.0.
 UnitRangedDamage = function() return 2.8, nil, 62 end
 render()
 dmgPartial = row("Ranged Damage")
+speedPartial = row("Ranged Speed")
+dpsPartial = row("Ranged DPS")
 rapPartial = row("Ranged Attack Power")
 
 -- A zero swing speed is not a real reading.
 UnitRangedDamage = function() return 0, 10, 12 end
 render()
 dmgZeroSpeed = row("Ranged Damage")
+speedZero = row("Ranged Speed")
+dpsZero = row("Ranged DPS")
 
 -- Both functions missing or throwing. Both rows stay, both values are
 -- unavailable, and UnitRangedAttack is still not called.
@@ -230,7 +238,43 @@ local beforeRanged = called.UnitRangedAttack
 render()
 rapDown = row("Ranged Attack Power")
 dmgDown = row("Ranged Damage")
+speedDown = row("Ranged Speed")
+dpsDown = row("Ranged DPS")
 rangedAttackCalls = called.UnitRangedAttack - beforeRanged
+
+-- No ranged weapon: zeros are not a reading.
+UnitRangedAttackPower = function() return 0, 0, 0 end
+UnitRangedDamage = function() return 0, 0, 0 end
+render()
+bareAp = row("Ranged Attack Power")
+bareDmg = row("Ranged Damage")
+bareSpeed = row("Ranged Speed")
+bareDps = row("Ranged DPS")
+
+-- A wand-shaped read. 19 and 20.4 over 1.0s is 19.7 DPS. Not 0.0.
+UnitRangedAttackPower = function() return 12, 0, 0 end
+UnitRangedDamage = function() return 1, 19, 20.4 end
+render()
+wandDps = row("Ranged DPS")
+wandSpeed = row("Ranged Speed")
+wandDmg = row("Ranged Damage")
+
+-- A later render with the APIs gone must not keep the wand numbers.
+UnitAttackPower = function() return 100, 10, 0 end
+GetCritChance = function() return 4.5 end
+UnitArmor = function() return 40, 55 end
+render()
+UnitAttackPower = nil
+GetCritChance = nil
+UnitArmor = nil
+UnitRangedAttackPower = nil
+UnitRangedDamage = nil
+render()
+staleAp = row("Attack Power")
+staleCrit = row("Critical Strike")
+staleArmor = row("Armor")
+staleRap = row("Ranged Attack Power")
+staleDps = row("Ranged DPS")
 
 -- Another client still reads UnitDefense and still shows ranged power.
 ToonAge.IsForever = false
@@ -253,29 +297,54 @@ g = lua.globals()
 check("level 9 defense from UnitDefenseSkill is 42/45", g.fromSkill.value, "42 / 45")
 check("level 1 defense is 1/5", g.atOne.value, "1 / 5")
 check("a modifier is kept on the defense row", g.withMod.value, "40 (+2) / 45")
-check("an out-of-range UnitDefenseSkill hides the row", g.hiddenWild, False)
+check("an out-of-range UnitDefenseSkill is unavailable",
+      "n/a" in g.hiddenWild.value and "300" not in g.hiddenWild.value, True)
 check("defense falls back to skill line 95", g.fromID.value, "1 / 5")
 check("defense falls back to a line named Defense", g.fromName.value, "42 / 45")
-check("a skill-line cap far from 5 per level hides the row", g.hiddenCap, False)
+check("a skill-line cap far from 5 per level is unavailable",
+      "n/a" in g.hiddenCap.value and "300" not in g.hiddenCap.value and "900" not in g.hiddenCap.value, True)
 check("Forever never called UnitDefense, UnitAttackBothHands or UnitRangedAttack", g.traps, 0)
 check("melee attack is main base plus main mod", g.melee.value, 12)
 check("ranged attack power stays on the sheet", g.rapRow.text, "80")
 check("missing ranged damage is n/a, not 0.0",
       "0.0" not in g.dmgRow.value and "n/a" in g.dmgRow.value, True)
 check("the ranged damage row is present when damage was not read", g.dmgRow.label, "Ranged Damage")
-check("no UnitWeaponAttackPower means no melee row", g.noMelee, False)
+check("a missing melee attack read stays on the sheet as n/a", g.noMelee.text, "|cFF6E6A62n/a|r")
 check("ranged attack power stays when melee is absent", g.rapStill.text, "80")
 check("ranged damage stays when melee is absent", "n/a" in g.dmgStill.value, True)
+check("ranged speed stays unavailable when damage was not read", "n/a" in g.speedStill.value, True)
+check("ranged dps stays unavailable when damage was not read", g.dpsStill.value, "|cFF6E6A62n/a|r")
 check("ranged attack power adds the buffs", g.rapFull.text, "76")
-check("ranged damage shows speed, min and max", g.dmgFull.value, "2.80  45-62")
+check("ranged damage shows min and max", g.dmgFull.value, "45-62")
+check("ranged speed shows the swing", g.speedFull.value, "2.80")
+check("ranged dps is the average over the speed", g.dpsFull.value, "19.1")
 check("a nil damage bound stays n/a and the row remains",
-      g.dmgPartial.value, "2.80  |cFF6E6A62n/a|r-62")
+      g.dmgPartial.value, "|cFF6E6A62n/a|r-62")
+check("a nil damage bound does not blank the speed", g.speedPartial.value, "2.80")
+check("dps is unavailable when a damage bound is missing", g.dpsPartial.value, "|cFF6E6A62n/a|r")
 check("attack power is unchanged when only damage is partial", g.rapPartial.text, "76")
 check("a zero swing speed is not shown as 0.0",
-      "0.0" not in g.dmgZeroSpeed.value and g.dmgZeroSpeed.value.endswith("10-12"), True)
+      "0.0" not in g.speedZero.value and "n/a" in g.speedZero.value, True)
+check("positive damage stays when the speed is zero", g.dmgZeroSpeed.value, "10-12")
+check("dps is unavailable when the speed is zero", g.dpsZero.value, "|cFF6E6A62n/a|r")
 check("a failed ranged power read keeps the row as n/a", g.rapDown.text, "|cFF6E6A62n/a|r")
 check("a missing ranged damage read keeps the row", "n/a" in g.dmgDown.value, True)
+check("a missing ranged speed read is n/a", "n/a" in g.speedDown.value and "0.0" not in g.speedDown.value, True)
+check("a missing ranged dps read is n/a", g.dpsDown.value, "|cFF6E6A62n/a|r")
 check("UnitRangedAttack stays unused", g.rangedAttackCalls, 0)
+check("no ranged weapon does not print 0.0 damage",
+      "0.0" not in g.bareDmg.value and "n/a" in g.bareDmg.value, True)
+check("no ranged weapon does not print 0.0 speed",
+      "0.0" not in g.bareSpeed.value and "n/a" in g.bareSpeed.value, True)
+check("no ranged weapon does not print 0.0 dps", g.bareDps.value, "|cFF6E6A62n/a|r")
+check("a wand-shaped read shows 19.7 dps", g.wandDps.value, "19.7")
+check("a wand-shaped speed is not 0.0", g.wandSpeed.value, "1.00")
+check("a wand-shaped damage span is not 0", g.wandDmg.value, "19-20")
+check("a dropped attack power read does not keep 100", g.staleAp.text, "|cFF6E6A62n/a|r")
+check("a dropped crit read does not keep 4.50", g.staleCrit.text, "|cFF6E6A62n/a|r")
+check("a dropped armor read does not keep 55", g.staleArmor.text, "|cFF6E6A62n/a|r")
+check("a dropped ranged attack power read does not keep 12", g.staleRap.text, "|cFF6E6A62n/a|r")
+check("a dropped ranged dps read does not keep 19.7", g.staleDps.value, "|cFF6E6A62n/a|r")
 check("TBC still reads UnitDefense", g.tbcCalled, 1)
 check("TBC defense total keeps the modifier", g.tbcTotal, 355)
 check("TBC defense base is the UnitDefense base", g.tbcBase, 350)
