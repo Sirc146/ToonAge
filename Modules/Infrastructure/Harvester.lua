@@ -1243,6 +1243,26 @@ function P.Present(lines, label, path)
     P.Call(lines, label, function() return Caps ~= nil and Caps.State(path) == "present" end)
 end
 
+--- One /ta probe line. Never throws. UNVERIFIED until this line passes in game.
+function Hv.AssistCastLine()
+    local fn = C_AssistedCombat and C_AssistedCombat.GetNextCastSpell
+    if type(fn) ~= "function" then
+        return "C_AssistedCombat.GetNextCastSpell  ->  absent"
+    end
+    local ok, id = pcall(fn)
+    if not ok then
+        return "C_AssistedCombat.GetNextCastSpell  ->  present, error: " .. tostring(id)
+    end
+    if Hv.IsSecret and Hv.IsSecret(id) then
+        return "C_AssistedCombat.GetNextCastSpell  ->  present, called, secret"
+    end
+    if id == nil then
+        return "C_AssistedCombat.GetNextCastSpell  ->  present, called, nil"
+    end
+    return "C_AssistedCombat.GetNextCastSpell  ->  present, called, " .. tostring(id)
+end
+TA.AssistCastLine = Hv.AssistCastLine
+
 --- The probe sections every client has. Packs order them (pack.probeOrder)
 --- together with the domains' and their own.
 local CORE_PROBES = {
@@ -1277,9 +1297,7 @@ local CORE_PROBES = {
     end },
 
     combat = { title = "Combat", run = function(P, L)
-        local Caps = TA.Caps
-        L[#L + 1] = "C_AssistedCombat  ->  " .. ((Caps and Caps.State("C_AssistedCombat") == "present") and "present" or "missing")
-        P.Call(L, "C_AssistedCombat.GetNextCastSpell()", "C_AssistedCombat.GetNextCastSpell")
+        L[#L + 1] = Hv.AssistCastLine()
         local rec = TA.GetModule and TA:GetModule("CombatRecorder")
         L[#L + 1] = "CombatRecorder  ->  " .. (rec and "running" or "not running")
         if rec and rec.HasOutput then L[#L + 1] = "  combat log readable  ->  " .. tostring(rec:HasOutput()) end

@@ -85,7 +85,10 @@ function Rotation:OnEvent(event, ...)
         if TA.UI and TA.UI.activeTab == "rotation" then
             self:Render(TA.UI.contentChild, TA.UI.sideChild)
         end
-        if self.predictBar then self:UpdatePrediction() end
+        if self.predictBar then
+            self:ApplyCombatWidth()
+            self:UpdatePrediction()
+        end
     end
 
     -- GROUP_ROSTER_UPDATE catches joining/leaving a group; ZONE_CHANGED_NEW_AREA
@@ -133,17 +136,21 @@ end
 --- @return table|nil priorities, boolean usedFallback
 -- Retail Rogue is the verified path (Assassination, Outlaw, Subtlety).
 -- Every other spec still has legacy rows in Data/Retail/Rotations.lua; those
--- are not shown. Assisted Combat, when the client has it and the value is
--- not secret, is the source of truth for the next cast on Retail and Forever.
+-- are not shown. Where the client has C_AssistedCombat.GetNextCastSpell, that
+-- spell fills slot 1 until a verified list exists. The call is unverified on
+-- every client until /ta probe passes there.
 local VERIFIED_SPEC = { [259] = true, [260] = true, [261] = true }
 local TRAY_WIDTH = { 88, 144, 200 }
+
+local function BarLocked()
+    return type(InCombatLockdown) == "function" and InCombatLockdown() and true or false
+end
 
 function Rotation:HasVerified(specID)
     return VERIFIED_SPEC[specID] == true
 end
 
 function Rotation:AssistedNext()
-    if not (TA.IsRetail or TA.IsForever) then return nil end
     local fn = C_AssistedCombat and C_AssistedCombat.GetNextCastSpell
     if type(fn) ~= "function" then return nil end
     local ok, id = pcall(fn)
@@ -154,6 +161,18 @@ function Rotation:AssistedNext()
     local name = U.GetSpellName(id)
     if U.IsSecret and U.IsSecret(name) then name = "" end
     return { entry = { spellID = id, name = name or "" } }
+end
+
+--- nil when this spec has a verified list. {} when an unverified spec has
+--- no assisted spell (the tab says so). One entry fills slot 1; slots 2 and
+--- 3 stay empty until a verified list exists.
+function Rotation:FallbackSlots(specID)
+    if self:HasVerified(specID) then return nil end
+    local assisted = self:AssistedNext()
+    if not assisted or type(assisted.entry) ~= "table" or not assisted.entry.spellID then
+        return {}
+    end
+    return { assisted.entry }
 end
 
 --- The per-version list for this spec and level. nil when that class is not
@@ -457,6 +476,29 @@ function Rotation:RenderContent(content, rotData, specID, level)
         table.insert(self.frames, line)
     end
 
+    local fallback = self:FallbackSlots(specID)
+    if fallback then
+        local entry = fallback[1]
+        if not entry then
+            local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            f:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+            f:SetText("No suggestions for this spec")
+            f:SetTextColor(0.85, 0.86, 0.88, 1)
+            f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            f:SetWidth(w)
+            table.insert(self.frames, f)
+            content:SetHeight(80)
+            return
+        end
+        y = y - self:RenderSpellRow(content, y, w, padL, {
+            name = entry.name,
+            spellID = entry.spellID,
+            priority = 1,
+        }, false, false)
+        content:SetHeight(math.abs(y) + 20)
+        return
+    end
+
     local listed = self:ListedView()
     if listed and (listed.empty or not listed.spells or #listed.spells == 0) then
         local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -720,9 +762,11 @@ function Rotation:InitPredictBar()
     end
 
     local bar = CreateFrame("Button", "TARotationPredictBar", UIParent, "BackdropTemplate")
-    -- Three tray widths, padding included: 88, 144, 200. The live bar starts
-    -- at the three-spell size and shrinks to the filled slots out of combat.
-    bar:SetSize(TRAY_WIDTH[3], BAR_HEIGHT)
+    -- Born at one slot. A /reload in combat must not leave a 200 px frame,
+    -- and SetSize is not called while the client is locked.
+    if not BarLocked() then
+        bar:SetSize(TRAY_WIDTH[1], BAR_HEIGHT)
+    end
     bar:SetFrameStrata("HIGH")
     bar:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 180)
     bar:SetMovable(true)
@@ -892,11 +936,7 @@ function Rotation:InitPredictBar()
     bar:RegisterEvent("PLAYER_REGEN_DISABLED")
     bar:RegisterEvent("PLAYER_REGEN_ENABLED")
     bar:SetScript("OnEvent", function(_, event)
-        if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
-            self:UpdatePrediction()
-        else
-            self:UpdatePips()
-        end
+        self:OnBarEvent(event)
     end)
 
     -- Healer triage line: who needs healing most, above the icons.
@@ -925,6 +965,7 @@ function Rotation:InitPredictBar()
 
     bar:Hide() -- shown when this spec has at least one pick; hidden only when it has none
     self.predictBar = bar
+    self:ApplyCombatWidth()
 end
 
 --- Slot chrome for one filled icon. Borders stay gold. The name is the
@@ -939,6 +980,62 @@ function Rotation:PaintPredictSlot(iconFrame, name, spellID, suggested)
     local a = suggested and 1 or 0.85
     iconFrame:SetBackdropBorderColor(SLOT_GOLD[1], SLOT_GOLD[2], SLOT_GOLD[3], a)
     iconFrame:Show()
+end
+
+--- How many slots combat can fill. A verified list with nothing usable at
+--- this level leaves only the assist fallback, which is one slot.
+function Rotation:CombatSlotCount()
+    local specID = self.currentSpecID or (U.GetPlayerSpec and U.GetPlayerSpec())
+    if not self:HasVerified(specID) then return 1 end
+    local level = tonumber(self.currentLevel)
+    if not level and U.GetPlayerLevel then level = tonumber(U.GetPlayerLevel()) end
+    level = level or 1
+    local data = TA.Data and TA.Data.Rotations
+    local view = self.currentView or "solo"
+    local pack
+    if data and type(data.Get) == "function" then
+        pack = data:Get(specID, view)
+        if not (pack and pack.priorities) and view ~= "solo" then
+            pack = data:Get(specID, "solo")
+        end
+    end
+    local priorities = pack and pack.priorities
+    local n = 0
+    if type(priorities) == "table" then
+        for _, entry in ipairs(priorities) do
+            if type(entry) == "table" and entry.spellID and not entry.isCd and not entry.isMajorCd then
+                local gate = tonumber(entry.unlockLv)
+                if not gate or level >= gate then
+                    n = n + 1
+                    if n >= 3 then break end
+                end
+            end
+        end
+    end
+    if n < 1 then return 1 end
+    return n
+end
+
+--- Width follows the slots combat can fill. Never SetSize or SetWidth
+--- while the client is locked.
+function Rotation:ApplyCombatWidth()
+    local bar = self.predictBar
+    if not bar or BarLocked() then return end
+    local slots = self:CombatSlotCount()
+    if type(bar.SetSize) == "function" then
+        bar:SetSize(TRAY_WIDTH[slots] or TRAY_WIDTH[1], BAR_HEIGHT)
+    end
+end
+
+function Rotation:OnBarEvent(event)
+    if event == "PLAYER_REGEN_ENABLED" then
+        self:ApplyCombatWidth()
+    end
+    if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+        self:UpdatePrediction()
+    else
+        self:UpdatePips()
+    end
 end
 
 --- Width follows the filled slots, and only while the player is out of
@@ -967,9 +1064,11 @@ function Rotation:FitPredictBar(filled, inCombat)
     if (not saved or saved.visible ~= false) and not bar:IsShown() then
         bar:Show()
     end
-    if inCombat or (InCombatLockdown and InCombatLockdown()) then return end
-    local w = TRAY_WIDTH[filled] or TRAY_WIDTH[#TRAY_WIDTH]
-    bar:SetSize(w, BAR_HEIGHT)
+    if inCombat or BarLocked() then return end
+    local slots = self:CombatSlotCount()
+    if type(bar.SetSize) == "function" then
+        bar:SetSize(TRAY_WIDTH[slots] or TRAY_WIDTH[1], BAR_HEIGHT)
+    end
 end
 
 function Rotation:UpdatePrediction()
@@ -990,6 +1089,22 @@ function Rotation:UpdatePrediction()
 
     local specID = self.currentSpecID or U.GetPlayerSpec()
     local level = self.currentLevel or U.GetPlayerLevel()
+
+    local fallback = self:FallbackSlots(specID)
+    if fallback then
+        local entry = fallback[1]
+        for i = 1, PREDICTION_COUNT do
+            local iconFrame = self.predictIcons and self.predictIcons[i]
+            if i == 1 and entry then
+                self:PaintPredictSlot(iconFrame, entry.name, entry.spellID, true)
+            elseif iconFrame then
+                iconFrame:Hide()
+            end
+        end
+        self:FitPredictBar(entry and 1 or 0, inCombat)
+        self:UpdatePips()
+        return
+    end
 
     -- The version's list sets the bar. In combat the first slot is Assisted
     -- Combat when that value is not secret. Out of combat the list is the
