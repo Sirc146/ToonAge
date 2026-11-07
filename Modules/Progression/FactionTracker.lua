@@ -17,9 +17,10 @@ TA.FactionTracker = FT
 TA:RegisterModule("FactionTracker", FT)
 
 local function Secret(v)
-    if type(issecretvalue) ~= "function" then return false end
+    if v == nil or type(issecretvalue) ~= "function" then return false end
     local ok, res = pcall(issecretvalue, v)
-    return ok and res == true
+    if not ok then return true end
+    return res == true
 end
 
 local function CleanNum(v)
@@ -428,25 +429,81 @@ end
 
 --- Factions the client itself lists. Nil when the walk cannot run.
 --- An empty table means the client returned no rows. Headers are not factions.
+--- Collapsed headers are opened only when they can be closed again afterwards.
 function FT.WalkClientFactions()
     local C = TA.Compat
     if not (C and type(C.GetNumFactions) == "function" and type(C.GetFactionDataByIndex) == "function") then
         return nil
     end
-    if type(C.ExpandAllFactionHeaders) == "function" then
-        C.ExpandAllFactionHeaders()
+
+    local function count()
+        local ok, n = pcall(C.GetNumFactions)
+        if not ok or Secret(n) or type(n) ~= "number" then return nil end
+        if n > 200 then return 200 end
+        return n
     end
-    local ok, n = pcall(C.GetNumFactions)
-    if not ok or type(n) ~= "number" then return nil end
+
+    local function rowAt(i)
+        local ok, row = pcall(C.GetFactionDataByIndex, i)
+        if not ok or type(row) ~= "table" then return nil end
+        return row
+    end
+
+    local function plainName(name)
+        if Secret(name) or type(name) ~= "string" or name == "" then return nil end
+        return name
+    end
+
+    local n = count()
+    if not n then return nil end
+
+    local saved = {}
+    for i = 1, n do
+        local row = rowAt(i)
+        if row and not Secret(row.isHeader) and not Secret(row.isCollapsed) and row.isHeader == true then
+            local name = plainName(row.name)
+            if name and row.isCollapsed == true then
+                saved[#saved + 1] = name
+            end
+        end
+    end
+
+    local canExpand, canCollapse = false, false
+    if type(C.FactionHeadersCanToggle) == "function" then
+        canExpand, canCollapse = C.FactionHeadersCanToggle()
+    end
+    if #saved > 0 and canExpand and canCollapse then
+        C.ExpandAllFactionHeaders()
+        local expanded = count()
+        if expanded then n = expanded end
+    end
+
     local list = {}
-    local last = n
-    if last > 200 then last = 200 end
-    for i = 1, last do
-        local okRow, row = pcall(C.GetFactionDataByIndex, i)
-        if okRow and type(row) == "table" and not row.isHeader
-            and type(row.name) == "string" and row.name ~= "" then
-            row.observed = true
-            list[#list + 1] = row
+    for i = 1, n do
+        local row = rowAt(i)
+        if row and not Secret(row.isHeader) and row.isHeader ~= true then
+            local name = plainName(row.name)
+            if name then
+                row.name = name
+                row.observed = true
+                list[#list + 1] = row
+            end
+        end
+    end
+
+    if #saved > 0 and canExpand and canCollapse then
+        local restoreN = count() or n
+        local wanted = {}
+        for _, name in ipairs(saved) do wanted[name] = true end
+        for i = restoreN, 1, -1 do
+            local row = rowAt(i)
+            if row and not Secret(row.isHeader) and not Secret(row.isCollapsed)
+                and row.isHeader == true and row.isCollapsed ~= true then
+                local name = plainName(row.name)
+                if name and wanted[name] then
+                    C.CollapseFactionHeader(i)
+                end
+            end
         end
     end
     return list

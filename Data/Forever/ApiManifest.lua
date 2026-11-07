@@ -54,6 +54,7 @@ TA.Data.ApiManifest = {
         ["C_QuestLog.GetQuestObjectives"] = { "Core/Utils.lua" },
         ["C_QuestLog.GetTitleForQuestID"] = { "Core/Utils.lua", "Modules/Infrastructure/CoordHarvester.lua" },
         ["C_QuestLog.IsQuestFlaggedCompleted"] = { "Core/Utils.lua", "Modules/Progression/FactionTracker.lua" },
+        ["C_Reputation.CollapseFactionHeader"] = { "Core/Compat/API.lua" },
         ["C_Reputation.ExpandAllFactionHeaders"] = { "Core/Compat/API.lua" },
         ["C_Reputation.GetFactionDataByID"] = { "Modules/Harvest/Packs/Forever.lua", "Modules/Progression/FactionTracker.lua" },
         ["C_Reputation.GetFactionDataByIndex"] = { "Core/Compat/API.lua" },

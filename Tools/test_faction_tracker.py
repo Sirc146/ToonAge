@@ -332,8 +332,165 @@ def main():
     check("undercity standing uses the client bar numbers",
           any("4000/9000" in row for row in lines), True)
 
+    # Nested collapsed headers must be readable and then put back.
+    lua.execute(r"""
+        local FT = ToonAge.FactionTracker
+        ToonAge.flavor = "forever"
+        ToonAge.Reputations = nil
+        LAYOUT = {}
+        expandCalls = 0
+        collapseLog = {}
+        collapsed = { Cities = true }
+        local function rows()
+            local list = {
+                { name = "Horde", isHeader = true, isCollapsed = false, factionID = 67 },
+                { name = "Darkspear Trolls", factionID = 530, isHeader = false,
+                  currentReactionThreshold = 0, nextReactionThreshold = 3000,
+                  currentStanding = 2000 },
+                { name = "Cities", isHeader = true, isCollapsed = collapsed.Cities, factionID = 76 },
+            }
+            if not collapsed.Cities then
+                list[#list + 1] = {
+                    name = "Orgrimmar", factionID = 76, isHeader = false,
+                    currentReactionThreshold = 0, nextReactionThreshold = 3000,
+                    currentStanding = 500,
+                }
+                list[#list + 1] = {
+                    name = "Outposts", isHeader = true, isCollapsed = true, factionID = 81,
+                }
+            end
+            return list
+        end
+        C_Reputation = {
+            GetNumFactions = function() return #rows() end,
+            ExpandAllFactionHeaders = function()
+                expandCalls = expandCalls + 1
+                collapsed.Cities = false
+            end,
+            CollapseFactionHeader = function(index)
+                local row = rows()[index]
+                collapseLog[#collapseLog + 1] = row and row.name
+                if row and row.name == "Cities" then collapsed.Cities = true end
+            end,
+            GetFactionDataByIndex = function(i) return rows()[i] end,
+        }
+        FT:Render({})
+        citiesCollapsed = collapsed.Cities
+        hordeCollapsed = false
+        sawOrgrimmar = false
+        for i = 1, #LAYOUT do
+            if LAYOUT[i] == "BAR|Orgrimmar|500/3000" then sawOrgrimmar = true end
+        end
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("a nested collapsed header is expanded for the read", lua.eval("expandCalls") >= 1, True)
+    check("the faction under that header is listed", "BAR|Orgrimmar|500/3000" in lines, True)
+    check("the nested header is collapsed again after the read", lua.eval("citiesCollapsed"), True)
+    check("the collapse hit Cities", lua.eval("collapseLog[1]"), "Cities")
+    check("an already open header is not collapsed", lua.eval("collapseLog[2]"), None)
+
+    lua.execute(r"""
+        expandCalls = 0
+        C_Reputation.CollapseFactionHeader = nil
+        collapsed.Cities = true
+        LAYOUT = {}
+        ToonAge.FactionTracker:Render({})
+        noCollapseExpand = expandCalls
+        citiesStill = collapsed.Cities
+    """)
+    check("without a collapse function the pane is not expanded", lua.eval("noCollapseExpand"), 0)
+    check("that header stays collapsed", lua.eval("citiesStill"), True)
+
+    lua.execute(r"""
+        LAYOUT = {}
+        expandCalls = 0
+        issecretvalue = function() error("predicate failed") end
+        C_Reputation = {
+            GetNumFactions = function() return 1 end,
+            ExpandAllFactionHeaders = function() expandCalls = expandCalls + 1 end,
+            CollapseFactionHeader = function() end,
+            GetFactionDataByIndex = function()
+                return { name = "Darkspear Trolls", isHeader = false,
+                         currentStanding = 2000, nextReactionThreshold = 3000 }
+            end,
+        }
+        ToonAge.FactionTracker:Render({})
+        predicateExpand = expandCalls
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("a throwing secrecy predicate does not walk the list",
+          any("This client did not return a faction list." in row for row in lines), True)
+    check("a throwing secrecy predicate does not expand headers", lua.eval("predicateExpand"), 0)
+
+    lua.execute(r"""
+        LAYOUT = {}
+        expandCalls = 0
+        local secretCount = 4
+        issecretvalue = function(v) return v == secretCount or v == "Hidden Name" end
+        C_Reputation = {
+            GetNumFactions = function() return secretCount end,
+            ExpandAllFactionHeaders = function() expandCalls = expandCalls + 1 end,
+            CollapseFactionHeader = function() end,
+            GetFactionDataByIndex = function()
+                return { name = "Darkspear Trolls", isHeader = false,
+                         currentStanding = 1, nextReactionThreshold = 2 }
+            end,
+        }
+        ToonAge.FactionTracker:Render({})
+        secretCountExpand = expandCalls
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("a secret faction count is not compared or clamped",
+          any("This client did not return a faction list." in row for row in lines), True)
+    check("a secret faction count does not expand headers", lua.eval("secretCountExpand"), 0)
+    check("a secret count does not invent faction rows",
+          any(row.startswith("BAR|") for row in lines), False)
+
+    lua.execute(r"""
+        LAYOUT = {}
+        issecretvalue = function(v) return v == "Hidden Name" end
+        C_Reputation = {
+            GetNumFactions = function() return 3 end,
+            GetFactionDataByIndex = function(i)
+                if i == 2 then error("index unreadable") end
+                if i == 3 then
+                    return { name = "Hidden Name", isHeader = false,
+                             currentStanding = 1, nextReactionThreshold = 2 }
+                end
+                return { name = "Darkspear Trolls", isHeader = false, factionID = 530,
+                         currentStanding = 2000, nextReactionThreshold = 3000,
+                         currentReactionThreshold = 0 }
+            end,
+        }
+        ToonAge.FactionTracker:Render({})
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("a thrown faction row does not drop the others",
+          "BAR|Darkspear Trolls|2000/3000" in lines, True)
+    check("a secret faction name is not compared and not shown",
+          any("Hidden Name" in row for row in lines), False)
+
+    lua.execute(r"""
+        LAYOUT = {}
+        issecretvalue = nil
+        C_Reputation = { GetNumFactions = function() return 2 end }
+        function GetFactionInfo(i)
+            if i == 1 then
+                return "Horde", "desc", 4, 0, 3000, 0, false, false, true, false, false, false, false, 67
+            end
+            return "Darkspear Trolls", "desc", 4, 0, 3000, 2000, false, false, false, false, true, false, true, 530
+        end
+        ToonAge.FactionTracker:Render({})
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("classic multi-return rows still list the faction",
+          "BAR|Darkspear Trolls|2000/3000" in lines, True)
+    check("classic multi-return still skips the header",
+          any(row.startswith("BAR|Horde") for row in lines), False)
+
     lua.execute(r"""
         C_Reputation = nil
+        GetFactionInfo = nil
         GetNumFactions = nil
         GetFactionInfo = nil
         LAYOUT = {}
