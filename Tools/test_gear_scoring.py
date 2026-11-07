@@ -62,7 +62,7 @@ GetCombatRatingBonus = function(i) return (RATINGS[i] or 0) / 10 end
 UnitExists = function() return false end
 UnitLevel = function() return 80 end
 """)
-for f in ["Core/Utils.lua", "Data/Retail/StatWeights.lua", "Core/StatEngine.lua", "Modules/Gear/Gear.lua"]:
+for f in ["Core/Compat/API.lua", "Core/Utils.lua", "Data/Retail/StatWeights.lua", "Core/StatEngine.lua", "Modules/Gear/Gear.lua"]:
     try:
         lua.execute((ROOT / f).read_text(encoding="utf-8"))
     except Exception as e:

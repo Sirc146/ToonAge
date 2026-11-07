@@ -98,10 +98,29 @@ function C.PickupContainerItem(bag, slot)
 end
 
 -- ── Spells ───────────────────────────────────────────────────────────────
--- Normalized to a stable shape regardless of flavor:
---   GetSpellName(id)    -> string|nil
---   GetSpellTexture(id) -> number|nil (icon file id)
---   GetSpellInfo(id)    -> name, icon, castTime   (three values, both flavors)
+-- GetSpellName(id)    -> string|nil
+-- GetSpellTexture(id) -> number|nil (icon file id)
+-- GetSpellInfo(id)    -> the legacy multi-return, on every client:
+--   name, rank, icon, castTime, minRange, maxRange, spellID, originalIcon
+-- C_Spell.GetSpellInfo has two shapes. Retail returns a table (or nil when
+-- the spell is missing). Rank has no field there, so it is nil, and
+-- originalIcon is originalIconID. Some clients still return the legacy
+-- multi-value from that same function: name, rank, icon, castTime, minRange,
+-- maxRange, spellID, originalIcon. Both come back in that order. Callers
+-- that write `local name, _, icon = GetSpellInfo(id)` keep working.
+-- GetSpellCooldown(id) -> start, duration, enabled, modRate
+-- isEnabled on the C_Spell table is a boolean. The legacy third value is
+-- 1 or 0. A secret is returned as-is: comparing it would throw.
+
+local function LegacyEnabled(v)
+    if type(issecretvalue) == "function" then
+        local ok, secret = pcall(issecretvalue, v)
+        if ok and secret == true then return v end
+    end
+    if v == true then return 1 end
+    if v == false then return 0 end
+    return v
+end
 
 function C.GetSpellName(spellID)
     if C_Spell and C_Spell.GetSpellName then
@@ -112,32 +131,39 @@ function C.GetSpellName(spellID)
 end
 
 function C.GetSpellTexture(spellID)
-    if C_Spell and C_Spell.GetSpellInfo then
-        local info = C_Spell.GetSpellInfo(spellID)
-        return info and info.iconID
+    if C_Spell and type(C_Spell.GetSpellInfo) == "function" then
+        local info, _, icon = C_Spell.GetSpellInfo(spellID)
+        if type(info) == "table" then return info.iconID end
+        if icon ~= nil then return icon end
     end
-    if GetSpellTexture then return GetSpellTexture(spellID) end
+    if type(GetSpellTexture) == "function" then return GetSpellTexture(spellID) end
     return nil
 end
 
 function C.GetSpellInfo(spellID)
-    if C_Spell and C_Spell.GetSpellInfo then
-        local info = C_Spell.GetSpellInfo(spellID)
-        if info then return info.name, info.iconID, info.castTime end
-        return nil
+    if C_Spell and type(C_Spell.GetSpellInfo) == "function" then
+        local a, b, c, d, e, f, g, h = C_Spell.GetSpellInfo(spellID)
+        if a == nil then return nil end
+        if type(a) == "table" then
+            return a.name, nil, a.iconID, a.castTime,
+                a.minRange, a.maxRange, a.spellID, a.originalIconID
+        end
+        return a, b, c, d, e, f, g, h
     end
-    if GetSpellInfo then
-        local name, _, icon, castTime = GetSpellInfo(spellID)
-        return name, icon, castTime
+    if type(GetSpellInfo) == "function" then
+        return GetSpellInfo(spellID)
     end
     return nil
 end
 
 function C.GetSpellCooldown(spellID)
     if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
-        local info = C_Spell.GetSpellCooldown(spellID)
-        if info then return info.startTime, info.duration, info.isEnabled end
-        return nil
+        local a, b, c, d = C_Spell.GetSpellCooldown(spellID)
+        if a == nil then return nil end
+        if type(a) == "table" then
+            return a.startTime, a.duration, LegacyEnabled(a.isEnabled), a.modRate
+        end
+        return a, b, c, d
     end
     if type(GetSpellCooldown) == "function" then
         return GetSpellCooldown(spellID)
@@ -186,6 +212,51 @@ end
 function C.GetVersatilityBonus(index)
     if type(GetVersatilityBonus) ~= "function" or index == nil then return nil end
     return GetVersatilityBonus(index)
+end
+
+--- Nil when the item is uncached or neither API exists. Never calls a nil.
+function C.GetItemInfoInstant(item)
+    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+        return C_Item.GetItemInfoInstant(item)
+    end
+    if type(GetItemInfoInstant) == "function" then return GetItemInfoInstant(item) end
+    return nil
+end
+
+--- Extra flags (includeBank and the rest) are passed through. A missing API
+--- returns nil, which is not the same as "the player has zero".
+function C.GetItemCount(item, ...)
+    if C_Item and type(C_Item.GetItemCount) == "function" then
+        return C_Item.GetItemCount(item, ...)
+    end
+    if type(GetItemCount) == "function" then return GetItemCount(item, ...) end
+    return nil
+end
+
+function C.GetDetailedItemLevelInfo(item)
+    if C_Item and type(C_Item.GetDetailedItemLevelInfo) == "function" then
+        return C_Item.GetDetailedItemLevelInfo(item)
+    end
+    if type(GetDetailedItemLevelInfo) == "function" then return GetDetailedItemLevelInfo(item) end
+    return nil
+end
+
+function C.IsEquippableItem(item)
+    if C_Item and type(C_Item.IsEquippableItem) == "function" then
+        return C_Item.IsEquippableItem(item)
+    end
+    if type(IsEquippableItem) == "function" then return IsEquippableItem(item) end
+    return nil
+end
+
+--- r, g, b, hex. Retail 10.2.6+, Forever, Mists, TBC, and Era all return
+--- those four values from C_Item.GetItemQualityColor and from the global.
+function C.GetItemQualityColor(quality)
+    if C_Item and type(C_Item.GetItemQualityColor) == "function" then
+        return C_Item.GetItemQualityColor(quality)
+    end
+    if type(GetItemQualityColor) == "function" then return GetItemQualityColor(quality) end
+    return nil
 end
 
 -- ── Addons ───────────────────────────────────────────────────────────────

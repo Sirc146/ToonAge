@@ -59,6 +59,16 @@ DG.LOOT_TABLE = {
     { dungeon = "Algeth'ar Academy", boss = "Crawth",                slot = "INVTYPE_FINGER",    itemID = 232085, ilvl = 639, stat = "AGI" },
 }
 
+--- Item level, or 0 when Retail has no GetDetailedItemLevelInfo global and
+--- Compat cannot answer. Never calls a nil.
+local function ReadItemLevel(link)
+    local fn = TA.Compat and TA.Compat.GetDetailedItemLevelInfo
+    if type(fn) ~= "function" or not link then return 0 end
+    local ok, ilvl = pcall(fn, link)
+    if ok and type(ilvl) == "number" then return ilvl end
+    return 0
+end
+
 -- Map INVTYPE to equipment slot IDs for comparison with Gear.lua
 local SLOT_MAP = {
     INVTYPE_HEAD       = 1,  INVTYPE_NECK     = 2,  INVTYPE_SHOULDER = 3,
@@ -130,7 +140,7 @@ function DG:GetFormattedSuggestions()
         if slotID ~= 4 then  -- skip shirt
             local link = GetInventoryItemLink("player", slotID)
             if link then
-                local ilvl = GetDetailedItemLevelInfo(link) or 0
+                local ilvl = ReadItemLevel(link)
                 table.insert(weakSlots, { slotID = slotID, score = ilvl })
             else
                 -- Empty slot is the weakest
@@ -182,7 +192,7 @@ function DG:RankDungeons(maxDungeons)
                 local mode = (TA.charDB and TA.charDB.pvxMode) or "pve"
                 slotScores[slotID] = Gear.CalculateItemScore(link, specID, mode) or 0
             else
-                slotScores[slotID] = link and (GetDetailedItemLevelInfo(link) or 0) * 3 or 0
+                slotScores[slotID] = ReadItemLevel(link) * 3
             end
         end
     end
