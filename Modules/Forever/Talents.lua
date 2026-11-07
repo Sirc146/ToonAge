@@ -937,21 +937,42 @@ local function TakePooled(kind, parent, make)
     return f
 end
 
+local function AlreadyPooled(pool, f)
+    for i = 1, #pool do
+        if pool[i] == f then return true end
+    end
+    return false
+end
+
 local function StashPooled(kind, list)
     local pool = TalentPool(kind)
     for i = #list, 1, -1 do
         local f = list[i]
         list[i] = nil
-        if f then
+        if f and not AlreadyPooled(pool, f) then
             if f.Hide then f:Hide() end
             if f.SetParent then f:SetParent(nil) end
             pool[#pool + 1] = f
+        elseif f then
+            if f.Hide then f:Hide() end
         end
     end
 end
 
 local function ReleaseTalentFrames()
     M._talentLive = M._talentLive or { holder = {}, button = {}, glow = {}, line = {} }
+    -- A glow is owned by its button (btn.glow). It is never in the free
+    -- pool at the same time. Stashing it on release as well made the next
+    -- TakePooled hand that same frame to a different button.
+    for _, btn in ipairs(M._talentLive.button) do
+        btn._hover = false
+        local glow = btn.glow
+        if glow then
+            if glow.Hide then glow:Hide() end
+            if glow.SetParent then glow:SetParent(nil) end
+        end
+    end
+    M._talentLive.glow = {}
     for kind, list in pairs(M._talentLive) do
         StashPooled(kind, list)
     end
@@ -983,6 +1004,9 @@ local function DrawGrid(parent, y, plan, pad)
         btn.shape = cell.shape
         btn._px = cell.w
         btn._locked = cell.locked
+        -- A reused button must not keep the previous node's hover, or the
+        -- next paint stays on the gold focus frame.
+        btn._hover = false
         -- Reset after the button is parented. A pooled node must not restore
         -- the level it had under the previous holder.
         local placed = (holder.GetFrameLevel and holder:GetFrameLevel()) or 1
@@ -1025,7 +1049,6 @@ local function DrawGrid(parent, y, plan, pad)
             if glow.SetParent then glow:SetParent(holder) end
             if glow.Show then glow:Show() end
         end
-        M._talentLive.glow[#M._talentLive.glow + 1] = glow
         if glow.ClearAllPoints then glow:ClearAllPoints() end
         glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -M.GLOW_OUTSET, M.GLOW_OUTSET)
         glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", M.GLOW_OUTSET, -M.GLOW_OUTSET)
