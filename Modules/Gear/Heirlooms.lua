@@ -15,7 +15,12 @@
 --   C_Heirloom.CreateHeirloom(itemID)          called from
 --        HeirloomsJournalSpellButton_OnClick, which is Blizzard's own
 --        untainted click. Addon code is tainted, so this is treated as
---        protected and is never called. The row offers "Open Heirloom Journal".
+--        protected and is never called. When C_Heirloom exists, clicking a
+--        collection row opens the Heirlooms tab and searches for the item.
+--        A closed journal opens with ToggleCollectionsJournal. An open
+--        journal only switches tabs. The player creates the item with
+--        Blizzard's own journal button. TBC, Era and Forever have no
+--        C_Heirloom, so that click and its hint never appear there.
 -- C_HeirloomInfo (9.2.5) is journal filters only. It is not the collection.
 --
 -- Experience, from https://warcraft.wiki.gg/wiki/Heirloom :
@@ -372,18 +377,210 @@ local function InCombat()
     return InCombatLockdown and InCombatLockdown()
 end
 
-function M.OpenJournal()
-    if type(CollectionsJournal_LoadUI) == "function" then
-        pcall(CollectionsJournal_LoadUI)
+function M.Note(text)
+    if type(text) ~= "string" or text == "" then return end
+    if TA.Print then
+        TA:Print(TA.LOG and TA.LOG.OUTPUT, nil, text)
     end
+end
+
+--- Heirlooms tab index. Prefer the Blizzard constant. Never calls an API.
+function M.HeirloomTab()
     local tab = _G.COLLECTIONS_JOURNAL_TAB_INDEX_HEIRLOOMS
     if type(tab) ~= "number" and type(Enum) == "table" and type(Enum.CollectionsJournalTab) == "table" then
         tab = Enum.CollectionsJournalTab.Heirlooms
     end
+    -- UNVERIFIED. 4 is the retail Heirlooms index when neither constant exists.
     if type(tab) ~= "number" then tab = 4 end
+    return tab
+end
+
+--- The journal click and its hint exist only where C_Heirloom exists.
+--- TBC, Era and Forever do not have that namespace, so the click stays off.
+function M.JournalClickEnabled()
+    local flavor = TA.flavor
+    if flavor == "vanilla" or flavor == "tbc" or flavor == "forever" then return false end
+    return type(_G["C_Heirloom"]) == "table"
+end
+
+--- Gold wash shown only while the pointer is over a clickable row.
+--- Nil where the journal click is off, so the row does not look clickable.
+function M.RowHover()
+    if not M.JournalClickEnabled() then return nil end
+    return 1, 0.82, 0, 0.18
+end
+
+--- Item name for the journal search. Compat item info first, then the
+--- heirloom collection. Nil when neither answers.
+function M.HeirloomName(item)
+    if type(item) ~= "table" then return nil end
+    local info = TA.Compat and TA.Compat.GetItemInfo
+    local key = item.link or item.itemID
+    if type(info) == "function" and key ~= nil then
+        local ok, name = pcall(info, key)
+        if ok and type(name) == "string" and name ~= "" then return name end
+    end
+    local heirloom = _G["C_Heirloom"]
+    local getInfo = type(heirloom) == "table" and heirloom.GetHeirloomInfo
+    if type(getInfo) == "function" and item.itemID ~= nil then
+        local ok, name = pcall(getInfo, item.itemID)
+        if ok and type(name) == "string" and name ~= "" then return name end
+    end
+    if type(item.name) == "string" and item.name ~= "" then return item.name end
+    return nil
+end
+
+local function CombatLocked()
+    if type(InCombatLockdown) ~= "function" then return false end
+    local ok, locked = pcall(InCombatLockdown)
+    return ok and locked and true or false
+end
+
+local function FrameShown(frame)
+    if type(frame) ~= "table" or type(frame.IsShown) ~= "function" then return false end
+    local ok, shown = pcall(frame.IsShown, frame)
+    return ok and shown and true or false
+end
+
+local function SelectedTab(frame)
+    if type(frame) ~= "table" then return nil end
+    if type(frame.GetSelectedTab) == "function" then
+        local ok, tab = pcall(frame.GetSelectedTab, frame)
+        if ok and type(tab) == "number" then return tab end
+    end
+    if type(PanelTemplates_GetSelectedTab) == "function" then
+        local ok, tab = pcall(PanelTemplates_GetSelectedTab, frame)
+        if ok and type(tab) == "number" then return tab end
+    end
+    return nil
+end
+
+local function SwitchHeirloomTab(frame, tab)
+    if type(CollectionsJournal_SetTab) == "function" then
+        local ok = pcall(CollectionsJournal_SetTab, frame, tab)
+        if ok then return true end
+    end
+    if type(frame) == "table" and type(frame.SetTab) == "function" then
+        local ok = pcall(frame.SetTab, frame, tab)
+        if ok then return true end
+    end
+    return false
+end
+
+--- A closed journal opens with ToggleCollectionsJournal(tab). An open
+--- journal only switches tabs, then the caller runs the search. There is
+--- no CollectionsJournal:Show() path.
+local function ShowHeirloomTab()
+    if not M.JournalClickEnabled() then return false end
+    local tab = M.HeirloomTab()
+    local frame = _G.CollectionsJournal
+    if FrameShown(frame) then
+        if SelectedTab(frame) ~= tab then
+            SwitchHeirloomTab(frame, tab)
+        end
+        return true
+    end
+    if type(CollectionsJournal_LoadUI) == "function" then
+        pcall(CollectionsJournal_LoadUI)
+    end
+    frame = _G.CollectionsJournal
+    if FrameShown(frame) then
+        if SelectedTab(frame) ~= tab then
+            SwitchHeirloomTab(frame, tab)
+        end
+        return true
+    end
     if type(ToggleCollectionsJournal) ~= "function" then return false end
     local ok = pcall(ToggleCollectionsJournal, tab)
-    return ok
+    return ok and true or false
+end
+
+--- Open the Heirlooms tab and search for this item. Out of combat only.
+--- Does not call CreateHeirloom and does not click Blizzard's buttons.
+--- An open Heirlooms tab stays open; the click only sets the search.
+--- "combat" when locked. "searched" when the filter was set. "opened" when
+--- the tab is up but SetSearch is missing or has no name. "unavailable"
+--- when the journal cannot be shown.
+function M.OpenHeirloom(item)
+    if not M.JournalClickEnabled() then return "unavailable" end
+    if CombatLocked() then
+        M.Note("Leave combat to open the Heirloom Journal.")
+        return "combat"
+    end
+    if not ShowHeirloomTab() then
+        M.Note("The Heirloom Journal is not available on this client.")
+        return "unavailable"
+    end
+    local search
+    local heirloom = _G["C_Heirloom"]
+    if type(heirloom) == "table" then search = heirloom.SetSearch end
+    local name = M.HeirloomName(item)
+    if type(search) == "function" and type(name) == "string" then
+        local ok = pcall(search, name)
+        if ok then
+            M.Note("Click it in the journal to create it.")
+            return "searched"
+        end
+    end
+    M.Note("Click it in the journal to create it.")
+    return "opened"
+end
+
+--- Presence only. Does not open the journal and does not call CreateHeirloom.
+function M.JournalReport()
+    local lines = {}
+    local function add(text) lines[#lines + 1] = text end
+    local function flag(label, present)
+        add(label .. " " .. (present and "present" or "absent"))
+    end
+    flag("CollectionsJournal_LoadUI", type(CollectionsJournal_LoadUI) == "function")
+    flag("CollectionsJournal_SetTab", type(CollectionsJournal_SetTab) == "function")
+    flag("PanelTemplates_GetSelectedTab", type(PanelTemplates_GetSelectedTab) == "function")
+    local frame = _G.CollectionsJournal
+    flag("CollectionsJournal.SetTab", type(frame) == "table" and type(frame.SetTab) == "function")
+    flag("ToggleCollectionsJournal", type(ToggleCollectionsJournal) == "function")
+    local heirloom = _G["C_Heirloom"]
+    flag("C_Heirloom", type(heirloom) == "table")
+    add("Heirloom tab index " .. tostring(M.HeirloomTab()))
+    add("Heirloom journal click " .. (M.JournalClickEnabled() and "on" or "off"))
+    local search = type(heirloom) == "table" and heirloom.SetSearch
+    flag("C_Heirloom.SetSearch", type(search) == "function")
+    local create = type(heirloom) == "table" and type(heirloom.CreateHeirloom) == "function"
+    add("C_Heirloom.CreateHeirloom " .. (create and "present, not called" or "absent"))
+    return lines
+end
+
+--- /ta heirlooms probe. Reports the journal functions, then opens the tab
+--- only when the click feature is on and the player is out of combat.
+function M.JournalProbe()
+    local lines = M.JournalReport()
+    if CombatLocked() then
+        M.Note("Leave combat to open the Heirloom Journal.")
+        lines[#lines + 1] = "Leave combat to open the Heirloom Journal."
+        return lines
+    end
+    if not M.JournalClickEnabled() then return lines end
+    local wasShown = FrameShown(_G.CollectionsJournal)
+    local ok = ShowHeirloomTab()
+    if wasShown then
+        lines[#lines + 1] = "Heirloom journal already open, left open"
+    elseif ok then
+        lines[#lines + 1] = "Heirloom journal shown"
+    else
+        lines[#lines + 1] = "Heirloom journal unavailable"
+    end
+    local heirloom = _G["C_Heirloom"]
+    local search = type(heirloom) == "table" and heirloom.SetSearch
+    if type(search) == "function" then
+        local called, err = pcall(search, "")
+        lines[#lines + 1] = "C_Heirloom.SetSearch " .. (called and "called" or ("failed: " .. tostring(err)))
+    end
+    return lines
+end
+
+function M.OpenJournal()
+    local result = M.OpenHeirloom(nil)
+    return result == "searched" or result == "opened"
 end
 
 local function Remember(list, item)
@@ -732,7 +929,16 @@ function M:Redraw()
 end
 
 M.SlashCommands = {
-    heirlooms = function(mod)
+    heirlooms = function(mod, args)
+        if args == "probe" then
+            local lines = M.JournalProbe()
+            if TA.Print then
+                for _, line in ipairs(lines) do
+                    TA:Print(TA.LOG.OUTPUT, nil, line)
+                end
+            end
+            return
+        end
         if mod._mode ~= "off" and mod._mode ~= "skip" then mod:Scan() end
         mod:Redraw()
         if TA.Print then
@@ -1013,15 +1219,38 @@ function M:Draw(parent, y, width)
                 end)
             elseif item.where == "bag" then
                 btn = MakePlainButton(line, "Equip", nil, true, true)
-            else
-                btn = MakePlainButton(line, "Open Heirloom Journal", function()
-                    if not M.OpenJournal() and TA.Print then
-                        TA:Print(TA.LOG.OUTPUT, nil, "The Heirloom Journal is not available on this client.")
-                    end
-                end, false, false)
-                btn:SetSize(158, 22)
             end
-            btn:SetPoint("RIGHT", line, "RIGHT", 0, 0)
+            if btn then btn:SetPoint("RIGHT", line, "RIGHT", 0, 0) end
+            local hr, hg, hb, ha = M.RowHover()
+            if item.where ~= "bag" and item.where ~= "bank" and hr then
+                -- The row is the control. CreateHeirloom stays on Blizzard's button.
+                local highlight = line:CreateTexture(nil, "HIGHLIGHT")
+                highlight:SetAllPoints(line)
+                if highlight.SetColorTexture then
+                    highlight:SetColorTexture(hr, hg, hb, ha)
+                else
+                    highlight:SetTexture("Interface\\Buttons\\WHITE8X8")
+                    if highlight.SetVertexColor then highlight:SetVertexColor(hr, hg, hb, ha) end
+                end
+                highlight:Hide()
+                line:EnableMouse(true)
+                line:SetScript("OnMouseUp", function()
+                    M.OpenHeirloom(item)
+                end)
+                line:SetScript("OnEnter", function(row)
+                    if highlight.Show then highlight:Show() end
+                    if not (GameTooltip and GameTooltip.SetOwner) then return end
+                    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+                    if GameTooltip.SetText then
+                        GameTooltip:SetText("Show in the Heirloom Journal", 1, 0.82, 0)
+                    end
+                    if GameTooltip.Show then GameTooltip:Show() end
+                end)
+                line:SetScript("OnLeave", function()
+                    if highlight.Hide then highlight:Hide() end
+                    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+                end)
+            end
         end
         y = y - 48
     end

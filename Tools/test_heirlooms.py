@@ -143,6 +143,138 @@ eq("unknown class excluded", M.CanWear(nil, 4, 4, "WARRIOR", nil, "retail"), fal
 eq("unknown subclass excluded", M.CanWear(4, nil, 1, "WARLOCK", nil, "retail"), false)
 eq("weapon kept", M.CanWear(2, 7, 1, "WARLOCK", nil, "retail"), true)
 
+ToonAge.flavor = "retail"
+C_Heirloom = { GetHeirloomInfo = function() return "Tattered Dreadmist" end }
+InCombatLockdown = function() return true end
+eq("combat does not open the journal", M.OpenHeirloom({ itemID = 9, name = "Helm" }), "combat")
+InCombatLockdown = function() return false end
+local calls = {}
+local shown = 0
+CollectionsJournal_LoadUI = function() calls[#calls + 1] = "load" end
+ToggleCollectionsJournal = function(tab) calls[#calls + 1] = "tab:" .. tostring(tab) end
+C_Heirloom = {
+    GetHeirloomInfo = function() return "Tattered Dreadmist" end,
+    SetSearch = function(name) calls[#calls + 1] = "search:" .. tostring(name) end,
+    CreateHeirloom = function() calls[#calls + 1] = "create" end,
+}
+ToonAge.Compat = { GetItemInfo = function() return "Tattered Dreadmist Robe" end }
+eq("row searches the journal", M.OpenHeirloom({ itemID = 9, link = "item:9" }), "searched")
+eq("loaded the journal UI", calls[1], "load")
+eq("closed journal uses toggle", calls[2], "tab:4")
+eq("searched the item name", calls[3], "search:Tattered Dreadmist Robe")
+eq("did not create the heirloom", calls[4], nil)
+eq("closed journal did not call Show", shown, 0)
+C_Heirloom.SetSearch = nil
+calls = {}
+eq("missing SetSearch still opens the tab", M.OpenHeirloom({ itemID = 9 }), "opened")
+eq("fallback still loaded the UI", calls[1], "load")
+eq("fallback still toggled the tab", calls[2], "tab:4")
+eq("fallback did not search", calls[3], nil)
+ToonAge.Compat.GetItemInfo = function() return nil end
+eq("name falls back to GetHeirloomInfo", M.HeirloomName({ itemID = 9 }), "Tattered Dreadmist")
+local probe = table.concat(M.JournalProbe(), "\n")
+eq("probe names LoadUI", probe:find("CollectionsJournal_LoadUI present", 1, true) ~= nil, true)
+eq("probe names SetTab", probe:find("CollectionsJournal_SetTab absent", 1, true) ~= nil, true)
+eq("probe names selected tab", probe:find("PanelTemplates_GetSelectedTab absent", 1, true) ~= nil, true)
+eq("probe names frame SetTab", probe:find("CollectionsJournal.SetTab absent", 1, true) ~= nil, true)
+eq("probe names toggle", probe:find("ToggleCollectionsJournal present", 1, true) ~= nil, true)
+eq("probe names C_Heirloom", probe:find("C_Heirloom present", 1, true) ~= nil, true)
+eq("probe names the tab index", probe:find("Heirloom tab index 4", 1, true) ~= nil, true)
+eq("probe names SetSearch", probe:find("C_Heirloom.SetSearch absent", 1, true) ~= nil, true)
+eq("probe does not create", probe:find("CreateHeirloom present, not called", 1, true) ~= nil, true)
+
+COLLECTIONS_JOURNAL_TAB_INDEX_HEIRLOOMS = 9
+eq("tab prefers the blizzard constant", M.HeirloomTab(), 9)
+COLLECTIONS_JOURNAL_TAB_INDEX_HEIRLOOMS = nil
+Enum = { CollectionsJournalTab = { Heirlooms = 7 } }
+eq("tab prefers the enum", M.HeirloomTab(), 7)
+Enum = nil
+eq("tab falls back to 4", M.HeirloomTab(), 4)
+
+InCombatLockdown = function() return true end
+local notes = {}
+ToonAge.LOG = { OUTPUT = 1 }
+ToonAge.Print = function(_, _, _, text) notes[#notes + 1] = text end
+calls = {}
+local combatProbe = table.concat(M.JournalProbe(), "\n")
+eq("probe in combat does not toggle", #calls, 0)
+eq("probe in combat still reports the api", combatProbe:find("C_Heirloom present", 1, true) ~= nil, true)
+eq("probe in combat hint", combatProbe:find("Leave combat to open the Heirloom Journal.", 1, true) ~= nil, true)
+eq("probe in combat prints the hint", notes[1], "Leave combat to open the Heirloom Journal.")
+InCombatLockdown = function() return false end
+
+calls = {}
+shown = 0
+C_Heirloom.SetSearch = function(name) calls[#calls + 1] = "search:" .. tostring(name) end
+ToonAge.Compat.GetItemInfo = function() return "Tattered Dreadmist Robe" end
+local toggled = 0
+ToggleCollectionsJournal = function() toggled = toggled + 1 end
+CollectionsJournal = {
+    IsShown = function() return true end,
+    GetSelectedTab = function() return 4 end,
+    Show = function() shown = shown + 1 end,
+}
+eq("shown journal is searched", M.OpenHeirloom({ itemID = 9, link = "item:9" }), "searched")
+eq("shown journal is not toggled", toggled, 0)
+eq("shown journal is not Show()", shown, 0)
+eq("shown journal searched", calls[1], "search:Tattered Dreadmist Robe")
+
+calls = {}
+shown = 0
+toggled = 0
+CollectionsJournal_SetTab = function(_, tab) calls[#calls + 1] = "settab:" .. tostring(tab) end
+CollectionsJournal.GetSelectedTab = function() return 1 end
+CollectionsJournal.SetTab = function(_, tab) calls[#calls + 1] = "frameset:" .. tostring(tab) end
+eq("open journal switches tabs", M.OpenHeirloom({ itemID = 9, link = "item:9" }), "searched")
+eq("open journal used SetTab", calls[1], "settab:4")
+eq("open journal did not use frame SetTab", calls[2], "search:Tattered Dreadmist Robe")
+eq("open journal was not toggled", toggled, 0)
+eq("open journal was not Show()", shown, 0)
+
+calls = {}
+shown = 0
+CollectionsJournal = {
+    IsShown = function() return false end,
+    Show = function() shown = shown + 1 end,
+    SetTab = function(_, tab) calls[#calls + 1] = "frameset:" .. tostring(tab) end,
+}
+ToggleCollectionsJournal = function(tab) calls[#calls + 1] = "tab:" .. tostring(tab) end
+eq("hidden journal toggles", M.OpenHeirloom({ itemID = 9, link = "item:9" }), "searched")
+eq("hidden journal toggle carries the tab", calls[2], "tab:4")
+eq("hidden journal does not call Show", shown, 0)
+
+notes = {}
+calls = {}
+C_Heirloom = nil
+eq("missing C_Heirloom does not open", M.OpenHeirloom({ itemID = 9, name = "Helm" }), "unavailable")
+eq("missing C_Heirloom prints no hint", #notes, 0)
+eq("missing C_Heirloom does not toggle", #calls, 0)
+eq("missing C_Heirloom click is off", M.JournalClickEnabled(), false)
+C_Heirloom = { SetSearch = function() notes[#notes + 1] = "search" end }
+for _, flavor in ipairs({ "tbc", "vanilla", "forever" }) do
+    ToonAge.flavor = flavor
+    notes = {}
+    calls = {}
+    eq(flavor .. " click stays off", M.JournalClickEnabled(), false)
+    eq(flavor .. " open does nothing", M.OpenHeirloom({ itemID = 9, name = "Helm" }), "unavailable")
+    eq(flavor .. " prints no hint", #notes, 0)
+end
+ToonAge.flavor = "retail"
+eq("retail click is on when C_Heirloom exists", M.JournalClickEnabled(), true)
+local hr, hg, hb, ha = M.RowHover()
+eq("hover is gold", hr, 1)
+eq("hover gold green", hg, 0.82)
+eq("hover gold blue", hb, 0)
+eq("hover alpha is low", ha ~= nil and ha > 0 and ha < 0.4, true)
+C_Heirloom = nil
+eq("no hover without C_Heirloom", M.RowHover(), nil)
+C_Heirloom = {}
+for _, flavor in ipairs({ "tbc", "vanilla", "forever" }) do
+    ToonAge.flavor = flavor
+    eq(flavor .. " has no hover", M.RowHover(), nil)
+end
+ToonAge.flavor = "retail"
+
 local ids = M.BankContainers(4, 7, -1)
 eq("main bank plus seven bags", #ids, 8)
 eq("main bank is first", ids[1], -1)
@@ -187,7 +319,9 @@ check("literal PlayerHasHeirloom", "C_Heirloom.PlayerHasHeirloom" in src, True)
 check("literal GetHeirloomInfo", "C_Heirloom.GetHeirloomInfo" in src, True)
 check("literal GetHeirloomMaxUpgradeLevel", "C_Heirloom.GetHeirloomMaxUpgradeLevel" in src, True)
 check("does not call CreateHeirloom", "pcall(C_Heirloom.CreateHeirloom" not in src, True)
-check("journal label", "Open Heirloom Journal" in src, True)
+check("journal hint", "Click it in the journal to create it." in src, True)
+check("row opens the journal", "M.OpenHeirloom(item)" in src, True)
+check("no separate journal button", "Open Heirloom Journal" not in src, True)
 check("name colour", "00CCFF" in src, True)
 check("pip texture", "util_pip_8.tga" in src, True)
 check("lock texture", "util_lock_16.tga" in src, True)
@@ -222,7 +356,21 @@ ui = read("Core/UI.lua")
 check("era empty card", "Classic Era has no heirloom items" in ui, True)
 harness = read("Modules/Infrastructure/TestHarness.lua")
 check("self-test probes the collection API", "C_Heirloom collection API" in harness, True)
+check("self-test reports SetSearch", "Heirloom.SetSearch" in harness, True)
+check("self-test reports journal load", "CollectionsJournal_LoadUI" in harness, True)
+check("self-test reports the tab switch", "ToggleCollectionsJournal" in harness, True)
+check("self-test reports CollectionsJournal_SetTab", "CollectionsJournal_SetTab" in harness, True)
+check("self-test reports PanelTemplates_GetSelectedTab", "PanelTemplates_GetSelectedTab" in harness, True)
+check("self-test reports CollectionsJournal.SetTab", "CollectionsJournal.SetTab" in harness, True)
+check("self-test reports C_Heirloom", 'S(INFO, "C_Heirloom "' in harness, True)
+check("self-test reports the tab index", "Heirloom tab index " in harness, True)
 check("self-test records CreateHeirloom", "CreateHeirloom" in harness, True)
+check("closed journal is not opened with Show", "frame.Show" not in src, True)
+check("click is gated on C_Heirloom", "function M.JournalClickEnabled()" in src, True)
+check("row click checks the hover gate", 'item.where ~= "bank" and hr' in src, True)
+check("hover gold is 1, 0.82, 0", "return 1, 0.82, 0, 0.18" in src, True)
+check("hover starts hidden", "highlight:Hide()" in src, True)
+check("fallback tab is marked unverified", "UNVERIFIED" in src, True)
 profile = read("Core/Profile.lua")
 check("tbc profile allows the module", "Heirlooms" in profile, True)
 
