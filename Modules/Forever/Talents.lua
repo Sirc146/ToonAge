@@ -913,8 +913,56 @@ local function PaintNode(btn)
     end
 end
 
+local function TalentPool(kind)
+    M._talentPool = M._talentPool or {}
+    local pool = M._talentPool[kind]
+    if not pool then
+        pool = {}
+        M._talentPool[kind] = pool
+    end
+    return pool
+end
+
+local function TakePooled(kind, parent, make)
+    local pool = TalentPool(kind)
+    local f = table.remove(pool)
+    if not f then
+        f = make()
+        if not f then return nil end
+        f._laKind = "Talent" .. kind
+    end
+    if f.SetParent then f:SetParent(parent) end
+    if f.ClearAllPoints then f:ClearAllPoints() end
+    if f.Show then f:Show() end
+    return f
+end
+
+local function StashPooled(kind, list)
+    local pool = TalentPool(kind)
+    for i = #list, 1, -1 do
+        local f = list[i]
+        list[i] = nil
+        if f then
+            if f.Hide then f:Hide() end
+            if f.SetParent then f:SetParent(nil) end
+            pool[#pool + 1] = f
+        end
+    end
+end
+
+local function ReleaseTalentFrames()
+    M._talentLive = M._talentLive or { holder = {}, button = {}, glow = {}, line = {} }
+    for kind, list in pairs(M._talentLive) do
+        StashPooled(kind, list)
+    end
+end
+
 local function DrawGrid(parent, y, plan, pad)
-    local holder = CreateFrame("Frame", nil, parent)
+    M._talentLive = M._talentLive or { holder = {}, button = {}, glow = {}, line = {} }
+    local holder = TakePooled("holder", parent, function()
+        return CreateFrame("Frame", nil, parent)
+    end)
+    M._talentLive.holder[#M._talentLive.holder + 1] = holder
     local width  = math.max(1, math.floor(plan.width + 0.5))
     local height = math.max(1, math.floor(plan.height + 0.5))
     holder:SetSize(width, height)
@@ -924,7 +972,10 @@ local function DrawGrid(parent, y, plan, pad)
 
     local buttons = {}
     for _, cell in ipairs(plan.cells) do
-        local btn = CreateFrame("Button", nil, holder)
+        local btn = TakePooled("button", holder, function()
+            return CreateFrame("Button", nil, holder)
+        end)
+        M._talentLive.button[#M._talentLive.button + 1] = btn
         btn:SetSize(math.floor(cell.w), math.floor(cell.h))
         btn:SetPoint("TOPLEFT", holder, "TOPLEFT", math.floor(cell.x), -math.floor(cell.y))
         btn.id = cell.id
@@ -932,14 +983,26 @@ local function DrawGrid(parent, y, plan, pad)
         btn.shape = cell.shape
         btn._px = cell.w
         btn._locked = cell.locked
-        btn._baseLevel = btn:GetFrameLevel()
+        -- Reset after the button is parented. A pooled node must not restore
+        -- the level it had under the previous holder.
+        local placed = (holder.GetFrameLevel and holder:GetFrameLevel()) or 1
+        if btn.SetFrameLevel then btn:SetFrameLevel(placed) end
+        btn._baseLevel = (btn.GetFrameLevel and btn:GetFrameLevel()) or placed
 
-        local frame = btn:CreateTexture(nil, "BORDER")
+        local frame = btn.frame
+        if not frame then
+            frame = btn:CreateTexture(nil, "BORDER")
+            btn.frame = frame
+        end
         frame:SetAllPoints()
-        btn.frame = frame
 
         local inset = math.max(2, math.floor(cell.w * 0.12))
-        local icon = btn:CreateTexture(nil, "ARTWORK")
+        local icon = btn.icon
+        if not icon then
+            icon = btn:CreateTexture(nil, "ARTWORK")
+            btn.icon = icon
+        end
+        if icon.ClearAllPoints then icon:ClearAllPoints() end
         icon:SetPoint("TOPLEFT", btn, "TOPLEFT", inset, -inset)
         icon:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -inset, inset)
         if cell.texture then
@@ -952,11 +1015,26 @@ local function DrawGrid(parent, y, plan, pad)
         -- talent_glow_circle sits under this node. Hover lifts the node and
         -- the glow above the neighbours; the glow stays one level behind
         -- its own button so it does not cover the icon.
-        local glow = CreateFrame("Frame", nil, holder)
+        local glow = btn.glow
+        if not (glow and glow.SetPoint) then
+            glow = TakePooled("glow", holder, function()
+                return CreateFrame("Frame", nil, holder)
+            end)
+            btn.glow = glow
+        else
+            if glow.SetParent then glow:SetParent(holder) end
+            if glow.Show then glow:Show() end
+        end
+        M._talentLive.glow[#M._talentLive.glow + 1] = glow
+        if glow.ClearAllPoints then glow:ClearAllPoints() end
         glow:SetPoint("TOPLEFT", btn, "TOPLEFT", -M.GLOW_OUTSET, M.GLOW_OUTSET)
         glow:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", M.GLOW_OUTSET, -M.GLOW_OUTSET)
         glow:EnableMouse(false)
-        local gtex = glow:CreateTexture(nil, "BACKGROUND")
+        local gtex = glow.tex
+        if not gtex then
+            gtex = glow:CreateTexture(nil, "BACKGROUND")
+            glow.tex = gtex
+        end
         gtex:SetAllPoints()
         gtex:SetTexture(M.TEX.glow)
         local gold = M.Theme.gold
@@ -968,30 +1046,53 @@ local function DrawGrid(parent, y, plan, pad)
         if cell.badge then
             local bw = math.min(22, math.max(12, math.floor(cell.w * 0.55)))
             local bh = math.min(12, math.max(8, math.floor(cell.h * 0.32)))
-            local fill = btn:CreateTexture(nil, "OVERLAY")
+            local fill = btn.badgeFill
+            if not fill then
+                fill = btn:CreateTexture(nil, "OVERLAY")
+                btn.badgeFill = fill
+            end
             fill:SetSize(bw, bh)
+            if fill.ClearAllPoints then fill:ClearAllPoints() end
             fill:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
             fill:SetTexture(M.TEX.badgeFill)
-            btn.badgeFill = fill
-            local border = btn:CreateTexture(nil, "OVERLAY")
+            if fill.Show then fill:Show() end
+            local border = btn.badgeBorder
+            if not border then
+                border = btn:CreateTexture(nil, "OVERLAY")
+                btn.badgeBorder = border
+            end
             border:SetAllPoints(fill)
             border:SetTexture(M.TEX.badgeBorder)
-            btn.badgeBorder = border
-            local badge = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            if border.Show then border:Show() end
+            local badge = btn.badge
+            if not badge then
+                badge = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                btn.badge = badge
+            end
+            if badge.ClearAllPoints then badge:ClearAllPoints() end
             badge:SetPoint("CENTER", fill, "CENTER", 0, 0)
             badge:SetText(cell.badge)
             badge:SetTextColor(1, 1, 1, 1)
+            if badge.Show then badge:Show() end
+        elseif btn.badgeFill then
+            if btn.badgeFill.Hide then btn.badgeFill:Hide() end
+            if btn.badgeBorder and btn.badgeBorder.Hide then btn.badgeBorder:Hide() end
+            if btn.badge and btn.badge.Hide then btn.badge:Hide() end
         end
 
         -- One lock per gated talent. The row used to carry a single "N pts"
         -- label; the requirement now belongs to the node it gates.
-        local lock = btn:CreateTexture(nil, "OVERLAY")
+        local lock = btn.lock
+        if not lock then
+            lock = btn:CreateTexture(nil, "OVERLAY")
+            btn.lock = lock
+        end
         local lockPx = math.min(16, math.max(10, math.floor(cell.w * 0.4)))
         lock:SetSize(lockPx, lockPx)
+        if lock.ClearAllPoints then lock:ClearAllPoints() end
         lock:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
         lock:SetTexture(M.LOCK_TEXTURE)
         lock:Hide()
-        btn.lock = lock
 
         -- The glow sits one level under its own node, so the ring and icon
         -- stay visible. Hover lifts both above the other nodes; leave puts
@@ -1043,8 +1144,12 @@ local function DrawGrid(parent, y, plan, pad)
         for _, ln in ipairs(plan.lines) do
             local a, b = buttons[ln.a], buttons[ln.b]
             if a and b then
-                local ok, line = pcall(holder.CreateLine, holder, nil, "BACKGROUND")
-                if ok and line then
+                local line = TakePooled("line", holder, function()
+                    local ok, made = pcall(holder.CreateLine, holder, nil, "BACKGROUND")
+                    if ok then return made end
+                end)
+                if line then
+                    M._talentLive.line[#M._talentLive.line + 1] = line
                     pcall(function()
                         line:SetThickness(M.LINE_PX)
                         if line.SetTexture then
@@ -1136,12 +1241,16 @@ local function MountTree(content, y, plans, paneH, treeH, treeW)
         end)
     end
 
-    local old = scroll.GetScrollChild and scroll:GetScrollChild()
-    if old and old.SetParent then
-        if old.Hide then old:Hide() end
-        old:SetParent(nil)
+    ReleaseTalentFrames()
+    local child = scroll._taChild
+    if not (child and child.SetParent) then
+        child = CreateFrame("Frame", nil, scroll)
+        child._laKind = "TalentScrollChild"
+        scroll._taChild = child
     end
-    local child = CreateFrame("Frame", nil, scroll)
+    scroll._laKind = "TalentScroll"
+    child:SetParent(scroll)
+    if child.Show then child:Show() end
     local cw = math.max(1, math.floor((tonumber(treeW) or 1) + 0.5))
     local ch = math.max(1, math.floor((tonumber(treeH) or 1) + 0.5))
     child:SetSize(cw, ch)
