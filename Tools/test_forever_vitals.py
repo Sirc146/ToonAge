@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Forever character health and mana.
+"""Forever character health and mana secrecy.
 
-Blizzard can show 192 health and 330 mana out of combat while this tab
-draws a dash. A value that supports arithmetic is a plain number, even
-if issecretvalue says otherwise. A value that cannot be added is withheld.
-The combat footnote is only for a withheld value while actually in combat.
-A class with no mana pool does not get a 0 / 0 bar.
+The 2026-09-23 probe measured UnitHealth mid-combat: issecretvalue was
+true and arithmetic raised. Nothing in that probe, and nothing about
+Blizzard's own frames drawing a number, shows that an out-of-combat
+192/330 is readable by the addon. This test does not claim that.
+
+A value is shown only after canaccessvalue (when present) and
+issecretvalue both allow it, and the result of arithmetic is checked
+again. A true secrecy flag on an ordinary number stays a dash.
+tostring is not a bypass. The combat sentence is only used while
+InCombatLockdown is true.
 
 Usage:  python3 Tools/test_forever_vitals.py [-v]
 """
@@ -50,8 +55,21 @@ UnitLevel = function() return 7 end
 inCombat = false
 function InCombatLockdown() return inCombat end
 
--- The flag can be wrong. Arithmetic is the test that the number is usable.
-issecretvalue = function() return true end
+adds = 0
+function Plain(n)
+    return n
+end
+function Trap(n)
+    return setmetatable({}, {
+        __add = function()
+            adds = adds + 1
+            error("arithmetic on a withheld value")
+        end,
+    })
+end
+
+issecretvalue = function() return false end
+canaccessvalue = nil
 UnitHealth = function() return 192 end
 UnitHealthMax = function() return 192 end
 UnitPower = function(_, powerType) if powerType == 0 then return 330 end end
@@ -92,33 +110,112 @@ end
 """)
 load(lua, "Modules/Forever/Character.lua")
 lua.execute(r"""
+-- Accessible: predicates say the numbers may be used. This is not a
+-- claim about the live 192/330 screenshot.
+issecretvalue = function() return false end
+canaccessvalue = nil
+inCombat = false
+adds = 0
+UnitHealth = function() return 192 end
+UnitHealthMax = function() return 192 end
+UnitPower = function() return 330 end
+UnitPowerMax = function() return 330 end
 render()
-health = row("Health")
-mana = row("Mana")
+openHealth = row("Health")
+openMana = row("Mana")
+openNote = noteText()
+
+-- The same numbers with issecretvalue true. Arithmetic would succeed.
+-- The flag is still a refusal. Do not display them.
+issecretvalue = function() return true end
+canaccessvalue = nil
+render()
+flagHealth = row("Health")
+flagMana = row("Mana")
 flagNote = noteText()
 
--- A real secret: addition throws. In combat the dash and the combat note are right.
-local function Secret(n)
-    return setmetatable({}, { __add = function() error("secret arithmetic") end })
+-- Restricted: canaccessvalue false. Addition must not run.
+issecretvalue = function() return true end
+canaccessvalue = function() return false end
+adds = 0
+UnitHealth = function() return Trap(192) end
+UnitHealthMax = function() return Trap(192) end
+UnitPower = function() return Trap(330) end
+UnitPowerMax = function() return Trap(330) end
+render()
+restrictedHealth = row("Health")
+restrictedAdds = adds
+restrictedNote = noteText()
+
+-- Predicate error is not permission, and it must not fall through to arithmetic.
+canaccessvalue = function() error("canaccessvalue failed") end
+adds = 0
+render()
+accessErrorHealth = row("Health")
+accessErrorAdds = adds
+
+canaccessvalue = nil
+issecretvalue = function() error("issecretvalue failed") end
+adds = 0
+render()
+secretErrorHealth = row("Health")
+secretErrorAdds = adds
+secretErrorNote = noteText()
+
+-- Permission to touch the value, but the result is still secret.
+local still = 192
+canaccessvalue = function(v) return true end
+issecretvalue = function(v) return v == still or v == 330 or type(v) == "table" end
+UnitHealth = function()
+    return setmetatable({}, { __add = function() return still end })
 end
+UnitHealthMax = function()
+    return setmetatable({}, { __add = function() return still end })
+end
+UnitPower = function()
+    return setmetatable({}, { __add = function() return 330 end })
+end
+UnitPowerMax = function()
+    return setmetatable({}, { __add = function() return 330 end })
+end
+render()
+remainsHealth = row("Health")
+remainsMana = row("Mana")
+
+-- In combat, the withheld row uses the combat sentence.
 inCombat = true
-UnitHealth = function() return Secret(1) end
-UnitHealthMax = function() return Secret(1) end
-UnitPower = function() return Secret(1) end
-UnitPowerMax = function() return Secret(1) end
+issecretvalue = function() return true end
+canaccessvalue = function() return false end
+UnitHealth = function() return 192 end
+UnitHealthMax = function() return 192 end
+UnitPower = function() return 330 end
+UnitPowerMax = function() return 330 end
 render()
-secretHealth = row("Health")
-secretNote = noteText()
+combatHealth = row("Health")
+combatNote = noteText()
 
--- Out of combat, a withheld number must not claim the player is in combat.
+-- Out of combat, the same refusal must not say the player is in combat.
 inCombat = false
 render()
-oocSecretNote = noteText()
+oocHealth = row("Health")
+oocNote = noteText()
 
--- Warrior: the client answers a mana pool of 0. No mana bar and no footnote
--- when health itself is a plain number.
+-- Accessible again, including an explicit canaccessvalue true.
 issecretvalue = function() return false end
+canaccessvalue = function() return true end
 inCombat = false
+UnitHealth = function() return 192 end
+UnitHealthMax = function() return 192 end
+UnitPower = function() return 330 end
+UnitPowerMax = function() return 330 end
+render()
+allowedHealth = row("Health")
+allowedMana = row("Mana")
+allowedNote = noteText()
+
+-- Zero mana is an empty pool, not a secret.
+issecretvalue = function() return false end
+canaccessvalue = nil
 UnitHealth = function() return 100 end
 UnitHealthMax = function() return 100 end
 UnitPower = function() return 0 end
@@ -138,20 +235,42 @@ absentNote = noteText()
 """)
 
 g = lua.globals()
-check("out-of-combat health is the plain number", g.health.value, "192 / 192")
-check("out-of-combat mana is the plain number", g.mana.value, "330 / 330")
-check("a usable number does not get the combat footnote",
-      "secret in combat" not in g.flagNote, True)
-check("a real secret in combat is a dash", g.secretHealth.value, "—")
-check("combat footnote only while in combat", "secret in combat" in g.secretNote, True)
-check("withheld out of combat does not claim combat",
-      "secret in combat" not in g.oocSecretNote, True)
+check("an accessible health value is shown", g.openHealth.value, "192 / 192")
+check("an accessible mana value is shown", g.openMana.value, "330 / 330")
+check("an accessible value has no withheld note",
+      "withheld by the client" not in g.openNote and "secret in combat" not in g.openNote, True)
+check("issecretvalue true on 192 stays a dash", g.flagHealth.value, "—")
+check("issecretvalue true on 330 stays a dash", g.flagMana.value, "—")
+check("a true secrecy flag out of combat does not say in combat",
+      "in combat" not in g.flagNote, True)
+check("a true secrecy flag out of combat says the client withheld it",
+      "withheld by the client" in g.flagNote, True)
+check("canaccessvalue false stays a dash", g.restrictedHealth.value, "—")
+check("canaccessvalue false does not attempt arithmetic", g.restrictedAdds, 0)
+check("a throwing canaccessvalue stays a dash", g.accessErrorHealth.value, "—")
+check("a throwing canaccessvalue does not attempt arithmetic", g.accessErrorAdds, 0)
+check("a throwing issecretvalue stays a dash", g.secretErrorHealth.value, "—")
+check("a throwing issecretvalue does not attempt arithmetic", g.secretErrorAdds, 0)
+check("a throwing predicate out of combat does not say in combat",
+      "in combat" not in g.secretErrorNote, True)
+check("a result that stays secret is not shown as health", g.remainsHealth.value, "—")
+check("a result that stays secret is not shown as mana", g.remainsMana.value, "—")
+check("in combat a withheld value is a dash", g.combatHealth.value, "—")
+check("in combat the note says secret in combat", "secret in combat" in g.combatNote, True)
+check("out of combat a withheld value is a dash", g.oocHealth.value, "—")
+check("out of combat the note does not say in combat", "in combat" not in g.oocNote, True)
+check("out of combat the note says the client withheld it",
+      "withheld by the client" in g.oocNote, True)
+check("canaccessvalue true and not secret shows health", g.allowedHealth.value, "192 / 192")
+check("canaccessvalue true and not secret shows mana", g.allowedMana.value, "330 / 330")
+check("an allowed value has no withheld note",
+      "withheld by the client" not in g.allowedNote and "secret in combat" not in g.allowedNote, True)
 check("a zero mana pool draws no mana row", g.rageMana, None)
 check("a zero mana pool does not claim secret combat",
-      "secret in combat" not in g.rageNote, True)
+      "in combat" not in g.rageNote, True)
 check("missing health calls draw no health row", g.absentHealth, None)
 check("missing calls do not claim secret combat",
-      "secret in combat" not in g.absentNote, True)
+      "in combat" not in g.absentNote, True)
 
 passed = sum(_results)
 total = len(_results)
