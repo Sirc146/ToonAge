@@ -433,15 +433,22 @@ C_SkillInfo = {
     load_reader(lua, "Data/Forever/ProfessionSkills.lua")
     lua.execute(r"""
         result = ToonAge.ProfessionSkills.Collect()
-        local names = {}
-        for _, card in ipairs(result.cards) do names[#names + 1] = card.name end
+        local names, ids = {}, {}
+        for _, card in ipairs(result.cards) do
+            names[#names + 1] = card.name
+            ids[card.id] = true
+        end
         table.sort(names)
         DUP_NAMES = table.concat(names, ",")
         DUP_COUNT = #result.cards
+        KEPT_ROOT = ids[393] == true and ids[197] == true and ids[185] == true and ids[3012] == true
+        DROPPED_CHILD = ids[2947] ~= true and ids[2945] ~= true and ids[2948] ~= true
     """)
     check("a parent and child with the same rank are one card", lua.eval("DUP_COUNT"), 4)
     check("skinning, tailoring, cooking and comprehension remain",
           lua.eval("DUP_NAMES"), "Comprehension,Cooking,Skinning,Tailoring")
+    check("the kept card is the root skill line", lua.eval("KEPT_ROOT"), True)
+    check("the removed card is the child skill line", lua.eval("DROPPED_CHILD"), True)
 
     lua.execute(r"""
         C_SkillInfo.GetSkillLineInfo = function(i)
@@ -466,6 +473,28 @@ C_SkillInfo = {
           "Skinning:40" in lua.eval("DISTINCT") and "Skinning:55" in lua.eval("DISTINCT"), True)
     check("a different name under the same parent stays",
           "Outland Skinning:1" in lua.eval("DISTINCT"), True)
+
+    lua.execute(r"""
+        C_SkillInfo.GetSkillLineInfo = function(i)
+            local rows = {
+                { name = "Skinning", rank = 10, maxRank = 75, skillID = 393, parentSkillLineID = 0 },
+                { name = "Skinning", rank = 10, maxRank = 75, skillID = 186, parentSkillLineID = 0 },
+                { name = "Skinning", rank = 10, maxRank = 75, skillID = 2947, parentSkillLineID = 9999 },
+                { name = "Skinning", rank = 10, maxRank = 100, skillID = 2950, parentSkillLineID = 393 },
+            }
+            return rows[i]
+        end
+        C_SkillInfo.GetNumSkillLines = function() return 4 end
+        result = ToonAge.ProfessionSkills.Collect()
+        local ids = {}
+        for _, card in ipairs(result.cards) do ids[card.id] = card.rank .. "/" .. card.max end
+        ROOTS = (ids[393] and 1 or 0) + (ids[186] and 1 or 0)
+        ORPHAN = ids[2947]
+        MAXDIFF = ids[2950]
+    """)
+    check("two roots with the same name both stay", lua.eval("ROOTS"), 2)
+    check("a child whose parent is not in the list stays", lua.eval("ORPHAN"), "10/75")
+    check("the same rank with a different max stays", lua.eval("MAXDIFF"), "10/100")
 
 
 def main():
