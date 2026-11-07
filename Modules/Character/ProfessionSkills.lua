@@ -325,6 +325,8 @@ local function ReadSkillLines(data)
     return cards
 end
 
+local CollapseSameProgress
+
 local function ReadSkillInfo(data)
     if not Ready("skillinfo") then return nil end
     local getNum = Lookup("C_SkillInfo.GetNumSkillLines")
@@ -367,13 +369,38 @@ local function ReadSkillInfo(data)
                             max       = Ceiling(rawMax, data.cap),
                             header    = lineHeader,
                             secondary = secondary and true or false,
+                            parent    = Num(info.parentSkillLineID),
                         }
                     end
                 end
             end
         end
     end
-    return cards
+    return CollapseSameProgress(cards)
+end
+
+--- A root line and its child with the same name and the same rank are one
+--- profession shown twice. A different name, or a different rank, stays.
+--- Same name without a parent link stays too: the name alone is not identity.
+function CollapseSameProgress(cards)
+    local byId = {}
+    for _, card in ipairs(cards) do
+        if card.id ~= nil then byId[card.id] = card end
+    end
+    local drop = {}
+    for _, card in ipairs(cards) do
+        local parent = card.parent
+        local other = parent and parent ~= 0 and byId[parent] or nil
+        if other and other.name == card.name and other.rank == card.rank and other.max == card.max then
+            drop[card] = true
+        end
+    end
+    if not next(drop) then return cards end
+    local out = {}
+    for _, card in ipairs(cards) do
+        if not drop[card] then out[#out + 1] = card end
+    end
+    return out
 end
 
 local READERS = {
