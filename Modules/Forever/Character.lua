@@ -70,13 +70,43 @@ end
 -- Num is the choke point every read in this file passes through, so the guard
 -- lives here: a secret becomes nil, which every caller already handles as
 -- "n/a". Without it, opening this tab in combat threw on `hp >= hpMax`.
-local isSecret = _G.issecretvalue or function() return false end
+-- Look the predicate up per call. A function captured at file load stays
+-- stuck if the client defines issecretvalue later, and a true flag is not
+-- enough: the 2026-09-23 measurement was mid-combat. Out of combat the same
+-- flag has been seen on a number that still supports arithmetic, which is a
+-- plain health value and must be shown.
+local function isSecret(v)
+    local f = _G.issecretvalue
+    if type(f) ~= "function" then return false end
+    local ok, r = pcall(f, v)
+    return ok and r == true
+end
 
 local function Num(v)
     if v == nil then return nil end
     if isSecret(v) then return nil end
     local n = tonumber(tostring(v))
     return n
+end
+
+--- A usable number, and whether the client withheld it.
+--- Arithmetic comes first. A secret raises on `+ 0`; a plain number does not,
+--- even when issecretvalue returns true.
+local function PlainNumber(v)
+    if v == nil then return nil, false end
+    local ok, n = pcall(function() return v + 0 end)
+    if ok and type(n) == "number" then return n, false end
+    if isSecret(v) then return nil, true end
+    local okS, s = pcall(tostring, v)
+    if okS and type(s) == "string" then
+        local num = tonumber(s)
+        if type(num) == "number" then return num, false end
+    end
+    return nil, false
+end
+
+local function InCombat()
+    return type(InCombatLockdown) == "function" and InCombatLockdown() and true or false
 end
 
 -- MEASURED THE HARD WAY, 2026-09-23. tostring() on a secret survives and the
@@ -300,13 +330,14 @@ local function RenderHeadline(content, y)
     end
 
     local rawHP, rawHPM = Try(UnitHealth, "player"), Try(UnitHealthMax, "player")
-    local hp, hpMax = Num(rawHP), Num(rawHPM)
+    local hp, hpSecret = PlainNumber(rawHP)
+    local hpMax, hpMaxSecret = PlainNumber(rawHPM)
     if hp and hpMax and hpMax > 0 then
         y = L:CapBar(content, y, {
             label = "Health", value = string.format("%d / %d", hp, hpMax),
             current = hp, cap = hpMax, capped = hp >= hpMax,
         })
-    elseif rawHP ~= nil and isSecret(rawHP) then
+    elseif hpSecret or hpMaxSecret then
         y = L:DataRow(content, y, {
             label = "Health", value = HIDDEN_TEXT, status = "dim",
         })
@@ -316,19 +347,20 @@ local function RenderHeadline(content, y)
     -- Power type 0 is mana. A class without it reports 0 max, and a bar of
     -- zero out of zero says nothing -- so it simply does not draw.
     local rawMP, rawMPM = Try(UnitPower, "player", 0), Try(UnitPowerMax, "player", 0)
-    local mp, mpMax = Num(rawMP), Num(rawMPM)
+    local mp, mpSecret = PlainNumber(rawMP)
+    local mpMax, mpMaxSecret = PlainNumber(rawMPM)
     if mp and mpMax and mpMax > 0 then
         y = L:CapBar(content, y, {
             label = "Mana", value = string.format("%d / %d", mp, mpMax),
             current = mp, cap = mpMax, capped = mp >= mpMax,
         })
-    elseif rawMP ~= nil and isSecret(rawMP) then
+    elseif mpSecret or mpMaxSecret then
         y = L:DataRow(content, y, {
             label = "Mana", value = HIDDEN_TEXT, status = "dim",
         })
         secretNote = true
     end
-    if secretNote then
+    if secretNote and InCombat() then
         y = L:Paragraph(content, y, HIDDEN_FOOTNOTE, { color = L.C_DIM, size = 9 })
     end
     return y
