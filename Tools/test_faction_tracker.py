@@ -281,6 +281,68 @@ def main():
     check("forever says the reads are unverified",
           "P|Reputation reads are unverified until Harvest probes them." in lines)
 
+    # A nil probe of faction 72 is not the Horde list. The client walk is.
+    lua.execute(read("Core/Compat/API.lua"))
+    lua.execute(r"""
+        local FT = ToonAge.FactionTracker
+        ToonAge.flavor = "forever"
+        ToonAge.Reputations = nil
+        LAYOUT = {}
+        C_Reputation = {
+            GetNumFactions = function() return 5 end,
+            ExpandAllFactionHeaders = function() end,
+            GetFactionDataByIndex = function(i)
+                local rows = {
+                    { name = "Horde", isHeader = true, factionID = 67 },
+                    { name = "Darkspear Trolls", factionID = 530, reaction = 4,
+                      currentReactionThreshold = 0, nextReactionThreshold = 3000,
+                      currentStanding = 2000, isHeader = false },
+                    { name = "Orgrimmar", factionID = 76, reaction = 4,
+                      currentReactionThreshold = 0, nextReactionThreshold = 3000,
+                      currentStanding = 500, isHeader = false },
+                    { name = "Thunder Bluff", factionID = 81, reaction = 4,
+                      currentReactionThreshold = 0, nextReactionThreshold = 3000,
+                      currentStanding = 100, isHeader = false },
+                    { name = "Undercity", factionID = 68, reaction = 5,
+                      currentReactionThreshold = 3000, nextReactionThreshold = 9000,
+                      currentStanding = 4000, isHeader = false },
+                }
+                return rows[i]
+            end,
+            GetFactionDataByID = function() return nil end,
+        }
+        function ToonAge.Layout:StatBar(_, _, opts)
+            LAYOUT[#LAYOUT+1] = "BAR|" .. tostring(opts.label) .. "|" .. tostring(opts.text)
+            return -60
+        end
+        function ToonAge.Layout:ButtonRow()
+            LAYOUT[#LAYOUT+1] = "BTN"
+            return -80
+        end
+        FT:Render({})
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("forever lists Darkspear Trolls from the client",
+          "BAR|Darkspear Trolls|2000/3000" in lines, True)
+    check("forever does not claim there are no reputation routes",
+          "No reputation routes on this client." not in "\n".join(lines), True)
+    check("a faction header is not a standing row",
+          any(row.startswith("BAR|") and row.split("|")[1].startswith("Horde") for row in lines if row.startswith("BAR|")),
+          False)
+    check("undercity standing uses the client bar numbers",
+          any("4000/9000" in row for row in lines), True)
+
+    lua.execute(r"""
+        C_Reputation = nil
+        GetNumFactions = nil
+        GetFactionInfo = nil
+        LAYOUT = {}
+        ToonAge.FactionTracker:Render({})
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("a missing faction API does not claim the character has no reputations",
+          "No reputation routes on this client." not in "\n".join(lines), True)
+
     failed = sum(1 for ok in _results if not ok)
     print(f"  {len(_results) - failed}/{len(_results)} checks passed")
     return failed == 0

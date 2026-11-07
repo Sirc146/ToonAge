@@ -426,6 +426,57 @@ function FT.Run(faction)
     return true
 end
 
+--- Factions the client itself lists. Nil when the walk cannot run.
+--- An empty table means the client returned no rows. Headers are not factions.
+function FT.WalkClientFactions()
+    local C = TA.Compat
+    if not (C and type(C.GetNumFactions) == "function" and type(C.GetFactionDataByIndex) == "function") then
+        return nil
+    end
+    if type(C.ExpandAllFactionHeaders) == "function" then
+        C.ExpandAllFactionHeaders()
+    end
+    local ok, n = pcall(C.GetNumFactions)
+    if not ok or type(n) ~= "number" then return nil end
+    local list = {}
+    local last = n
+    if last > 200 then last = 200 end
+    for i = 1, last do
+        local okRow, row = pcall(C.GetFactionDataByIndex, i)
+        if okRow and type(row) == "table" and not row.isHeader
+            and type(row.name) == "string" and row.name ~= "" then
+            row.observed = true
+            list[#list + 1] = row
+        end
+    end
+    return list
+end
+
+local function ReadObserved(row)
+    local value, badV = CleanNum(row.currentStanding)
+    local hi, badH = CleanNum(row.nextReactionThreshold)
+    local lo = CleanNum(row.currentReactionThreshold)
+    if badV == "secret" or badH == "secret" then
+        return Hidden(true, "standing")
+    end
+    local text = "n/a"
+    if value and hi then text = string.format("%d/%d", value, hi) end
+    local span = (type(lo) == "number" and type(hi) == "number") and (hi - lo) or nil
+    local into = value
+    if value and type(lo) == "number" and span and span > 0 then into = value - lo end
+    return {
+        current = into,
+        cap = (span and span > 0) and span or hi,
+        atMax = false,
+        paragon = false,
+        unverified = true,
+        text = text,
+        system = "standing",
+        scale = "rep",
+        secret = false,
+    }
+end
+
 local function SortedFactions()
     local bag = TA.Reputations and TA.Reputations.midnight
     if type(bag) ~= "table" then return nil end
@@ -449,15 +500,31 @@ function FT:Render(content, side)
             "Reputation reads are unverified until Harvest probes them.")
     end
     local list = SortedFactions()
+    local observed = false
+    if FT.Family() == "forever" then
+        local walked = FT.WalkClientFactions()
+        if type(walked) == "table" then
+            list = walked
+            observed = true
+        end
+    end
     if not list then
-        y = L:Paragraph(content, y, "No reputation routes on this client.")
+        local missing = FT.Family() == "forever"
+            and "This client did not return a faction list."
+            or  "No reputation routes on this client."
+        y = L:Paragraph(content, y, missing)
+        L:Finish(content, y)
+        return
+    end
+    if observed and #list == 0 then
+        y = L:Paragraph(content, y, "The client returned an empty faction list.")
         L:Finish(content, y)
         return
     end
     for _, faction in ipairs(list) do
-        local read = FT.Read(faction)
-        local active = FT.IsActive(faction)
-        local left = FT.QuestsLeft(faction, read)
+        local read = observed and ReadObserved(faction) or FT.Read(faction)
+        local active = (not observed) and FT.IsActive(faction)
+        local left = observed and nil or FT.QuestsLeft(faction, read)
         y = L:StatBar(content, y, {
             label = faction.name or "Faction",
             value = read.current,
@@ -466,12 +533,14 @@ function FT:Render(content, side)
             text = read.text,
             status = "neutral",
         })
-        local line = FT.LeftLine(read, left)
+        local line = (not observed) and FT.LeftLine(read, left) or nil
         if line then y = L:Paragraph(content, y, line) end
-        local captured = faction
-        y = L:ButtonRow(content, y, {
-            { label = "Run this faction", onClick = function() FT.Run(captured) end },
-        })
+        if not observed then
+            local captured = faction
+            y = L:ButtonRow(content, y, {
+                { label = "Run this faction", onClick = function() FT.Run(captured) end },
+            })
+        end
     end
     L:Finish(content, y)
 end

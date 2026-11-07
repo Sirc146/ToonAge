@@ -189,6 +189,65 @@ function C.GetItemInfo(item)
     return nil
 end
 
+--- How many faction rows the client will return. Nil when neither API exists.
+--- Zero is a real empty list, not a missing function.
+function C.GetNumFactions()
+    local fn = FirstFn(C_Reputation and C_Reputation.GetNumFactions, GetNumFactions)
+    if not fn then return nil end
+    local ok, n = pcall(fn)
+    if not ok or type(n) ~= "number" then return nil end
+    return n
+end
+
+--- One faction row. Retail's table and the classic multi-return are both
+--- normalized. Nil when that index is empty or neither API exists.
+function C.GetFactionDataByIndex(index)
+    if type(index) ~= "number" then return nil end
+    if C_Reputation and type(C_Reputation.GetFactionDataByIndex) == "function" then
+        local ok, data = pcall(C_Reputation.GetFactionDataByIndex, index)
+        if ok and type(data) == "table" then
+            return {
+                name = data.name,
+                factionID = data.factionID,
+                reaction = data.reaction,
+                currentStanding = data.currentStanding,
+                currentReactionThreshold = data.currentReactionThreshold,
+                nextReactionThreshold = data.nextReactionThreshold,
+                isHeader = data.isHeader and true or false,
+                isChild = data.isChild and true or false,
+                isCollapsed = data.isCollapsed and true or false,
+            }
+        end
+    end
+    if type(GetFactionInfo) == "function" then
+        local ok, name, _, standingID, barMin, barMax, barValue, _, _, isHeader, isCollapsed, _, _, isChild, factionID =
+            pcall(GetFactionInfo, index)
+        if ok and type(name) == "string" and name ~= "" then
+            return {
+                name = name,
+                factionID = factionID,
+                reaction = standingID,
+                currentStanding = barValue,
+                currentReactionThreshold = barMin,
+                nextReactionThreshold = barMax,
+                isHeader = isHeader and true or false,
+                isChild = isChild and true or false,
+                isCollapsed = isCollapsed and true or false,
+            }
+        end
+    end
+    return nil
+end
+
+--- Open collapsed headers so the walk can see the factions under them.
+--- False when this client has neither function.
+function C.ExpandAllFactionHeaders()
+    local fn = FirstFn(C_Reputation and C_Reputation.ExpandAllFactionHeaders, ExpandAllFactionHeaders)
+    if not fn then return false end
+    local ok = pcall(fn)
+    return ok and true or false
+end
+
 function C.GetItemStats(itemLink)
     if not itemLink then return nil end
     if C_Item and type(C_Item.GetItemStats) == "function" then
