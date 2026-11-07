@@ -111,6 +111,14 @@ GetVersatilityBonus = function(i) return 1 end
     check("secret reduction is not a number", taken, None)
 
 
+def test_missing_percent_is_a_dash():
+    # A Forever Mage has no versatility API. The row must show a dash,
+    # not 0.00% left over from a failed call.
+    src = (ROOT / "Modules/Character/Character.lua").read_text(encoding="utf-8")
+    check("a missing versatility percent renders a dash", 'row.pctLbl:SetText("-")' in src, True)
+    check("a missing versatility rating renders a dash", 'row.ratingLbl:SetText("-")' in src, True)
+
+
 def test_half_reduction_is_gone():
     src = (ROOT / "Modules/Character/Character.lua").read_text(encoding="utf-8")
     check("damage reduction is not half the damage percent", "pct / 2" not in src, True)
@@ -121,6 +129,7 @@ def main():
     test_named_constants_override_the_fallback()
     test_missing_api_is_nil_not_zero()
     test_secret_value_is_not_added()
+    test_missing_percent_is_a_dash()
     test_half_reduction_is_gone()
     passed = sum(_results)
     total = len(_results)
