@@ -145,8 +145,6 @@ function M.EmptyCopy(mode, flavor, owned, suggested)
     return nil, nil
 end
 
---- Armor subclass 1-4 is cloth through plate. A shield (subclass 6) is kept.
---- Lower armor is wearable. Weapons are not filtered here.
 --- Main bank first, then the purchased bank bags. Defaults match Mists:
 --- BANK_CONTAINER is -1, four carried bags, seven bank bags (ids 5-11).
 function M.BankContainers(numBagSlots, numBankBags, bankContainer)
@@ -202,12 +200,26 @@ function M.DetailLine(slotName, ilvl, eqIlvl, where)
     return text
 end
 
-function M.CanWear(classID, subclassID, playerArmor)
+local SHIELD_CLASS = { WARRIOR = true, PALADIN = true, SHAMAN = true }
+
+--- Armor subclass 1-4 is cloth through plate. Retail wears only its own
+--- armor class. Mists still allows lower armor (a plate class may wear
+--- mail, leather or cloth), which is the rule this check used to apply
+--- on every client. A cloak is cloth in the back slot and is allowed for
+--- every class. Shields (subclass 6) are warrior, paladin and shaman only.
+--- A missing class or subclass is not wearable. Weapons are not filtered
+--- here beyond that.
+function M.CanWear(classID, subclassID, playerArmor, classToken, equipLoc, flavor)
+    if type(classID) ~= "number" or type(subclassID) ~= "number" then return false end
     if classID ~= 4 then return true end
-    if subclassID == 6 then return true end
-    if type(subclassID) ~= "number" or subclassID < 1 or subclassID > 4 then return true end
-    if type(playerArmor) ~= "number" then return true end
-    return subclassID <= playerArmor
+    if equipLoc == "INVTYPE_CLOAK" then return true end
+    if subclassID == 6 then
+        return type(classToken) == "string" and SHIELD_CLASS[classToken] == true
+    end
+    if subclassID < 1 or subclassID > 4 then return false end
+    if type(playerArmor) ~= "number" then return false end
+    if flavor == "mists" then return subclassID <= playerArmor end
+    return subclassID == playerArmor
 end
 
 local function WhereRank(item)
@@ -305,12 +317,9 @@ end
 
 local function ItemLevel(link)
     if not link then return nil end
-    if type(GetDetailedItemLevelInfo) == "function" then
-        local ok, level = pcall(GetDetailedItemLevelInfo, link)
-        if ok and type(level) == "number" and level > 0 then return level end
-    end
-    if C_Item and type(C_Item.GetDetailedItemLevelInfo) == "function" then
-        local ok, level = pcall(C_Item.GetDetailedItemLevelInfo, link)
+    local fn = TA.Compat and TA.Compat.GetDetailedItemLevelInfo
+    if type(fn) == "function" then
+        local ok, level = pcall(fn, link)
         if ok and type(level) == "number" and level > 0 then return level end
     end
     local U = TA.Utils
@@ -321,27 +330,40 @@ local function ItemLevel(link)
     return nil
 end
 
-local function PlayerArmor()
-    local _, class = UnitClass and UnitClass("player")
-    if class == "WARRIOR" or class == "PALADIN" or class == "DEATHKNIGHT" then return 4 end
-    if class == "HUNTER" or class == "SHAMAN" or class == "EVOKER" then return 3 end
-    if class == "ROGUE" or class == "DRUID" or class == "MONK" or class == "DEMONHUNTER" then return 2 end
-    return 1
+--- Armor subclass (1 cloth through 4 plate) and the class token. Nil when
+--- the client cannot say who the player is, which means armor is not wearable.
+local function PlayerIdentity()
+    if type(UnitClass) ~= "function" then return nil, nil end
+    local ok, _, class = pcall(UnitClass, "player")
+    if not ok or type(class) ~= "string" or class == "" then return nil, nil end
+    local armor = 1
+    if class == "WARRIOR" or class == "PALADIN" or class == "DEATHKNIGHT" then armor = 4
+    elseif class == "HUNTER" or class == "SHAMAN" or class == "EVOKER" then armor = 3
+    elseif class == "ROGUE" or class == "DRUID" or class == "MONK" or class == "DEMONHUNTER" then armor = 2
+    end
+    return armor, class
 end
 
-local function Equippable(link, classID, subclassID)
-    if link and type(IsEquippableItem) == "function" then
-        local ok, yes = pcall(IsEquippableItem, link)
-        if ok then return yes and true or false end
+local function Wearable(classID, subclassID, equipLoc)
+    local armor, token = PlayerIdentity()
+    return M.CanWear(classID, subclassID, armor, token, equipLoc, TA.flavor)
+end
+
+local function Equippable(link, classID, subclassID, equipLoc)
+    if not Wearable(classID, subclassID, equipLoc) then return false end
+    local fn = TA.Compat and TA.Compat.IsEquippableItem
+    if link and type(fn) == "function" then
+        local ok, yes = pcall(fn, link)
+        if ok and yes == false then return false end
     end
-    return M.CanWear(classID, subclassID, PlayerArmor())
+    return true
 end
 
 local function Meta(linkOrID)
-    if type(GetItemInfoInstant) ~= "function" or not linkOrID then
-        return nil, nil, nil, nil
-    end
-    local ok, id, _, _, equipLoc, _, classID, subclassID = pcall(GetItemInfoInstant, linkOrID)
+    if not linkOrID then return nil, nil, nil, nil end
+    local fn = TA.Compat and TA.Compat.GetItemInfoInstant
+    if type(fn) ~= "function" then return nil, nil, nil, nil end
+    local ok, id, _, _, equipLoc, _, classID, subclassID = pcall(fn, linkOrID)
     if not ok then return nil, nil, nil, nil end
     return id, equipLoc, classID, subclassID
 end
@@ -370,10 +392,10 @@ local function Remember(list, item)
     if item.where == "bank" then
         -- The link may not resolve once the bank is closed. The armor class
         -- was stored while it was open.
-        if not M.CanWear(item.classID, item.subclassID, PlayerArmor()) then return end
+        if not Wearable(item.classID, item.subclassID, item.equipLoc) then return end
         item.bag = nil
         item.slot = nil
-    elseif not Equippable(item.link, item.classID, item.subclassID) then
+    elseif not Equippable(item.link, item.classID, item.subclassID, item.equipLoc) then
         return
     end
     list[#list + 1] = item
@@ -430,12 +452,13 @@ local function ContainerAPI()
 end
 
 local function QualityOf(link)
+    local fn = TA.Compat and TA.Compat.GetItemInfo
+    if type(fn) == "function" and link then
+        local ok, _, _, quality = pcall(fn, link)
+        if ok then return quality end
+    end
     local U = TA.Utils
     if U and U.GetItemQuality then return U.GetItemQuality(link) end
-    if type(GetItemInfo) == "function" then
-        local _, _, quality = GetItemInfo(link)
-        return quality
-    end
     return nil
 end
 
@@ -455,10 +478,16 @@ local function ReadHeirloom(U, bag, slot, where)
     local quality = QualityOf(link)
     if quality ~= M.HEIRLOOM_QUALITY then return nil end
     local _, equipLoc, classID, subclassID = Meta(link)
-    if not equipLoc and type(GetItemInfo) == "function" then
-        equipLoc = select(9, GetItemInfo(link))
+    local name
+    local infoFn = TA.Compat and TA.Compat.GetItemInfo
+    if type(infoFn) == "function" then
+        local ok, itemName, _, _, _, _, _, _, _, infoLoc = pcall(infoFn, link)
+        if ok then
+            name = itemName
+            if not equipLoc then equipLoc = infoLoc end
+        end
     end
-    local name = (type(GetItemInfo) == "function" and GetItemInfo(link)) or link
+    if not name then name = link end
     local itemID = Meta(link)
     if not itemID and U.GetContainerItemID then
         itemID = U.GetContainerItemID(bag, slot)
