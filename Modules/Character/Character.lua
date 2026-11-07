@@ -43,10 +43,52 @@ local function SafeCall(fn, ...)
     return ok and SafeNum(v) or 0
 end
 
-local function GetVers()
-    local ok, cr = pcall(GetCombatRating, 29)
-    if ok and cr then return SafeCall(GetVersatilityBonus, SafeNum(cr)) end
-    return 0
+-- CR_VERSATILITY_DAMAGE_DONE is 29. CR_VERSATILITY_DAMAGE_TAKEN is 31.
+-- The character sheet adds GetCombatRatingBonus(index) and
+-- GetVersatilityBonus(index) for each of those indices. GetVersatilityBonus
+-- does not take the rating amount: passing 618 (the rating) looks up a
+-- combat-rating id that does not exist and returns nothing, so the tab
+-- showed 618 rating and 0.00%.
+local function VersIndex(globalName, fallback)
+    local v = _G[globalName]
+    if type(v) == "number" then return v end
+    return fallback
+end
+
+local function CallRating(fn, index)
+    if type(fn) ~= "function" or index == nil then return nil end
+    local ok, v = pcall(fn, index)
+    if not ok then return nil end
+    return v
+end
+
+--- Damage-done percent and damage-taken reduction.
+--- Nil when a value is missing or secret. Callers show a dash. They do not
+--- add, divide, or format a secret value.
+function Character:ReadVersatility()
+    local C = TA.Compat
+    if not (C and C.GetCombatRatingBonus and C.GetVersatilityBonus) then
+        return nil, nil
+    end
+    local function Part(index)
+        local ratingBonus = CallRating(C.GetCombatRatingBonus, index)
+        local extra = CallRating(C.GetVersatilityBonus, index)
+        if U.IsSecret(ratingBonus) or U.IsSecret(extra) then return nil end
+        if type(ratingBonus) ~= "number" and type(extra) ~= "number" then return nil end
+        if type(ratingBonus) ~= "number" then ratingBonus = 0 end
+        if type(extra) ~= "number" then extra = 0 end
+        return ratingBonus + extra
+    end
+    return Part(VersIndex("CR_VERSATILITY_DAMAGE_DONE", 29)),
+           Part(VersIndex("CR_VERSATILITY_DAMAGE_TAKEN", 31))
+end
+
+local function VersRating()
+    local C = TA.Compat
+    if not (C and C.GetCombatRating) then return nil end
+    local v = CallRating(C.GetCombatRating, VersIndex("CR_VERSATILITY_DAMAGE_DONE", 29))
+    if U.IsSecret(v) or type(v) ~= "number" then return nil end
+    return v
 end
 
 -- DR (diminishing-returns) soft-cap RATING thresholds — file-scoped (not
@@ -345,16 +387,19 @@ function Character:BuildUI(content, sidebar)
             local rc = RANK_COLORS[btn._rank] or RANK_COLORS[4]
             GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
             GameTooltip:SetText(s.name, 1, 0.82, 0)
-            GameTooltip:AddDoubleLine("Rating",  string.format("%d", math.floor(s.rating)),    0.7,0.7,0.7, 1,1,1)
-            GameTooltip:AddDoubleLine("Percent", string.format("%.2f%%", s.pct),               0.7,0.7,0.7, rc[1],rc[2],rc[3])
+            local ratingText = (type(s.rating) == "number") and string.format("%d", math.floor(s.rating)) or "-"
+            local pctText = (type(s.pct) == "number") and string.format("%.2f%%", s.pct) or "-"
+            GameTooltip:AddDoubleLine("Rating",  ratingText, 0.7,0.7,0.7, 1,1,1)
+            GameTooltip:AddDoubleLine("Percent", pctText,    0.7,0.7,0.7, rc[1],rc[2],rc[3])
             GameTooltip:AddDoubleLine("Weight (" .. (Character.pvxMode == "pve" and "PvE" or "PvP") .. ")",
                 string.format("%.2f", s.weight), 0.7,0.7,0.7, rc[1],rc[2],rc[3])
             if s.key == "VERS" then
-                GameTooltip:AddDoubleLine("Damage reduction", string.format("%.2f%%", s.pct / 2), 0.7,0.7,0.7, 0.45,0.60,0.75)
+                local redText = (type(s.reduction) == "number") and string.format("%.2f%%", s.reduction) or "-"
+                GameTooltip:AddDoubleLine("Damage reduction", redText, 0.7,0.7,0.7, 0.45,0.60,0.75)
             end
             local capRating = DR_SOFT_CAP[s.key]
             GameTooltip:AddDoubleLine("DR soft cap", string.format("%d rating", capRating), 0.7,0.7,0.7, 0.6,0.6,0.6)
-            if s.rating >= capRating then
+            if type(s.rating) == "number" and s.rating >= capRating then
                 local suggestion = s.redirectTarget and ("Redirect itemization into " .. s.redirectTarget .. " instead.")
                                                      or "Every secondary is capped — prioritize item level instead."
                 GameTooltip:AddLine("At or past DR soft cap.", 1, 0.27, 0.27, true)
@@ -466,11 +511,12 @@ function Character:UpdateData()
     -- index of 29 was ever correct). The displayed % values were unaffected
     -- (GetCritChance/GetHaste/GetMasteryEffect are separate, correct calls) —
     -- only the "N rating" readout under each stat was silently wrong.
+    local versDone, versTaken = Character:ReadVersatility()
     local secondaries = {
         { key="CRIT",    name="Critical Strike", pct=SafeCall(GetCritChance),    rating=SafeCall(GetCombatRating, 9)  },
         { key="HASTE",   name="Haste",           pct=SafeCall(GetHaste),         rating=SafeCall(GetCombatRating, 18) },
         { key="MASTERY", name="Mastery",         pct=SafeCall(GetMasteryEffect), rating=SafeCall(GetCombatRating, 26) },
-        { key="VERS",    name="Versatility",     pct=GetVers(),                  rating=SafeCall(GetCombatRating, 29) },
+        { key="VERS",    name="Versatility",     pct=versDone, reduction=versTaken, rating=VersRating() },
     }
     -- Priority weight per stat. When the live DR-aware StatEngine is available
     -- AND we're showing the player's OWN active spec (so live combat ratings
@@ -505,7 +551,7 @@ function Character:UpdateData()
     -- near-BiS scenario, not a bug) — handled with a distinct message.
     local redirectTarget = nil
     for _, s in ipairs(secondaries) do
-        if s.rating < DR_SOFT_CAP[s.key] then
+        if type(s.rating) == "number" and s.rating < DR_SOFT_CAP[s.key] then
             redirectTarget = s.name
             break
         end
@@ -531,8 +577,12 @@ function Character:UpdateData()
         -- DR fill bar — proportion of THIS stat's own rating-based soft cap,
         -- not a shared percentage scale (see DR_SOFT_CAP comment above).
         local capRating = DR_SOFT_CAP[s.key]
-        local isCapped  = s.rating >= capRating
-        local fillW = math.max((row.row:GetWidth() - 2) * math.min(s.rating / capRating, 1.0), 1)
+        local ratingNum = (type(s.rating) == "number") and s.rating or nil
+        local isCapped  = ratingNum ~= nil and ratingNum >= capRating
+        local fillW = 1
+        if ratingNum ~= nil and capRating > 0 then
+            fillW = math.max((row.row:GetWidth() - 2) * math.min(ratingNum / capRating, 1.0), 1)
+        end
         row.fill:SetWidth(fillW)
         if isCapped then
             row.fill:SetColorTexture(0.75, 0.10, 0.10, 0.20)
@@ -549,15 +599,25 @@ function Character:UpdateData()
                                               or "all secondaries capped — prioritize item level"
             row.subLbl:SetText("|cFFFF4444DR cap — " .. suggestion .. "|r")
         elseif s.key == "VERS" then
-            row.subLbl:SetText(string.format("|cFF7399BF%.2f%% damage reduction|r", s.pct / 2))
+            local red = (type(s.reduction) == "number") and string.format("%.2f%% damage reduction", s.reduction)
+                                                         or "- damage reduction"
+            row.subLbl:SetText("|cFF7399BF" .. red .. "|r")
         else
             row.subLbl:SetText("")
         end
 
         row.nameLbl:SetText(s.name)
-        row.pctLbl:SetText(string.format("%.2f%%", s.pct))
+        if type(s.pct) == "number" then
+            row.pctLbl:SetText(string.format("%.2f%%", s.pct))
+        else
+            row.pctLbl:SetText("-")
+        end
         row.pctLbl:SetTextColor(rc[1], rc[2], rc[3], 1)
-        row.ratingLbl:SetText(string.format("%d rating", math.floor(s.rating)))
+        if type(s.rating) == "number" then
+            row.ratingLbl:SetText(string.format("%d rating", math.floor(s.rating)))
+        else
+            row.ratingLbl:SetText("-")
+        end
         row.badgeLbl:SetText(RANK_LABELS[i] .. "  w" .. string.format("%.2f", s.weight))
         row.badgeLbl:SetTextColor(rc[1], rc[2], rc[3], 0.85)
 
@@ -567,7 +627,9 @@ function Character:UpdateData()
         -- Mixing the DR-scaled marginal weight in here would make the same
         -- character's score drop as they gear into a soft cap, conflating stat
         -- magnitude with DR state.
-        totalScore = totalScore + s.staticWeight * s.pct
+        if type(s.pct) == "number" then
+            totalScore = totalScore + s.staticWeight * s.pct
+        end
     end
 
     -- Weighted score

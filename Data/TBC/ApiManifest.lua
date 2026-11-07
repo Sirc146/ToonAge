@@ -66,6 +66,8 @@ TA.Data.ApiManifest = {
         ["C_UnitAuras.GetBuffDataByIndex"] = { "Modules/Infrastructure/TestHarness.lua" },
     },
     globals = {
+        ["GetCombatRating"] = { "Core/Compat/API.lua" },
+        ["GetCombatRatingBonus"] = { "Core/Compat/API.lua" },
         ["GetContainerItemLink"] = { "Modules/TBC/AutoEquip.lua" },
         ["GetContainerNumSlots"] = { "Modules/TBC/AutoEquip.lua" },
         ["GetInventoryItemLink"] = { "Core/SkillScan.lua", "Core/TBCUtils.lua", "Core/Utils.lua", "Data/TBC/TBCTalentHit.lua", "Modules/TBC/AutoEquip.lua", "Modules/TBC/Gear.lua", "Modules/TBC/PvPAdvisor.lua" },
@@ -81,6 +83,7 @@ TA.Data.ApiManifest = {
         ["GetSpellInfo"] = { "Core/Compat/API.lua", "Core/Utils.lua" },
         ["GetTalentInfo"] = { "Core/Compat/API.lua" },
         ["GetTalentTabInfo"] = { "Core/Compat/API.lua" },
+        ["GetVersatilityBonus"] = { "Core/Compat/API.lua" },
         ["IsSpellKnown"] = { "Core/Compat/API.lua", "Core/Utils.lua" },
         ["UnitDefense"] = { "Core/TBCStats.lua" },
         ["geterrorhandler"] = { "Core/Init.lua", "Modules/Infrastructure/ErrorLog.lua" },

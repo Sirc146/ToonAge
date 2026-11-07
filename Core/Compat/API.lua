@@ -198,6 +198,22 @@ function C.GetItemStats(itemLink)
     return nil
 end
 
+--- Combat ratings are still globals. Missing functions return nil.
+function C.GetCombatRating(index)
+    if type(GetCombatRating) ~= "function" or index == nil then return nil end
+    return GetCombatRating(index)
+end
+
+function C.GetCombatRatingBonus(index)
+    if type(GetCombatRatingBonus) ~= "function" or index == nil then return nil end
+    return GetCombatRatingBonus(index)
+end
+
+function C.GetVersatilityBonus(index)
+    if type(GetVersatilityBonus) ~= "function" or index == nil then return nil end
+    return GetVersatilityBonus(index)
+end
+
 --- Nil when the item is uncached or neither API exists. Never calls a nil.
 function C.GetItemInfoInstant(item)
     if C_Item and type(C_Item.GetItemInfoInstant) == "function" then

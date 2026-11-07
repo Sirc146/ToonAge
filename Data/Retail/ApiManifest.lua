@@ -289,6 +289,8 @@ TA.Data.ApiManifest = {
             "Modules/DeathRecovery.lua",
             "Modules/Talents.lua",
         },
+        ["GetCombatRating"] = { "Core/Compat/API.lua" },
+        ["GetCombatRatingBonus"] = { "Core/Compat/API.lua" },
         ["GetContainerItemLink"] = { "Modules/AutoEquip.lua", "Modules/Gear.lua" },
         ["GetContainerNumSlots"] = { "Modules/AutoEquip.lua", "Modules/QuestTracker.lua" },
         ["GetInventoryItemLink"] = {
@@ -372,6 +374,7 @@ TA.Data.ApiManifest = {
         },
         ["GetSpellCooldown"] = { "Core/Utils.lua" },
         ["GetSpellInfo"] = { "Core/Utils.lua" },
+        ["GetVersatilityBonus"] = { "Core/Compat/API.lua" },
         ["IsSpellKnown"] = { "Core/Utils.lua", "Data/Spells.lua" },
         ["geterrorhandler"] = { "Modules/ErrorLog.lua" },
         ["hooksecurefunc"] = {

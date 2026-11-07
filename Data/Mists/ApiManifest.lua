@@ -68,6 +68,8 @@ TA.Data.ApiManifest = {
     },
     globals = {
         ["CreateVector2D"] = { "Core/Compat/API.lua" },
+        ["GetCombatRating"] = { "Core/Compat/API.lua" },
+        ["GetCombatRatingBonus"] = { "Core/Compat/API.lua" },
         ["GetContainerItemLink"] = { "Modules/Mists/AutoEquip.lua" },
         ["GetContainerNumSlots"] = { "Modules/Mists/AutoEquip.lua" },
         ["GetInventoryItemLink"] = { "Core/Utils.lua", "Modules/Mists/AutoEquip.lua", "Modules/Mists/DeathRecovery.lua", "Modules/Mists/Gear.lua" },
@@ -92,6 +94,7 @@ TA.Data.ApiManifest = {
         ["GetSpellInfo"] = { "Core/Compat/API.lua", "Core/Utils.lua", "Data/Mists/Spells.lua" },
         ["GetTalentInfo"] = { "Core/Compat/API.lua" },
         ["GetTalentTabInfo"] = { "Core/Compat/API.lua" },
+        ["GetVersatilityBonus"] = { "Core/Compat/API.lua" },
         ["IsQuestCompletable"] = { "Modules/Mists/QuestTracker.lua" },
         ["IsSpellKnown"] = { "Core/Compat/API.lua", "Core/Utils.lua", "Data/Mists/Spells.lua" },
         ["SelectActiveQuest"] = { "Modules/Mists/QuestTracker.lua" },
