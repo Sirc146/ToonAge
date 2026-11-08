@@ -170,6 +170,7 @@ Modules\Farming\GatherTracker.lua
 # still checks that those calls exist before using them.
 Modules\Character\ProfessionSkills.lua
 Modules\Character\ProfessionBoard.lua
+Modules\Character\ProfessionBatch.lua
 Modules\Progression\FactionTracker.lua
 Modules\Forever\Character.lua
 Modules\Forever\Gear.lua

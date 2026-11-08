@@ -102,6 +102,7 @@ FOREVER_MODULES = [
     # and stays unverified until an in-game probe confirms it.
     "Modules/Character/ProfessionSkills.lua",
     "Modules/Character/ProfessionBoard.lua",
+    "Modules/Character/ProfessionBatch.lua",
     "Modules/Progression/FactionTracker.lua",
     "Modules/Infrastructure/TestHarness.lua",
 ]

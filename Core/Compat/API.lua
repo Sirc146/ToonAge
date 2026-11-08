@@ -181,6 +181,88 @@ end
 
 -- ── Items ──────────────────────────────────────────────────────────────────
 
+local function ValueUnusable(v)
+    if type(issecretvalue) == "function" then
+        local ok, secret = pcall(issecretvalue, v)
+        if not ok or secret == true then return true end
+    end
+    return false
+end
+
+function C.PlayerGUID()
+    if TA and TA.HasAPI and not TA:HasAPI("UnitGUID") then return nil end
+    if type(UnitGUID) ~= "function" then return nil end
+    local ok, guid = pcall(UnitGUID, "player")
+    if not ok or ValueUnusable(guid) or type(guid) ~= "string" then return nil end
+    local okBlank, blank = pcall(function() return guid == "" end)
+    if not okBlank or blank then return nil end
+    return guid
+end
+
+function C.ClientBuild()
+    if TA and TA.HasAPI and not TA:HasAPI("GetBuildInfo") then return {} end
+    if type(GetBuildInfo) ~= "function" then return {} end
+    local ok, version, build, _, iface = pcall(GetBuildInfo)
+    if not ok then return {} end
+    local function plain(v)
+        if ValueUnusable(v) then return nil end
+        if type(v) ~= "string" and type(v) ~= "number" then return nil end
+        return v
+    end
+    return { version = plain(version), build = plain(build), interface = plain(iface) }
+end
+
+function C.ReadTradeSkillRecipes()
+    if TA and TA.HasAPI and not TA:HasAPI("C_TradeSkillUI.GetAllRecipeIDs") then
+        return { status = "unavailable" }
+    end
+    if not (C_TradeSkillUI and type(C_TradeSkillUI.GetAllRecipeIDs) == "function"
+        and type(C_TradeSkillUI.GetRecipeInfo) == "function") then
+        return { status = "unavailable" }
+    end
+    local ok, ids = pcall(C_TradeSkillUI.GetAllRecipeIDs)
+    if not ok or type(ids) ~= "table" or ValueUnusable(ids) then
+        return { status = "unreadable", api = "C_TradeSkillUI" }
+    end
+    local professionID, withheld
+    if type(C_TradeSkillUI.GetBaseProfessionInfo) == "function" then
+        local okBase, base = pcall(C_TradeSkillUI.GetBaseProfessionInfo)
+        if okBase and type(base) == "table" and not ValueUnusable(base) then
+            local pid = base.professionID
+            if not ValueUnusable(pid) and type(pid) == "number" and pid == pid then
+                professionID = pid
+            end
+        end
+    end
+    local rows = {}
+    for _, id in ipairs(ids) do
+        if ValueUnusable(id) or type(id) ~= "number" then
+            withheld = true
+        else
+            local okRow, info = pcall(C_TradeSkillUI.GetRecipeInfo, id)
+            if not okRow or type(info) ~= "table" or ValueUnusable(info) then
+                withheld = true
+            else
+                local learned, name = info.learned, info.name
+                if ValueUnusable(learned) or ValueUnusable(name) then
+                    withheld = true
+                else
+                    local plainName
+                    if type(name) == "string" then
+                        local okName, blank = pcall(function() return name == "" end)
+                        if okName and not blank then plainName = name end
+                    end
+                    rows[#rows + 1] = { id = id, name = plainName, learned = (learned == true) and true or nil }
+                end
+            end
+        end
+    end
+    return {
+        status = "read", api = "C_TradeSkillUI", professionID = professionID,
+        rows = rows, withheld = withheld,
+    }
+end
+
 function C.GetItemInfo(item)
     if C_Item and type(C_Item.GetItemInfo) == "function" then
         return C_Item.GetItemInfo(item)
