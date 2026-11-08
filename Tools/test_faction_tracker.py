@@ -383,11 +383,12 @@ def main():
         end
     """)
     lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
-    check("a nested collapsed header is expanded for the read", lua.eval("expandCalls") >= 1, True)
-    check("the faction under that header is listed", "BAR|Orgrimmar|500/3000" in lines, True)
-    check("the nested header is collapsed again after the read", lua.eval("citiesCollapsed"), True)
-    check("the collapse hit Cities", lua.eval("collapseLog[1]"), "Cities")
-    check("an already open header is not collapsed", lua.eval("collapseLog[2]"), None)
+    check("a collapsed header is not opened for the read", lua.eval("expandCalls"), 0)
+    check("the faction hidden by that header is not listed", "BAR|Orgrimmar|500/3000" not in lines, True)
+    check("the collapsed header is still collapsed", lua.eval("citiesCollapsed"), True)
+    check("no collapse call is needed when nothing was opened", lua.eval("collapseLog[1]"), None)
+    check("a faction beside that header is still listed",
+          "BAR|Darkspear Trolls|2000/3000" in lines, True)
 
     lua.execute(r"""
         expandCalls = 0
@@ -488,8 +489,276 @@ def main():
     check("classic multi-return still skips the header",
           any(row.startswith("BAR|Horde") for row in lines), False)
 
+    # Hidden nested headers are not in the index while their parent is collapsed.
+    # ExpandAll would open them. A later collapse of only the visible parent
+    # cannot put those hidden headers back, and a collapse that does not stick
+    # leaves the pane open. The walk must not call either.
+    lua.execute(r"""
+        local FT = ToonAge.FactionTracker
+        ToonAge.flavor = "forever"
+        ToonAge.Reputations = nil
+        issecretvalue = nil
+        LAYOUT = {}
+        expandCalls = 0
+        collapseCalls = 0
+        state = { Horde = false, Cities = true, Outposts = true }
+        local tree = {
+            { name = "Horde", header = true, children = {
+                { name = "Darkspear Trolls", standing = 2000, cap = 3000 },
+                { name = "Cities", header = true, children = {
+                    { name = "Orgrimmar", standing = 500, cap = 3000 },
+                    { name = "Outposts", header = true, children = {
+                        { name = "Razor Hill", standing = 10, cap = 3000 },
+                    } },
+                } },
+            } },
+        }
+        local function visible()
+            local list = {}
+            local function walk(nodes)
+                for _, node in ipairs(nodes) do
+                    local row = {
+                        name = node.name,
+                        isHeader = node.header and true or false,
+                        isCollapsed = node.header and state[node.name] and true or false,
+                        factionID = node.name,
+                    }
+                    if not node.header then
+                        row.currentStanding = node.standing
+                        row.currentReactionThreshold = 0
+                        row.nextReactionThreshold = node.cap
+                    end
+                    list[#list + 1] = row
+                    if node.header and not state[node.name] then
+                        walk(node.children)
+                    end
+                end
+            end
+            walk(tree)
+            return list
+        end
+        local function expandAll()
+            expandCalls = expandCalls + 1
+            state.Horde, state.Cities, state.Outposts = false, false, false
+        end
+        C_Reputation = {
+            GetNumFactions = function() return #visible() end,
+            ExpandAllFactionHeaders = expandAll,
+            CollapseFactionHeader = function()
+                collapseCalls = collapseCalls + 1
+            end,
+            GetFactionDataByIndex = function(i) return visible()[i] end,
+        }
+        ExpandAllFactionHeaders = expandAll
+        FT:Render({})
+        paneHorde = state.Horde
+        paneCities = state.Cities
+        paneOutposts = state.Outposts
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("a visible faction under an open header is listed",
+          "BAR|Darkspear Trolls|2000/3000" in lines, True)
+    check("a faction under a collapsed header is not invented",
+          "BAR|Orgrimmar|500/3000" not in lines, True)
+    check("a faction under a hidden nested header is not invented",
+          any("Razor Hill" in row for row in lines), False)
+    check("the walk does not expand faction headers", lua.eval("expandCalls"), 0)
+    check("the walk does not collapse faction headers", lua.eval("collapseCalls"), 0)
+    check("an open header stays open", lua.eval("paneHorde"), False)
+    check("a collapsed header stays collapsed", lua.eval("paneCities"), True)
+    check("a collapsed header hidden under it stays collapsed", lua.eval("paneOutposts"), True)
+    check("collapsed headers are named as left closed",
+          any("left closed" in row for row in lines), True)
+    check("a partial list is not called an empty faction list",
+          any("empty faction list" in row for row in lines), False)
+
+    lua.execute(r"""
+        LAYOUT = {}
+        state.Horde = true
+        expandCalls = 0
+        collapseCalls = 0
+        ToonAge.FactionTracker:Render({})
+        onlyHeaderHorde = state.Horde
+        onlyHeaderCities = state.Cities
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("a collapsed top header is not opened to fill the tab", lua.eval("expandCalls"), 0)
+    check("no standing row is invented under that header",
+          any(row.startswith("BAR|") for row in lines), False)
+    check("collapsed-only view is not called an empty list",
+          any("empty faction list" in row for row in lines), False)
+    check("collapsed-only view says the window was not changed",
+          any("not changed" in row for row in lines), True)
+    check("that top header is still collapsed", lua.eval("onlyHeaderHorde"), True)
+
+    lua.execute(r"""
+        local FT = ToonAge.FactionTracker
+        ToonAge.flavor = "forever"
+        ToonAge.Reputations = nil
+        expandCalls = 0
+        collapseCalls = 0
+        secretName = "SECRET-NAME"
+        compares = 0
+        bad = setmetatable({}, {
+            __eq = function() compares = compares + 1; error("compare") end,
+            __tostring = function() error("tostring") end,
+        })
+        issecretvalue = function(v) return v == secretName end
+        function install(rows)
+            LAYOUT = {}
+            expandCalls = 0
+            collapseCalls = 0
+            compares = 0
+            C_Reputation = {
+                GetNumFactions = function() return #rows end,
+                ExpandAllFactionHeaders = function() expandCalls = expandCalls + 1 end,
+                CollapseFactionHeader = function() collapseCalls = collapseCalls + 1 end,
+                GetFactionDataByIndex = function(i) return rows[i] end,
+            }
+            ExpandAllFactionHeaders = C_Reputation.ExpandAllFactionHeaders
+            FT:Render({})
+        end
+        function faction(name, standing)
+            return {
+                name = name, isHeader = false, isCollapsed = false,
+                currentStanding = standing or 10,
+                currentReactionThreshold = 0, nextReactionThreshold = 3000,
+            }
+        end
+        install({
+            faction("Darkspear Trolls", 2000),
+            faction(""),
+            faction(secretName),
+            faction(bad),
+        })
+        mixedExpand = expandCalls
+        mixedCollapse = collapseCalls
+        mixedCompares = compares
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("a readable name is kept beside skipped names",
+          "BAR|Darkspear Trolls|2000/3000" in lines, True)
+    check("a blank name is not shown", any(row.startswith("BAR|") and row.split("|")[2] == "" for row in lines), False)
+    check("a secret name is not shown", any("SECRET-NAME" in row for row in lines), False)
+    check("a non-string name is not shown", any("table:" in row for row in lines), False)
+    check("skipped names are not described as an empty list",
+          any("empty faction list" in row for row in lines), False)
+    check("skipped names are marked unreadable",
+          any("could not be read" in row for row in lines), True)
+    check("skipped names do not expand headers", lua.eval("mixedExpand"), 0)
+    check("skipped names do not collapse headers", lua.eval("mixedCollapse"), 0)
+    check("a non-string name is not compared", lua.eval("mixedCompares"), 0)
+
+    lua.execute(r"""
+        install({
+            faction(""),
+            faction(secretName),
+            faction(bad),
+        })
+        allBadExpand = expandCalls
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("only unreadable names produce no standing row",
+          any(row.startswith("BAR|") for row in lines), False)
+    check("only unreadable names are not called an empty list",
+          any("empty faction list" in row for row in lines), False)
+    check("only unreadable names say the list could not be read",
+          any("could not be read" in row for row in lines), True)
+    check("only unreadable names do not expand headers", lua.eval("allBadExpand"), 0)
+
+    lua.execute(r"""
+        local rows = { faction("Darkspear Trolls", 2000) }
+        for i = 2, 200 do rows[i] = faction("Filler " .. i, 1) end
+        rows[201] = faction("Past The Cap", 999)
+        LAYOUT = {}
+        expandCalls = 0
+        collapseCalls = 0
+        C_Reputation = {
+            GetNumFactions = function() return 201 end,
+            ExpandAllFactionHeaders = function() expandCalls = expandCalls + 1 end,
+            CollapseFactionHeader = function() collapseCalls = collapseCalls + 1 end,
+            GetFactionDataByIndex = function(i) return rows[i] end,
+        }
+        ToonAge.FactionTracker:Render({})
+        capExpand = expandCalls
+        capCollapse = collapseCalls
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("the first row of a long list is shown",
+          "BAR|Darkspear Trolls|2000/3000" in lines, True)
+    check("a row past 200 is not invented", any("Past The Cap" in row for row in lines), False)
+    check("a list longer than 200 is marked partial",
+          any("longer than 200" in row for row in lines), True)
+    check("a capped list is not called empty",
+          any("empty faction list" in row for row in lines), False)
+    check("a capped list does not expand headers", lua.eval("capExpand"), 0)
+    check("a capped list does not collapse headers", lua.eval("capCollapse"), 0)
+
+    lua.execute(r"""
+        local rows = {}
+        for i = 1, 200 do rows[i] = faction("") end
+        rows[201] = faction("Past The Cap", 999)
+        LAYOUT = {}
+        expandCalls = 0
+        C_Reputation = {
+            GetNumFactions = function() return 201 end,
+            ExpandAllFactionHeaders = function() expandCalls = expandCalls + 1 end,
+            CollapseFactionHeader = function() end,
+            GetFactionDataByIndex = function(i) return rows[i] end,
+        }
+        ToonAge.FactionTracker:Render({})
+        capBadExpand = expandCalls
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("blank rows inside a capped scan are not an empty list",
+          any("empty faction list" in row for row in lines), False)
+    check("blank rows inside a capped scan are unreadable",
+          any("could not be read" in row for row in lines), True)
+    check("blank rows inside a capped scan still say the list was longer",
+          any("longer than 200" in row for row in lines), True)
+    check("the row past that cap is still not invented",
+          any("Past The Cap" in row for row in lines), False)
+    check("a capped scan of blank names does not expand headers", lua.eval("capBadExpand"), 0)
+
+    lua.execute(r"""
+        install({
+            { name = "Cities", isHeader = true, isCollapsed = true },
+            faction("Darkspear Trolls", 2000),
+            faction(""),
+        })
+        bothExpand = expandCalls
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("collapsed and unreadable can both be true",
+          any("left closed" in row for row in lines) and any("could not be read" in row for row in lines), True)
+    check("the readable row remains beside both flags",
+          "BAR|Darkspear Trolls|2000/3000" in lines, True)
+    check("both flags do not expand headers", lua.eval("bothExpand"), 0)
+
+    lua.execute(r"""
+        issecretvalue = nil
+        C_Reputation = {
+            GetNumFactions = function() return 0 end,
+            ExpandAllFactionHeaders = function() expandCalls = expandCalls + 1 end,
+            CollapseFactionHeader = function() collapseCalls = collapseCalls + 1 end,
+            GetFactionDataByIndex = function() end,
+        }
+        expandCalls = 0
+        LAYOUT = {}
+        ToonAge.FactionTracker:Render({})
+        emptyExpand = expandCalls
+    """)
+    lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
+    check("a real zero count is an empty faction list",
+          any("empty faction list" in row for row in lines), True)
+    check("a real zero count is not called unreadable",
+          any("could not be read" in row for row in lines), False)
+    check("a real zero count does not expand headers", lua.eval("emptyExpand"), 0)
+
     lua.execute(r"""
         C_Reputation = nil
+        GetFactionInfo = nil
+        GetNumFactions = nil
         GetFactionInfo = nil
         GetNumFactions = nil
         GetFactionInfo = nil

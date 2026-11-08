@@ -427,19 +427,31 @@ function FT.Run(faction)
     return true
 end
 
---- Factions the client itself lists. Nil when the walk cannot run.
---- An empty table means the client returned no rows. Headers are not factions.
---- Collapsed headers are opened only when they can be closed again afterwards.
+--- Factions currently shown in the reputation list. Nil when the count
+--- cannot be read. An empty table means the displayed list had no faction
+--- rows. Headers are not factions.
+--- GetFactionInfo's index, and C_Reputation.GetFactionDataByIndex's sort
+--- index, omit factions hidden by a collapsed parent. ExpandAllFactionHeaders
+--- opens those headers, including nested ones that were not visible to
+--- snapshot, and CollapseFactionHeader has no success return. This walk
+--- does not call either. list.collapsed is true when a displayed header
+--- is collapsed. list.unreadable is true when a row, its header flag, or
+--- its name cannot be read. list.capped is true when the client count was
+--- above 200 and the rest was not read. None of these open or close a header.
 function FT.WalkClientFactions()
     local C = TA.Compat
     if not (C and type(C.GetNumFactions) == "function" and type(C.GetFactionDataByIndex) == "function") then
         return nil
     end
 
+    local capped = false
     local function count()
         local ok, n = pcall(C.GetNumFactions)
         if not ok or Secret(n) or type(n) ~= "number" then return nil end
-        if n > 200 then return 200 end
+        if n > 200 then
+            capped = true
+            return 200
+        end
         return n
     end
 
@@ -449,63 +461,44 @@ function FT.WalkClientFactions()
         return row
     end
 
+    -- Nil means the name cannot be shown. Secret and non-strings are
+    -- rejected before any comparison. A blank check that throws is the
+    -- same refusal.
     local function plainName(name)
-        if Secret(name) or type(name) ~= "string" or name == "" then return nil end
+        if Secret(name) then return nil end
+        if type(name) ~= "string" then return nil end
+        local ok, blank = pcall(function() return name == "" end)
+        if not ok or blank then return nil end
         return name
     end
 
     local n = count()
     if not n then return nil end
 
-    local saved = {}
-    for i = 1, n do
-        local row = rowAt(i)
-        if row and not Secret(row.isHeader) and not Secret(row.isCollapsed) and row.isHeader == true then
-            local name = plainName(row.name)
-            if name and row.isCollapsed == true then
-                saved[#saved + 1] = name
-            end
-        end
-    end
-
-    local canExpand, canCollapse = false, false
-    if type(C.FactionHeadersCanToggle) == "function" then
-        canExpand, canCollapse = C.FactionHeadersCanToggle()
-    end
-    if #saved > 0 and canExpand and canCollapse then
-        C.ExpandAllFactionHeaders()
-        local expanded = count()
-        if expanded then n = expanded end
-    end
-
     local list = {}
+    local collapsed, unreadable = false, false
     for i = 1, n do
         local row = rowAt(i)
-        if row and not Secret(row.isHeader) and row.isHeader ~= true then
+        if not row then
+            unreadable = true
+        elseif Secret(row.isHeader) or Secret(row.isCollapsed) then
+            unreadable = true
+        elseif row.isHeader == true then
+            if row.isCollapsed == true then collapsed = true end
+        else
             local name = plainName(row.name)
             if name then
                 row.name = name
                 row.observed = true
                 list[#list + 1] = row
+            else
+                unreadable = true
             end
         end
     end
-
-    if #saved > 0 and canExpand and canCollapse then
-        local restoreN = count() or n
-        local wanted = {}
-        for _, name in ipairs(saved) do wanted[name] = true end
-        for i = restoreN, 1, -1 do
-            local row = rowAt(i)
-            if row and not Secret(row.isHeader) and not Secret(row.isCollapsed)
-                and row.isHeader == true and row.isCollapsed ~= true then
-                local name = plainName(row.name)
-                if name and wanted[name] then
-                    C.CollapseFactionHeader(i)
-                end
-            end
-        end
-    end
+    list.collapsed = collapsed
+    list.unreadable = unreadable
+    list.capped = capped
     return list
 end
 
@@ -574,7 +567,23 @@ function FT:Render(content, side)
         return
     end
     if observed and #list == 0 then
-        y = L:Paragraph(content, y, "The client returned an empty faction list.")
+        if list.collapsed then
+            y = L:Paragraph(content, y,
+                "Faction headers are collapsed, so their factions were not read. "
+                .. "The reputation window was not changed.")
+        end
+        if list.unreadable then
+            y = L:Paragraph(content, y,
+                "The faction list could not be read. The reputation window was not changed.")
+        end
+        if list.capped then
+            y = L:Paragraph(content, y,
+                "The faction list was longer than 200 rows. No faction was in the rows "
+                .. "that were read, and the rest was not read.")
+        end
+        if not list.collapsed and not list.unreadable and not list.capped then
+            y = L:Paragraph(content, y, "The client returned an empty faction list.")
+        end
         L:Finish(content, y)
         return
     end
@@ -598,6 +607,18 @@ function FT:Render(content, side)
                 { label = "Run this faction", onClick = function() FT.Run(captured) end },
             })
         end
+    end
+    if observed and list.collapsed then
+        y = L:Paragraph(content, y,
+            "Collapsed faction headers were left closed, so factions under them are not listed.")
+    end
+    if observed and list.unreadable then
+        y = L:Paragraph(content, y,
+            "A faction row could not be read and was skipped. The reputation window was not changed.")
+    end
+    if observed and list.capped then
+        y = L:Paragraph(content, y,
+            "The faction list was longer than 200 rows. Only the first 200 were read.")
     end
     L:Finish(content, y)
 end
