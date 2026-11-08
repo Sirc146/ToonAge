@@ -17,9 +17,10 @@ TA.FactionTracker = FT
 TA:RegisterModule("FactionTracker", FT)
 
 local function Secret(v)
-    if type(issecretvalue) ~= "function" then return false end
+    if v == nil or type(issecretvalue) ~= "function" then return false end
     local ok, res = pcall(issecretvalue, v)
-    return ok and res == true
+    if not ok then return true end
+    return res == true
 end
 
 local function CleanNum(v)
@@ -426,6 +427,106 @@ function FT.Run(faction)
     return true
 end
 
+--- Factions currently shown in the reputation list. Nil when the count
+--- cannot be read. An empty table means the displayed list had no faction
+--- rows. Headers are not factions.
+--- GetFactionInfo's index, and C_Reputation.GetFactionDataByIndex's sort
+--- index, omit factions hidden by a collapsed parent. ExpandAllFactionHeaders
+--- opens those headers, including nested ones that were not visible to
+--- snapshot, and CollapseFactionHeader has no success return. This walk
+--- does not call either. list.collapsed is true when a displayed header
+--- is collapsed. list.unreadable is true when a row, its header flag, or
+--- its name cannot be read. list.capped is true when the client count was
+--- above 200 and the rest was not read. None of these open or close a header.
+function FT.WalkClientFactions()
+    local C = TA.Compat
+    if not (C and type(C.GetNumFactions) == "function" and type(C.GetFactionDataByIndex) == "function") then
+        return nil
+    end
+
+    local capped = false
+    local function count()
+        local ok, n = pcall(C.GetNumFactions)
+        if not ok or Secret(n) or type(n) ~= "number" then return nil end
+        if n > 200 then
+            capped = true
+            return 200
+        end
+        return n
+    end
+
+    local function rowAt(i)
+        local ok, row = pcall(C.GetFactionDataByIndex, i)
+        if not ok or type(row) ~= "table" then return nil end
+        return row
+    end
+
+    -- Nil means the name cannot be shown. Secret and non-strings are
+    -- rejected before any comparison. A blank check that throws is the
+    -- same refusal.
+    local function plainName(name)
+        if Secret(name) then return nil end
+        if type(name) ~= "string" then return nil end
+        local ok, blank = pcall(function() return name == "" end)
+        if not ok or blank then return nil end
+        return name
+    end
+
+    local n = count()
+    if not n then return nil end
+
+    local list = {}
+    local collapsed, unreadable = false, false
+    for i = 1, n do
+        local row = rowAt(i)
+        if not row then
+            unreadable = true
+        elseif Secret(row.isHeader) or Secret(row.isCollapsed) then
+            unreadable = true
+        elseif row.isHeader == true then
+            if row.isCollapsed == true then collapsed = true end
+        else
+            local name = plainName(row.name)
+            if name then
+                row.name = name
+                row.observed = true
+                list[#list + 1] = row
+            else
+                unreadable = true
+            end
+        end
+    end
+    list.collapsed = collapsed
+    list.unreadable = unreadable
+    list.capped = capped
+    return list
+end
+
+local function ReadObserved(row)
+    local value, badV = CleanNum(row.currentStanding)
+    local hi, badH = CleanNum(row.nextReactionThreshold)
+    local lo = CleanNum(row.currentReactionThreshold)
+    if badV == "secret" or badH == "secret" then
+        return Hidden(true, "standing")
+    end
+    local text = "n/a"
+    if value and hi then text = string.format("%d/%d", value, hi) end
+    local span = (type(lo) == "number" and type(hi) == "number") and (hi - lo) or nil
+    local into = value
+    if value and type(lo) == "number" and span and span > 0 then into = value - lo end
+    return {
+        current = into,
+        cap = (span and span > 0) and span or hi,
+        atMax = false,
+        paragon = false,
+        unverified = true,
+        text = text,
+        system = "standing",
+        scale = "rep",
+        secret = false,
+    }
+end
+
 local function SortedFactions()
     local bag = TA.Reputations and TA.Reputations.midnight
     if type(bag) ~= "table" then return nil end
@@ -449,15 +550,47 @@ function FT:Render(content, side)
             "Reputation reads are unverified until Harvest probes them.")
     end
     local list = SortedFactions()
+    local observed = false
+    if FT.Family() == "forever" then
+        local walked = FT.WalkClientFactions()
+        if type(walked) == "table" then
+            list = walked
+            observed = true
+        end
+    end
     if not list then
-        y = L:Paragraph(content, y, "No reputation routes on this client.")
+        local missing = FT.Family() == "forever"
+            and "This client did not return a faction list."
+            or  "No reputation routes on this client."
+        y = L:Paragraph(content, y, missing)
+        L:Finish(content, y)
+        return
+    end
+    if observed and #list == 0 then
+        if list.collapsed then
+            y = L:Paragraph(content, y,
+                "Faction headers are collapsed, so their factions were not read. "
+                .. "The reputation window was not changed.")
+        end
+        if list.unreadable then
+            y = L:Paragraph(content, y,
+                "The faction list could not be read. The reputation window was not changed.")
+        end
+        if list.capped then
+            y = L:Paragraph(content, y,
+                "The faction list was longer than 200 rows. No faction was in the rows "
+                .. "that were read, and the rest was not read.")
+        end
+        if not list.collapsed and not list.unreadable and not list.capped then
+            y = L:Paragraph(content, y, "The client returned an empty faction list.")
+        end
         L:Finish(content, y)
         return
     end
     for _, faction in ipairs(list) do
-        local read = FT.Read(faction)
-        local active = FT.IsActive(faction)
-        local left = FT.QuestsLeft(faction, read)
+        local read = observed and ReadObserved(faction) or FT.Read(faction)
+        local active = (not observed) and FT.IsActive(faction)
+        local left = observed and nil or FT.QuestsLeft(faction, read)
         y = L:StatBar(content, y, {
             label = faction.name or "Faction",
             value = read.current,
@@ -466,12 +599,26 @@ function FT:Render(content, side)
             text = read.text,
             status = "neutral",
         })
-        local line = FT.LeftLine(read, left)
+        local line = (not observed) and FT.LeftLine(read, left) or nil
         if line then y = L:Paragraph(content, y, line) end
-        local captured = faction
-        y = L:ButtonRow(content, y, {
-            { label = "Run this faction", onClick = function() FT.Run(captured) end },
-        })
+        if not observed then
+            local captured = faction
+            y = L:ButtonRow(content, y, {
+                { label = "Run this faction", onClick = function() FT.Run(captured) end },
+            })
+        end
+    end
+    if observed and list.collapsed then
+        y = L:Paragraph(content, y,
+            "Collapsed faction headers were left closed, so factions under them are not listed.")
+    end
+    if observed and list.unreadable then
+        y = L:Paragraph(content, y,
+            "A faction row could not be read and was skipped. The reputation window was not changed.")
+    end
+    if observed and list.capped then
+        y = L:Paragraph(content, y,
+            "The faction list was longer than 200 rows. Only the first 200 were read.")
     end
     L:Finish(content, y)
 end

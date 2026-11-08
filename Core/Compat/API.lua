@@ -189,6 +189,99 @@ function C.GetItemInfo(item)
     return nil
 end
 
+--- True when the value is secret or the predicate itself fails.
+--- A predicate error is not permission to compare the value.
+local function SecretValue(v)
+    if v == nil or type(issecretvalue) ~= "function" then return false end
+    local ok, secret = pcall(issecretvalue, v)
+    if not ok then return true end
+    return secret == true
+end
+
+--- Nil when the flag is secret. A missing flag is false.
+local function PlainFlag(v)
+    if SecretValue(v) then return nil end
+    if v == nil then return false end
+    return v and true or false
+end
+
+--- How many faction rows the client will return. Nil when neither API exists,
+--- or when the count is secret. Zero is a real empty list, not a missing function.
+function C.GetNumFactions()
+    local fn = FirstFn(C_Reputation and C_Reputation.GetNumFactions, GetNumFactions)
+    if not fn then return nil end
+    local ok, n = pcall(fn)
+    if not ok or SecretValue(n) or type(n) ~= "number" then return nil end
+    return n
+end
+
+--- One faction row. Retail's table and the classic multi-return are both
+--- normalized. Nil when that index is empty or neither API exists.
+function C.GetFactionDataByIndex(index)
+    if type(index) ~= "number" then return nil end
+    if C_Reputation and type(C_Reputation.GetFactionDataByIndex) == "function" then
+        local ok, data = pcall(C_Reputation.GetFactionDataByIndex, index)
+        if ok and type(data) == "table" then
+            if SecretValue(data.isHeader) then return nil end
+            return {
+                name = data.name,
+                factionID = data.factionID,
+                reaction = data.reaction,
+                currentStanding = data.currentStanding,
+                currentReactionThreshold = data.currentReactionThreshold,
+                nextReactionThreshold = data.nextReactionThreshold,
+                isHeader = PlainFlag(data.isHeader),
+                isChild = PlainFlag(data.isChild),
+                isCollapsed = PlainFlag(data.isCollapsed),
+            }
+        end
+    end
+    if type(GetFactionInfo) == "function" then
+        local ok, name, _, standingID, barMin, barMax, barValue, _, _, isHeader, isCollapsed, _, _, isChild, factionID =
+            pcall(GetFactionInfo, index)
+        if ok and not SecretValue(name) and type(name) == "string" and name ~= "" then
+            if SecretValue(isHeader) then return nil end
+            return {
+                name = name,
+                factionID = factionID,
+                reaction = standingID,
+                currentStanding = barValue,
+                currentReactionThreshold = barMin,
+                nextReactionThreshold = barMax,
+                isHeader = PlainFlag(isHeader),
+                isChild = PlainFlag(isChild),
+                isCollapsed = PlainFlag(isCollapsed),
+            }
+        end
+    end
+    return nil
+end
+
+--- Open collapsed headers so the walk can see the factions under them.
+--- False when this client has neither function.
+function C.ExpandAllFactionHeaders()
+    local fn = FirstFn(C_Reputation and C_Reputation.ExpandAllFactionHeaders, ExpandAllFactionHeaders)
+    if not fn then return false end
+    local ok = pcall(fn)
+    return ok and true or false
+end
+
+--- Whether this client can open every header and close one again.
+--- The wrappers above exist even when the client functions do not.
+function C.FactionHeadersCanToggle()
+    local expand = FirstFn(C_Reputation and C_Reputation.ExpandAllFactionHeaders, ExpandAllFactionHeaders)
+    local collapse = FirstFn(C_Reputation and C_Reputation.CollapseFactionHeader, CollapseFactionHeader)
+    return expand ~= nil, collapse ~= nil
+end
+
+--- Put one header back. False when this client has neither function.
+function C.CollapseFactionHeader(index)
+    local fn = FirstFn(C_Reputation and C_Reputation.CollapseFactionHeader, CollapseFactionHeader)
+    if not fn or type(index) ~= "number" then return false end
+    local ok = pcall(fn, index)
+    return ok and true or false
+end
+
 function C.GetItemStats(itemLink)
     if not itemLink then return nil end
     if C_Item and type(C_Item.GetItemStats) == "function" then
