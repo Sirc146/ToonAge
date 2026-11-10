@@ -763,8 +763,17 @@ function M:Render(content, side)
     local lines, readable = ReadSpellbook()
 
     local y = -8
+    local guided = false
+    local Guide = TA.MageLevel12
+    if Guide and Guide.RefreshGate and Guide.Evaluate and Guide.Paint and L then
+        local readStatus = readable and "read" or "unreadable"
+        if Guide.RefreshGate(readable and lines or nil, readStatus) then
+            y = Guide.Paint(content, y, L, Guide.Evaluate(Guide.Context()))
+            guided = true
+        end
+    end
     local RL = TA.RotationLists
-    if RL and RL.Resolve and L then
+    if not guided and RL and RL.Resolve and L then
         local class = U.GetPlayerClass and U.GetPlayerClass() or nil
         local _, specName = U.GetPlayerSpec()
         local level = tonumber(Try(UnitLevel, "player"))
@@ -823,9 +832,20 @@ local function InCombat()
     return false
 end
 
+--- Class, level, and the spellbook move together. A failed read is
+--- unreadable, not an empty scan.
+local function SyncGuide()
+    local Guide = TA.MageLevel12
+    if not (Guide and Guide.RefreshGate) then return end
+    local ok, lines, readable = pcall(ReadSpellbook)
+    if not ok then lines, readable = nil, false end
+    Guide.RefreshGate(lines, readable and "read" or "unreadable")
+end
+
 --- Fixed gold bar. The list sets the three slots. In combat the first slot
 --- is Assisted Combat when that spell id is not secret.
 function M:Init()
+    SyncGuide()
     if self._bar or type(CreateFrame) ~= "function" or not UIParent then return end
     local bar = CreateFrame("Frame", "TAForeverRotationBar", UIParent, "BackdropTemplate")
     bar:SetSize(200, 68)
@@ -879,6 +899,11 @@ function M:Init()
 end
 
 function M:PaintBar()
+    local Guide = TA.MageLevel12
+    if Guide and Guide.Gate and Guide.Gate() then
+        if self._bar and self._bar.Hide then self._bar:Hide() end
+        return
+    end
     local RL = TA.RotationLists
     local bar = self._bar
     if not RL or not bar or not self._barIcons then return end
@@ -921,11 +946,13 @@ function M:PaintBar()
 end
 
 function M:OnEvent(event, spellID)
-    -- Spell data loads one ID at a time. Redraw only for an ID this tab asked
-    -- for, so an unrelated load does not rebuild the window.
+    -- An unrelated spell-data load must not touch the guide gate. Refreshing
+    -- first, then returning, would drop or replace that gate without a redraw
+    -- and the old icon bar would come back beside the guide still on screen.
     if event == "SPELL_DATA_LOAD_RESULT" then
         if not (spellID and M._loadAsked and M._loadAsked[spellID]) then return end
     end
+    SyncGuide()
     if TA.QueueUIRefresh then TA:QueueUIRefresh(event) end
 end
 
