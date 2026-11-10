@@ -283,12 +283,22 @@ def test_shipped():
         FOREVER_FLAG = RL.FileUnverified(data)
         FOREVER_VIEW = RL.Resolve(data, "ROGUE", "Assassination", 20, "st")
         FOREVER_RANKS = FOREVER_VIEW.spells[1].ranks
+        local arcane = data.MAGE.Arcane
+        local low = arcane["10-19"].opener or ""
+        local later = arcane["20-39"].opener or ""
+        ARC_LOW = low
+        ARC_LATER_BLAST = later:find("Arcane Blast", 1, true) and true or false
+        ARC_LOW_CLEAN = (not low:find("Arcane Blast", 1, true)
+            and not low:find("Arcane Power", 1, true)
+            and not low:find("Presence of Mind", 1, true)) and true or false
     """)
     check("forever file flag marks every row approximate", lua.eval("FOREVER_FLAG"), True)
     check("forever entries stay verified=false", lua.eval("FOREVER_BAD"), 0)
     check("forever assassination is approximate", lua.eval("FOREVER_VIEW.spells[1].approximate"), True)
     check("forever keeps the Slice and Dice rank chain", lua.eval("FOREVER_RANKS[1]"), 5171)
     check("forever keeps the second Slice and Dice rank", lua.eval("FOREVER_RANKS[2]"), 6774)
+    check("mage 10-19 withholds the era arcane opener", lua.eval("ARC_LOW_CLEAN"), True)
+    check("later mage bands still carry the era opener", lua.eval("ARC_LATER_BLAST"), True)
 
 
 def main():
