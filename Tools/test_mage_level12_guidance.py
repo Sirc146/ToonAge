@@ -324,7 +324,9 @@ def main():
           "true|true|Shoot|false|player|yes|yes|70862|16001")
     check("Shoot feedback names the stationary note and refuses a cutoff",
           "Stand still" in lua.eval("LIVE_FEED")
-          and "not a cutoff" in lua.eval("LIVE_FEED"), True)
+          and "not a cutoff" in lua.eval("LIVE_FEED")
+          and "official beta note, not confirmed on live 70862" in lua.eval("LIVE_FEED")
+          and "does not use that number as a gate" in lua.eval("LIVE_FEED"), True)
     check("a player pull is not computed, and the confirmed rank is 145",
           lua.eval("LIVE_PULL"), "false|Fireball|145")
 
@@ -337,14 +339,54 @@ def main():
             HINT = view.rankHint or ""
           """),
           "133")
+    hint = lua.eval("HINT") or ""
     check("an unconfirmed Fireball rank 3 stays trainer-listed",
-          "Fireball rank 3 is trainer-listed at 12 - not confirmed learned"
-          in (lua.eval("HINT") or ""), True)
-    check("Frostbolt and Fire Blast ranks stay unconfirmed",
-          "Frostbolt ranks at 8 and 14 are trainer-listed, not confirmed learned"
-          in (lua.eval("HINT") or "")
-          and "Fire Blast rank at 14 is trainer-listed, not confirmed learned"
-          in (lua.eval("HINT") or ""), True)
+          "Fireball rank 3 (spell 145) is trainer-listed at 12 - not confirmed learned."
+          in hint, True)
+    check("a level 12 hint includes the nearby rank 14 reminders",
+          "Frostbolt rank at 14 is trainer-listed, not confirmed learned." in hint
+          and "Fire Blast rank at 14 is trainer-listed, not confirmed learned." in hint
+          and "Fireball rank 4" not in hint
+          and "Arcane Missiles rank 2" not in hint, True)
+    ranks = eval_case(base + r"""
+        ctx.ask = function(id) if id == 133 then return "yes" end return "no" end
+        ctx.spellbook = { { name = "Fireball", spellID = 133 } }
+        local function hint(level)
+            ctx.level = level
+            return G.Evaluate(ctx).rankHint or ""
+        end
+        OUT = hint(10) .. "\n" .. hint(14) .. "\n" .. hint(18)
+    """)
+    at10, at14, at18 = (ranks or "\n\n").split("\n")
+    check("level 10 sees only ranks within two levels",
+          "Fireball rank 3 (spell 145) is trainer-listed at 12 - not confirmed learned." in at10
+          and "Frostbolt rank at 8 is trainer-listed, not confirmed learned." in at10
+          and "Fireball rank 4" not in at10
+          and "Arcane Missiles rank 2" not in at10
+          and "Frostbolt rank at 14" not in at10
+          and "Fire Blast rank at 14" not in at10, True)
+    check("level 14 adds the rank 14 and rank 16 reminders",
+          "Arcane Missiles rank 2 (spell 5144) is trainer-listed at 16 - not confirmed learned." in at14
+          and "Fire Blast rank at 14 is trainer-listed, not confirmed learned." in at14
+          and "Fireball rank 4" not in at14, True)
+    check("level 18 lists every unconfirmed rank as its own sentence",
+          at18.count("not confirmed learned.") == 6
+          and ". Fireball rank 4" in at18
+          and ". Arcane Missiles rank 2" in at18
+          and ". Frostbolt rank at 8" in at18
+          and ". Frostbolt rank at 14" in at18
+          and ". Fire Blast rank" in at18, True)
+    check("a confirmed higher rank is named before its trainer level",
+          "Fireball rank 4 (spell 3140) is confirmed." in (eval_case(base + r"""
+            ctx.level = 10
+            ctx.ask = function(id)
+                if id == 133 or id == 3140 then return "yes" end
+                return "no"
+            end
+            ctx.spellbook = { { name = "Fireball", spellID = 133 }, { name = "Fireball", spellID = 3140 } }
+            local view = G.Evaluate(ctx)
+            OUT = view.rankHint or ""
+          """) or ""), True)
 
     check("client name is used when the id is confirmed",
           eval_case(base + r"""
@@ -611,7 +653,10 @@ def main():
           "Frostbolt slow" in tips
           and "when you have to move" in tips
           and "extra pull" in tips
-          and "does not require Missile Barrage" in tips
+          and "The page lists Missiles without a Missile Barrage condition" in tips
+          and "after core talents" in tips
+          and "not a pre-talent rule" in tips
+          and "Unverified" not in tips
           and "not stated" not in tips.lower()
           and "on cooldown" not in tips.lower(), True)
     arcane = eval_case(base + r"""
@@ -632,6 +677,9 @@ def main():
           arcane.startswith("true|Fireball|"), True)
     check("the arcane tip names the order and refuses a damage claim",
           "Frostbolt, then Arcane Missiles" in arcane
+          and "finish instead of spending mana" in arcane
+          and "pushback" in arcane
+          and "while mana remains" not in arcane
           and "does not claim the wand beats a spell" in arcane, True)
     check("a level 13 guide names the Greater Magic Wand milestone",
           "Greater Magic Wand" in arcane and "available at 13" in arcane, True)

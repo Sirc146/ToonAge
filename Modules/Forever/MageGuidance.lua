@@ -315,11 +315,11 @@ end
 
 local function TipWhy(entry)
     if entry.key == "arcane_missiles" then
-        return "Conditional tip, not a next press. Wowhead Arcane leveling, from level 8 until 21, casts Arcane Missiles after Frostbolt and before the wand finish. That stretch does not require Missile Barrage. The same page's unbuffed Arcane Missiles line is for Arcane Blast stacks at level 21, outside this band."
+        return "Conditional tip, not a next press. Wowhead Arcane leveling, from level 8 until 21, casts Arcane Missiles after Frostbolt and before the wand finish. The page lists Missiles without a Missile Barrage condition. The same page's unbuffed Arcane Missiles line is for Arcane Blast stacks at level 21, outside this band."
     elseif entry.key == "fire_blast" then
         return "Conditional tip, not a next press. Wowhead Arcane leveling says to use Fire Blast when you have to move, if mana allows. Icy Veins Frost leveling says to use Fire Blast to finish a low-health enemy that is not frozen, or to use the wand. This is not a cooldown instruction."
     elseif entry.key == "frostbolt" then
-        return "Conditional tip, not a next press. Frostbolt is the control and Frost-style alternative, not a universal opener. Wowhead Fire and Arcane leveling say a Frostbolt slow, then your main spells, is a safe way to take less damage. Wowhead Arcane leveling pulls with Frostbolt from level 8 until 21, and uses one Frostbolt when the mob will deal relevant damage. Icy Veins Frost leveling opens at max range with Frostbolt."
+        return "Conditional tip, not a next press. Frostbolt is the control and Frost-style alternative, not a universal opener. Wowhead Fire and Arcane leveling say a Frostbolt slow, then your main spells, is a safe way to take less damage. Wowhead Arcane leveling pulls with Frostbolt from level 8 until 21, and uses one Frostbolt when the mob will deal relevant damage. Icy Veins Frost leveling's max-range Frostbolt is in the section after core talents, which also uses Arcane Blast, so it is not a pre-talent rule for levels 10-19."
     elseif entry.key == "polymorph" then
         return "Conditional tip, not a next press. Wowhead Fire and Arcane leveling say that after an extra pull, Frost Nova then Polymorph can hold one enemy while you finish the other. Icy Veins Frost leveling says Polymorph takes one extra enemy out of the fight. Damage removes it, and only one Polymorph is up."
     end
@@ -350,7 +350,7 @@ local function ActionCopy(entry, label, spellID, computed)
         changes = "This pick changes if you use the confirmed Frostbolt control cast instead, if the enemy has already reached you, if the target is low health, or if you are out of mana and Shoot is confirmed with a wand in the ranged slot whose required level you have met. That is type and level only, not a check that combat can use it. Which opener is best for this character's gear or talents is unresolved."
         src = "IV-Fire"
     elseif entry.key == "shoot" then
-        why = "Shoot finishes a low-health target or conserves mana when you are out of mana. Stand still. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
+        why = "Shoot finishes a low-health target or conserves mana when you are out of mana. Stand still. official beta note, not confirmed on live 70862: the October 15 Forever beta notes say wands require standing still for 0.5 seconds before shooting. This guide does not use that number as a gate. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
         changes = "This pick changes if you still have mana and the target is not low health. The Fire-style opener before the enemy reaches you is Fireball, when Fireball is confirmed."
         src = "S1"
     else
@@ -390,7 +390,7 @@ local function Gap(situation, rows, wand)
         if wand ~= "yes" and wand ~= "no" and wand ~= "unknown" then wand = "unknown" end
         why = "Shoot would finish a low-health target or conserve mana, but only when Shoot is confirmed and the ranged slot holds a wand whose required level you have met. That is type and level only, not a check that combat can use it. Shoot: "
             .. shoot .. ". Ranged-slot wand type and required level: " .. wand
-            .. ". Stand still. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
+            .. ". Stand still. official beta note, not confirmed on live 70862: the October 15 Forever beta notes say wands require standing still for 0.5 seconds before shooting. This guide does not use that number as a gate. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
         changes = "This pick changes if you still have mana and the target is not low health. The Fire-style opener before the enemy reaches you is Fireball, when Fireball is confirmed."
     elseif situation == "pack" then
         local nova = map.frost_nova and map.frost_nova.state or "unknown"
@@ -513,7 +513,7 @@ function M.Evaluate(ctx, data)
                 tierB[#tierB + 1] = {
                     name = row.entry.name,
                     why = TipWhy(row.entry),
-                    confidence = "page-stated",
+                    confidence = "Conditional tips",
                 }
             end
         else
@@ -532,23 +532,33 @@ function M.Evaluate(ctx, data)
     end
     local rankParts = {}
     local function rankAdd(text) rankParts[#rankParts + 1] = text end
+    -- A not-yet-confirmed rank is mentioned only within two levels of its
+    -- trainer level. A confirmed rank is always named.
+    local function Near(rankLevel)
+        return type(ctx.level) == "number" and ctx.level >= (rankLevel - 2)
+    end
     if HasId(map.fireball, 145) then
         rankAdd("Fireball rank 3 (spell 145) is confirmed.")
-    else
-        rankAdd("Fireball rank 3 is trainer-listed at 12 - not confirmed learned")
+    elseif Near(12) then
+        rankAdd("Fireball rank 3 (spell 145) is trainer-listed at 12 - not confirmed learned.")
     end
     if HasId(map.fireball, 3140) then
         rankAdd("Fireball rank 4 (spell 3140) is confirmed.")
-    else
-        rankAdd("Fireball rank 4 (spell 3140) is trainer-listed at 18 - not confirmed learned")
+    elseif Near(18) then
+        rankAdd("Fireball rank 4 (spell 3140) is trainer-listed at 18 - not confirmed learned.")
     end
     if HasId(map.arcane_missiles, 5144) then
         rankAdd("Arcane Missiles rank 2 (spell 5144) is confirmed.")
-    else
-        rankAdd("Arcane Missiles rank 2 (spell 5144) is trainer-listed at 16 - not confirmed learned")
+    elseif Near(16) then
+        rankAdd("Arcane Missiles rank 2 (spell 5144) is trainer-listed at 16 - not confirmed learned.")
     end
-    rankAdd("Frostbolt ranks at 8 and 14 are trainer-listed, not confirmed learned")
-    rankAdd("Fire Blast rank at 14 is trainer-listed, not confirmed learned")
+    if Near(8) then
+        rankAdd("Frostbolt rank at 8 is trainer-listed, not confirmed learned.")
+    end
+    if Near(14) then
+        rankAdd("Frostbolt rank at 14 is trainer-listed, not confirmed learned.")
+        rankAdd("Fire Blast rank at 14 is trainer-listed, not confirmed learned.")
+    end
 
     local shoot = "unknown"
     if map.shoot and map.shoot.state == "yes" then shoot = "yes" end
@@ -558,7 +568,7 @@ function M.Evaluate(ctx, data)
     local rankHint = table.concat(rankParts, " ")
     local arcaneLine
     if learned("frostbolt") and learned("arcane_missiles") then
-        arcaneLine = "Arcane-style tip, not a next press: Frostbolt, then Arcane Missiles, then a wand finish. Wowhead Arcane leveling gives that order from level 8 until 21."
+        arcaneLine = "Conditional tip, not a next press. Wowhead Arcane leveling gives Frostbolt, then Arcane Missiles, then a wand finish from level 8 until 21. The page lists Missiles without a Missile Barrage condition."
         if learned("shoot") and wand == "yes" then
             arcaneLine = arcaneLine .. " Shoot and a ranged wand at your level are confirmed, so the wand step can be used."
         else
@@ -568,7 +578,7 @@ function M.Evaluate(ctx, data)
     end
     local wandWhileMana
     if learned("shoot") and wand == "yes" then
-        wandWhileMana = "Optional reminder, not a next press: you can Shoot while mana remains. This guide states no wand damage, scaling, or timing number, and it does not claim the wand beats a spell."
+        wandWhileMana = "Optional reminder, not a next press. Wowhead Fire and Arcane leveling say to use the wand to finish instead of spending mana, and that wands do not suffer pushback. This guide states no wand damage, scaling, or timing number, and it does not claim the wand beats a spell."
     end
     local wandMilestone
     if type(ctx.level) == "number" and ctx.level >= 13 then
@@ -743,10 +753,10 @@ function M.Feedback(view, notes)
     end
     local tips = {}
     for _, tip in ipairs(view.tierB or {}) do
-        tips[#tips + 1] = (tip.name or "") .. " (inferred)"
+        tips[#tips + 1] = (tip.name or "") .. " (Conditional tips)"
     end
     if #tips > 0 then
-        add("Unverified tips: " .. table.concat(tips, ", "))
+        add("Conditional tips: " .. table.concat(tips, ", "))
     end
     add("Notes: " .. notes)
     return table.concat(lines, "\n")
