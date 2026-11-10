@@ -34,6 +34,8 @@ Christopher’s workflow after a change is live-tested, verbatim:
 
 That means: change → Sirc’s live test passes → push to the repo promptly as a small commit and record the result in `docs/HANDOVER.md`. Release tags still need his explicit approval. Docs and code changes go in as their own commits so one can be rolled back if needed.
 
+README.md and docs/HANDOVER.md are updated in the same push after each verified test.
+
 ## Standing rules (imported) — November 9, 2026, 8:19 PM PST
 
 Source: standing-rule handoff relayed through Riley. The underlying memory file was not independently opened for that handoff. Supplied wording retained verbatim:
