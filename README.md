@@ -1,227 +1,45 @@
 # ToonAge
 
-One addon, every version of World of Warcraft. Character, gear, talents,
-rotation, professions, pets and PvP in one panel, with the game-rule content
-researched separately for each expansion instead of borrowed from another one.
+ToonAge is a multi-client World of Warcraft addon by Sirc (repo [Sirc146/ToonAge](https://github.com/Sirc146/ToonAge)). It uses a shared Lua engine, per-client data, modules and TOCs, Python verification, and observed client data to feed advice. It is for Christopher (Sirc) and players who want optional, skippable guidance — what, why, and alternatives — not an automated rotation and not a replacement for Zygor, WowUp, or other specialist tools. Readouts are not the same as reliable personalized guidance.
 
-**Version:** see [Releases](https://github.com/Sirc146/ToonAge/releases). A
-release stamps its tag into the `.toc`. · **Author:** Sirc
+Installs come from the `test` branch. The repo is the single source of truth; box copies of these docs are drafts only until they are approved and committed.
 
-> Unofficial fan project. Not affiliated with, endorsed by, or sponsored by
-> Blizzard Entertainment.
+## Quick start
 
----
+Close World of Warcraft first. Christopher runs his own SavedVariables backup PowerShell, with each command explained, before every test. Confirm the installed files and version match the agreed trunk before measuring. **Trunk mapping is UNKNOWN:** some scripts assume `main`; Sirc must confirm the agreed trunk. Do not silently change branches.
 
-## Supported clients
+### Approved Forever install
 
-One `ToonAge` folder carries a `.toc` for every client. WoW picks the one that
-matches, and the addon list shows which edition loaded.
+Forever installation is only `Tools/build_flavors.ps1 -Install`, never the all-client release ZIP. Target:
 
-| Client | Addon list shows | What you get |
-|---|---|---|
-| Retail (Midnight) | ToonAge Retail | Character, Gear, Talents, Rotation, Delves, Weekly, Professions, Pets\*, Guide\*\* |
-| TBC Anniversary | ToonAge TBC | Character, Stat Caps, Gear, Talents, Rotation, Spells, Weapons, Racials, Professions, Pets\*, PvP |
-| Mists of Pandaria Classic | ToonAge Mists | Character, Gear, Pet Care\* (more in progress) |
-| WoW Forever (beta) | ToonAge Forever | Character, Gear, Talents, Spells, Pets\*, PvP, Scrolls, Casts, Harvest. These are readouts of what the client itself reports. |
-| Classic Era | ToonAge Classic Era | Core engine only |
-| Cataclysm Classic | ToonAge Cataclysm | Core engine only |
-| Wrath Classic | ToonAge Wrath | Core engine only |
+`C:\Program Files (x86)\World of Warcraft\_<flavor>_\Interface\AddOns\ToonAge`
 
-\* Shown only for classes that keep a pet (Hunter, Warlock, and on Mists also
-Frost Mage and Unholy Death Knight), or while a pet is out.
-\*\* Shown only when a loaded guide has steps.
+Confirm the real client and avoid nested AddOns folders. `Tools/build_flavors.ps1 -Check` is report-only: it compares installed clients against the trunk and does not install. `Tools/deploy.ps1` is not the Forever method; its `robocopy /MIR` can be destructive. The reported November 9, 2026, 8:21 PM PST install method is UNKNOWN, not presumed compliant. No install commands are run from this document.
 
-**Core engine only** means the addon loads, captures errors and reports its
-own state, and gives no advice at all. That is deliberate. Retail's gear scores
-and rotations are wrong for a Classic character, and wrong advice is worse than
-none.
+### `Update-ToonAge.ps1` flow (not an approved Forever path)
 
-A feature-by-feature rating of each target client is in
-[Docs/ASSESSMENT.md](Docs/ASSESSMENT.md).
+This script was found locally at `/workspace/toonage-install/Update-ToonAge.ps1`. It is not in the pinned repo root or `Tools`, and it is **not an approved Forever install path**. It is multi-client, follows a moving `test` branch, does not run CI or live tests, and is not an atomic rollback system. It does not intentionally write settings back. Explained here so the steps are visible, not as permission to run it.
 
-If the client ever loads another edition's file list, ToonAge stops every
-feature and says so in chat ("This is a … client but the … build loaded"). It
-won't run the wrong product quietly.
+1. **Refuse a running client.** The script stops if a WoW process is open, so close the game first.
+2. **Resolve the current `test` SHA.** It asks GitHub for the latest commit on `Sirc146/ToonAge` `test`, then says which short SHA it will download.
+3. **Download and unpack.** It saves `ToonAge-test.zip` in the temp folder, unpacks it, and uses the unpacked repo root as the copy source.
+4. **For each client folder** (`_retail_`, `_forever_`, `_classic_beta_`, `_classic_`, `_anniversary_`, `_classic_era_`) under `C:\Program Files (x86)\World of Warcraft`:
+   - Skip that folder if the client is not installed.
+   - If a `WTF` folder exists, copy it into a dated `ToonAge-backups\<stamp>\<client>-WTF` folder under the user profile. This is the SavedVariables backup. A failed backup stops the script; nothing is copied forward.
+   - Skip if the existing `Interface\AddOns\ToonAge` folder is itself a git repo.
+   - If an addon folder already exists, move it aside into the same backup stamp.
+   - Copy the unpacked addon in, skipping `Tools`, `Docs`, `.github`, `.git`, `CLAUDE.md`, and git metadata.
+5. **Clean up.** It deletes the temp zip and unpack folder, then prints the short commit and the backup path.
 
-## Installing
+After an approved install, use in-addon buttons (Reload UI, Spells, Module Health, Error Log). Diagnostic results stay in a copyable window. Do not type `/dump` or `/run`.
 
-**WowUp:** *Get Addons → Install from URL* →
-`https://github.com/Sirc146/ToonAge`. WowUp reads the release's
-`release.json` and installs the zip on Retail, PTR, Classic Era, TBC
-Anniversary and Mists Classic. It prefers stable releases over pre-releases.
+## Docs in this repo
 
-**Wago App:** search for ToonAge.
-
-**By hand:** download the zip from
-[Releases](https://github.com/Sirc146/ToonAge/releases) and extract it so the
-folder is exactly `Interface\AddOns\ToonAge`, with the `.toc` files directly
-inside it. Extracting into a folder named after the zip is the usual mistake;
-WoW won't see the addon.
-
-**WoW Forever (beta):** loading from the release zip is still being verified.
-If ToonAge prints the "… build loaded" message on Forever, the client picked
-another edition's file list. Please report it (see below).
-
-Restart the client after installing; a `/reload` doesn't pick up new `.toc`
-files.
-
-## Using it
-
-`/ta` opens the main panel; every command is a shortcut into it, so nothing
-requires typing.
-
-| Command | |
+| File | Who it is for |
 |---|---|
-| `/ta` | Open the panel (`/ta help` lists everything) |
-| `/ta options` | Settings (also the gear icon in the title bar) |
-| `/ta toggle` | Turn individual modules on or off |
-| `/ta layout` | Unified HUD ↔ fragmented windows |
-| `/ta errors` | Recent errors: `copy` for a selectable window, `clear` to wipe |
-| `/ta health` | What loaded, what was skipped, and why |
-| `/ta test` or `/tatest` | Self-test (see below) |
-| `/ta safemode` | Start with only the core modules, for troubleshooting |
-| `/ta reset` | Reset settings (follow with a reload) |
+| [AGENTS.md](AGENTS.md) | Bot standing rules and workflow |
+| [docs/HANDOVER.md](docs/HANDOVER.md) | Current plan, delivery state, G-cards and work log |
+| [docs/HISTORY.md](docs/HISTORY.md) | Dated archive of superseded or already-tried items |
+| [docs/architecture.md](docs/architecture.md) | Clients, TOCs, modules, dual-gate and API audit |
 
-Settings are stored per account in `ToonAgeDB`, with per-character data keyed
-by `Name-Realm`, and migrated forward automatically when the schema changes.
-
-### Self-test
-
-The **Self-test** button in the title bar runs the addon's own checks on the
-client you're playing: client detection, which modules loaded and why, which
-game functions exist, whether every tab draws, and whether redraws leak
-frames. The same checks run from `/ta test`, and from `/tatest`, which works
-even if the addon failed partway through loading. The button shows on
-development builds, or after `/ta debug`.
-
-The report opens in a copyable window and is also saved to
-`ToonAgeDB.selfTest` in your SavedVariables.
-
-## Playing alongside other addons
-
-ToonAge steps back rather than competing. When Zygor is loaded it stops
-auto-accepting quests, picking quest rewards, drawing its arrow and equipping
-looted upgrades, so the two don't fight over the same actions. If you'd rather
-ToonAge kept doing those jobs, there's a toggle at the top of Settings → Quest
-Automation.
-
-## Privacy
-
-ToonAge has no network access. It cannot send anything anywhere, and it stores
-your settings and character data only in your own `ToonAgeDB` saved-variables
-file.
-
-The one exception is optional usage reporting, and it needs three things to be
-true at once before a single value is recorded:
-
-1. You have the **Wago App** installed, with its data sharing switched on. The
-   Wago App's own addon does the recording and the uploading. ToonAge just
-   writes values into it, and with the app absent those calls do nothing.
-2. The build carries a Wago project id in its `.toc`.
-3. You have not turned it off in Settings → "Share anonymous usage stats".
-
-What it records is fixed and coarse: which game version you are on, whether the
-unified or fragmented layout is in use, whether auto-quest, auto-equip and
-cutscene skip are enabled, whether Zygor is installed and whether ToonAge is
-standing down for it, how many modules loaded, and how many errors were caught
-this session. Booleans and counts, nothing else.
-
-What it never records: character, realm, guild or account names, your spec,
-gear, quests, coordinates, or anything else that could identify you or your
-session. `Tools/test_analytics.py` enforces that: it fails the build if a
-recorded key contains an identifying word or a recorded value is a string.
-
-Everything is in [`Core/Analytics.lua`](Core/Analytics.lua), which is short and
-worth reading if this matters to you. `/ta health` reports whether reporting is
-on or off, and why.
-
-## Reporting a bug
-
-Open an issue: https://github.com/Sirc146/ToonAge/issues
-
-Include:
-
-1. **What happened**, and how to reproduce it.
-2. **Client and addon version.** Both are in the panel's title bar.
-3. **`/ta errors copy`** if anything was logged, and the **Self-test** report
-   (copy it from its window).
-4. A screenshot for anything visual.
-
-Saved-variables files contain character and realm names; leave out anything
-you'd rather not post publicly and say so in the issue.
-
-## For developers
-
-```
-Core/        Shared engine: client detection, profiles, events, UI shell, stats
-Data/        Per-client game-rule data (Retail, TBC, Mists, Forever, Shared)
-Modules/     Features by area; per-client trees under Modules/TBC, /Mists, /Forever
-Libs/        Bundled libraries (LibStub, Public Domain)
-Tools/       Python tests and data generators, PowerShell build/repo scripts.
-             Never loaded by the game.
-Docs/        Architecture, data sources, audits, tester setup
-```
-
-**What runs where.** Each client's `.toc` decides what physically loads, and
-the client's profile in `Core/Profile.lua` decides what may start. A module
-must be in both. `Core/ApiGuard.lua` probes every game function the build
-calls and reports what the running client lacks (`/ta health`, Self-test).
-Gating modules on that report is planned, not done yet.
-
-**Tests.** `python -m pip install -r Tools/requirements.txt` (luaparser and
-lupa), then every `Tools/test_*.py` should pass. CI runs them all on each push.
-Read [`.rules.md`](.rules.md) for conventions and
-[`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md) for load order, the module
-contract and event dispatch. Verify API claims on a live client rather than
-assuming. Blizzard removes calls that then fail silently behind existence
-checks, and each client differs.
-
-**Local builds (Windows, PowerShell).**
-
-| Script | Does |
-|---|---|
-| `Tools\build_flavors.ps1` | Builds one clean folder per client from its `.toc`. `-Install` copies them into each WoW client; `-Check` says whether each install matches the source |
-| `Tools\preflight.ps1` | Backs up SavedVariables and runs `-Check` before a test session |
-| `Tools\build_release_layout.ps1` | Builds exactly what the release zip contains. `-InstallTo all` installs it into every client, to test what WowUp/Wago users get |
-| `Tools\save_day.ps1` | After testing: commits, snapshots each tested client's build to its `live/` branch, pushes to the backup and (`-PushOrigin`) GitHub |
-| `Tools\repo_status.ps1` | Read-only: is everything committed, pushed and installed? |
-
-**Branches.** `main` is the source. `live/retail`, `live/forever`,
-`live/anniversary`, `live/mists` and `live/classic-era` each hold the exact
-built folder last tested on that client, one commit per save. Don't check
-them out; they replace your working folder with build files. History from
-before the unified source is kept as `archive/*` tags.
-
-## Releases
-
-Pushing a `v*` tag builds the zip, publishes a GitHub release with
-`release.json` (for WowUp), and uploads to CurseForge and Wago from that
-same tag.
-
-```
-git tag -a v2.0.4 -m "..."
-git push origin v2.0.4
-```
-
-or `Tools\save_day.ps1 -Tag v2.0.4 -PushOrigin`, which pushes that one tag.
-
-- **Push tags one at a time.** GitHub starts no workflows when more than three
-  tags arrive in one push.
-- Tags containing `test`, `beta`, `alpha` or `dev` publish as pre-releases,
-  and WowUp prefers stable releases.
-- CurseForge and Wago are uploaded by the packager step in
-  `.github/workflows/release.yml`. It reads `X-Curse-Project-ID`
-  (1734520) and `X-Wago-ID` from the TOC files.
-- The CurseForge upload needs the `CF_API_KEY` repository secret. The Wago
-  upload needs `WAGO_API_TOKEN`. If a secret is missing, that site is
-  skipped and the GitHub release still publishes. Do not commit either
-  token.
-
-Testers: see [`Docs/TESTER_SETUP.md`](Docs/TESTER_SETUP.md).
-
-## License
-
-Personal, non-commercial use. Free of charge and unobfuscated, per Blizzard's
-UI Addon Development Policy. See [LICENSE.md](LICENSE.md).
-
-Bundles `Libs/LibStub.lua` (Public Domain).
+All plans, decisions and final approvals lead to Sirc.
