@@ -107,7 +107,9 @@ def main():
     check("entries are the 10-19 baseline and wand row",
           lua.eval("DATA_NAMES"),
           "Fireball|Arcane Missiles|Fire Blast|Frostbolt|Shoot|"
-          "Arcane Explosion|Flamestrike|Frost Nova|Polymorph")
+          "Arcane Explosion|Flamestrike|Frost Nova|Polymorph|"
+          "Frost Armor|Arcane Intellect|Conjure Food|Conjure Water|"
+          "Dampen Magic|Slow Fall|Amplify Magic")
     check("page-stated rows are Fireball, Shoot, and the pack spells",
           lua.eval("DATA_VERIFIED"),
           "Fireball|Shoot|Arcane Explosion|Flamestrike|Frost Nova")
@@ -169,7 +171,7 @@ def main():
     for part in (
         "2.0.0-dev.1", "70862", "16001", "MAGE", "12",
         "MAGE_FOREVER rev3 2026-11-08, research_draft", "10-19",
-        "Fireball", "tier A", "S1", "page-stated",
+        "Fireball", "tier A", "IV-Fire", "page-stated",
         "Arcane Missiles", "the opener was late",
         "target health: not read", "player mana: not read", "enemy count: not read",
     ):
@@ -217,7 +219,9 @@ def main():
             FEED = G.Feedback(view, "")
           """),
           "false|Fireball,Arcane Missiles,Fire Blast,Frostbolt,Shoot,"
-          "Arcane Explosion,Flamestrike,Frost Nova,Polymorph")
+          "Arcane Explosion,Flamestrike,Frost Nova,Polymorph,"
+          "Frost Armor,Arcane Intellect,Conjure Food,Conjure Water,"
+          "Dampen Magic,Slow Fall,Amplify Magic")
     check("unknown feedback avoids unlearned",
           "unlearned" not in (lua.eval("FEED") or "").lower(), True)
 
@@ -329,9 +333,18 @@ def main():
             ctx.ask = function(id) if id == 133 then return "yes" end return "no" end
             ctx.spellbook = { { name = "Fireball", spellID = 133 } }
             local view = G.Evaluate(ctx)
-            OUT = tostring(view.spellID) .. "|" .. (view.rankHint or "")
+            OUT = tostring(view.spellID)
+            HINT = view.rankHint or ""
           """),
-          "133|Fireball rank 3 is trainer-listed at 12 - not confirmed learned")
+          "133")
+    check("an unconfirmed Fireball rank 3 stays trainer-listed",
+          "Fireball rank 3 is trainer-listed at 12 - not confirmed learned"
+          in (lua.eval("HINT") or ""), True)
+    check("Frostbolt and Fire Blast ranks stay unconfirmed",
+          "Frostbolt ranks at 8 and 14 are trainer-listed, not confirmed learned"
+          in (lua.eval("HINT") or "")
+          and "Fire Blast rank at 14 is trainer-listed, not confirmed learned"
+          in (lua.eval("HINT") or ""), True)
 
     check("client name is used when the id is confirmed",
           eval_case(base + r"""
@@ -553,8 +566,90 @@ def main():
             local b = {}
             for _, tip in ipairs(view.tierB or {}) do b[#b + 1] = tip.name end
             OUT = tostring(view.press) .. "|" .. table.concat(b, ",")
+            WHY = view.why or ""
           """),
           "false|Arcane Missiles")
+    check("an engaged enemy keeps the sourced control note",
+          "Frostbolt" in (lua.eval("WHY") or "")
+          and "not a cooldown press" in (lua.eval("WHY") or "")
+          and "No page-stated next spell" not in (lua.eval("WHY") or ""), True)
+
+    check("Fireball is labeled a Fire-style opener",
+          "Fire-style opener" in (eval_case(base + r"""
+            local view = G.Evaluate(ctx)
+            OUT = view.why or ""
+          """) or ""), True)
+
+    check("learned reminders never become the press",
+          eval_case(base + r"""
+            ctx.spellbook = {
+                { name = "Fireball", spellID = 145 },
+                { name = "Frost Armor" },
+                { name = "Arcane Intellect" },
+                { name = "Conjure Food" },
+                { name = "Conjure Water" },
+                { name = "Dampen Magic" },
+                { name = "Slow Fall" },
+                { name = "Amplify Magic" },
+                { name = "Frostbolt" },
+                { name = "Arcane Missiles", spellID = 5143 },
+                { name = "Fire Blast" },
+                { name = "Polymorph" },
+            }
+            local view = G.Evaluate(ctx)
+            local names = {}
+            for _, row in ipairs(view.reminders or {}) do names[#names + 1] = row.name end
+            local tips = {}
+            for _, tip in ipairs(view.tierB or {}) do tips[#tips + 1] = tip.why end
+            OUT = (view.label or "") .. "|" .. table.concat(names, ",")
+            TIP = table.concat(tips, "\n")
+          """),
+          "Fireball|Frost Armor,Arcane Intellect,Conjure Food,Conjure Water,"
+          "Dampen Magic,Slow Fall,Amplify Magic")
+    tips = lua.eval("TIP") or ""
+    check("sourced tips replace the old gap wording",
+          "Frostbolt slow" in tips
+          and "when you have to move" in tips
+          and "extra pull" in tips
+          and "does not require Missile Barrage" in tips
+          and "not stated" not in tips.lower()
+          and "on cooldown" not in tips.lower(), True)
+    arcane = eval_case(base + r"""
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Frostbolt" },
+            { name = "Arcane Missiles", spellID = 5143 },
+            { name = "Shoot" },
+        }
+        ctx.wand = "yes"
+        ctx.level = 13
+        local view = G.Evaluate(ctx)
+        OUT = tostring(view.press) .. "|" .. (view.label or "") .. "|"
+            .. (view.arcaneLine or "") .. "|" .. (view.wandWhileMana or "")
+            .. "|" .. (view.wandMilestone or "") .. "|" .. (view.unresolved or "")
+    """)
+    check("the arcane order does not replace the Fireball press",
+          arcane.startswith("true|Fireball|"), True)
+    check("the arcane tip names the order and refuses a damage claim",
+          "Frostbolt, then Arcane Missiles" in arcane
+          and "does not claim the wand beats a spell" in arcane, True)
+    check("a level 13 guide names the Greater Magic Wand milestone",
+          "Greater Magic Wand" in arcane and "available at 13" in arcane, True)
+    check("the curse level conflict is flagged and not recommended",
+          "Remove Lesser Curse is omitted" in arcane
+          and "level-18" in arcane and "says 20" in arcane, True)
+    check("a level 12 guide does not show the level 13 wand milestone",
+          "Greater Magic Wand" not in (eval_case(base + r"""
+            local view = G.Evaluate(ctx)
+            OUT = view.wandMilestone or ""
+          """) or ""), True)
+    check("an unlearned reminder is not shown as a tip",
+          "Frost Armor" not in (eval_case(base + r"""
+            local view = G.Evaluate(ctx)
+            local names = {}
+            for _, row in ipairs(view.reminders or {}) do names[#names + 1] = row.name end
+            OUT = table.concat(names, ",")
+          """) or ""), True)
 
     check("level 9 and level 20 and other classes do not apply",
           eval_case(base + r"""

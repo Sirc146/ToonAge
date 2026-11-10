@@ -64,7 +64,7 @@ M.DATA = {
             situation = "pull", level = 1, spellID = 133,
             rankIDs = { 133, 143, 145, 3140 }, idConf = "C",
             active = true, tacticalVerified = true,
-            tacticalUsage = "opener before the enemy reaches you",
+            tacticalUsage = "Fire-style opener before the enemy reaches you",
             tacticalSrc = "S1", src = { "S1" },
             spellLevelSrc = "S2/S3 trainer list, wowfdb, client 1.60.1.70862",
         },
@@ -72,23 +72,20 @@ M.DATA = {
             key = "arcane_missiles", name = "Arcane Missiles", group = "st", tier = "B",
             level = 8, spellID = 5143, rankIDs = { 5143, 5144 }, idConf = "C",
             active = true, tacticalVerified = false,
-            tacticalUsage = "filler",
-            tacticalUnresolved = "baseline filler use not stated without Missile Barrage",
-            tacticalSrc = "S2/S3", src = { "S2", "S3" },
+            tacticalUsage = "after Frostbolt in the Arcane sequence before level 21",
+            tacticalSrc = "WH-Arcane", src = { "WH-Arcane" },
         },
         {
             key = "fire_blast", name = "Fire Blast", group = "st", tier = "B",
             level = 6, idConf = "none", active = true, tacticalVerified = false,
-            tacticalUsage = "on cooldown",
-            tacticalUnresolved = "S1 on cooldown is inside the Heating Up sequence only",
-            tacticalSrc = "S2/S3", src = { "S2", "S3" },
+            tacticalUsage = "while moving, or to finish a low-health target that is not frozen",
+            tacticalSrc = "WH-Arcane", src = { "WH-Arcane", "IV-Frost" },
         },
         {
             key = "frostbolt", name = "Frostbolt", group = "st", tier = "B",
             level = 4, idConf = "none", active = true, tacticalVerified = false,
-            tacticalUsage = "Frost-style opener / kiting",
-            tacticalUnresolved = "kiting use not stated",
-            tacticalSrc = "S2/S3", src = { "S2", "S3" },
+            tacticalUsage = "control slow, Frost-style alternative to a Fireball opener",
+            tacticalSrc = "WH-Fire", src = { "WH-Fire", "WH-Arcane", "IV-Frost" },
         },
         {
             key = "shoot", name = "Shoot", group = "st", tier = "A",
@@ -122,9 +119,57 @@ M.DATA = {
         {
             key = "polymorph", name = "Polymorph", group = "emergency", tier = "B",
             level = 8, idConf = "none", active = true, tacticalVerified = false,
-            tacticalUsage = "CC an add",
-            tacticalUnresolved = "not in S1",
-            tacticalSrc = "S2/S3", src = { "S2", "S3" },
+            tacticalUsage = "hold one extra enemy after Frost Nova",
+            tacticalSrc = "WH-Fire", src = { "WH-Fire", "WH-Arcane", "IV-Frost" },
+        },
+        {
+            key = "frost_armor", name = "Frost Armor", group = "reminder", tier = "C",
+            level = 1, idConf = "none", active = true, tacticalVerified = false,
+            reminder = true,
+            tacticalUsage = "keep the armor buff up",
+            src = { "IV-Frost" },
+        },
+        {
+            key = "arcane_intellect", name = "Arcane Intellect", group = "reminder", tier = "C",
+            level = 1, idConf = "none", active = true, tacticalVerified = false,
+            reminder = true,
+            tacticalUsage = "keep the intellect buff up",
+            src = { "IV-Frost" },
+        },
+        {
+            key = "conjure_food", name = "Conjure Food", group = "reminder", tier = "C",
+            level = 6, idConf = "none", active = true, tacticalVerified = false,
+            reminder = true,
+            tacticalUsage = "prepare food",
+            src = { "IV-Fire", "WH-Fire" },
+        },
+        {
+            key = "conjure_water", name = "Conjure Water", group = "reminder", tier = "C",
+            level = 4, idConf = "none", active = true, tacticalVerified = false,
+            reminder = true,
+            tacticalUsage = "prepare water",
+            src = { "IV-Fire", "WH-Fire" },
+        },
+        {
+            key = "dampen_magic", name = "Dampen Magic", group = "reminder", tier = "C",
+            level = 12, idConf = "none", active = true, tacticalVerified = false,
+            reminder = true,
+            tacticalUsage = "optional solo magic reduction",
+            src = { "WH-Fire", "IV-Frost" },
+        },
+        {
+            key = "slow_fall", name = "Slow Fall", group = "reminder", tier = "C",
+            level = 12, idConf = "none", active = true, tacticalVerified = false,
+            reminder = true,
+            tacticalUsage = "optional safe fall with a Light Feather",
+            src = { "WH-Fire", "IV-Frost" },
+        },
+        {
+            key = "amplify_magic", name = "Amplify Magic", group = "reminder", tier = "C",
+            level = 18, idConf = "none", active = true, tacticalVerified = false,
+            reminder = true,
+            tacticalUsage = "optional context only",
+            src = { "WH-Fire" },
         },
     },
 }
@@ -270,30 +315,47 @@ end
 
 local function TipWhy(entry)
     if entry.key == "arcane_missiles" then
-        return "Unverified tip, not an optimum: filler. The opened page does not state that use without Missile Barrage, and the proc row is not part of this guide."
+        return "Conditional tip, not a next press. Wowhead Arcane leveling, from level 8 until 21, casts Arcane Missiles after Frostbolt and before the wand finish. That stretch does not require Missile Barrage. The same page's unbuffed Arcane Missiles line is for Arcane Blast stacks at level 21, outside this band."
     elseif entry.key == "fire_blast" then
-        return "Unverified tip, not an optimum: on cooldown. That wording sits inside the Heating Up sequence, which this guide does not use."
+        return "Conditional tip, not a next press. Wowhead Arcane leveling says to use Fire Blast when you have to move, if mana allows. Icy Veins Frost leveling says to use Fire Blast to finish a low-health enemy that is not frozen, or to use the wand. This is not a cooldown instruction."
     elseif entry.key == "frostbolt" then
-        return "Unverified tip, not an optimum. A kiting use is not stated. S1 says not to waste mana kiting a half-dead enemy."
+        return "Conditional tip, not a next press. Frostbolt is the control and Frost-style alternative, not a universal opener. Wowhead Fire and Arcane leveling say a Frostbolt slow, then your main spells, is a safe way to take less damage. Wowhead Arcane leveling pulls with Frostbolt from level 8 until 21, and uses one Frostbolt when the mob will deal relevant damage. Icy Veins Frost leveling opens at max range with Frostbolt."
     elseif entry.key == "polymorph" then
-        return "Unverified tip, not an optimum: crowd-control an add. Polymorph is not in the S1 text."
+        return "Conditional tip, not a next press. Wowhead Fire and Arcane leveling say that after an extra pull, Frost Nova then Polymorph can hold one enemy while you finish the other. Icy Veins Frost leveling says Polymorph takes one extra enemy out of the fight. Damage removes it, and only one Polymorph is up."
     end
-    return "Unverified tip, not an optimum."
+    return "Conditional tip, not a next press."
+end
+
+local function ReminderWhy(entry)
+    if entry.key == "frost_armor" then
+        return "Icy Veins Frost leveling says to keep Frost Armor up while leveling. Not a next press."
+    elseif entry.key == "arcane_intellect" then
+        return "Icy Veins Frost leveling says to keep Arcane Intellect up. Not a next press."
+    elseif entry.key == "conjure_food" or entry.key == "conjure_water" then
+        return "Icy Veins Fire leveling lists conjured food and water. Wowhead Fire leveling says to craft a supply when you log in. Not a next press."
+    elseif entry.key == "dampen_magic" then
+        return "Optional context. Wowhead lists Dampen Magic at 12. Icy Veins Frost leveling says it lowers magic damage taken and magic healing taken, and a solo mage can keep it on themselves. Not a next press."
+    elseif entry.key == "slow_fall" then
+        return "Optional context. Wowhead lists Slow Fall at 12. Icy Veins Frost leveling says it is a safe fall when you have a Light Feather. Not a next press."
+    elseif entry.key == "amplify_magic" then
+        return "Optional context. Wowhead lists Amplify Magic at 18. This guide states no combat use for it. Not a next press."
+    end
+    return "Reminder only. Not a next press."
 end
 
 local function ActionCopy(entry, label, spellID, computed)
     local why, changes, src
     if entry.key == "fireball" then
-        why = "Cast Fireball before the enemy reaches you. S1 states this as the opener."
-        changes = "This pick changes if the enemy has already reached you, if the target is low health, or if you are out of mana and Shoot is confirmed with a wand in the ranged slot whose required level you have met. That is type and level only, not a check that combat can use it."
-        src = "S1"
+        why = "Fire-style opener, not the only opener. Cast Fireball before the enemy reaches you. Icy Veins Fire leveling says to cast Fireball when Frostfire Bolt and Pyroblast are not available; both of those are outside levels 10-19. Wowhead Arcane leveling says Fireball can replace Frostbolt when you would rather take the damage. Frostbolt stays the control alternative when it is confirmed."
+        changes = "This pick changes if you use the confirmed Frostbolt control cast instead, if the enemy has already reached you, if the target is low health, or if you are out of mana and Shoot is confirmed with a wand in the ranged slot whose required level you have met. That is type and level only, not a check that combat can use it. Which opener is best for this character's gear or talents is unresolved."
+        src = "IV-Fire"
     elseif entry.key == "shoot" then
         why = "Shoot finishes a low-health target or conserves mana when you are out of mana. Stand still. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
-        changes = "This pick changes if you still have mana and the target is not low health. The opener before the enemy reaches you is Fireball, when Fireball is confirmed."
+        changes = "This pick changes if you still have mana and the target is not low health. The Fire-style opener before the enemy reaches you is Fireball, when Fireball is confirmed."
         src = "S1"
     else
         why = "Frost Nova freezes the enemies together before an area spell. S1 says avoid area spells on fewer than three targets. The pack size is your choice, not a counted number."
-        changes = "This pick changes if you are not solo, or if fewer than three enemies are on you. Fireball remains the opener before a single enemy reaches you."
+        changes = "This pick changes if you are not solo, or if fewer than three enemies are on you. Fireball remains the Fire-style opener before a single enemy reaches you."
         src = "S1"
     end
     local headline
@@ -321,15 +383,15 @@ local function Gap(situation, rows, wand)
     local headline = "No confirmed next spell for this situation"
     local why, changes
     if situation == "pull" then
-        why = "Fireball is the page-stated opener before the enemy reaches you, but it is not confirmed, so there is no spell to press."
-        changes = "This pick changes if the enemy has already reached you, if the target is low health, or if you are out of mana and Shoot is confirmed with a wand in the ranged slot whose required level you have met. That is type and level only, not a check that combat can use it."
+        why = "Fireball is the Fire-style opener before the enemy reaches you, but it is not confirmed, so there is no spell to press. Frostbolt is the control alternative when it is confirmed. Which opener is best for this character's gear or talents is unresolved."
+        changes = "This pick changes if Fireball becomes confirmed, if you use a confirmed Frostbolt instead, if the enemy has already reached you, if the target is low health, or if you are out of mana and Shoot is confirmed with a wand in the ranged slot whose required level you have met. That is type and level only, not a check that combat can use it."
     elseif situation == "finish" then
         local shoot = map.shoot and map.shoot.state or "unknown"
         if wand ~= "yes" and wand ~= "no" and wand ~= "unknown" then wand = "unknown" end
         why = "Shoot would finish a low-health target or conserve mana, but only when Shoot is confirmed and the ranged slot holds a wand whose required level you have met. That is type and level only, not a check that combat can use it. Shoot: "
             .. shoot .. ". Ranged-slot wand type and required level: " .. wand
             .. ". Stand still. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
-        changes = "This pick changes if you still have mana and the target is not low health. The opener before the enemy reaches you is Fireball, when Fireball is confirmed."
+        changes = "This pick changes if you still have mana and the target is not low health. The Fire-style opener before the enemy reaches you is Fireball, when Fireball is confirmed."
     elseif situation == "pack" then
         local nova = map.frost_nova and map.frost_nova.state or "unknown"
         local ae = map.arcane_explosion and map.arcane_explosion.state or "unknown"
@@ -338,8 +400,11 @@ local function Gap(situation, rows, wand)
             .. nova .. ". Arcane Explosion: " .. ae .. ". Flamestrike: " .. fs
             .. ". S1 says avoid area spells on fewer than three targets. Arcane Explosion is trainer-listed at 14 and Flamestrike at 16."
         changes = "This pick changes if you are not solo, or if fewer than three enemies are on you."
+    elseif situation == "engaged" then
+        why = "No spell is pressed once the enemy has reached you. A confirmed Frostbolt is the control slow. A confirmed Fire Blast is for movement, or for finishing a low-health target that is not frozen, not a cooldown press. A wand finish still needs the Low health or no mana choice, confirmed Shoot, and a ranged wand whose required level you have met."
+        changes = "Choose Pulling at range for the Fire-style Fireball, Low health or no mana for Shoot, or Several mobs, solo for Frost Nova. A chosen situation stays conditional. Which opener is best for this character's gear or talents is unresolved."
     else
-        why = "No page-stated next spell once the enemy has reached you, unless the target is low health, you are out of mana, or several mobs are on you while you are solo."
+        why = "No spell is pressed for this situation. Fireball is the Fire-style opener before the enemy reaches you, when it is confirmed. Frostbolt is the control alternative, when it is confirmed."
         changes = "Choose Pulling at range for Fireball, Low health or no mana for Shoot, or Several mobs, solo for Frost Nova. A chosen situation stays conditional."
     end
     return {
@@ -431,7 +496,7 @@ function M.Evaluate(ctx, data)
         action = Gap(situation, rows, ctx.wand)
     end
 
-    local learnedRows, unknownRows, tierB = {}, {}, {}
+    local learnedRows, unknownRows, tierB, reminders = {}, {}, {}, {}
     for _, row in ipairs(rows) do
         if row.state == "yes" then
             learnedRows[#learnedRows + 1] = {
@@ -439,11 +504,16 @@ function M.Evaluate(ctx, data)
                 spellID = row.spellID,
                 client = row.client,
             }
-            if row.entry.tier == "B" then
+            if row.entry.reminder then
+                reminders[#reminders + 1] = {
+                    name = row.entry.name,
+                    why = ReminderWhy(row.entry),
+                }
+            elseif row.entry.tier == "B" then
                 tierB[#tierB + 1] = {
                     name = row.entry.name,
                     why = TipWhy(row.entry),
-                    confidence = "inferred",
+                    confidence = "page-stated",
                 }
             end
         else
@@ -453,25 +523,58 @@ function M.Evaluate(ctx, data)
             }
         end
     end
-    local rankConfirmed = false
-    local fire = map.fireball
-    if fire and fire.confirmed then
-        for _, id in ipairs(fire.confirmed) do
-            if id == 145 then rankConfirmed = true end
+    local function HasId(row, id)
+        if not (row and type(row.confirmed) == "table") then return false end
+        for _, value in ipairs(row.confirmed) do
+            if value == id then return true end
         end
+        return false
     end
+    local rankParts = {}
+    local function rankAdd(text) rankParts[#rankParts + 1] = text end
+    if HasId(map.fireball, 145) then
+        rankAdd("Fireball rank 3 (spell 145) is confirmed.")
+    else
+        rankAdd("Fireball rank 3 is trainer-listed at 12 - not confirmed learned")
+    end
+    if HasId(map.fireball, 3140) then
+        rankAdd("Fireball rank 4 (spell 3140) is confirmed.")
+    else
+        rankAdd("Fireball rank 4 (spell 3140) is trainer-listed at 18 - not confirmed learned")
+    end
+    if HasId(map.arcane_missiles, 5144) then
+        rankAdd("Arcane Missiles rank 2 (spell 5144) is confirmed.")
+    else
+        rankAdd("Arcane Missiles rank 2 (spell 5144) is trainer-listed at 16 - not confirmed learned")
+    end
+    rankAdd("Frostbolt ranks at 8 and 14 are trainer-listed, not confirmed learned")
+    rankAdd("Fire Blast rank at 14 is trainer-listed, not confirmed learned")
 
     local shoot = "unknown"
     if map.shoot and map.shoot.state == "yes" then shoot = "yes" end
     local wand = ctx.wand
     if wand ~= "yes" and wand ~= "no" and wand ~= "unknown" then wand = "unknown" end
 
-    local rankHint
-    if rankConfirmed then
-        rankHint = "Fireball rank 3 (spell 145) is confirmed."
-    else
-        rankHint = "Fireball rank 3 is trainer-listed at 12 - not confirmed learned"
+    local rankHint = table.concat(rankParts, " ")
+    local arcaneLine
+    if learned("frostbolt") and learned("arcane_missiles") then
+        arcaneLine = "Arcane-style tip, not a next press: Frostbolt, then Arcane Missiles, then a wand finish. Wowhead Arcane leveling gives that order from level 8 until 21."
+        if learned("shoot") and wand == "yes" then
+            arcaneLine = arcaneLine .. " Shoot and a ranged wand at your level are confirmed, so the wand step can be used."
+        else
+            arcaneLine = arcaneLine .. " The wand step waits for confirmed Shoot and a ranged wand whose required level you have met."
+        end
+        arcaneLine = arcaneLine .. " No claim is made that the wand beats a spell."
     end
+    local wandWhileMana
+    if learned("shoot") and wand == "yes" then
+        wandWhileMana = "Optional reminder, not a next press: you can Shoot while mana remains. This guide states no wand damage, scaling, or timing number, and it does not claim the wand beats a spell."
+    end
+    local wandMilestone
+    if type(ctx.level) == "number" and ctx.level >= 13 then
+        wandMilestone = "Equipment milestone, not a spell to press: Icy Veins Frost leveling lists Greater Magic Wand as available at 13, from Enchanting 70 or the Auction House."
+    end
+    local unresolved = "Unresolved, and not asserted: which opener is best for this character's gear or talents; wand damage, scaling, and timing. Remove Lesser Curse is omitted. Wowhead's ability list places it with the level-18 rows, and Wowhead's training table says 20."
 
     local situationLine
     if source == "observed" then
@@ -501,6 +604,11 @@ function M.Evaluate(ctx, data)
         situationSource = source,
         situationLine = situationLine,
         rankHint = rankHint,
+        arcaneLine = arcaneLine,
+        wandWhileMana = wandWhileMana,
+        wandMilestone = wandMilestone,
+        unresolved = unresolved,
+        reminders = reminders,
         learned = learnedRows,
         unknown = unknownRows,
         tierB = tierB,
@@ -595,6 +703,21 @@ function M.Feedback(view, notes)
             .. wandWord(view.historical.wand) .. ".")
     end
     add("Rank hint: " .. (view.rankHint or ""))
+    if view.arcaneLine and view.arcaneLine ~= "" then
+        add(view.arcaneLine)
+    end
+    if view.wandWhileMana and view.wandWhileMana ~= "" then
+        add(view.wandWhileMana)
+    end
+    if view.wandMilestone and view.wandMilestone ~= "" then
+        add(view.wandMilestone)
+    end
+    if view.unresolved and view.unresolved ~= "" then
+        add(view.unresolved)
+    end
+    for _, reminder in ipairs(view.reminders or {}) do
+        add("Reminder: " .. (reminder.name or "") .. " - " .. (reminder.why or ""))
+    end
     if type(view.errors) ~= "table" then
         add("Errors: not available")
     elseif #view.errors == 0 then
@@ -1118,13 +1241,31 @@ function M.Paint(content, y, L, view)
     if view.rankHint then
         y = L:Paragraph(content, y, view.rankHint)
     end
+    if view.arcaneLine and view.arcaneLine ~= "" then
+        y = L:Paragraph(content, y, view.arcaneLine)
+    end
+    if view.wandWhileMana and view.wandWhileMana ~= "" then
+        y = L:Paragraph(content, y, view.wandWhileMana)
+    end
+    if view.wandMilestone and view.wandMilestone ~= "" then
+        y = L:Paragraph(content, y, view.wandMilestone)
+    end
+    if view.unresolved and view.unresolved ~= "" then
+        y = L:Paragraph(content, y, view.unresolved)
+    end
+    if view.reminders and #view.reminders > 0 then
+        y = L:Paragraph(content, y, "Reminders for confirmed spells. None of these is the next press.")
+        for _, reminder in ipairs(view.reminders) do
+            y = L:Bullet(content, y, reminder.name .. " - " .. reminder.why)
+        end
+    end
     y = L:Paragraph(content, y, "No talent-point recommendation. This is a spell guide only.")
     y = L:Paragraph(content, y, "Confirmed learned: " .. JoinNames(view.learned, true))
     y = L:Paragraph(content, y, "Unknown: " .. JoinNames(view.unknown, false))
     y = L:Paragraph(content, y, "Shoot: " .. (view.shootKnown or "unknown")
         .. ". Ranged-slot wand type and required level: " .. (view.wand or "unknown") .. ".")
     if view.tierB and #view.tierB > 0 then
-        y = L:Paragraph(content, y, "Unverified tips, not an optimum")
+        y = L:Paragraph(content, y, "Conditional tips, not a next press")
         for _, tip in ipairs(view.tierB) do
             y = L:Bullet(content, y, tip.name .. " - " .. tip.why)
         end
