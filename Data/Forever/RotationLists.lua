@@ -2259,7 +2259,8 @@ TA_Rotations.forever = {
           { spellID=122, name='Frost Nova', rankIDs={122, 865, 6131, 10230}, level=10, cond='root the pack first', verified=false, idCheck=true },
           { spellID=2120, name='Flamestrike', rankIDs={2120, 2121, 8422, 8423, 10215, 10216}, level=16, cond='(from 16) stacked packs', verified=false, idCheck=true },
         },
-        opener = 'Pre-pull Arcane Intellect + armor. Frostbolt/Arcane Blast; Arcane Power + Presence of Mind on bosses.',
+        -- 10-19 only. The Era opener named spells that are outside this band.
+        opener = 'Withheld for Mage levels 10-19. The Era opener for this band is not shown.',
         emergency = {
           { spellID=122, name='Frost Nova', rankIDs={122, 865, 6131, 10230}, level=10, cond='root melee mobs, then step away', verified=false, idCheck=true },
           { spellID=118, name='Polymorph', rankIDs={118, 12824, 12825, 12826}, level=8, cond='sheep an add', verified=false, idCheck=true },

@@ -88,6 +88,7 @@ FOREVER_MODULES = [
     "Modules/Farming/GatherTracker.lua",
     "Modules/Forever/Character.lua",
     "Modules/Forever/Gear.lua",
+    "Modules/Forever/MageGuidance.lua",
     "Modules/Forever/Talents.lua",
     "Modules/Forever/Rotation.lua",
     "Modules/Forever/Pets.lua",

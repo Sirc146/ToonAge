@@ -175,6 +175,7 @@ Modules\Progression\FactionTracker.lua
 Modules\Forever\Character.lua
 Modules\Forever\Gear.lua
 Modules\Forever\Talents.lua
+Modules\Forever\MageGuidance.lua
 Modules\Forever\Rotation.lua
 Modules\Forever\Pets.lua
 Modules\Forever\PvP.lua
