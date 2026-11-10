@@ -350,7 +350,7 @@ local function ActionCopy(entry, label, spellID, computed)
         changes = "This pick changes if you use the confirmed Frostbolt control cast instead, if the enemy has already reached you, if the target is low health, or if you are out of mana and Shoot is confirmed with a wand in the ranged slot whose required level you have met. That is type and level only, not a check that combat can use it. Which opener is best for this character's gear or talents is unresolved."
         src = "IV-Fire"
     elseif entry.key == "shoot" then
-        why = "Shoot finishes a low-health target or conserves mana when you are out of mana. Stand still. official beta note, not confirmed on live 70862: the October 15 Forever beta notes say wands require standing still for 0.5 seconds before shooting. This guide does not use that number as a gate. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
+        why = "Shoot finishes a low-health target or conserves mana when you are out of mana. Stand still. Official beta note, not confirmed on live 70862: the October 15 Forever beta notes say wands require standing still for 0.5 seconds before shooting. This guide does not use that number as a gate. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
         changes = "This pick changes if you still have mana and the target is not low health. The Fire-style opener before the enemy reaches you is Fireball, when Fireball is confirmed."
         src = "S1"
     else
@@ -390,7 +390,7 @@ local function Gap(situation, rows, wand)
         if wand ~= "yes" and wand ~= "no" and wand ~= "unknown" then wand = "unknown" end
         why = "Shoot would finish a low-health target or conserve mana, but only when Shoot is confirmed and the ranged slot holds a wand whose required level you have met. That is type and level only, not a check that combat can use it. Shoot: "
             .. shoot .. ". Ranged-slot wand type and required level: " .. wand
-            .. ". Stand still. official beta note, not confirmed on live 70862: the October 15 Forever beta notes say wands require standing still for 0.5 seconds before shooting. This guide does not use that number as a gate. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
+            .. ". Stand still. Official beta note, not confirmed on live 70862: the October 15 Forever beta notes say wands require standing still for 0.5 seconds before shooting. This guide does not use that number as a gate. S1's example was under 15 percent; that is not a cutoff, and no cast time or global cooldown is claimed."
         changes = "This pick changes if you still have mana and the target is not low health. The Fire-style opener before the enemy reaches you is Fireball, when Fireball is confirmed."
     elseif situation == "pack" then
         local nova = map.frost_nova and map.frost_nova.state or "unknown"
@@ -513,7 +513,7 @@ function M.Evaluate(ctx, data)
                 tierB[#tierB + 1] = {
                     name = row.entry.name,
                     why = TipWhy(row.entry),
-                    confidence = "Conditional tips",
+                    confidence = "page-stated",
                 }
             end
         else
@@ -578,7 +578,7 @@ function M.Evaluate(ctx, data)
     end
     local wandWhileMana
     if learned("shoot") and wand == "yes" then
-        wandWhileMana = "Optional reminder, not a next press. Wowhead Fire and Arcane leveling say to use the wand to finish instead of spending mana, and that wands do not suffer pushback. This guide states no wand damage, scaling, or timing number, and it does not claim the wand beats a spell."
+        wandWhileMana = "Optional reminder, not a next press. Wowhead Fire and Arcane leveling say to use the wand to finish instead of spending mana, and that wands do not suffer pushback. This guide states no wand damage or scaling number, and no verified live timing number, and it does not claim the wand beats a spell."
     end
     local wandMilestone
     if type(ctx.level) == "number" and ctx.level >= 13 then
@@ -753,7 +753,7 @@ function M.Feedback(view, notes)
     end
     local tips = {}
     for _, tip in ipairs(view.tierB or {}) do
-        tips[#tips + 1] = (tip.name or "") .. " (Conditional tips)"
+        tips[#tips + 1] = tip.name or ""
     end
     if #tips > 0 then
         add("Conditional tips: " .. table.concat(tips, ", "))

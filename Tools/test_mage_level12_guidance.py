@@ -176,6 +176,9 @@ def main():
         "target health: not read", "player mana: not read", "enemy count: not read",
     ):
         check(f"feedback contains {part}", part in feed, True)
+    check("feedback lists conditional tips under one header",
+          "Conditional tips: Arcane Missiles" in feed
+          and " (Conditional tips)" not in feed, True)
     check("feedback does not say unlearned", "unlearned" not in feed.lower(), True)
     check("feedback does not say not learned", "not learned" not in feed.lower(), True)
     check("feedback does not collect a name", "\nName:" not in feed, True)
@@ -325,7 +328,7 @@ def main():
     check("Shoot feedback names the stationary note and refuses a cutoff",
           "Stand still" in lua.eval("LIVE_FEED")
           and "not a cutoff" in lua.eval("LIVE_FEED")
-          and "official beta note, not confirmed on live 70862" in lua.eval("LIVE_FEED")
+          and "Official beta note, not confirmed on live 70862" in lua.eval("LIVE_FEED")
           and "does not use that number as a gate" in lua.eval("LIVE_FEED"), True)
     check("a player pull is not computed, and the confirmed rank is 145",
           lua.eval("LIVE_PULL"), "false|Fireball|145")
@@ -641,10 +644,14 @@ def main():
             local view = G.Evaluate(ctx)
             local names = {}
             for _, row in ipairs(view.reminders or {}) do names[#names + 1] = row.name end
-            local tips = {}
-            for _, tip in ipairs(view.tierB or {}) do tips[#tips + 1] = tip.why end
+            local tips, status = {}, {}
+            for _, tip in ipairs(view.tierB or {}) do
+                tips[#tips + 1] = tip.why
+                status[#status + 1] = tip.confidence or ""
+            end
             OUT = (view.label or "") .. "|" .. table.concat(names, ",")
             TIP = table.concat(tips, "\n")
+            TIP_STATUS = table.concat(status, ",")
           """),
           "Fireball|Frost Armor,Arcane Intellect,Conjure Food,Conjure Water,"
           "Dampen Magic,Slow Fall,Amplify Magic")
@@ -659,6 +666,9 @@ def main():
           and "Unverified" not in tips
           and "not stated" not in tips.lower()
           and "on cooldown" not in tips.lower(), True)
+    check("tip confidence stays a source status while the words stay conditional",
+          lua.eval("TIP_STATUS") == "page-stated,page-stated,page-stated,page-stated"
+          and tips.startswith("Conditional tip"), True)
     arcane = eval_case(base + r"""
         ctx.spellbook = {
             { name = "Fireball", spellID = 145 },
@@ -680,6 +690,7 @@ def main():
           and "finish instead of spending mana" in arcane
           and "pushback" in arcane
           and "while mana remains" not in arcane
+          and "no verified live timing number" in arcane
           and "does not claim the wand beats a spell" in arcane, True)
     check("a level 13 guide names the Greater Magic Wand milestone",
           "Greater Magic Wand" in arcane and "available at 13" in arcane, True)
