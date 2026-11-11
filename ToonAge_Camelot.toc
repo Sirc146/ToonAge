@@ -2,7 +2,7 @@
 ## Title: |cFFFFD100ToonAge|r |cFF888780Forever|r
 ## Notes: WoW Forever edition — readout, chores and a data recorder. No retail data.
 ## Author: Sirc
-## Version: 2.0.0-dev.1
+## Version: 2.0.0-dev.2
 ## DefaultState: enabled
 ## SavedVariables: ToonAgeDB, ToonAgeGuard
 ## X-Flavor: Forever
