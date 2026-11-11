@@ -502,7 +502,22 @@ local function widget()
     function f:GetHeight() return self.h or 0 end
     function f:SetPoint(...) self.points[#self.points + 1] = { ... } end
     function f:ClearAllPoints() self.points = {} end
-    function f:SetParent(p) self.parent = p end
+    function f:SetParent(p)
+        local old = self.parent
+        if old and old.kids then
+            for i = #old.kids, 1, -1 do
+                if old.kids[i] == self then table.remove(old.kids, i) end
+            end
+        end
+        self.parent = p
+        if p and p.kids then
+            local found = false
+            for i = 1, #p.kids do
+                if p.kids[i] == self then found = true break end
+            end
+            if not found then p.kids[#p.kids + 1] = self end
+        end
+    end
     function f:GetParent() return self.parent end
     function f:CreateTexture() return widget() end
     function f:CreateFontString() return widget() end
@@ -525,7 +540,15 @@ local function widget()
         return 0
     end
     function f:SetAllPoints() end
-    function f:SetTexture() end
+    function f:SetTexture(tex) self.texture = tex end
+    function f:CreateLine()
+        LINES = LINES + 1
+        local line = widget()
+        line.kind = "Line"
+        line.parent = self
+        if self.kids then self.kids[#self.kids + 1] = line end
+        return line
+    end
     function f:SetColorTexture() end
     function f:SetAlpha() end
     function f:SetDesaturated() end
@@ -536,7 +559,10 @@ local function widget()
     return f
 end
 
+FRAMES = 0
+LINES = 0
 CreateFrame = function(kind, name, parent, template)
+    FRAMES = FRAMES + 1
     local f = widget()
     f.kind, f.name, f.template = kind, name, template
     f.parent = parent
@@ -569,7 +595,7 @@ local function buttons(root)
     local n = 0
     for _, holder in ipairs(root.kids or {}) do
         for _, c in ipairs(holder.kids or {}) do
-            if c.kind == "Button" then n = n + 1 end
+            if c.kind == "Button" and not c.hidden then n = n + 1 end
         end
     end
     return n
@@ -597,11 +623,127 @@ local function show(nodes, conds)
 end
 
 warSnap = show(wnodes, wconds)
+local before = FRAMES
+show(wnodes, wconds)
+warSnap.stable = FRAMES - before
 rogueSnap = show(nodes, conds)
+
+local function take(src, n)
+    local t = {}
+    for i = 1, math.min(n, #src) do t[i] = src[i] end
+    return t
+end
+
+local function glowState()
+    local M = ToonAge.modules.ForeverTalents
+    local holder = M._talentLive and M._talentLive.holder and M._talentLive.holder[1]
+    local seen = {}
+    local visible, missing, badParent, focus = 0, 0, 0, 0
+    for _, btn in ipairs(M._talentLive.button) do
+        if not btn.hidden then
+            visible = visible + 1
+            local g = btn.glow
+            if not g then
+                missing = missing + 1
+            else
+                seen[g] = (seen[g] or 0) + 1
+                if not holder or g:GetParent() ~= holder then badParent = badParent + 1 end
+                if not g.hidden then focus = focus + 1 end
+            end
+            if btn._hover then focus = focus + 1 end
+            local tex = btn.frame and btn.frame.texture or ""
+            if type(tex) == "string" and string.find(tex, "Focus", 1, true) then
+                focus = focus + 1
+            end
+        end
+    end
+    local unique, shared = 0, 0
+    for _, n in pairs(seen) do
+        unique = unique + 1
+        if n > 1 then shared = shared + (n - 1) end
+    end
+    local pool = (M._talentPool and M._talentPool.glow) or {}
+    local stolen = 0
+    for _, g in ipairs(pool) do
+        if seen[g] then stolen = stolen + 1 end
+    end
+    local parkedShown = 0
+    for _, btn in ipairs((M._talentPool and M._talentPool.button) or {}) do
+        if btn.glow and not btn.glow.hidden then parkedShown = parkedShown + 1 end
+    end
+    return {
+        visible = visible, unique = unique, shared = shared,
+        missing = missing, badParent = badParent, pool = #pool,
+        stolen = stolen, focus = focus, parkedShown = parkedShown,
+    }
+end
+
+local function emptyPools()
+    local M = ToonAge.modules.ForeverTalents
+    M._talentPool = nil
+    M._talentLive = nil
+    M.selectedID = nil
+end
+
+-- Reviewer's probe, from an empty pool: 4 nodes, then the same 4 twice.
+emptyPools()
+show(take(wnodes, 4), wconds)
+ownPool1 = #(ToonAge.modules.ForeverTalents._talentPool.glow or {})
+show(take(wnodes, 4), wconds)
+own2 = glowState()
+ownPool2 = own2.pool
+show(take(wnodes, 4), wconds)
+own3 = glowState()
+ownPool3 = own3.pool
+
+local hovered
+for _, btn in ipairs(ToonAge.modules.ForeverTalents._talentLive.button) do
+    if not btn.hidden then hovered = btn break end
+end
+hovered._hover = true
+if hovered.glow then hovered.glow:Show() end
+if hovered.frame then
+    hovered.frame.texture = "Textures/talent_circle_focus.tga"
+end
+show(take(wnodes, 4), wconds)
+ownHover = glowState()
+ownHoverCleared = hovered._hover == false
+
+-- Small, then a larger tree that must create new buttons, then small again.
+emptyPools()
+show(take(wnodes, 2), wconds)
+show(take(wnodes, 8), wconds)
+ownLarge = glowState()
+show(take(wnodes, 2), wconds)
+ownSmall = glowState()
+show(take(wnodes, 2), wconds)
+ownSmallAgain = glowState()
+
+local lineBefore = LINES
+show(readNodes, readConds)
+lineMade = LINES - lineBefore
+local lineBefore2 = LINES
+show(readNodes, readConds)
+lineReused = LINES - lineBefore2
+lineState = glowState()
+local TM = ToonAge.modules.ForeverTalents
+local lineHolder = TM._talentLive.holder[1]
+lineCount = #(TM._talentLive.line or {})
+lineParentOK = lineCount > 0
+lineStolen = 0
+local lineSeen = {}
+for _, ln in ipairs(TM._talentLive.line or {}) do
+    lineSeen[ln] = true
+    if ln:GetParent() ~= lineHolder then lineParentOK = false end
+end
+for _, ln in ipairs((TM._talentPool and TM._talentPool.line) or {}) do
+    if lineSeen[ln] then lineStolen = lineStolen + 1 end
+end
 """)
     g = lua.globals()
     war, rogue = g.warSnap, g.rogueSnap
     check("warlock draws 52 buttons", war.buttons, 52)
+    check("a second talents render creates no frames", war.stable, 0)
     check("warlock scroll child is the 424px tree", war.tree, 424)
     check("warlock pane is 368px", war.pane, 368)
     check("warlock scroll range is the overflow", war.range, 56)
@@ -617,6 +759,28 @@ rogueSnap = show(nodes, conds)
     check("rogue header stays on the content frame", rogue.headerOnContent, True)
     check("rogue header is not the scroll child", rogue.headerOnChild, False)
     check("rogue content is only as tall as the tree", rogue.contentH < 402, True)
+
+    check("first four-node paint leaves the glow pool empty", g.ownPool1, 0)
+    check("repainting the same four does not pool their glows", g.ownPool2, 0)
+    check("a third paint of those four still has an empty glow pool", g.ownPool3, 0)
+    check("four visible buttons keep four distinct glows", g.own3.unique == 4 and g.own3.visible == 4, True)
+    check("no visible button shares a glow", g.own3.shared, 0)
+    check("every visible glow is parented to the holder", g.own3.badParent, 0)
+    check("the glow pool does not still hold a visible glow", g.own3.stolen, 0)
+    check("a hovered button is not gold after the next redraw", g.ownHover.focus, 0)
+    check("reuse clears the stale hover flag", g.ownHoverCleared, True)
+    check("growing to eight buttons gives eight distinct glows", g.ownLarge.unique == 8 and g.ownLarge.visible == 8, True)
+    check("growing does not give two buttons the same glow", g.ownLarge.shared, 0)
+    check("growing does not leave a visible glow in the pool", g.ownLarge.stolen, 0)
+    check("growing leaves every glow on the holder", g.ownLarge.badParent, 0)
+    check("shrinking back to two keeps two distinct glows", g.ownSmall.unique == 2 and g.ownSmall.visible == 2, True)
+    check("a parked button does not leave its glow showing", g.ownSmall.parkedShown, 0)
+    check("painting the small tree again does not grow the glow pool", g.ownSmallAgain.pool, 0)
+    check("the small tree's glows stay unique", g.ownSmallAgain.unique == 2 and g.ownSmallAgain.shared == 0, True)
+    check("a tree with an edge creates a line", g.lineMade > 0, True)
+    check("redrawing that tree reuses the line", g.lineReused, 0)
+    check("the reused line stays parented to the holder", g.lineParentOK, True)
+    check("a visible line is not also sitting in the line pool", g.lineStolen, 0)
 
     passed = sum(_results)
     total = len(_results)
