@@ -391,6 +391,88 @@ def main():
             OUT = view.rankHint or ""
           """) or ""), True)
 
+    def rank_hint(extra):
+        return eval_case(base + extra + r"""
+            local view = G.Evaluate(ctx)
+            OUT = view.rankHint or ""
+        """) or ""
+
+    learned_ids = rank_hint(r"""
+        ctx.level = 15
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+            { name = "Eclair de givre", spellID = 205 },
+            { name = "Eclair de givre", spellID = 837 },
+            { name = "Trait de feu", spellID = 2137 },
+        }
+    """)
+    check("spell 205 confirms the Frostbolt rank learned at 8",
+          "Frostbolt rank 2 (spell 205) is confirmed." in learned_ids
+          and "Frostbolt rank at 8 is trainer-listed, not confirmed learned."
+          not in learned_ids, True)
+    check("spell 837 confirms the Frostbolt rank learned at 14",
+          "Frostbolt rank 3 (spell 837) is confirmed." in learned_ids
+          and "Frostbolt rank at 14 is trainer-listed, not confirmed learned."
+          not in learned_ids, True)
+    check("spell 2137 confirms the Fire Blast rank learned at 14",
+          "Fire Blast rank 2 (spell 2137) is confirmed." in learned_ids
+          and "Fire Blast rank at 14 is trainer-listed, not confirmed learned."
+          not in learned_ids, True)
+
+    name_only = rank_hint(r"""
+        ctx.level = 15
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+            { name = "Frostbolt" },
+            { name = "Fire Blast" },
+            { name = "Frostbolt", spellID = 116 },
+        }
+    """)
+    check("an English name or another Frostbolt rank does not confirm those lines",
+          "Frostbolt rank at 8 is trainer-listed, not confirmed learned." in name_only
+          and "Frostbolt rank at 14 is trainer-listed, not confirmed learned." in name_only
+          and "Fire Blast rank at 14 is trainer-listed, not confirmed learned." in name_only
+          and "Frostbolt rank 2 (spell 205) is confirmed." not in name_only
+          and "Frostbolt rank 3 (spell 837) is confirmed." not in name_only
+          and "Fire Blast rank 2 (spell 2137) is confirmed." not in name_only, True)
+
+    asked_yes = rank_hint(r"""
+        ctx.level = 15
+        ctx.ask = function(id)
+            if id == 145 or id == 5143 or id == 205 or id == 837 or id == 2137 then
+                return "yes"
+            end
+            return "no"
+        end
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+        }
+    """)
+    check("a yes from the known-spell check confirms the three rank lines",
+          "Frostbolt rank 2 (spell 205) is confirmed." in asked_yes
+          and "Frostbolt rank 3 (spell 837) is confirmed." in asked_yes
+          and "Fire Blast rank 2 (spell 2137) is confirmed." in asked_yes, True)
+
+    early = rank_hint(r"""
+        ctx.level = 10
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+            { name = "Eclair de givre", spellID = 837 },
+            { name = "Trait de feu", spellID = 2137 },
+        }
+    """)
+    check("a confirmed rank is named even before the trainer window",
+          "Frostbolt rank 3 (spell 837) is confirmed." in early
+          and "Fire Blast rank 2 (spell 2137) is confirmed." in early
+          and "Frostbolt rank at 14 is trainer-listed" not in early
+          and "Fire Blast rank at 14 is trainer-listed" not in early, True)
+    check("the rank-hint comment matches the lower-bound gate",
+          "only within two levels" not in src and "lower bound" in src, True)
+
     check("client name is used when the id is confirmed",
           eval_case(base + r"""
             ctx.spellbook = { { name = "Boule de feu", spellID = 145 } }

@@ -78,12 +78,21 @@ M.DATA = {
         {
             key = "fire_blast", name = "Fire Blast", group = "st", tier = "B",
             level = 6, idConf = "none", active = true, tacticalVerified = false,
+            -- Rank-line ids already in Data/Forever/SpellRanks.lua and Spells.lua.
+            -- Chronicler, Nov 11 2026: Icy Veins Forever DB, first seen in patch
+            -- 1.60.1.70532. DB data, not a live probe, and a single source
+            -- (Wowhead pages did not load). SpellRanks.lua marks the row
+            -- verified because the id and learn level match Era through level
+            -- 42. RotationLists.lua keeps verified = false and idCheck = true.
+            rankLineIDs = { 2137 },
             tacticalUsage = "while moving, or to finish a low-health target that is not frozen",
             tacticalSrc = "WH-Arcane", src = { "WH-Arcane", "IV-Frost" },
         },
         {
             key = "frostbolt", name = "Frostbolt", group = "st", tier = "B",
             level = 4, idConf = "none", active = true, tacticalVerified = false,
+            -- Same single-source note as Fire Blast rank 2137. Repo ids match.
+            rankLineIDs = { 205, 837 },
             tacticalUsage = "control slow, Frost-style alternative to a Fireball opener",
             tacticalSrc = "WH-Fire", src = { "WH-Fire", "WH-Arcane", "IV-Frost" },
         },
@@ -236,6 +245,21 @@ local function BookHasName(ctx, name)
     return false
 end
 
+-- Same known-spell path as Fireball 145 and Arcane Missiles 5144.
+-- ctx.ask is ReadLive's IsPlayerSpell / IsSpellKnown check through Caps.
+-- BookHasID reads the spell id on a spellbook row. Names are not compared.
+local function IdAnswer(ctx, id)
+    local answer = "unknown"
+    if type(ctx.ask) == "function" then
+        local value = ctx.ask(id)
+        if value == "yes" or value == true then answer = "yes"
+        elseif value == "no" or value == false then answer = "no"
+        else answer = "unknown" end
+    end
+    if BookHasID(ctx, id) then answer = "yes" end
+    return answer
+end
+
 local function Learn(entry, ctx)
     local ids = IdsFor(entry)
     if #ids > 0 then
@@ -243,14 +267,7 @@ local function Learn(entry, ctx)
         local anyUnknown = false
         local anyNo = false
         for _, id in ipairs(ids) do
-            local answer = "unknown"
-            if type(ctx.ask) == "function" then
-                local value = ctx.ask(id)
-                if value == "yes" or value == true then answer = "yes"
-                elseif value == "no" or value == false then answer = "no"
-                else answer = "unknown" end
-            end
-            if BookHasID(ctx, id) then answer = "yes" end
+            local answer = IdAnswer(ctx, id)
             if answer == "yes" then confirmed[#confirmed + 1] = id
             elseif answer == "unknown" then anyUnknown = true
             else anyNo = true end
@@ -264,20 +281,27 @@ local function Learn(entry, ctx)
         end
         return "unknown", nil, nil, "not confirmed"
     end
+    local rankConfirmed = {}
+    for _, id in ipairs(entry.rankLineIDs or {}) do
+        if IdAnswer(ctx, id) == "yes" then
+            rankConfirmed[#rankConfirmed + 1] = id
+        end
+    end
+    local ranks = #rankConfirmed > 0 and rankConfirmed or nil
     if BookHasName(ctx, entry.name) then
-        return "yes", nil, entry.name
+        return "yes", nil, entry.name, nil, ranks
     end
     local read = ctx.spellbookRead
     if read ~= "read" and read ~= "incomplete" and read ~= "unreadable" then
         read = type(ctx.spellbook) == "table" and "read" or "unreadable"
     end
     if read == "read" then
-        return "unknown", nil, nil, "no exact spellbook name"
+        return "unknown", nil, nil, "no exact spellbook name", ranks
     end
     if read == "incomplete" then
-        return "unknown", nil, nil, "spellbook incomplete"
+        return "unknown", nil, nil, "spellbook incomplete", ranks
     end
-    return "unknown", nil, nil, "spellbook unread"
+    return "unknown", nil, nil, "spellbook unread", ranks
 end
 
 local function Flag(obs, key)
@@ -532,10 +556,18 @@ function M.Evaluate(ctx, data)
     end
     local rankParts = {}
     local function rankAdd(text) rankParts[#rankParts + 1] = text end
-    -- A not-yet-confirmed rank is mentioned only within two levels of its
-    -- trainer level. A confirmed rank is always named.
+    -- A not-yet-confirmed rank is named when level is at least two under its
+    -- trainer level. That is a lower bound: there is no upper bound. A
+    -- confirmed rank is always named.
     local function Near(rankLevel)
         return type(ctx.level) == "number" and ctx.level >= (rankLevel - 2)
+    end
+    local function rankLine(row, spellID, level, confirmedText, pendingText)
+        if HasId(row, spellID) then
+            rankAdd(confirmedText)
+        elseif Near(level) then
+            rankAdd(pendingText)
+        end
     end
     if HasId(map.fireball, 145) then
         rankAdd("Fireball rank 3 (spell 145) is confirmed.")
@@ -552,13 +584,15 @@ function M.Evaluate(ctx, data)
     elseif Near(16) then
         rankAdd("Arcane Missiles rank 2 (spell 5144) is trainer-listed at 16 - not confirmed learned.")
     end
-    if Near(8) then
-        rankAdd("Frostbolt rank at 8 is trainer-listed, not confirmed learned.")
-    end
-    if Near(14) then
-        rankAdd("Frostbolt rank at 14 is trainer-listed, not confirmed learned.")
-        rankAdd("Fire Blast rank at 14 is trainer-listed, not confirmed learned.")
-    end
+    rankLine(map.frostbolt, 205, 8,
+        "Frostbolt rank 2 (spell 205) is confirmed.",
+        "Frostbolt rank at 8 is trainer-listed, not confirmed learned.")
+    rankLine(map.frostbolt, 837, 14,
+        "Frostbolt rank 3 (spell 837) is confirmed.",
+        "Frostbolt rank at 14 is trainer-listed, not confirmed learned.")
+    rankLine(map.fire_blast, 2137, 14,
+        "Fire Blast rank 2 (spell 2137) is confirmed.",
+        "Fire Blast rank at 14 is trainer-listed, not confirmed learned.")
 
     local shoot = "unknown"
     if map.shoot and map.shoot.state == "yes" then shoot = "yes" end
