@@ -1227,13 +1227,19 @@ function P.Call(lines, label, fn, ...)
         lines[#lines + 1] = label .. "  ->  missing"
         return
     end
-    local res = { pcall(fn, ...) }
+    -- select keeps a nil in the middle. `#res` would stop there and drop
+    -- every return after it, which hides the raw shape these probes exist
+    -- to record.
+    local function Pack(...)
+        return { n = select("#", ...), ... }
+    end
+    local res = Pack(pcall(fn, ...))
     if not res[1] then
         lines[#lines + 1] = label .. "  ->  error: " .. tostring(res[2])
         return
     end
     local parts = {}
-    for i = 2, math.max(#res, 2) do parts[#parts + 1] = P.Show(res[i]) end
+    for i = 2, math.max(res.n, 2) do parts[#parts + 1] = P.Show(res[i]) end
     lines[#lines + 1] = label .. "  ->  " .. concat(parts, ", ")
 end
 
