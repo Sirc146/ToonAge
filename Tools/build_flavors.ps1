@@ -153,7 +153,9 @@ $AlsoEmitTocAs = @{
 $InstallDirs = @{
     'Retail'      = @('_retail_')
     'PTR'         = @('_ptr_', '_xptr_')
-    'Forever'     = @('_classic_beta_')
+    # WoW Forever's client folder is _forever_. The live install is
+    # <WoW>\_forever_\Interface\AddOns\ToonAge.
+    'Forever'     = @('_forever_')
     'Anniversary' = @('_anniversary_')
     # Mists of Pandaria Classic. The folder is _classic_ and the product is
     # wow_classic -- NOT Classic Era, which is _classic_era_ / wow_classic_era.
