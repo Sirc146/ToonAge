@@ -4,8 +4,10 @@ Single shared record for Christopher (Sirc / Sirc146) and the ToonAge team. All 
 
 The repo https://github.com/Sirc146/ToonAge on branch `test` is the single source of truth. Sister files in this repo: [README.md](../README.md) (human overview), [AGENTS.md](../AGENTS.md) (standing rules and bot workflow), [HISTORY.md](HISTORY.md) (superseded and already-tried archive), [architecture.md](architecture.md) (clients, TOCs, modules, API audit). Box copies, including `/workspace/toonage-docs/`, are drafts only until approved and committed.
 
-**Updated:** November 9, 2026, 9:10 PM PST. **Repo:** https://github.com/Sirc146/ToonAge · **Integration:** `test`.
-**Trunk mapping: UNKNOWN.** Some scripts assume `main`; Sirc must confirm the agreed trunk before freshness checks or measurements. Do not silently change branches.
+**Updated:** November 11, 2026. **Repo:** https://github.com/Sirc146/ToonAge · **Integration:** `test`.
+**Trunk mapping: SETTLED — `test`.** Confirmed by Sirc November 11, 2026: installs come from `test`, PRs target `test`, `main` and release tags are held for his separate approval. This settles the UNKNOWN flagged in the November 9 draft; do not silently change branches.
+**Merge note (Nov 11, 2026):** this file is PR #63's HANDOVER with the November 11 restructure merged into it. The G01–G24 cards, first-task tables, live fix list, product decisions, and evidence below are PR #63's, kept intact. The overlay adds the guardrails, the Muse/merge rules, the pull/push/commit timing, the CurseForge release card, the Gemini/Copilot/snippet sections, and the test-status template. It replaces the standalone restructured draft — do not save that draft as a second HANDOVER. Merged Nov 11, 2026 with `WoW-AddOn-Build-Workflow.md` (workspace/user/files/WoW-AddOn-Build-Workflow.md) — the six phases, four gates, Blizzard policy, Phase 0 setup, hand-off contracts, and task prompt below come from it, translated to ToonAge's settled rules (see “How this merge was done” in the phases section).
+**When PR #63 merges — remove these conditionals (verified Nov 11, 2026: PR #63 is 2 commits ahead of `test`, fast-forward, 0 conflicts, 5 files (README.md, AGENTS.md, docs/HANDOVER.md, docs/HISTORY.md, docs/architecture.md) — Riley merges it in one action; Muse cannot merge from here. Sequencing: PR #63 still carries the old 476-line HANDOVER, so commit this merged file to the PR branch (grok/docs-source-of-truth) FIRST, then merge — if PR #63 merges as it stands, the old HANDOVER lands on `test`):** (1) this merge note itself — its content lives in the Team work log; (2) the Gemini prompt parenthetical "(Until PR #63 merges, the live files on test are .rules.md and Docs/ARCHITECTURE.md. Do not use CLAUDE.md — it is archived.)"; (3) the Copilot section parenthetical "(`.rules.md` until PR #63 merges)". After that, this file describes one state: `AGENTS.md` + `docs/` on `test`.
 
 ## 1 PROJECT OVERVIEW
 
@@ -23,8 +25,36 @@ ToonAge is a multi-client WoW addon: shared Lua engine, per-client data/modules/
 | Chronicler | Data and research; official sources first, exact-client evidence and conflicts. |
 | Conductor | Coordinates with Sirc, records plans/dependencies/decisions, maintains this shared record. |
 
-**Workflow rule:** plan with Conductor, write the plan here, then obtain Sirc’s applicable approval. **Every bot reads `AGENTS.md`, `docs/HANDOVER.md` and `docs/HISTORY.md` from the repo before working and records its part afterward as a commit**: dated scope/card, source/head, changes, tests, review, merge/install state, blockers and next step. If the file or evidence is inaccessible, ask a concrete question; do not guess. No bot was notified or dispatched by this documentation draft. Christopher: **“I'd rather have everything working off git.”** After a verified live test: **“After each verified test and its working it's pushed up.”**
+Muse (formerly Pepper) audits, coordinates, and assists with snippets; not a builder on a branch. Claude Code and Kiro are archived as builders — they no longer implement or build features. Snippets from them, if Sirc brings them, arrive as outside code under the snippet rules below.
+
+**Workflow rule:** plan with Conductor, write the plan here, then obtain Sirc’s applicable approval. If Conductor is unreachable, work pauses — no bot proceeds on its own spec or takes a decision to Sirc directly. **Every bot reads `AGENTS.md`, `docs/HANDOVER.md` and `docs/HISTORY.md` from the repo before working and records its part afterward as a commit**: dated scope/card, source/head, changes, tests, review, merge/install state, blockers and next step. If the file or evidence is inaccessible, ask a concrete question; do not guess. Christopher: **“I'd rather have everything working off git.”** After a verified live test: **“After each verified test and its working it's pushed up.”**
 Small feature branches and reviewed PRs target `test`; a plan, static GO or relayed approval is not blanket authority. Native approvals must be received directly where required. Preserve Sirc’s exact words; do not turn historical permissions into new ones. Release tags still need his explicit approval. Docs and code changes go in as their own commits so one can be rolled back if needed.
+
+### Guardrails — hard rules, no exceptions (added Nov 11, 2026)
+
+- **Working branch is `test`.** Installs come from `test`. PRs target `test`. Feature work goes on `<builder>/<feature>` branches and merges into `test` only. `main` and releases are held for Sirc's separate approval — nothing merges to `main`, and no release is cut, without his direct word.
+- **Merge timing (model in use):** merge to `test` after review + CI, on Sirc's direct word — then install from `test`, then Sirc live-checks. Installs come from `test`, so a change cannot be live-checked before it merges; that is why PRs #58, #59, #61, and #62 were all merged into `test` before his live check. The full sequence is in "Pull / push / commit / merge / install / live-check" below.
+- **Push when verified, not once a day.** As soon as a change has passed its gates, push it. Do not hold finished work for a daily close-out. The daily summary still happens — what shipped, what stayed behind and why, what is waiting on Sirc and since when, and what is first tomorrow — and it never freezes building.
+- **A merged change that breaks the game is reverted, not patched in place.** If a live-check or real play finds a regression from a merged change, the change comes out of `test` with a revert commit, the install goes back to the previous head and is re-verified, and the card goes back to In progress. The fix is a new small commit through the normal steps — never a quiet edit on `test`.
+- **Riley opens and merges PRs — only on Sirc's direct word.** Glitch is the GitHub owner on the roster and holds the go / no-go on uploads, but Riley is the one who actually opens and merges PRs, and only when Sirc has said so directly. No bot merges on another bot's say-so, and no bot merges its own work.
+- **Back up SavedVariables before every test — whichever client is being tested.** Not Forever only. A test that risks the saved data without a backup does not run.
+- **Forever first.** Test on Forever first, then the other clients a card requires. Never edit the `_retail_` AddOns folder.
+- **Release tags (`v*`) need Sirc's approval before pushing.** Pushing a `v*` tag builds the zip, publishes a GitHub release with `release.json` for WowUp, and uploads to CurseForge and Wago — so a tag is a release, not a bookmark. No tag goes up without his direct word.
+- **Git is the only store; one backup folder on the PC.** Code, docs, and approved evidence live in git (`Sirc146/ToonAge`) — the repo is the single source of truth, and box/PC copies are drafts until committed. On the PC, keep one backup folder only: the bare repo backup (`ToonAge-full-backup.git`, refreshed after each verified test/release) plus dated SavedVariables backups. No second working copy, no local-only branches, no data that lives only on the PC. If a local branch holds work, it goes to git as a branch or it is retired — it does not stay PC-only. (Sirc, Nov 11, 2026.)
+- **Buttons — verified in code; sighting is Sirc's 30-second check.** The Self-test button exists in code (`Modules/Infrastructure/TestHarness.lua:1582`, `ToonAgeSelfTestButton`, title bar) but only shows on dev builds (version contains `-dev`) or when `/ta debug` is on at login. The Module Health button exists in code (`Modules/Infrastructure/Settings.lua:839`, `AddBtn("Module Health", ...)`; output to the copyable window per `Core/Init.lua:1587`). What is still open is the in-game sighting on the installed build — see the check-card in "Open checks for Sirc." The Settings → Debug "Run Self-test" button (Settings.lua:840) shows on any build — that is the check; do not type `/ta debug`. If a needed button genuinely does not exist, that is a card to build it — not a reason to type a probe, and the check waits until the card is done. The wrong-edition notice goes to chat by design.
+- **Data rule.** Verify game facts against official sources plus Wowhead and Icy Veins. Merge what checks out. Remove something only with disproving evidence. Flag anything unverified for Sirc — never silently present it as fact. The Stats role may also use the Battle.net Game Data web API offline to generate data tables (Game Data only, never Profile endpoints); the client ID and secret live in a local `.env`, never in the repo and never in a bot's prompt.
+- **Guidance is suggestions, and stays optional.** Word guidance as suggestions, never commands. Roles and recommendations follow what the character can actually do. BiS lists are never presented as fact.
+- **No bot names an API function, event, or interface number from memory.** It cites the verified source (architecture.md, the harvest record, or the official source behind it) or stops and asks for research. Model memory is not a source.
+- **No placeholder functions, no commented-out code, no TODO left in a PR.** A PR that carries any of those is not reviewed.
+- **No bot holds an upload token.** CurseForge and GitHub tokens live only in GitHub Actions secrets.
+
+### Open checks for Sirc — the remaining UNKNOWNs (added Nov 11, 2026)
+
+Three checks to close before the doc is settled. Two need Sirc; the third needs one line from Riley. Each names exactly what to look at and what closes it.
+
+1. **Buttons — in-game sighting (Sirc, in-game, 30 seconds).** Both buttons are verified in code (see Guardrails for files and lines). Open ToonAge on Forever and confirm Module Health and Run Self-test are in Settings → Debug, and the Self-test button is in the title bar on a dev build. If the title-bar Self-test button is missing, check the installed version first: on a non-dev build that is expected — use Settings → Debug → Run Self-test instead (Settings.lua:840, shows on any build). Do not type `/ta debug`. Closes when Sirc reports both seen (or which one is missing, which becomes a card).
+2. **CurseForge and Wago secrets (Sirc only, repo Settings).** In the repo, Settings → Secrets and variables → Actions: confirm the `CF_API_KEY` and `WAGO_API_TOKEN` secrets exist, and the `X-Curse-Project-ID` and `X-Wago-ID` variables exist. Cross-check: the last Package and Release run log prints either "CurseForge token is set" or "CF_API_KEY is not set. CurseForge upload will be skipped." Never paste a token in chat, in a doc, or in a commit. Closes when Sirc reports set or missing for each of the four.
+3. **The 8:21 Forever install method (one line from Riley).** The script supports it — `Tools/build_flavors.ps1 -Install` exists on `test` (verified Nov 11). What is still open is which command Riley actually ran for the Nov 9, 8:21 PM install: `build_flavors.ps1 -Install`, or something else? Closes when Riley answers in one line; if it was not the approved method, the install is re-done with the approved method before any measurement from it is trusted.
 
 ### Product decisions — settled unless Sirc changes them
 
@@ -114,6 +144,7 @@ Riley-reported Sirc message in Riley’s chat at **8:09 PM PST**: **“Merge PR 
 | `0bb023e363…` | Data/package presence checks, not runtime proof. |
 | `f293acf51d…`, `ec3bb90abc…` | Gilder glyph/chevron assets, preserve artwork. |
 | `32b265a18a…`, `30d7abf12f…` | Legacy rotation plumbing, not reliable guidance. |
+| commit `e060761` | Combat reaction predicates (target casting/interruptible, enemies in range, player moving, ally needs dispel, target has stealable, incoming damage) with CombatState scans. On both `main` (HEAD) and `test`; `main` is fully contained in `test` (verified on a full clone, Nov 11, 2026). |
 
 ## 4 PENDING TASKS & ROADMAP
 
@@ -149,7 +180,7 @@ Legacy Forever static approximate beta 70245 lists remain UNVERIFIED outside the
 ### AGILE/KANBAN EXECUTION PLAN — Sirc’s team / Sirc146/ToonAge / test
 
 Plan with Conductor and record it here before work. Only small, approved feature-branch commits/PRs to `test`; no large chunks or unrelated rewrites. No calendar-day breakdown. These commit messages are proposals, not performed commits; recording game results does not itself require a code change or reinstall.
-**Before every individual game check:** Sirc performs the explained SavedVariables backup, checks harvest counts and installed=agreed-trunk/client/version, then uses addon buttons/copyable windows. Trunk mapping is UNKNOWN until Sirc confirms it. Missing button is blocked; no typed probes. Launch requires 0 fails, every warning triaged, clean Error Log after real play.
+**Before every individual game check:** Sirc performs the explained SavedVariables backup, checks harvest counts and installed=agreed-trunk/client/version, then uses addon buttons/copyable windows. Trunk is `test` (settled November 11, 2026). Missing button is blocked; no typed probes. Launch requires 0 fails, every warning triaged, clean Error Log after real play.
 
 | Kanban column | Entry/exit | WIP suggestion |
 |---|---|---:|
@@ -424,7 +455,7 @@ Original 20–39 pool is not separate 20–29/30–39 coverage. Original 50–60
 
 ### Open decisions for Sirc
 
-- Confirm trunk (`test` versus script assumptions of `main`) and actual 8:21 Forever build-flavors install method; final independent-review verdict was not supplied. Next is live acceptance, not pretending merge/install is still pending.
+- Trunk is SETTLED as `test` (Sirc, November 11, 2026 — installs come from `test`, PRs target `test`). Still open: confirm the actual 8:21 Forever build-flavors install method; final independent-review verdict was not supplied. Next is live acceptance, not pretending merge/install is still pending.
 - Choose Hunter spec/context or explicitly leave undecided; Warrior tank/DPS workflow, available healer/other-class testers, first endgame/PvP objective and first toon/profession.
 - Approve cast-history window/privacy/reset/retention, explanation UX and first advisory tab. Weighted lean needs valid research, not a preference vote. Vespera Frost/Fire intent stays closed.
 - Decide faction browser, popular-build source, one-ring replacement verdicts, ship 8 versus 3 TOCs, Weekly Dashboard/Now and mockup timing. Replacement matrix format is settled; individual verdicts/full addon list/10th Rampage name remain UNKNOWN.
@@ -474,3 +505,299 @@ Superseded and already-tried items, earlier tools, Pepper who later named hersel
 
 November 9, 2026, 9:03 PM PST — Conductor/executor documentation pass: backed up the 650-line record, centered it on Sirc’s team, retained all 24 G-cards/standing rules/quotes/data boundaries, and replaced obsolete first-task ordering with installed Mage acceptance → Training → labels. Fresh read-only `test` tree/LICENSE/.rules check supports the policy-doc filename findings; no repo writes, PRs, installs, bot messages or policy changes. Exact talent-tree quotation/transparent-mode details remain UNKNOWN, not invented. Sirc’s final decisions and live tests are still required.
 November 9, 2026, 9:10 PM PST — Conductor/executor documentation draft (box only, not committed): split the 578-line shared record into README.md, AGENTS.md, docs/HANDOVER.md, docs/HISTORY.md and docs/architecture.md under `/workspace/toonage-docs/` in repo layout. The repo (Sirc146/ToonAge, `test`) is the intended source of truth; box copies are drafts. Standing rules, all 24 G-cards, Muse quotes and history items retained. Added Sirc’s git preference and “After each verified test and its working it's pushed up.” No repo writes, PRs, installs, bot messages or policy changes.
+November 11, 2026 — Muse restructure merged into PR #63's HANDOVER (box copy, not committed): trunk mapping settled as `test` per Sirc; guardrails added (push-when-verified, Riley merge rule, Muse formerly Pepper, Claude/Kiro archived, tag approval, backup for whichever client is tested, buttons with UNVERIFIED existence + missing-button card, data rule, suggestion wording); merge-timing model written as merge-to-`test`-after-review+CI → install → live-check, matching PRs #58/#59/#61/#62 — Sirc confirmed this model Nov 11 ("merge to test first, then you test, and your go marks it Done"); CurseForge/Wago release card added (pipeline exists in release.yml; no `v*` tag on current `test` head `c9c5308`, newest dated release tag `v2.0.3` Sep 18, 2026; secret presence UNVERIFIED); Gemini/Copilot/snippet sections and test-status template added. The standalone restructured draft is superseded by this merged file — do not save it as a second HANDOVER. G01–G24 cards, first-task tables, and PR #63 evidence kept intact.
+November 11, 2026 (later) — Muse: applied Conductor's 8.5/10 fixes — Gemini prompt pointed at the Test status template and Team work log (no section 9 exists); the two Team work log headings merged into this one; step 8 now names exactly what gets pushed after a go (the README and HANDOVER update commit); leftover draft sentence removed. Data rule added (Sirc, Nov 11): git is the only store — code, docs, and approved evidence live in `Sirc146/ToonAge`; one backup folder on the PC only (bare repo backup + dated SavedVariables backups), no second working copy or PC-only branches. Correction, same day: the "21 commits on main not in test" claim was withdrawn — it came from a shallow-clone check, and a full clone confirms `e060761` is in `test` and `main` has 0 commits not in `test`. The DISPUTED note and the reconciliation card were removed and the plain fact restored. `origin/reskin` does not exist on GitHub (only `cursor/ui-bugs-reskin-dba9`); nothing to retire, no action on that branch.
+November 11, 2026 (later still) — Muse: closed what could be closed from the repo side — Self-test button verified in code (`Modules/Infrastructure/TestHarness.lua:1582`, gated on `-dev` version or `/ta debug` at login) and Module Health button verified in code (`Modules/Infrastructure/Settings.lua:839`, copy-window output per `Core/Init.lua:1587`); in-game sighting is now a 30-second check-card for Sirc. `Tools/build_flavors.ps1 -Install` verified in code; which command Riley ran at 8:21 is a one-line question for Riley. Secrets cannot be verified from a clone — check-card added for Sirc (repo Settings + run-log line). PR #63 verified mergeable: 2 commits ahead of `test`, fast-forward, 0 conflicts — Riley merges in one action; post-merge cleanup list added (3 conditional spots). Test status seeded with the PR #62 / G01 entry awaiting Sirc's Spells check plus #58/#59/#61 pending. Guardrails trimmed to a single full copy — Gemini prompt and validation prompt now point to it.
+November 11, 2026 (later still) — Muse: 9.5/10 fixes — Open check 1 now points to Settings → Debug → Run Self-test (Settings.lua:840, shows on any build) instead of /ta debug; PR #63 file count corrected to 5 (README, AGENTS, HANDOVER, HISTORY, architecture); sequencing noted (commit this 647-line file to the PR branch before merging, or the old 476-line HANDOVER lands on test). The merge bot's name was removed from the file throughout at that point — reversed later the same day; see the next entry.
+November 11, 2026 (later still) — Muse: Riley restored as an owner throughout — the file lists owners, so Riley is part of it (implementation and merge, only on Sirc's direct word). The earlier removal is reversed; the 9.5/10 fixes (Run Self-test button, 5 files, sequencing) stand.
+November 11, 2026 (later still) — Muse: workflow fixes applied — Waiting on Sirc section seeded in Test status (G01 live check, PR #63 approval, buttons sighting, secrets check, #58/#59/#61 verification, with dates); daily summary now lists waiting items with dates and runs in the evening, plus a per-release workflow review; revert procedure added (revert commit, reinstall previous head, card back to In progress) as a guardrail and in step 8; ‘go with changes’ defined (fix commit, re-check only what changed); open-PR triage rule (Conductor owns the list, triage at each release, 30-day flag, no silent closes); red-CI rule and reviewer-disagreement path; Conductor-unreachable pause; branch naming <builder>/<feature>; PR contents rule; status timestamps with Conductor owning Done transitions; CurseForge/Wago project-existence card; Open-checks intro corrected.
+November 11, 2026 (later still) — Muse: merged the build-workflow doc (`WoW-AddOn-Build-Workflow.md`) into this file — six phases, four gates (including a new feasibility gate), role mapping with two unowned roles (Release bot, Localization bot — Conductor covers both until Sirc assigns them), hand-off contracts, Blizzard policy table + EULA clauses, interface numbers (Forever 16001, Titan Reforged 38002 with no ToonAge TOC yet), Phase 0 verify-once list, task prompt, three-round escalation, 30-minute launch-gate session, CF_API_TOKEN note, API-citation and no-placeholder guardrails, Battle.net Game Data note. Kept without bending: test trunk, HANDOVER as the single record, <builder>/<feature> branches, build_flavors -Install only, check_lua.py/test_*.py gates. Not taken: separate SPEC/API/DATA/THEORY/DESIGN/LORE files, STATE.md, junction install, friends beta-testing process.
+November 11, 2026 (later still) — Muse: applied Conductor's 9/10 fixes — premature approval line removed (approval has not happened yet; it goes back in only on real approval) and PR #63 returned to Waiting on Sirc; interface-numbers line corrected (Wrath 30405, Cata 40402, Titan Reforged has no TOC); CurseForge/Wago IDs verified in every TOC (1734520 / 56ndnjG9) — project-existence card and Phase 0 item 4 corrected; .pkgmeta gap recorded (AGENTS.md not ignored on test or PR #63; stale wago.yml comment) for Riley to fix in PR #63. 51 open PRs count confirmed.
+
+### Pull / push / commit / merge / install / live-check — when each happens (added Nov 11, 2026)
+
+One card, one branch, one sequence. Nothing here is blanket authority — each merge, install, and release needs Sirc's direct word at its own step.
+
+1. **Pull.** The builder pulls the latest `test`, then branches `<builder>/<feature>` — `grok/<feature>`, `gemini/<feature>`, `copilot/<feature>`. Never build on `test` directly, never on `main`.
+2. **Commit.** Small, incremental commits on the feature branch, one card at a time, each with a definition of done. No large code chunks, no commit that mixes two cards. Docs and code go in as their own commits so one can be rolled back.
+3. **Push (feature branch).** Push the branch when the offline gates pass locally (`python Tools/check_lua.py`, the relevant `Tools/test_*.py`). CI runs on every push and every PR — a green CI run is the guarantee the checks ran on a clean machine. Pushing the branch is not merging it.
+4. **Pull request to `test`.** Open the PR against `test`. A PR carries the card, the offline gate results, the head it was built from, and the review status. Review: Warden (rules), Glitch (offline tests + in-game checklist), Gilder (visuals, if any), Chronicler (facts). CI must be green. A PR with red CI is not reviewed until green — the branch owner fixes it or asks Conductor; Sirc may waive a red CI explicitly, and the waiver is recorded on the PR. If reviewers disagree, the disagreement goes to Sirc as a numbered decision question through Conductor, and the card does not proceed until he answers. Three failed rounds on one task escalate to Sirc through Conductor instead of looping. A plan, a static GO, or a relayed approval is not merge authority.
+5. **Merge to `test`.** Riley merges, only on Sirc's direct word. This is the step PR #62's instruction shows: "Merge PR #62 into test once the final copy commit passes review and CI, then install on Jarvis with a backup and settings preserved." Before merging, commit this merged HANDOVER to the PR branch — PR #63 still carries the old 476-line version, and merging as it stands would land the old file on `test`. Merge happens *before* the live check, because installs come from `test` — Sirc cannot live-check a change that is not in `test` yet.
+6. **Install from `test`.** Approved Forever install is `Tools/build_flavors.ps1 -Install` only, never the all-client release ZIP, never `Tools/deploy.ps1` (its `robocopy /MIR` can be destructive). Close WoW first; Sirc runs his own explained SavedVariables backup — for whichever client is being tested — and confirms the installed files and version match the agreed `test` head before measuring.
+7. **Live-check (Sirc, in-game).** Buttons and copyable windows only — Reload UI, Spells, Module Health, Error Log. If a needed button does not exist, that is a card, not a typed probe; the check waits. Launch gate: 0 fails, every warning triaged, clean Error Log after a 30-minute normal play session.
+8. **Push up after a verified test — the README and HANDOVER update commit.** Sirc's words: "After each verified test and its working it's pushed up." A go from Sirc moves the card to Done. What gets pushed then is exactly one thing: the docs update commit — the README and HANDOVER entries that mark the change verified (test status, work log, exact head, in-game result). The code is already on `test` by then; nothing code-related is pushed at this step. A no-go sends the card back with the finding — the fix is its own small commit and PR, back through steps 2–7. A ‘go with changes’ answer means the listed changes go in as a fix commit through steps 2–7, and the live-check then covers only what changed — not a full re-verification of the whole card. A regression found after merge is reverted, not patched: a revert commit takes the change out of `test`, the install goes back to the previous head and is re-verified, and the card goes back to In progress; the fix comes as a new small commit through the normal steps. Nothing is presented as finished on a passing offline suite alone.
+9. **Release (separate approval).** Only on Sirc's direct word: push a `v*` tag, which runs the release pipeline (CurseForge and Wago uploads — see the next section). `main` merges and `live/*` snapshots are his separate approval too.
+
+
+### The six phases and four gates — merged from the build-workflow doc (Nov 11, 2026)
+
+The addon moves through six phases. Bots do the work inside each phase; Sirc approves four gates, and nothing crosses a gate without his spec approval, his in-game test, or his tag. Build has no gate of its own: code leaves it only through the Reviewer and the Tester. A failed in-game step sends the task back to Build; a game patch sends the project back to Research.
+
+#### How this merge was done — kept, translated, not taken
+
+- **Kept as settled:** trunk is `test` (never `main`); `docs/HANDOVER.md` is the single shared record; branches are `<builder>/<feature>`; the approved install is `Tools/build_flavors.ps1 -Install`; in-game checks use buttons and copyable windows; the merge-timing model (merge → install → live-check); push-when-verified; the offline gates are `Tools/check_lua.py` and `Tools/test_*.py`.
+- **Translated:** the pipeline doc's `main` becomes `test` everywhere (release tags are cut from `test` on Sirc's approval); its `docs/STATE.md` role is played by this file plus Test status; its `feat/<criterion-id>` branches become `<builder>/<feature>`; its `luacheck` / LuaLS checks are a local option, not a gate — the gates are the repo's own scripts; its directory-junction install is not adopted.
+- **Not taken:** separate `SPEC.md` / `API.md` / `DATA.md` / `THEORY.md` / `DESIGN.md` / `LORE.md` files — their jobs are done here by the G-cards, `architecture.md`, the harvest store, and Gilder's design direction. No second record is created. Friends-testing through a beta issue template is not adopted — there is no beta-tester process yet.
+
+| Phase | Lead | With | Output | Human gate before the next phase |
+| --- | --- | --- | --- | --- |
+| 1. Planning | Conductor (with Sirc) | Gilder, Chronicler | Spec in the HANDOVER cards | Gate 1: spec approved |
+| 2. Research | Chronicler | Riley (probes), Glitch (tests) | API/feasibility evidence | Gate 2: feasibility approved |
+| 3. Build | Riley, checked by Warden | Gilder (UI review), Chronicler (string/fact review) | Merged pull requests to `test` | None |
+| 4. Testing | Glitch (static) + Sirc (in-game) | Riley (fixes), Chronicler (expected values) | Static report, validation steps | Gate 3: in-game pass |
+| 5. Release | Conductor prepares; Sirc tags | Muse (audits) | Release PR, changelog | Gate 4: push the tag |
+| 6. Post-launch | Conductor (triage) | Chronicler (patch diffs) | Next milestone tasks | None |
+
+| Gate | Sirc decides | Why an agent cannot |
+| --- | --- | --- |
+| 1. Spec approved | Scope, target game versions, what is out of scope | It is his addon |
+| 2. Feasibility approved | Whether to cut or redesign features the API blocks — including the secret-value verdicts (works as specified, display-only, out of combat only, not possible) | Trade-off between what he wants and what the client allows |
+| 3. In-game pass | The addon works in the live client | Agents cannot log in to WoW |
+| 4. Release | Push the tag that triggers the upload | Publishing is public and tied to his accounts |
+
+#### Role mapping — pipeline doc to ToonAge crew
+
+| Pipeline role | ToonAge owner |
+| --- | --- |
+| Orchestrator | Conductor |
+| Planner | Conductor (plans with Sirc; no separate Planner bot) |
+| API Researcher | Chronicler (research) + Riley (runtime probes) + Glitch (tests) |
+| Coder (Builder) | Riley |
+| Reviewer | Warden |
+| Tester (Static tester) | Glitch (static) + Sirc (in-game) |
+| Release bot | Unowned — Conductor covers the release PR until Sirc assigns it; Sirc pushes the tag |
+| Designer | Gilder |
+| Stats bot | Chronicler |
+| Theorycrafter | Chronicler |
+| Lore bot | Chronicler (tone and names) |
+| Localization bot | Unowned — strings stay in locale tables per the coding rules; Conductor assigns extraction per card until Sirc names an owner |
+| Docs bot | Conductor (README/store page), with Muse auditing |
+| Triage bot | Conductor (owns the open-PR list and issue triage) |
+
+#### Hand-off contracts (ToonAge)
+
+Every hand-off is a file or a pull request, never a chat summary.
+
+| From | To | What is handed over | The receiver rejects it when |
+| --- | --- | --- | --- |
+| Conductor | Riley | Card with spec, API rows it may use, files it may touch | The criterion is vague or the API rows are missing |
+| Chronicler | Riley, Glitch | Sourced data / rules with sources | A value has no source or no flavor |
+| Riley | Warden | Pull request for one card | It touches files outside the card, or calls an unverified API |
+| Warden | Glitch | Approved pull request | (Glitch runs regardless; failures go back to Riley) |
+| Glitch | Sirc | In-game checklist + green static report | (Sirc runs the check; a failure returns to Riley with the diagnostics) |
+| Sirc | Conductor | Go / no-go / go-with-changes, with the diagnostics pasted back | n/a |
+| Conductor | Release (Sirc) | Release PR with changelog | An entry does not say what changed for the player |
+
+**Resolving disagreements:** technical fact (does a function exist, is a value secret) — the verified source wins; if it is wrong, Chronicler corrects it and cites the source, nobody else edits it. Game numbers — the sourced data wins over the rule that uses it. What to build — the spec wins over design, theory, and lore; specialists propose changes to Conductor, they do not expand scope themselves. Feasibility beats desirability — a rule marked not possible is cut or redesigned, however good the theory. Anything two bots cannot settle in one round goes to Sirc through Conductor, as a question with the two options stated.
+
+#### Interface numbers (verified Nov 11, 2026)
+
+Source: the wiki's latest patch table and TOC format pages, via the build-workflow doc. Retail, Forever, Mists, TBC and Era match ToonAge's TOCs (the Mainline TOC also lists 120100 and 120001 alongside 120105). Classic Titan Reforged (38002) has no ToonAge TOC — ToonAge_Wrath.toc is 30405 (Wrath Classic). ToonAge_Cata.toc (40402) is not in the table below; the wiki lists Cataclysm Classic and Wrath Classic but with no current install folder.
+
+| Client | TOC game type | Family | Install folder | Version | Interface |
+| --- | --- | --- | --- | --- | --- |
+| Retail (Midnight) | `standard` | mainline | `_retail_` | 12.1.5 | 120105 |
+| Retail PTR | `standard` | mainline | `_ptr_` | 12.1.7 | 120107 |
+| Forever | `forever` or `camelot` | mainline | `_forever_` | 1.60.1 | 16001 |
+| Mists of Pandaria Classic | `mists` | classic | `_classic_` | 5.5.4 | 50504 |
+| Classic Titan Reforged | `wrath` | classic | `_classic_titan_` | 3.80.2 | 38002 |
+| Classic Anniversary (Burning Crusade) | `tbc` | classic | `_anniversary_` | 2.5.6 | 20506 |
+| Classic Era | `vanilla` | classic | `_classic_era_` | 1.15.9 | 11509 |
+
+**Forever is not a Classic client for API purposes.** The wiki puts it in the mainline family: its 1.60.1 patch includes all Modern changes up to 12.1.5. Secret-value behavior is therefore checked row by row on Forever instead of assuming it behaves like Classic Era. The `camelot` value may be renamed to `forever`, so TOC conditions list both. Remix is treated as Retail with a mode check (no ToonAge Remix handling yet). Plunderstorm and Talebound are excluded with `## ExcludeLoadGameType` unless the spec targets them — ToonAge's TOCs do not carry those lines today.
+
+### Blizzard policy — blocking checks (merged Nov 11, 2026)
+
+Blizzard's UI Add-On Development Policy has eight rules, and its seventh pulls in the End User License Agreement (last revised 21 March 2024). Each rule is assigned to a bot as a blocking check. This is a reading of the published text, not legal advice.
+
+| Policy rule | What it means for the build | Checked by | When |
+| --- | --- | --- | --- |
+| 1. Free of charge | No paid tiers, download fees or paid services tied to the addon | Conductor, Sirc | Gate 1, release PR |
+| 2. Code must be visible | No obfuscation or minification; the public repo and the shipped zip hold readable Lua | Warden, Sirc | Every PR, package dry run |
+| 3. No harm to realms or players | No chat spam, no unnecessary disk reads, no frame-rate cost | Warden, Glitch | Every PR, in-game pass |
+| 4. No advertising | No promotion of products or services in the addon | Chronicler, Conductor | String review |
+| 5. No in-game donation requests | Donation links live on the CurseForge or GitHub page only | Chronicler, Conductor | String review, store page |
+| 6. Age-appropriate content | All text and art within the game's Teen rating | Chronicler | String review |
+| 7. Follow the Terms of Use and EULA | See the EULA rows below | Chronicler, Warden | Gate 2, every PR |
+| 8. Blizzard may disable addon functionality | Every feature fails quietly when an API is removed or restricted | Riley, Chronicler | Build, patch-day loop |
+
+**EULA clauses that shape the design**
+
+| Clause | Paraphrase | Pipeline rule |
+| --- | --- | --- |
+| 1.C.ii, Cheating | Bars unauthorized code that automates control of the game or changes or facilitates gameplay | The addon displays and advises; it never issues actions for the player. Any feature that would act on the player's behalf is cut at Gate 2 |
+| 1.C.vi, Data mining | Bars unauthorized software that reads data the platform generates; Blizzard may allow certain third-party user interfaces | Data is read only through the addon API. No memory reading, no packet reading, no companion program that inspects the client |
+| 1.C.i, Derivative works | Bars reverse engineering, decompiling and modifying the platform | Research uses published API documentation and addon source, not decompiled client code |
+| 1.C.iii, Commercial use | Bars exploiting the platform for unauthorized commercial purposes | Consistent with policy rule 1 |
+| 2.B, Ownership | Blizzard owns game content, art, names and data | No Blizzard logos or ripped art in the logo or store page; in-game textures are referenced, not redistributed |
+| 4, Consent to monitor | The client may scan for unauthorized third-party programs | No bot, script or tool in this workflow attaches to the running game |
+
+The bots in this workflow are build tools that work on files in a repository. None of them runs inside or against the game client, which is why every in-game step belongs to Sirc.
+
+### Phase 0 — one-time setup (adapted Nov 11, 2026)
+
+The repo already exists, so this is a verify-once list, not a build step. Items only Sirc can check are marked.
+
+1. Repo exists: `Sirc146/ToonAge`. Done.
+2. Workflow permissions read and write (Settings → Actions → General) — the packager needs this to publish a GitHub release; without it the upload fails with "Resource not accessible by integration." **Verify (Sirc only — cannot be read from a clone).**
+3. CurseForge project — see the project-existence card in the release section. Start it early: moderation runs Sunday to Thursday, 8 AM to 3 PM CET, first in first out.
+4. Project ID in the TOC as `## X-Curse-Project-ID` — done. Every TOC carries `X-Curse-Project-ID: 1734520` and `X-Wago-ID: 56ndnjG9` (verified Nov 11, 2026).
+5. API token — see the secrets check and the `CF_API_TOKEN` note in the release section.
+6. Local tooling: VS Code with LuaLS and the WoW API extension, BugGrabber with BugSack in the game client. `luacheck` is a local option, not a gate.
+7. Install method: the pipeline doc links the repo into the game with a directory junction. **Not adopted — ToonAge's only approved install is `Tools/build_flavors.ps1 -Install`.** Never the all-client release ZIP, never `Tools/deploy.ps1`.
+8. `.pkgmeta` gap — `AGENTS.md` would ship in the zip. Verified Nov 11, 2026: `.pkgmeta` ignores `docs/` but not `AGENTS.md`, on both `test` and the PR #63 branch. Riley adds `AGENTS.md` to the ignore list in PR #63. The `.pkgmeta` comment saying it is ‘used by wago.yml’ is also stale — `wago.yml` no longer uploads — correct it in the same change.
+
+### Open-PR triage — the backlog has an owner (added Nov 11, 2026)
+
+Conductor owns the open-PR list. The HANDOVER tracks only the PRs with live cards; the rest (51 open as of Nov 11, 2026) are triaged, not ignored: at each release, Conductor runs a triage pass — merge, rebase, or close as superseded — and records the decision per PR. A PR with no activity for 30 days is flagged in the daily summary for a decision. No PR is closed silently; the close reason is recorded. The first triage pass is still awaiting Sirc's go.
+
+### CurseForge and Wago uploads — how releases ship, and the fix if they don't (added Nov 11, 2026)
+
+**How it already works.** The pipeline exists in `.github/workflows/release.yml`. One `v*` tag does three things: (1) build the zip plus `release.json` for WowUp; (2) publish the GitHub release; (3) hand the tag to BigWigsMods/packager, which uploads to CurseForge (`CF_API_KEY` + `X-Curse-Project-ID`) and Wago (`WAGO_API_TOKEN` + `X-Wago-ID`). Either secret may be absent — the packager skips a site it has no token for, and the workflow logs which one was skipped. `.github/workflows/wago.yml` no longer uploads; it only notes that publishing lives in `release.yml`. No `v*` tag, no upload — uploads never happen from a branch push or a PR merge.
+
+**Current state (verified Nov 11, 2026).** No `v*` tag points at the current `test` head (`c9c5308`); the newest dated release tag is `v2.0.3` (Sep 18, 2026). So PRs #58/#59/#61/#62 have not reached CurseForge — correctly, because no release has been cut from them and releases need Sirc's approval. Whether the CurseForge and Wago secrets are configured in the repo is UNVERIFIED from here — secrets cannot be read from a clone, and the workflow only reports them at run time. Do not claim the tokens are set or missing without checking the run log or repo settings.
+
+**Before the next release: confirm the project page.** The project ID is present in every TOC — `X-Curse-Project-ID: 1734520`, `X-Wago-ID: 56ndnjG9` (verified Nov 11, 2026) — so the project very likely exists. What still needs confirming is the project page itself: that CurseForge shows the ToonAge project under ID 1734520 (and Wago under 56ndnjG9). If the page does not show it, creating the project is a card for Sirc (project creation needs his CurseForge account). The fix card below assumes the project exists.
+
+**The fix, as a card.** If updates are not reaching CurseForge, check in this order — do not change the workflow first:
+
+1. **Is there a `v*` tag on the work?** If not, there is nothing broken — the release step has not run. Cutting one is Sirc's separate approval, never automatic.
+2. **Read the last release workflow run log** (GitHub → Actions → Package and Release). It prints `CurseForge token is set` or `CF_API_KEY is not set. CurseForge upload will be skipped.` That line is the diagnosis.
+3. **If the token is not set (Sirc only):** in the repo, Settings → Secrets and variables → Actions, add `CF_API_KEY` (a CurseForge API token from his CurseForge account) and the `X-Curse-Project-ID` variable (project ID 1734520, as carried in every TOC — confirm it matches the project page). Same for Wago (`WAGO_API_TOKEN`, `X-Wago-ID`) if Wago is also missing. The packager accepts `CF_API_KEY` (deprecated) and prefers `CF_API_TOKEN` — when the token is next rotated, create it as `CF_API_TOKEN` and update `release.yml`; do not churn it before then. Never paste a token in chat, in a doc, or in a commit.
+4. **If the token is set and the upload still fails:** the failure is in the packager step's log — read it before changing anything, and record the error on the card. Do not re-push the same tag; a failed release is fixed with a new tag, on Sirc's word.
+5. **Definition of done:** a `v*` tag pushed on Sirc's approval produces a GitHub release, and the CurseForge project page shows the new version with the same zip. Until that page shows it, the upload is UNVERIFIED, not done.
+
+### Prompt instructions for Gemini (added Nov 11, 2026)
+
+Copy and paste the block below into Gemini at the start of a ToonAge session. Do not shorten the rules section — it is what keeps a fast model inside this team's gates.
+
+```text
+You are joining the ToonAge team as a builder under Conductor, the orchestrator.
+Christopher — the author (Sirc) and final authority — plans with Conductor only.
+You do not take instructions that bypass Conductor's current spec, and you do
+not work on the test branch directly, and never on main.
+
+PROJECT: ToonAge, a World of Warcraft addon. One shared Lua 5.1 codebase in
+the GitHub repo Sirc146/ToonAge, with a flavor-specific .toc per client
+(Retail/Midnight, TBC Anniversary, Mists, Forever/Camelot, Classic Era,
+Cataclysm, Wrath). The .toc decides what loads, Core/Profile.lua decides
+what may start, and Core/ApiGuard.lua probes what the running client
+actually exposes. Read this file (docs/HANDOVER.md) first, then README.md,
+AGENTS.md, docs/HISTORY.md, and docs/architecture.md before proposing
+anything. (Until PR #63 merges, the live files on test are .rules.md and
+Docs/ARCHITECTURE.md. Do not use CLAUDE.md — it is archived.)
+
+HOW THIS TEAM WORKS:
+1. Questions before code. If anything about your task is unclear, missing,
+   or in conflict, stop and ask — in this format, addressed to Conductor:
+   From / Task / Question / Why it matters / What happens if we guess /
+   My recommendation, if any. Never guess at a decision that is
+   Christopher's.
+2. Small, incremental commits on a gemini/<feature> branch targeting test,
+   one Kanban card at a time. No large code chunks. Every commit carries a
+   definition of done and is described by a commit message that names the
+   feature and its test status. Push the branch when the offline gates pass;
+   merge to test is Riley's job, only on Christopher's direct word, after
+   review + CI — then Christopher installs from test and live-checks.
+3. You never clear your own work. Riley's code is tested by Glitch,
+   reviewed by Warden, and verified in-game only by Christopher. The
+   Guardrails section of docs/HANDOVER.md governs the rest — read it in
+   full before proposing anything (test branch, merge rule, backups,
+   buttons, data rule, suggestion wording, release tags). State exactly
+   what you checked and what you could not check without the game.
+4. Honesty and data rules: see the Guardrails — they govern what counts
+   as verified. Guard every API call; Retail APIs do not exist on older
+   clients.
+5. Update docs/HANDOVER.md — the Test status template and the Team work
+   log — when your work changes state. No update, no handoff. Release
+   tags (v*) need Christopher's approval before pushing.
+6. Merges into test are Riley's job, only on Christopher's direct word.
+   You never merge, and never merge your own work.
+
+CURRENT PRIORITIES: P0, in order, is (1) the PR #62 Mage 10-19 guide live
+check (G01), (2) attack and training provenance (G03), (3) swapped build
+and interface labels (G02) — full card scopes and DoDs are in this file.
+Then G04/G05 frame regressions, then the rest of G06–G24. Work only the
+card Conductor assigns you.
+
+Start by: summarising what you read in docs/HANDOVER.md in five lines,
+listing the questions you would ask before touching code, and naming the
+first bite-sized commit you would make. Post all three in the team chat, then wait for Conductor's go.
+```
+
+### Task prompt Conductor sends (merged Nov 11, 2026)
+
+The prompt Conductor sends with every task. One task, one criterion, one branch.
+
+```text
+Role: <bot name>
+Task: <one sentence, one acceptance criterion or one document section>
+Inputs: <file paths and the exact rows or sections to read>
+Output: <file path or branch name>
+Done when: <checkable condition>
+May touch: <files>
+Must not: <scope limits>
+On a blocker: write it to docs/HANDOVER.md under Blocked / waiting on a decision and stop.
+```
+
+### Instructions for Copilot (added Nov 11, 2026)
+
+GitHub Copilot works inside the IDE, on the card Conductor assigned — it is a pair of hands at the keyboard, not a second planner. The repo already carries `.github/copilot-instructions.md`; that file and `AGENTS.md` (`.rules.md` until PR #63 merges) govern every suggestion, and this section governs how the team uses it.
+
+- **One card, one branch, one suggestion at a time.** Open the card's `copilot/<feature>` branch, state the card and its definition of done in the chat before accepting code, and review every completion line by line. A suggestion that touches a file outside the card's scope is rejected, however good it looks.
+- **Use Copilot for what it is good at here:** completing the module pattern from `AGENTS.md`, drafting the offline `Tools/test_*.py` case for a change, repeating an established UI component call (`TA.Modern:SectionHeader`, `DataRow`, `ActionButton`, and the rest) instead of hand-rolling a new one, and summarising a diff against the card's definition of done.
+- **Never let Copilot invent the game.** It does not know whether an API exists on Forever, Mists, or TBC. Any API it proposes is UNVERIFIED until Chronicler checks it or a probe confirms it in-game. Reject unguarded API calls, Lua newer than 5.1, and any code that wipes or rewrites SavedVariables data instead of backfilling it.
+- **Tests before trust.** After accepting a change, run `python Tools/check_lua.py` and the relevant `Tools/test_*.py` locally. The person running Copilot pastes the result into the team chat — Copilot cannot post to team chat itself. Copilot's confidence is not a test result.
+- **Commits stay bite-sized.** Commit per card, naming the feature and its test status. No squashing several cards into one "misc fixes" commit, and never commit directly to `test` or `main`.
+
+### Code snippets from Claude, Kiro, Gemini, and Muse (added Nov 11, 2026)
+
+Christopher may bring in code snippets from outside the Grok team — from Claude, from Kiro, from Gemini, and Muse may assist with snippets as well. A snippet's origin does not change its status: outside code is a proposal, not a delivery. Claude Code and Kiro are archived as builders; their snippets, if Christopher brings them, go through exactly the same gates below.
+
+- **In through Conductor.** Every snippet arrives through Conductor, who logs it against a Kanban card — or creates the card, in Questions, if none exists. Snippets are never pasted straight into the working tree, and never straight to `test` or `main`.
+- **Attributed to its source.** The card and the eventual commit note the source — Claude, Kiro, Gemini, or Muse — and what the snippet is meant to do, in one line. Unattributed code does not get integrated.
+- **Same gates, no exceptions.** Warden reviews it against `AGENTS.md`, Glitch runs the offline tests and writes the in-game checklist, Gilder clears it if it touches visuals, and Christopher verifies it in-game. A snippet from a trusted agent skips none of these.
+- **Adapted, not transplanted.** Riley integrates the snippet into the module pattern and the flavor's profile and ApiGuard gates, in the smallest commit that works. If it collides with work already in flight, Conductor flags the collision to Christopher before anyone merges.
+- **Rejected snippets stay on record.** If a snippet fails a gate, the card records what failed and why, so the same code is not re-proposed as new.
+
+### Test status template and prompt for validation — for Sirc (added Nov 11, 2026)
+
+Conductor keeps this section current. Each bot updates its own work as soon as its state changes — not at the end of the day from memory. If it is not recorded here, the team treats it as not settled.
+
+```markdown
+## Test status
+- PR #62 / G01 — Experimental Mage 10-19 spell guide (Forever), test @ c9c5308 — offline checks: CI green, 425/425 hashes match, no deletes, SavedVariables identical; Glitch/Warden/Gilder GOs, Chronicler fact confirmation — rules review: clear — visual review: Gilder GO (copy/art) — in-game verified by Christopher: NO, awaiting Sirc's Spells check: Reload UI → Spells; Module Health / Error Log copy windows; learned/unlearned/rank redraw; explicit selector; wand states
+
+## Done
+- (none yet — first Done entry is PR #62's go from Sirc)
+
+## In progress
+- PR #62 / G01 — Mage acceptance live check — owner: Sirc — branch: test @ c9c5308 — what is left: Sirc's in-game check (see above)
+- PR #58 — Forever reputations — merged to test Nov 8 — in-game verification pending
+- PR #59 — Forever profession dedup — merged to test Nov 8 — in-game verification pending
+- PR #61 — Manual profession batch calculator — merged to test Nov 8 — in-game verification pending
+
+## Waiting on Sirc
+- PR #62 / G01 live check (Spells tab) — waiting since Nov 9, 2026 (installed 8:21 PM)
+- PR #63 approval — approve the merged HANDOVER, commit it to the PR branch, merge — waiting since Nov 11, 2026
+- Buttons in-game sighting — waiting since Nov 11, 2026
+- CurseForge/Wago secrets check — waiting since Nov 11, 2026
+- PR #58 / #59 / #61 in-game verification — merged to test Nov 8, waiting since Nov 8, 2026
+
+## Blocked / waiting on a decision
+- (none)
+
+## Next
+- G03 Attack provenance, then G02 labels (First tasks 2 and 3)
+
+## Team changes proposed
+- (none)
+```
+
+Three rules keep it trustworthy: **no update here, no handoff**; **done means tested** — built but untested stays in progress; and **never rewrite history to look clean** — a failed test, a reverted change, and a wrong guess stay in the record, with what was learned. Every status line carries a date and who updated it; Conductor owns the Done transition on Sirc's go.
+
+**Prompt for validation — addressed to Sirc.** Before any roadmap item is called finished, Conductor puts this to Christopher and waits for the answer. The team does not mark its own work validated. In-game checks follow the Guardrails.
+
+> **Christopher — validation check.** For [feature / task] on [branch, targeting `test`]: offline checks [passed / failed — detail], Warden's rules review [clear / returned — detail], Gilder's visual review [clear / n/a], and Glitch's checklist is [attached / not yet written]. What this does not yet prove: [anything only the game can show]. Please reload the UI, open ToonAge on [client — Forever first], and run the check Glitch wrote (buttons and copy window, per the Guardrails — SavedVariables backup first) and confirm: does [expected result] happen? Then copy the diagnostics from the copyable window and paste them back. Reply go, no-go, or go with changes — the card moves to Done only on your go.
+
+**Daily summary (not a freeze).** Once a day, in the evening, Conductor collects status from every bot and updates this record: what shipped, what stayed behind and why, what is waiting on Sirc (with dates), and what is first tomorrow. The summary never freezes building — verified work is pushed when verified. At each release, Conductor also re-reads the workflow sections above and proposes fixes to Sirc — the workflow gets reviewed, not just followed.
