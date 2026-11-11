@@ -51,6 +51,11 @@ local SITUATION_LABEL = {
     pack = "Several mobs, solo",
 }
 
+-- Enemy-in-melee tip. Kept in one place so the sentence can be adjusted.
+-- Source: Icy Veins Forever Frost Mage leveling, section 3.
+local ENGAGED_NOVA_TIP = "Conditional tip, not a next press. If an enemy reaches melee range, Frost Nova can freeze it so you can make space and keep casting. Icy Veins Frost leveling."
+local ENGAGED_NOVA_URL = "https://www.icy-veins.com/wow-forever/frost-mage-leveling"
+
 M.DATA = {
     status = "research_draft",
     verifiedAsWhole = false,
@@ -121,6 +126,9 @@ M.DATA = {
             key = "frost_nova", name = "Frost Nova", group = "emergency", tier = "A",
             situation = "pack", level = 10, idConf = "none",
             active = true, tacticalVerified = true,
+            -- Spell 122 is Frost Nova rank 1 in Data/Forever/SpellRanks.lua
+            -- and Data/Forever/Spells.lua. The melee tip uses this id only.
+            rankLineIDs = { 122 },
             tacticalUsage = "solo: freeze a cluster before AoE",
             tacticalSrc = "S1", src = { "S1" },
             requiresAoe = true,
@@ -631,6 +639,11 @@ function M.Evaluate(ctx, data)
             .. " (your choice, not a computed optimum). Target health: not read. Player mana: not read. Enemy count: not read."
     end
 
+    if situation == "engaged" and HasId(map.frost_nova, 122) then
+        action.why = ENGAGED_NOVA_TIP
+        action.src = ENGAGED_NOVA_URL
+    end
+
     local view = {
         applies = true,
         press = action.press and true or false,
@@ -732,6 +745,9 @@ function M.Feedback(view, notes)
         add("Suggestion: none. " .. (view.headline or ""))
     end
     add("Why: " .. (view.why or ""))
+    if not view.press and ShownString(view.src) then
+        add("Source: " .. view.src)
+    end
     add("What would change the pick: " .. (view.changes or ""))
     add(view.situationLine or "")
     add("target health: not read")
@@ -1275,6 +1291,9 @@ function M.Paint(content, y, L, view)
     y = L:Paragraph(content, y, view.headline or "")
     if view.why and view.why ~= "" then
         y = L:Paragraph(content, y, view.why)
+    end
+    if not view.press and ShownString(view.src) then
+        y = L:Paragraph(content, y, "Source: " .. view.src)
     end
     if view.changes and view.changes ~= "" then
         y = L:Paragraph(content, y, view.changes)
