@@ -1054,7 +1054,35 @@ function Arrow:ParseWayCommand(args)
         xRaw, yRaw, mapStr, desc and (" — " .. desc) or ""))
 end
 
+--- Retail shows the arrow until the player turns it off. A saved false
+--- is that choice. Nil is the old "never written" state, which stayed
+--- hidden because Init only showed a frame when visible was already true.
+function Arrow:ShouldShowOnLogin()
+    if U and U.DeferToZygor and U.DeferToZygor() then return false end
+    local saved = TA.charDB and TA.charDB.arrow
+    if saved and saved.visible ~= nil then
+        return saved.visible == true
+    end
+    return (TA.IsRetail or TA.flavor == "retail") and true or false
+end
+
+--- Live scale and opacity from the NavHud sliders. The scroll wheel still
+--- sizes the texture in pixels; this is the frame the slider was missing.
+function Arrow:ApplyAppearance(scale, opacity)
+    if not self.frame then self:InitFrame() end
+    if not self.frame then return end
+    if type(scale) == "number" and self.frame.SetScale then
+        self.frame:SetScale(scale)
+    end
+    if type(opacity) == "number" and self.frame.SetAlpha then
+        self.frame:SetAlpha(opacity)
+    end
+end
+
 function Arrow:Toggle()
+    if not self.frame then
+        self:InitFrame()
+    end
     if not self.frame then
         TA:Raw(TA.LOG.OUTPUT, "|cFFFF4444[TA]|r Arrow frame not initialised.")
         return
@@ -1074,8 +1102,7 @@ end
 
 function Arrow:Init()
     self:InitFrame()
-    local saved = TA.charDB and TA.charDB.arrow
-    if saved and saved.visible and not (U.DeferToZygor and U.DeferToZygor()) then
+    if self:ShouldShowOnLogin() and self.frame then
         self.frame:Show()
     end
 

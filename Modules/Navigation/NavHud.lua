@@ -32,8 +32,22 @@ local HUD_ALPHA       = 1.0    -- blip visibility (minimap bg is always 0)
 -- ── NavHud Settings (saved in charDB.navhud) ──────────────────────────────────
 -- These provide user control over what appears on the HUD.
 -- Changed via /ta hud settings or the Settings panel.
+-- Scale stays between a half and twice the authored size. Opacity never
+-- drops under 0.25: 0.10 made the HUD look unchanged because it was
+-- effectively invisible, and the slider used to allow it.
+local SCALE_MIN, SCALE_MAX = 0.5, 2.0
+local OPACITY_MIN, OPACITY_MAX = 0.25, 1.0
+
+local function ClampNumber(value, lo, hi, fallback)
+    local n = tonumber(value)
+    if not n then return fallback end
+    if n < lo then n = lo end
+    if n > hi then n = hi end
+    return n
+end
+
 local NAVHUD_DEFAULTS = {
-    visible         = false,  -- HUD shown on login
+    visible         = true,   -- Retail shows the HUD until the player turns it off
     scale           = 1.4,    -- HUD size multiplier
     opacity         = 0.85,   -- overall HUD opacity (0-1)
     showCardinals   = true,   -- N/S/E/W labels
@@ -61,6 +75,11 @@ end
 --- Set a NavHud setting value
 local function SetSetting(key, value)
     if not TA.charDB then return end
+    if key == "scale" then
+        value = ClampNumber(value, SCALE_MIN, SCALE_MAX, NAVHUD_DEFAULTS.scale)
+    elseif key == "opacity" then
+        value = ClampNumber(value, OPACITY_MIN, OPACITY_MAX, NAVHUD_DEFAULTS.opacity)
+    end
     TA.charDB.navhud = TA.charDB.navhud or {}
     TA.charDB.navhud[key] = value
 end
@@ -111,6 +130,7 @@ function NavHud:CreateHud()
     f:SetFrameStrata("BACKGROUND")
     f:SetFrameLevel(2)
     f:EnableMouse(false)
+    f:SetMovable(true)
     f:SetToplevel(false)
     f:Hide()
 
@@ -233,8 +253,49 @@ function NavHud:CreateHud()
         self.pins[i] = pin
     end
 
+    -- The HUD itself stays click-through. A small handle is the only drag
+    -- target, so a saved point exists only after the player actually moves it.
+    local drag = CreateFrame("Button", nil, f)
+    drag:SetSize(28, 28)
+    drag:SetPoint("CENTER", f, "CENTER", 0, 0)
+    drag:SetFrameLevel((f:GetFrameLevel() or 1) + 5)
+    drag:EnableMouse(true)
+    drag:RegisterForDrag("LeftButton")
+    drag:SetScript("OnDragStart", function()
+        if f.StartMoving then f:StartMoving() end
+    end)
+    drag:SetScript("OnDragStop", function()
+        if f.StopMovingOrSizing then f:StopMovingOrSizing() end
+        if not (f.GetPoint and TA.charDB) then return end
+        local point, _, relPoint, x, y = f:GetPoint(1)
+        if type(point) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then return end
+        TA.charDB.navhud = TA.charDB.navhud or {}
+        TA.charDB.navhud.userPlaced = true
+        TA.charDB.navhud.point = point
+        TA.charDB.navhud.relPoint = type(relPoint) == "string" and relPoint or "CENTER"
+        TA.charDB.navhud.x = x
+        TA.charDB.navhud.y = y
+    end)
+    f.dragHandle = drag
+
     self.frame = f
     self.hudRadius = size / 2
+    self:ApplyAnchor()
+end
+
+--- Center on UIParent unless the player dragged the handle.
+--- A leftover x/y without userPlaced is not a position he chose.
+function NavHud:ApplyAnchor()
+    local frame = self.frame
+    if not frame then return end
+    local saved = TA.charDB and TA.charDB.navhud
+    frame:ClearAllPoints()
+    if saved and saved.userPlaced and type(saved.point) == "string"
+        and type(saved.x) == "number" and type(saved.y) == "number" then
+        frame:SetPoint(saved.point, UIParent, saved.relPoint or "CENTER", saved.x, saved.y)
+    else
+        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
 end
 
 -- ── Tick — 30fps update ───────────────────────────────────────────────────────
@@ -437,6 +498,9 @@ function NavHud:Toggle()
     if not self.frame then
         self:CreateHud()
     end
+    -- userChose distinguishes a click from the old default, which Init used
+    -- to write into saved vars as visible=false.
+    SetSetting("userChose", true)
     if self.frame:IsShown() then
         self:Hide()
     else
@@ -448,12 +512,29 @@ end
 --- whenever a setting changes while the HUD is already visible — these are
 --- cheap, one-shot property sets, unlike the pin/cardinal math in Tick().
 function NavHud:ApplySettings()
+    if not self.frame then self:CreateHud() end
     if not self.frame then return end
-    self.frame:SetScale(GetSetting("scale") or 1.0)
-    self.frame:SetAlpha(GetSetting("opacity") or 1.0)
+    local scale = ClampNumber(GetSetting("scale"), SCALE_MIN, SCALE_MAX, NAVHUD_DEFAULTS.scale)
+    local opacity = ClampNumber(GetSetting("opacity"), OPACITY_MIN, OPACITY_MAX, NAVHUD_DEFAULTS.opacity)
+    if TA.charDB and TA.charDB.navhud then
+        TA.charDB.navhud.scale = scale
+        TA.charDB.navhud.opacity = opacity
+    end
+    self.frame:SetScale(scale)
+    self.frame:SetAlpha(opacity)
+    -- Re-anchor after scale. The anchor point is what stays put, and the
+    -- default is the exact center of UIParent.
+    self:ApplyAnchor()
+    local Arrow = TA:GetModule("Arrow")
+    if Arrow and type(Arrow.ApplyAppearance) == "function" then
+        Arrow:ApplyAppearance(scale, opacity)
+    elseif Arrow and Arrow.frame then
+        if Arrow.frame.SetScale then Arrow.frame:SetScale(scale) end
+        if Arrow.frame.SetAlpha then Arrow.frame:SetAlpha(opacity) end
+    end
     local showRing = GetSetting("showRing")
-    if self.frame.ring       then self.frame.ring:SetShown(showRing) end
-    if self.frame.rangeCircle then self.frame.rangeCircle:SetShown(showRing) end
+    if self.frame.ring and self.frame.ring.SetShown then self.frame.ring:SetShown(showRing) end
+    if self.frame.rangeCircle and self.frame.rangeCircle.SetShown then self.frame.rangeCircle:SetShown(showRing) end
 end
 
 function NavHud:Show()
@@ -510,6 +591,13 @@ function NavHud:Init()
     -- Apply defaults to charDB
     if TA.charDB then
         TA.charDB.navhud = TA.charDB.navhud or {}
+        -- Older builds defaulted visible to false and copied that into
+        -- saved vars on the first login, so the row read OFF and the
+        -- scale slider had nothing on screen to change. A false without
+        -- userChose is that copy, not a toggle. A real off stays off.
+        if TA.charDB.navhud.visible == false and not TA.charDB.navhud.userChose then
+            TA.charDB.navhud.visible = nil
+        end
         for k, v in pairs(NAVHUD_DEFAULTS) do
             if TA.charDB.navhud[k] == nil then
                 TA.charDB.navhud[k] = v
