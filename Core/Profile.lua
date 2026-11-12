@@ -344,6 +344,9 @@ local PROFILES = {
             -- a matching line on every item tooltip. Mage Comprehension gates
             -- are shown against the player's skill when the client reports it.
             ForeverScrolls   = true,
+            -- Read-only Settings > Debug paste-out. Types waypoint setters
+            -- and never calls them. No casts, no saved-variable writes.
+            ForeverScrollProbe = true,
             -- Cast order per fight. Replaces the banned Combat tab on Forever:
             -- own frame, player spell-cast event only, no combat log.
             ForeverCastLog   = true,
