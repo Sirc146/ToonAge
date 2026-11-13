@@ -94,6 +94,9 @@ BARE_GLOBALS = [
     # IsPlayerSpell and IsQuestFlaggedCompleted may be absent; the calls are
     # type-checked and pcalled. GetItemCount and IsPlayerSpell are listed above.
     "IsQuestFlaggedCompleted",
+    # Forever pins. Probed because the manual pin reads them, each call
+    # still behind a type check and pcall. GetItemCount is listed above.
+    "UnitPosition", "UnitFactionGroup",
 ]
 
 RE_BARE = re.compile(r'(?<![\w.:])(' + "|".join(BARE_GLOBALS) + r')\s*\(')

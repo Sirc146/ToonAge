@@ -39,7 +39,13 @@ local PIN_COLORS = {
 
 -- ── DataProvider (Blizzard MapCanvas pattern) ─────────────────────────────────
 
-MapPins.DataProvider = CreateFromMixins(MapCanvasDataProviderMixin)
+-- The map canvas mixin is part of the world map addon. A client without it
+-- still loads this file; the arrow pin does not need the canvas.
+if type(CreateFromMixins) == "function" and type(MapCanvasDataProviderMixin) == "table" then
+    MapPins.DataProvider = CreateFromMixins(MapCanvasDataProviderMixin)
+else
+    MapPins.DataProvider = {}
+end
 
 -- Frame pool for pin recycling (avoids GC pressure from creating/destroying pins)
 MapPins._pinPool = {}
@@ -56,8 +62,35 @@ function MapPins.DataProvider:RemoveAllData()
     self:GetMap():RemoveAllPinsByTemplate(PIN_TEMPLATE)
 end
 
+--- One manual pin, used when Forever has no guide. Returns true when that
+--- pin was placed, so the guide loop does not also run.
+function MapPins.DataProvider:PlaceForeverPin()
+    if TA.flavor ~= "forever" then return false end
+    local Arrow = TA:GetModule("Arrow")
+    local wp = Arrow and Arrow.manualWaypoint
+    if type(wp) ~= "table" or type(wp.x) ~= "number" or type(wp.y) ~= "number" then
+        return false
+    end
+    if type(self.GetMap) ~= "function" then return false end
+    local map = self:GetMap()
+    if type(map) ~= "table" or type(map.GetMapID) ~= "function" then return false end
+    local okID, mapID = pcall(map.GetMapID, map)
+    if not okID or mapID ~= wp.map then return false end
+    if type(map.AcquirePin) ~= "function" then return false end
+    local step = {
+        type = wp.quest and "quest" or "npc",
+        text = wp.title or "Pin",
+        questID = wp.questID,
+    }
+    local color = PIN_COLORS[step.type] or PIN_COLORS.default
+    pcall(map.AcquirePin, map, PIN_TEMPLATE, wp.x, wp.y, step, 1, color, true)
+    return true
+end
+
 function MapPins.DataProvider:RefreshAllData(fromOnShow)
     self:RemoveAllData()
+
+    if self.PlaceForeverPin and self:PlaceForeverPin() then return end
 
     local QT = TA:GetModule("QuestTracker")
     if not QT or not QT.guideID then return end
@@ -123,7 +156,11 @@ end
 
 -- ── Pin Mixin ─────────────────────────────────────────────────────────────────
 
-TAMapPinMixin = CreateFromMixins(MapCanvasPinMixin)
+if type(CreateFromMixins) == "function" and type(MapCanvasPinMixin) == "table" then
+    TAMapPinMixin = CreateFromMixins(MapCanvasPinMixin)
+else
+    TAMapPinMixin = {}
+end
 
 function TAMapPinMixin:OnLoad()
     self:UseFrameLevelType("PIN_FRAME_LEVEL_AREA_POI")
@@ -199,9 +236,9 @@ function TAMapPinMixin:OnMouseEnter()
     GameTooltip:SetText(string.format("|cFFFFD100[%d]|r %s", self.relNum, title), 1, 1, 1)
     GameTooltip:AddLine(typeLabel, 0.7, 0.7, 0.7)
 
-    if self.step.questID then
-        local questTitle = C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(self.step.questID)
-        if questTitle then
+    if self.step.questID and C_QuestLog and type(C_QuestLog.GetTitleForQuestID) == "function" then
+        local okTitle, questTitle = pcall(C_QuestLog.GetTitleForQuestID, self.step.questID)
+        if okTitle and type(questTitle) == "string" and questTitle ~= "" then
             GameTooltip:AddLine("Quest: " .. questTitle, 0.4, 0.78, 1.0)
         end
     end
@@ -221,9 +258,13 @@ end
 -- ── Module lifecycle ──────────────────────────────────────────────────────────
 
 function MapPins:Init()
+    if type(MapCanvasDataProviderMixin) ~= "table" then return end
+    if type(self.DataProvider) ~= "table" or type(self.DataProvider.RefreshAllData) ~= "function" then
+        return
+    end
     -- Wait for WorldMapFrame to exist (it's load-on-demand)
     -- Hook into it when it first opens
-    if WorldMapFrame and WorldMapFrame.AddDataProvider then
+    if WorldMapFrame and type(WorldMapFrame.AddDataProvider) == "function" then
         WorldMapFrame:AddDataProvider(self.DataProvider)
     else
         -- WorldMapFrame may not exist yet — hook ADDON_LOADED

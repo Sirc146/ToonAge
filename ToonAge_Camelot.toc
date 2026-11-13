@@ -53,9 +53,11 @@
 #                      GetLootSlotLink, GetItemInfoInstant -- was this list
 #                      being discovered one error at a time instead.
 #   Core/StatEngine    Retail diminishing-returns math. Meaningless here.
-#   The guide stack    Forever ships no guides. QuestTracker, Arrow, MapPins,
-#                      AntTrail, CoordResolver and the Guide* modules all point
-#                      at guide steps that do not exist.
+#   The guide stack    Forever ships no guides. QuestTracker, AntTrail,
+#                      CoordResolver and the Guide* modules all point at guide
+#                      steps that do not exist. Arrow and MapPins are listed
+#                      below for a manual pin only (a library or an auction
+#                      house). They do not load a guide.
 #   Every advisor      Gear, Rotation, Talents, Professions, Pets, Delves,
 #                      Weekly: all of them rank things using Data/Retail.
 #
@@ -199,5 +201,12 @@ Modules\Forever\CastLog.lua
 Modules\Forever\SessionCheck.lua
 # Beta "world will refresh" notice: countdown, warnings, log. No tab.
 Modules\Forever\WorldRefresh.lua
+# Manual pin. The retail arrow and map pins, with no guide behind them.
+# A library or auction-house suggestion sets Arrow.manualWaypoint. The beam
+# look and the two buttons live in Modules/Forever/Pins.lua.
+Modules\Navigation\Arrow.lua
+Modules\Navigation\MapPins.xml
+Modules\Navigation\MapPins.lua
+Modules\Forever\Pins.lua
 # In-game self-test: /ta test, /tatest, or the Self-test title-bar button. Loads last.
 Modules\Infrastructure\TestHarness.lua

@@ -871,6 +871,19 @@ function M:Render(content, side)
         Add("since",  "Since last session", "ForeverSessionCheck")
         Add("xp",     "XP rate",            "XPTracker")
         Add("gather", "Gathering",          "GatherTracker")
+        local Pins = TA:GetModule("ForeverPins")
+        if Pins and Pins.SuggestLibrary then
+            buttons[#buttons + 1] = {
+                label = "Suggest library",
+                onClick = function() Pins:SuggestLibrary() end,
+            }
+        end
+        if Pins and Pins.SuggestFeathers then
+            buttons[#buttons + 1] = {
+                label = "Suggest Light Feathers",
+                onClick = function() Pins:SuggestFeathers() end,
+            }
+        end
         if #buttons > 0 then y = L:ButtonRow(content, y, buttons) end
     end
     y = L:Divider(content, y)

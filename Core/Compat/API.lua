@@ -1066,6 +1066,111 @@ function C.UnitClass(unit)
     return Shown(localized), Shown(token)
 end
 
+--- "Horde" or "Alliance". Nil when the client will not say. A third faction
+--- is not treated as either of those two.
+function C.PlayerFaction()
+    if TA.HasAPI and not TA:HasAPI("UnitFactionGroup") then return nil end
+    if type(UnitFactionGroup) ~= "function" then return nil end
+    local ok, _, token = pcall(function() return UnitFactionGroup("player") end)
+    if not ok or type(token) ~= "string" then return nil end
+    if token ~= "Horde" and token ~= "Alliance" then return nil end
+    return token
+end
+
+--- Bag count. Nil means the count could not be read, which is not zero.
+--- Each variant is called only when it is a function, and only inside pcall.
+--- C_Item, then C_Container, then the global. The first number wins.
+function C.CountItem(itemID)
+    if type(itemID) ~= "number" then return nil end
+    local function one(fn)
+        if type(fn) ~= "function" then return nil end
+        local ok, n = pcall(fn, itemID)
+        if not ok or type(n) ~= "number" or n ~= n then return nil end
+        return n
+    end
+    if not (TA.HasAPI and not TA:HasAPI("C_Item.GetItemCount")) then
+        if C_Item and type(C_Item.GetItemCount) == "function" then
+            local n = one(C_Item.GetItemCount)
+            if n ~= nil then return n end
+        end
+    end
+    if not (TA.HasAPI and not TA:HasAPI("C_Container.GetItemCount")) then
+        if C_Container and type(C_Container.GetItemCount) == "function" then
+            local n = one(C_Container.GetItemCount)
+            if n ~= nil then return n end
+        end
+    end
+    if TA.HasAPI and not TA:HasAPI("GetItemCount") then return nil end
+    if type(GetItemCount) ~= "function" then return nil end
+    local ok, n = pcall(function() return GetItemCount(itemID) end)
+    if not ok or type(n) ~= "number" or n ~= n then return nil end
+    return n
+end
+
+--- Player map id. Nil when the call is missing or does not return a number.
+function C.BestMapForUnit(unit)
+    if TA.HasAPI and not TA:HasAPI("C_Map.GetBestMapForUnit") then return nil end
+    if not (C_Map and type(C_Map.GetBestMapForUnit) == "function") then return nil end
+    local ok, id = pcall(C_Map.GetBestMapForUnit, unit or "player")
+    if not ok or type(id) ~= "number" or id == 0 then return nil end
+    return id
+end
+
+--- Map fractions 0-1 for the player on a map. Nil when unread.
+function C.PlayerMapFraction(mapID)
+    if type(mapID) ~= "number" then return nil end
+    if TA.HasAPI and not TA:HasAPI("C_Map.GetPlayerMapPosition") then return nil end
+    if not (C_Map and type(C_Map.GetPlayerMapPosition) == "function") then return nil end
+    local ok, pos = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
+    if not ok or type(pos) ~= "table" or type(pos.GetXY) ~= "function" then return nil end
+    local okXY, x, y = pcall(pos.GetXY, pos)
+    if not okXY or type(x) ~= "number" or type(y) ~= "number" then return nil end
+    return x, y
+end
+
+--- UnitPosition yards: continent, north, west. The 4th return is compared
+--- with GetWorldPosFromMapPos's continent only by the caller. Nil if unread.
+function C.PlayerWorldPosition()
+    if TA.HasAPI and not TA:HasAPI("UnitPosition") then return nil end
+    if type(UnitPosition) ~= "function" then return nil end
+    local ok, north, west, _, cont = pcall(function() return UnitPosition("player") end)
+    if not ok or type(north) ~= "number" or type(west) ~= "number" then return nil end
+    if type(cont) ~= "number" then cont = nil end
+    return cont, north, west
+end
+
+--- Blizzard's user waypoint. Both the waypoint and the supertrack call are
+--- unverified on Forever 70888. Each runs only when type() is function, and
+--- only inside pcall. A missing call returns false. The addon's own arrow
+--- still points.
+function C.TryUserWaypoint(mapID, x, y)
+    if type(mapID) ~= "number" or mapID <= 0 then return false end
+    if type(x) ~= "number" or type(y) ~= "number" then return false end
+    if type(C_Map) ~= "table" then return false end
+    if type(C_Map.CanSetUserWaypointOnMap) == "function" then
+        if not (TA.HasAPI and not TA:HasAPI("C_Map.CanSetUserWaypointOnMap")) then
+            local okCan, can = pcall(C_Map.CanSetUserWaypointOnMap, mapID)
+            if not okCan or can ~= true then return false end
+        end
+    end
+    if type(C_Map.SetUserWaypoint) ~= "function" then return false end
+    if TA.HasAPI and not TA:HasAPI("C_Map.SetUserWaypoint") then return false end
+    if type(UiMapPoint) ~= "table" or type(UiMapPoint.CreateFromCoordinates) ~= "function" then
+        return false
+    end
+    local okPoint, point = pcall(UiMapPoint.CreateFromCoordinates, mapID, x, y)
+    if not okPoint or point == nil then return false end
+    local okSet = pcall(C_Map.SetUserWaypoint, point)
+    if not okSet then return false end
+    if type(C_SuperTrack) == "table"
+        and type(C_SuperTrack.SetSuperTrackedUserWaypoint) == "function" then
+        if not (TA.HasAPI and not TA:HasAPI("C_SuperTrack.SetSuperTrackedUserWaypoint")) then
+            pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
+        end
+    end
+    return true
+end
+
 --- Game order: localized name, then English token (for example "Night Elf", "NightElf").
 --- @return string localized, string token
 function C.UnitRace(unit)

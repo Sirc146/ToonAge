@@ -110,6 +110,11 @@ FOREVER_MODULES = [
     "Modules/Character/ProfessionBoard.lua",
     "Modules/Character/ProfessionBatch.lua",
     "Modules/Progression/FactionTracker.lua",
+    # Manual pin. No guide module comes with these two.
+    "Modules/Navigation/Arrow.lua",
+    "Modules/Navigation/MapPins.xml",
+    "Modules/Navigation/MapPins.lua",
+    "Modules/Forever/Pins.lua",
     "Modules/Infrastructure/TestHarness.lua",
 ]
 
@@ -430,10 +435,15 @@ def test_forever_toc_carries_no_retail_content():
     check("Forever: no retail DR engine",
           any("StatEngine" in f for f in files), False)
     # The guide stack is the thing that dragged the retail chain in behind it.
-    for guide_mod in ("QuestTracker", "Arrow", "MapPins", "AntTrail",
-                      "CoordResolver", "GuideParser", "GuideBrowser"):
+    # Arrow and MapPins are the exception: a manual pin, not a guide.
+    for guide_mod in ("QuestTracker", "AntTrail", "CoordResolver",
+                      "GuideParser", "GuideBrowser"):
         check(f"Forever: no {guide_mod}",
               any(guide_mod in f for f in files), False)
+    check("Forever: lists the arrow",
+          "Modules/Navigation/Arrow.lua" in files, True)
+    check("Forever: lists the map pins",
+          "Modules/Navigation/MapPins.lua" in files, True)
     check("Forever: ships exactly its module set",
           sorted(f for f in files if f.startswith("Modules/")),
           sorted(FOREVER_MODULES))
