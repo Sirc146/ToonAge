@@ -877,6 +877,10 @@ function Settings:RenderSidebar(parent)
     AddBtn("Error Log", function() TA:SlashCommand("errors copy") end)
     AddBtn("Debug Mode", function() TA:SlashCommand("debug") end)
     AddBtn("State Keys", function() TA:SlashCommand("state") end)
+    -- Forever only (ToonAge_Camelot.toc). The label is a literal, like the buttons above.
+    if TA.ScrollProbe and TA.ScrollProbe.Open and (TA.IsForever or TA.flavor == "forever") then
+        AddBtn("Scroll Probe", function() TA.ScrollProbe:Open() end)
+    end
 
     -- ── System ────────────────────────────────────────────────────
     AddHdr("SYSTEM")

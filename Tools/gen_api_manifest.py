@@ -87,6 +87,13 @@ BARE_GLOBALS = [
     "GetQuestMoneyToGet", "IsQuestCompletable", "QuestIsFromAreaTrigger",
     "GetNumAvailableQuests", "GetNumActiveQuests", "SelectAvailableQuest",
     "SelectActiveQuest", "UnitIsInMyGuild", "GetRealmName",
+    # Already probed on Forever. The generator list had dropped them, so a
+    # regen removed GetBuildInfo and UnitGUID from the manifest.
+    "GetBuildInfo", "UnitGUID",
+    # Scroll probe counters and spell/quest reads. includeBank is false.
+    # IsPlayerSpell and IsQuestFlaggedCompleted may be absent; the calls are
+    # type-checked and pcalled. GetItemCount and IsPlayerSpell are listed above.
+    "IsQuestFlaggedCompleted",
 ]
 
 RE_BARE = re.compile(r'(?<![\w.:])(' + "|".join(BARE_GLOBALS) + r')\s*\(')

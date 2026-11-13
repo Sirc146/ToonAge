@@ -186,6 +186,8 @@ Modules\Forever\PvP.lua
 # Reagent restock for the Scrolls tab. Targets stay in ToonAgeDB.
 Modules\Forever\Restock.lua
 Modules\Forever\Scrolls.lua
+# Read-only Settings > Debug report. Types waypoint setters; never calls them.
+Modules\Forever\ScrollProbe.lua
 # Cast order per fight, own frame, player spell-cast event only (see file header).
 Modules\Forever\CastLog.lua
 # "Since last session" at login, from the snapshot saved at logout. No tab.

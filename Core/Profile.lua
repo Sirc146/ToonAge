@@ -347,6 +347,9 @@ local PROFILES = {
             -- Reagent restock on the Scrolls tab. Targets stay in
             -- ToonAgeDB.addonBridge.restock. MelloUI Restock is read only.
             ForeverRestock   = true,
+            -- Read-only Settings > Debug paste-out. Types waypoint setters
+            -- and never calls them. No casts, no saved-variable writes.
+            ForeverScrollProbe = true,
             -- Cast order per fight. Replaces the banned Combat tab on Forever:
             -- own frame, player spell-cast event only, no combat log.
             ForeverCastLog   = true,
