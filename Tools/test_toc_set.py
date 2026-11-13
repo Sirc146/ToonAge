@@ -94,6 +94,7 @@ FOREVER_MODULES = [
     "Modules/Forever/Pets.lua",
     "Modules/Forever/PvP.lua",
     "Modules/Forever/Scrolls.lua",
+    "Modules/Forever/ScrollProbe.lua",
     "Modules/Forever/CastLog.lua",
     # Added 2026-10-01..03: login "since last session" check and the beta
     # world-refresh notice (both tab-less), plus the flavor-neutral self-test.
