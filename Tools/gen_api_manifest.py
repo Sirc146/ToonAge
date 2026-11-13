@@ -87,6 +87,13 @@ BARE_GLOBALS = [
     "GetQuestMoneyToGet", "IsQuestCompletable", "QuestIsFromAreaTrigger",
     "GetNumAvailableQuests", "GetNumActiveQuests", "SelectAvailableQuest",
     "SelectActiveQuest", "UnitIsInMyGuild", "GetRealmName",
+    # Session journal (Forever). Each is absent on at least one client the
+    # addon ships to, so ApiGuard has to see the call rather than discover
+    # it as an error in game.
+    "GetMoney", "UnitXP", "GetZoneText", "GetRealZoneText", "UnitOnTaxi",
+    # Identity and build, read through Compat. Kept on the probe list so a
+    # client that drops either one is reported at login.
+    "GetBuildInfo", "UnitGUID",
 ]
 
 RE_BARE = re.compile(r'(?<![\w.:])(' + "|".join(BARE_GLOBALS) + r')\s*\(')
