@@ -82,7 +82,7 @@ BARE_GLOBALS = [
     "CanGuildBankRepair", "GetGuildBankWithdrawMoney", "GetMoneyString",
     "GetNumSpellTabs", "GetSpellTabInfo", "GetSpellBookItemInfo",
     "GetSpellBookItemName", "GetItemStats", "UseContainerItem",
-    "GetContainerItemInfo", "GetNumQuestChoices", "GetQuestItemLink",
+    "GetContainerItemInfo", "GetNumQuestChoices", "GetNumQuestRewards", "GetQuestItemLink",
     "GetQuestItemInfo", "GetNumQuestItems", "QuestProgressRequiresGold",
     "GetQuestMoneyToGet", "IsQuestCompletable", "QuestIsFromAreaTrigger",
     "GetNumAvailableQuests", "GetNumActiveQuests", "SelectAvailableQuest",

@@ -165,6 +165,118 @@ function M:SourceVisible(name)
     return true
 end
 
+-- Weight rule
+-- Licence: ForeverLevelingBiS and MaxDps are All Rights Reserved.
+-- These weights are not copied from either addon. They are computed only
+-- from the stored orders in Data/Forever/StatPriority.lua.
+--
+-- One list: the first time a stat name appears, it takes the next rank.
+-- A later repeat of that name (for example "Hit after 8%") does not open
+-- a new rank and does not change the first weight. Names written in the
+-- same step share that rank. Rank 1 weighs 1. With N ranks, rank r weighs
+-- (N - r + 1) / N, so the last rank weighs 1/N.
+--
+-- A source with several lists keeps the highest weight each stat earns on
+-- any of its own lists. That is not an average. Two sources are never
+-- combined into one weight.
+--
+-- The stored table is level 60 only. No leveling order is stored, so none
+-- is invented. Per-bracket leveling weights are UNVERIFIED and pending data.
+-- Every weight from this table is the level 60 guide order.
+--
+-- A percent written in a guide line (hit 8%, 9%, 17%) is text. It is not
+-- a cap in the score. The stored rows do not carry a separate number that
+-- can be applied as a cap.
+
+function M:OrderLabel()
+    return "level 60 guide order"
+end
+
+function M:BracketNote()
+    return "Per-bracket leveling weights are UNVERIFIED and pending data. "
+        .. "The suggestion uses the stored level 60 guide order."
+end
+
+--- Rank weights for one stored list. Empty when the list has no stats.
+function M:WeightsForList(list)
+    local seen, ranks = {}, {}
+    if type(list) ~= "table" then return {} end
+    for _, step in ipairs(list.stats or {}) do
+        local fresh = {}
+        for _, name in ipairs(StepNames(step)) do
+            if type(name) == "string" and name ~= "" and not seen[name] then
+                seen[name] = true
+                fresh[#fresh + 1] = name
+            end
+        end
+        if #fresh > 0 then
+            ranks[#ranks + 1] = fresh
+        end
+    end
+    local n = #ranks
+    local weights = {}
+    if n == 0 then return weights end
+    for i, group in ipairs(ranks) do
+        local w = (n - i + 1) / n
+        for _, name in ipairs(group) do
+            weights[name] = w
+        end
+    end
+    return weights
+end
+
+--- Highest per-list weight for this source. Lists are not averaged.
+function M:WeightsForSource(source)
+    local best = {}
+    if type(source) ~= "table" then return best end
+    for _, list in ipairs(source.lists or {}) do
+        local weights = self:WeightsForList(list)
+        for stat, weight in pairs(weights) do
+            if best[stat] == nil or weight > best[stat] then
+                best[stat] = weight
+            end
+        end
+    end
+    return best
+end
+
+--- Percent phrases from this source's own lines, in list order.
+--- Shown as text. Not applied to a score.
+function M:CapPhrases(source)
+    local notes, seen = {}, {}
+    if type(source) ~= "table" then return notes end
+    for _, list in ipairs(source.lists or {}) do
+        local line = type(list) == "table" and list.line or nil
+        if type(line) == "string" then
+            for part in line:gmatch("[^>]+") do
+                if part:find("%", 1, true) then
+                    local phrase = part:gsub("^%s+", ""):gsub("%s+$", "")
+                    if phrase ~= "" and not seen[phrase] then
+                        seen[phrase] = true
+                        notes[#notes + 1] = phrase
+                    end
+                end
+            end
+        end
+    end
+    return notes
+end
+
+--- Sum of amount * weight. A key with no stored stat, or a stat with no
+--- weight, adds 0. Caps are not applied here.
+function M:ScoreStats(statTable, weights)
+    local total = 0
+    if type(statTable) ~= "table" or type(weights) ~= "table" then return 0 end
+    for key, amount in pairs(statTable) do
+        local stat = ITEM_KEY[key]
+        local n = tonumber(amount)
+        if stat and n and weights[stat] then
+            total = total + (n * weights[stat])
+        end
+    end
+    return total
+end
+
 --- Layout status. good is green, dim is grey, bad is red.
 function M:BarStatus(tone)
     if tone == "high" then return "good" end
