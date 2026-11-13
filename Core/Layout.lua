@@ -301,7 +301,7 @@ function L:DataRow(parent, y, opts)
     row:SetSize(w, height)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
 
-    StyleText(row.label, { text = opts.label, size = 10, color = L.C_SECONDARY })
+    StyleText(row.label, { text = opts.label, size = 10, color = opts.labelStatus or L.C_SECONDARY })
     row.label:ClearAllPoints()
     row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2)
 
@@ -859,7 +859,7 @@ function L:StackBar(parent, y, opts)
     row:SetSize(w, ROW_H)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
 
-    StyleText(row.label, { text = opts.label, size = 10, color = L.C_SECONDARY })
+    StyleText(row.label, { text = opts.label, size = 10, color = opts.labelStatus or L.C_SECONDARY })
     row.label:ClearAllPoints()
     row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3)
     row.label:SetWidth(LABEL_W)
