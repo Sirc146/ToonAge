@@ -2,8 +2,9 @@
 """
 ToonAge -- Gear Stage 1 (Forever stat priorities)
 ==================================================
-Every class/spec priority ships with a public WoW Forever source URL and a
-status. Colouring is a fixed map: high -> green, low -> grey, useless -> red.
+Every Forever spec stores both guide orders and the status CONFLICT.
+Feral is two rows, Cat and Bear. Nothing is marked confirmed.
+Colouring: high -> green, low -> grey, useless -> red.
 The new files load only from ToonAge_Camelot.toc.
 
 Usage:  python3 Tools/test_gear_stage1.py [-v]
@@ -89,43 +90,6 @@ def listed(name):
     return rows
 
 
-def step_names(step):
-    if step is None:
-        return []
-    # lupa may hand back a table for a shared step.
-    if hasattr(step, "values"):
-        return [str(v) for v in step.values()]
-    return [str(step)]
-
-
-def list_stats(lst):
-    stats = lst["stats"]
-    if stats is None:
-        return []
-    rows = []
-    for step in stats.values():
-        rows.append(tuple(step_names(step)))
-    return rows
-
-
-def sequences_differ(entry):
-    sources = entry["sources"]
-    if sources is None or len(list(sources.values())) < 2:
-        return True
-    seqs = []
-    counts = []
-    for src in sources.values():
-        lists = list(src["lists"].values())
-        counts.append(len(lists))
-        if not lists:
-            seqs.append(())
-        else:
-            seqs.append(tuple(list_stats(lists[0])))
-    if len(set(counts)) != 1:
-        return True
-    return len(set(seqs)) != 1
-
-
 def main():
     names = section_names()
     check("Forever section names come from Compat", len(names) >= 9, True)
@@ -183,71 +147,88 @@ def main():
     check("every Forever spec is stored or listed UNKNOWN", missing_unknown, [])
 
     bad_sources = []
-    bad_status = []
-    bad_conflict = []
     if data is not None:
         for cls in data.keys():
             for spec in data[cls].keys():
-                entry = data[cls][spec]
-                label = f"{cls}/{spec}"
-                status = str(entry["status"] or "")
-                if status not in STATUSES:
-                    bad_status.append((label, status))
-                sources = entry["sources"]
-                n = 0 if sources is None else len(list(sources.values()))
-                if n == 0:
-                    bad_sources.append((label, "no sources"))
-                    continue
-                for src in sources.values():
-                    url = str(src["url"] or "")
-                    if not (url.startswith(IV_PREFIX) or url.startswith(WH_PREFIX)):
-                        bad_sources.append((label, url))
-                    if not str(src["updated"] or ""):
-                        bad_sources.append((label, "missing updated"))
-                    lists = src["lists"]
-                    if lists is None or len(list(lists.values())) == 0:
-                        bad_sources.append((label, "no order"))
-                    else:
-                        for lst in lists.values():
-                            line = str(lst["line"] or "")
-                            if ">" not in line:
-                                bad_sources.append((label, line))
-                if status == "UNVERIFIED (single source)" and n != 1:
-                    bad_conflict.append((label, n))
-                if status == "confirmed (2 sources)":
-                    if n != 2 or sequences_differ(entry):
-                        bad_conflict.append((label, "confirmed but orders differ or count != 2"))
-                if status == "CONFLICT" and n >= 2 and not sequences_differ(entry):
-                    bad_conflict.append((label, "CONFLICT but first orders match"))
-                useless = entry["useless"]
-                if useless is not None:
-                    for row in useless.values():
-                        quote = str(row["quote"] or "")
-                        u = str(row["url"] or "")
-                        if len(quote) < 8 or not (u.startswith(IV_PREFIX) or u.startswith(WH_PREFIX)):
-                            bad_sources.append((label, "useless without quote+url"))
-    check("every entry has a Forever source URL, date and order", bad_sources, [])
-    check("every entry status is one of the three allowed", bad_status, [])
-    check("status matches whether the stored orders agree", bad_conflict, [])
+                entry = SP.Get(SP, cls, spec)
+                for row in SP.Rows(SP, entry).values():
+                    label = f"{cls}/{spec}"
+                    if row["label"]:
+                        label = label + "/" + str(row["label"])
+                    if str(row["status"] or "") != "CONFLICT":
+                        bad_sources.append((label, str(row["status"] or "")))
+                    sources = row["sources"]
+                    urls = []
+                    if sources is None:
+                        bad_sources.append((label, "no sources"))
+                        continue
+                    for src in sources.values():
+                        url = str(src["url"] or "")
+                        urls.append(url)
+                        if not (url.startswith(IV_PREFIX) or url.startswith(WH_PREFIX)):
+                            bad_sources.append((label, url))
+                        if not str(src["updated"] or ""):
+                            bad_sources.append((label, "missing updated"))
+                        lists = src["lists"]
+                        if lists is None or len(list(lists.values())) == 0:
+                            bad_sources.append((label, "no order"))
+                        else:
+                            for lst in lists.values():
+                                line = str(lst["line"] or "")
+                                if ">" not in line:
+                                    bad_sources.append((label, line))
+                    if not any(u.startswith(IV_PREFIX) for u in urls):
+                        bad_sources.append((label, "missing Icy Veins"))
+                    if not any(u.startswith(WH_PREFIX) for u in urls):
+                        bad_sources.append((label, "missing Wowhead"))
+                    if str(row["status"] or "") == "confirmed (2 sources)":
+                        bad_sources.append((label, "confirmed"))
+    check("every row has both Forever sources, a date, an order and CONFLICT", bad_sources, [])
 
     for tone, status in TONE_STATUS.items():
         check(f"colour {tone} -> {status}", str(SP.BarStatus(SP, tone)), status)
     check("unknown tone has no colour", SP.BarStatus(SP, None) is None, True)
 
-    # Arcane: both guides put Hit, spell power and crit first, in some order.
-    # Strength is called valueless for mages and is not in either order.
+    rows = []
+    confirmed = []
+    if data is not None:
+        for cls in list(data.keys()):
+            for spec in list(data[cls].keys()):
+                entry = SP.Get(SP, cls, spec)
+                for row in SP.Rows(SP, entry).values():
+                    rows.append((cls, spec, str(row["label"] or ""), str(row["status"] or "")))
+                    if str(row["status"] or "") != "CONFLICT":
+                        confirmed.append((cls, spec, str(row["status"] or "")))
+    check("28 level-60 rows (Feral is Cat and Bear)", len(rows), 28)
+    check("no order is marked confirmed or unverified", confirmed, [])
+    feral = SP.Get(SP, "DRUID", "Feral")
+    labels = []
+    if feral is not None:
+        for row in SP.Rows(SP, feral).values():
+            labels.append(str(row["label"] or ""))
+    check("Feral stores Cat and Bear", sorted(labels), ["Bear", "Cat"])
+
+    # Arcane: Hit is in the top three of both guides. Strength is not, and
+    # neither guide calls it useless, so it stays grey.
     check("Arcane Get returns the row", SP.Get(SP, "MAGE", "Arcane") is not None, True)
     check("Arcane Hit is high", str(SP.Tone(SP, "MAGE", "Arcane", "Hit")), "high")
-    check("Arcane Strength is useless", str(SP.Tone(SP, "MAGE", "Arcane", "Strength")), "useless")
-    check("Arcane Strength bar is red", str(SP.BarStatus(SP, SP.Tone(SP, "MAGE", "Arcane", "Strength"))), "bad")
+    check("Arcane Strength is grey, not red", str(SP.Tone(SP, "MAGE", "Arcane", "Strength")), "low")
+    check("Arcane Strength bar is grey", str(SP.BarStatus(SP, SP.Tone(SP, "MAGE", "Arcane", "Strength"))), "dim")
     check("Arcane Hit bar is green", str(SP.BarStatus(SP, SP.Tone(SP, "MAGE", "Arcane", "Hit"))), "good")
     check("item key follows the same tone",
-          str(SP.ToneForItemKey(SP, "MAGE", "Arcane", "ITEM_MOD_STRENGTH_SHORT")), "useless")
+          str(SP.ToneForItemKey(SP, "MAGE", "Arcane", "ITEM_MOD_STRENGTH_SHORT")), "low")
+    check("default guide view is both", str(SP.View(SP)), "both")
+
+    blob = "\n".join(read(rel) for rel in (data_rel, mod_rel, "Modules/Forever/Gear.lua"))
+    check("wand damage is not said to scale with spell damage",
+          "Wand Damage" in blob or "increases Wand" in blob, False)
 
     gear = read("Modules/Forever/Gear.lua")
     check("Gear tab asks StatPriority for the bar colour",
           "TA.StatPriority" in gear and "BarStatus" in gear and "ToneForItemKey" in gear, True)
     check("Gear tab prints the priority line", "Suggested stat priority" in gear, True)
+    check("Gear tab can show both guides or one",
+          "Both" in gear and "Icy Veins" in gear and "Wowhead" in gear, True)
 
     passed = sum(_results)
     print(f"[{'OK' if passed == len(_results) else 'FAIL'}] {passed}/{len(_results)} assertions passed.")
