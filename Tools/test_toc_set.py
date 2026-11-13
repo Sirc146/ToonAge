@@ -94,6 +94,7 @@ FOREVER_MODULES = [
     # Gear Stage 2: tooltip suggestions and upgrade arrows. Not a tab.
     "Modules/Forever/GearAdvice.lua",
     "Modules/Forever/MageGuidance.lua",
+    "Modules/Forever/MageSuggest.lua",
     "Modules/Forever/Talents.lua",
     "Modules/Forever/Rotation.lua",
     "Modules/Forever/Pets.lua",
@@ -105,6 +106,7 @@ FOREVER_MODULES = [
     # Added 2026-10-01..03: login "since last session" check and the beta
     # world-refresh notice (both tab-less), plus the flavor-neutral self-test.
     "Modules/Forever/SessionCheck.lua",
+    "Modules/Forever/Journey.lua",
     "Modules/Forever/WorldRefresh.lua",
     # Shared profession cards. The skill list is Data/Forever/ProfessionSkills.lua
     # and stays unverified until an in-game probe confirms it.
@@ -112,6 +114,11 @@ FOREVER_MODULES = [
     "Modules/Character/ProfessionBoard.lua",
     "Modules/Character/ProfessionBatch.lua",
     "Modules/Progression/FactionTracker.lua",
+    # Manual pin. No guide module comes with these two.
+    "Modules/Navigation/Arrow.lua",
+    "Modules/Navigation/MapPins.xml",
+    "Modules/Navigation/MapPins.lua",
+    "Modules/Forever/Pins.lua",
     "Modules/Infrastructure/TestHarness.lua",
 ]
 
@@ -432,10 +439,15 @@ def test_forever_toc_carries_no_retail_content():
     check("Forever: no retail DR engine",
           any("StatEngine" in f for f in files), False)
     # The guide stack is the thing that dragged the retail chain in behind it.
-    for guide_mod in ("QuestTracker", "Arrow", "MapPins", "AntTrail",
-                      "CoordResolver", "GuideParser", "GuideBrowser"):
+    # Arrow and MapPins are the exception: a manual pin, not a guide.
+    for guide_mod in ("QuestTracker", "AntTrail", "CoordResolver",
+                      "GuideParser", "GuideBrowser"):
         check(f"Forever: no {guide_mod}",
               any(guide_mod in f for f in files), False)
+    check("Forever: lists the arrow",
+          "Modules/Navigation/Arrow.lua" in files, True)
+    check("Forever: lists the map pins",
+          "Modules/Navigation/MapPins.lua" in files, True)
     check("Forever: ships exactly its module set",
           sorted(f for f in files if f.startswith("Modules/")),
           sorted(FOREVER_MODULES))

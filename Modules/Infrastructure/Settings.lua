@@ -496,6 +496,20 @@ function Settings:Render(content, sidebar)
         y = y - 8
     end
 
+    if Has("ForeverMageSuggest") then
+        y = MakeSection(content, y, w, "MAGE SUGGESTION")
+        y = MakeToggleRow(content, y, w, "Lock the Mage suggestion frame", function()
+            return TA.db and TA.db.mageSuggest and TA.db.mageSuggest.locked and true or false
+        end, function()
+            if not TA.db then return end
+            TA.db.mageSuggest = TA.db.mageSuggest or {}
+            TA.db.mageSuggest.locked = not TA.db.mageSuggest.locked
+            local mod = TA:GetModule("ForeverMageSuggest")
+            if mod and mod.ApplyLock then mod:ApplyLock() end
+        end)
+        y = y - 8
+    end
+
     -- Combat: rotation prediction and nameplate markers.
     if Has("CombatState", "SpecAdaptive", "NameplateObjectives", "TooltipScorer") then
         -- ═══════════════════════════════════════════════════════════════════
@@ -687,6 +701,42 @@ function Settings:Render(content, sidebar)
             end)
         end
         y = y - 16
+    end
+
+    -- Forever only. The module file is not in any other TOC, so Has is false
+    -- everywhere else and this block does not draw.
+    if Has("ForeverJourney") then
+        y = MakeSection(content, y, w, "SESSION JOURNAL")
+        y = MakeInfoRow(content, y, w, "Storage",
+            "On this computer only. Never uploaded.")
+
+        local copyBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+        copyBtn:SetSize(220, 22)
+        copyBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
+        copyBtn:SetText("Copy recent sessions")
+        copyBtn:SetScript("OnClick", function()
+            local M = TA:GetRegisteredModule("ForeverJourney")
+            if M and M.ShowSummary then M:ShowSummary() end
+        end)
+        table.insert(self.frames, copyBtn)
+        y = y - 26
+
+        local clearBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+        clearBtn:SetSize(220, 22)
+        clearBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
+        local function ClearLabel()
+            local M = TA:GetRegisteredModule("ForeverJourney")
+            if M and M._confirmClear then return "Really clear journal?" end
+            return "Clear journal"
+        end
+        clearBtn:SetText(ClearLabel())
+        clearBtn:SetScript("OnClick", function(btn)
+            local M = TA:GetRegisteredModule("ForeverJourney")
+            if M and M.RequestClear then M:RequestClear() end
+            btn:SetText(ClearLabel())
+        end)
+        table.insert(self.frames, clearBtn)
+        y = y - 30
     end
 
     if not guideHosts then

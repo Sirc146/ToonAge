@@ -60,7 +60,8 @@ RE_NS = re.compile(r'\bC_([A-Za-z]+)\.([A-Za-z0-9_]+)')
 BARE_GLOBALS = [
     "GetItemCount", "GetItemInfo", "GetItemInfoInstant", "GetContainerItemLink",
     "GetContainerNumSlots", "GetSpellInfo", "GetSpellCooldown",
-    "GetSpellCharges", "IsPlayerSpell", "IsSpellKnown", "GetNumQuestLogEntries",
+    "IsPlayerSpell", "UnitPower", "UnitPowerMax", "CheckInteractDistance",
+    "GetSpellCharges", "IsSpellKnown", "GetNumQuestLogEntries",
     "GetQuestLogTitle", "GetQuestLogIndexByID", "GetTalentInfo",
     "GetSpecialization", "GetSpecializationInfo", "GetAverageItemLevel",
     "GetInventoryItemLink", "UnitAura", "GetProfessions",
@@ -87,6 +88,10 @@ BARE_GLOBALS = [
     "GetQuestMoneyToGet", "IsQuestCompletable", "QuestIsFromAreaTrigger",
     "GetNumAvailableQuests", "GetNumActiveQuests", "SelectAvailableQuest",
     "SelectActiveQuest", "UnitIsInMyGuild", "GetRealmName",
+    # Session journal (Forever). Each is absent on at least one client the
+    # addon ships to, so ApiGuard has to see the call rather than discover
+    # it as an error in game.
+    "GetMoney", "UnitXP", "GetZoneText", "GetRealZoneText", "UnitOnTaxi",
     # Already probed on Forever. The generator list had dropped them, so a
     # regen removed GetBuildInfo and UnitGUID from the manifest.
     "GetBuildInfo", "UnitGUID",
@@ -94,6 +99,9 @@ BARE_GLOBALS = [
     # IsPlayerSpell and IsQuestFlaggedCompleted may be absent; the calls are
     # type-checked and pcalled. GetItemCount and IsPlayerSpell are listed above.
     "IsQuestFlaggedCompleted",
+    # Forever pins. Probed because the manual pin reads them, each call
+    # still behind a type check and pcall. GetItemCount is listed above.
+    "UnitPosition", "UnitFactionGroup",
 ]
 
 RE_BARE = re.compile(r'(?<![\w.:])(' + "|".join(BARE_GLOBALS) + r')\s*\(')

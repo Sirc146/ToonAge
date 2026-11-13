@@ -137,7 +137,8 @@ def test_scaffolds_inert():
     # client has, and carry no expansion numbers of their own.
     for mod in ("ErrorLog", "Settings", "ContextAction", "XPTracker", "GatherTracker",
                 "RestOptimizer", "DeathRecovery",
-                "ForeverScrolls", "ForeverCastLog", "ProfessionBoard"):
+                "ForeverScrolls", "ForeverCastLog", "ProfessionBoard",
+                "Arrow", "MapPins", "ForeverPins"):
         check(f"forever allows {mod}",   ta.ModuleInProfile(ta, mod), True)
     # What does not: anything driven by Data/Retail values that are wrong for
     # Vanilla-era content.
@@ -147,8 +148,9 @@ def test_scaffolds_inert():
                 "Professions", "Pets", "StatCaps", "TravelRouter", "RoleMorph",
                 "QuestTracker", "GuideParser", "GuideImporter", "GuideBrowser",
                 "GuideContextMenu", "SpecAdaptive",
-                # Guide machinery: all of it points at guide steps.
-                "Arrow", "MapPins", "AntTrail", "CoordResolver",
+                # Guide machinery that still points at guide steps.
+                # Arrow and MapPins are allowed above: manual pins only.
+                "AntTrail", "CoordResolver",
                 # Cut 2026-09-22: the HUD and the quest chores went with the
                 # guide stack; Forever is a readout plus the recorders.
                 "NavHud", "AutoMount", "AutoQuest", "VendorAssist",
