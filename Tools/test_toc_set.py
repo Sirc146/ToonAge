@@ -89,6 +89,8 @@ FOREVER_MODULES = [
     "Modules/Farming/GatherTracker.lua",
     "Modules/Forever/Character.lua",
     "Modules/Forever/Gear.lua",
+    # Gear Stage 1: the per-spec priority table. Not a tab.
+    "Modules/Forever/StatPriority.lua",
     "Modules/Forever/MageGuidance.lua",
     "Modules/Forever/Talents.lua",
     "Modules/Forever/Rotation.lua",
@@ -382,6 +384,16 @@ def test_forever_toc_carries_no_retail_content():
         # Chronicler's Forever rotation list. Entries stay verified=false, and
         # the file flag marks every row approximate. A verified=true entry
         # drops the exception.
+        # Gear Stage 1: hand-written Forever stat orders. Each spec cites a
+        # public Forever guide URL. A file without those URLs drops the
+        # exception.
+        if f == "Data/Forever/StatPriority.lua":
+            try:
+                body = (ROOT / f).read_text(encoding="utf-8")
+            except OSError:
+                return False
+            return ("icy-veins.com/wow-forever/" in body
+                    and "wowhead.com/forever/" in body)
         if f == "Data/Forever/RotationLists.lua":
             try:
                 text = (ROOT / f).read_text(encoding="utf-8")
@@ -403,7 +415,7 @@ def test_forever_toc_carries_no_retail_content():
                     and "https://db.icy-veins.com/wow-forever/items/17056" in text
                     and 'status = "UNKNOWN"' in text)
         return False
-    check("Forever: ships no game data beyond the manifest, the sourced coach, measured harvest data, the unverified profession list, the unverified rotation list and the sourced reagent list",
+    check("Forever: ships no game data beyond the manifest, the sourced coach, the sourced stat priorities, measured harvest data, the unverified profession list, the unverified rotation list and the sourced reagent list",
           [f for f in data if not allowed_data(f)], [])
     coach = ROOT / "Data/Forever/Coach.lua"
     if coach.exists():
