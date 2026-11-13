@@ -86,7 +86,13 @@ BARE_GLOBALS = [
     "GetQuestItemInfo", "GetNumQuestItems", "QuestProgressRequiresGold",
     "GetQuestMoneyToGet", "IsQuestCompletable", "QuestIsFromAreaTrigger",
     "GetNumAvailableQuests", "GetNumActiveQuests", "SelectAvailableQuest",
-    "SelectActiveQuest", "UnitIsInMyGuild", "GetRealmName",
+    "SelectActiveQuest", "UnitIsInMyGuild",     "GetRealmName",
+    # Forever pins. Probed because the manual pin reads them, each call
+    # still behind a type check and pcall.
+    "GetItemCount", "UnitPosition", "UnitFactionGroup",
+    # Already probed on Forever. The calls are pcall(UnitGUID, ...) and
+    # GetBuildInfo(), which this list is what makes the manifest record.
+    "UnitGUID", "GetBuildInfo",
 ]
 
 RE_BARE = re.compile(r'(?<![\w.:])(' + "|".join(BARE_GLOBALS) + r')\s*\(')
