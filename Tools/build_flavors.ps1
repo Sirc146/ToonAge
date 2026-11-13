@@ -3,16 +3,18 @@
     Builds a per-client working copy of ToonAge into each version folder.
 
 .DESCRIPTION
-    Each folder beside the trunk holds a build for ONE client, containing only
-    the files that client's TOC lists -- nothing else. Drop a folder into that
-    client's Interface\AddOns as "ToonAge" and it loads.
+    Each folder beside the trunk holds a build for ONE client: the files that
+    client's TOC lists, plus texture folders those files reference by path
+    ($AssetDirs). Drop a folder into that client's Interface\AddOns as
+    "ToonAge" and it loads.
 
-    The TOC is the manifest. This script does not keep its own file list,
-    because a second list is a list that drifts: that is exactly how the
-    Character tab shipped blank (Core\Layout.lua missing from one TOC) and how
-    Forever ended up loading the entire retail product. Add a file to a TOC and
-    it appears in that flavour's build on the next run. There is nothing else
-    to remember.
+    The TOC is the manifest for code. This script does not keep its own list
+    of .lua and .xml files, because a second list is a list that drifts: that
+    is exactly how the Character tab shipped blank (Core\Layout.lua missing
+    from one TOC) and how Forever ended up loading the entire retail product.
+    Add a file to a TOC and it appears in that flavour's build on the next
+    run. Textures are not TOC entries, so the folders the loaded files name
+    are the one extra copy.
 
     Safe to re-run. Each target is emptied first, so a file removed from a TOC
     actually disappears from the build instead of lingering.
@@ -153,7 +155,9 @@ $AlsoEmitTocAs = @{
 $InstallDirs = @{
     'Retail'      = @('_retail_')
     'PTR'         = @('_ptr_', '_xptr_')
-    'Forever'     = @('_classic_beta_')
+    # WoW Forever's client folder is _forever_. The live install is
+    # <WoW>\_forever_\Interface\AddOns\ToonAge.
+    'Forever'     = @('_forever_')
     'Anniversary' = @('_anniversary_')
     # Mists of Pandaria Classic. The folder is _classic_ and the product is
     # wow_classic -- NOT Classic Era, which is _classic_era_ / wow_classic_era.
@@ -163,6 +167,26 @@ $InstallDirs = @{
     # is 5.5.4 (interface 50504) and _classic_era_ is 1.15.9 (11509).
     'Mists'       = @('_classic_')
     'Classic Era' = @('_classic_era_')
+}
+
+# Texture folders a build's loaded files reference by path. Get-TocFiles keeps
+# only .lua and .xml, and $Extras is Bindings.xml plus the two docs, so these
+# would otherwise be missing from the folder WoW loads.
+#
+# Forever, Anniversary, Mists and Classic Era load Core\Utils.lua, Core\UI.lua,
+# Core\Layout.lua and Core\Theme.lua, which point at Media\icons and
+# Media\frame (glyphs, tab art, the classic ring). Forever also points at both
+# folders from Modules\Forever\Talents.lua and CastLog.lua. Theme.lua names a
+# Media\glass kit, but those files are not in the repo and Theme:Select("classic")
+# does not read them, so that folder is not copied.
+#
+# Retail, PTR and Remix load the same core files and omit the same folders.
+# Their build contents stay as they are.
+$AssetDirs = @{
+    'Forever'     = @('Media\icons', 'Media\frame')
+    'Anniversary' = @('Media\icons', 'Media\frame')
+    'Mists'       = @('Media\icons', 'Media\frame')
+    'Classic Era' = @('Media\icons', 'Media\frame')
 }
 
 function Get-TocFiles {
@@ -329,6 +353,26 @@ foreach ($name in $targets.Keys) {
                 New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
             }
             Copy-Item -LiteralPath $src -Destination $dst -Force
+        }
+    }
+
+    if ($AssetDirs.ContainsKey($name)) {
+        foreach ($relDir in $AssetDirs[$name]) {
+            $srcDir = Join-Path $Root $relDir
+            if (-not (Test-Path -LiteralPath $srcDir -PathType Container)) {
+                Write-Warning "  MISSING asset folder: $relDir"
+                $missing++
+                continue
+            }
+            if ($PSCmdlet.ShouldProcess($relDir, 'copy assets')) {
+                $dstDir    = Join-Path $out $relDir
+                $dstParent = Split-Path -Parent $dstDir
+                if ($dstParent -and -not (Test-Path -LiteralPath $dstParent)) {
+                    New-Item -ItemType Directory -Path $dstParent -Force | Out-Null
+                }
+                Copy-Item -LiteralPath $srcDir -Destination $dstParent -Recurse -Force
+                Write-Host "  assets $relDir" -ForegroundColor DarkGray
+            }
         }
     }
 

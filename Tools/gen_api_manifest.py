@@ -58,9 +58,9 @@ RE_NS = re.compile(r'\bC_([A-Za-z]+)\.([A-Za-z0-9_]+)')
 # either differ between retail and classic, or that Blizzard has moved into a
 # C_ namespace at some point. Everything else is noise.
 BARE_GLOBALS = [
-    "GetItemInfo", "GetItemInfoInstant", "GetContainerItemLink",
+    "GetItemCount", "GetItemInfo", "GetItemInfoInstant", "GetContainerItemLink",
     "GetContainerNumSlots", "GetSpellInfo", "GetSpellCooldown",
-    "GetSpellCharges", "IsSpellKnown", "GetNumQuestLogEntries",
+    "GetSpellCharges", "IsPlayerSpell", "IsSpellKnown", "GetNumQuestLogEntries",
     "GetQuestLogTitle", "GetQuestLogIndexByID", "GetTalentInfo",
     "GetSpecialization", "GetSpecializationInfo", "GetAverageItemLevel",
     "GetInventoryItemLink", "UnitAura", "GetProfessions",
@@ -86,13 +86,17 @@ BARE_GLOBALS = [
     "GetQuestItemInfo", "GetNumQuestItems", "QuestProgressRequiresGold",
     "GetQuestMoneyToGet", "IsQuestCompletable", "QuestIsFromAreaTrigger",
     "GetNumAvailableQuests", "GetNumActiveQuests", "SelectAvailableQuest",
-    "SelectActiveQuest", "UnitIsInMyGuild",     "GetRealmName",
+    "SelectActiveQuest", "UnitIsInMyGuild", "GetRealmName",
+    # Already probed on Forever. The generator list had dropped them, so a
+    # regen removed GetBuildInfo and UnitGUID from the manifest.
+    "GetBuildInfo", "UnitGUID",
+    # Scroll probe counters and spell/quest reads. includeBank is false.
+    # IsPlayerSpell and IsQuestFlaggedCompleted may be absent; the calls are
+    # type-checked and pcalled. GetItemCount and IsPlayerSpell are listed above.
+    "IsQuestFlaggedCompleted",
     # Forever pins. Probed because the manual pin reads them, each call
-    # still behind a type check and pcall.
-    "GetItemCount", "UnitPosition", "UnitFactionGroup",
-    # Already probed on Forever. The calls are pcall(UnitGUID, ...) and
-    # GetBuildInfo(), which this list is what makes the manifest record.
-    "UnitGUID", "GetBuildInfo",
+    # still behind a type check and pcall. GetItemCount is listed above.
+    "UnitPosition", "UnitFactionGroup",
 ]
 
 RE_BARE = re.compile(r'(?<![\w.:])(' + "|".join(BARE_GLOBALS) + r')\s*\(')

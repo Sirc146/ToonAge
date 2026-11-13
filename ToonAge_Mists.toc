@@ -67,6 +67,8 @@ Modules\Infrastructure\ErrorLog.lua
 # Shared probes (waypoint APIs included). No Mists harvest pack, so this
 # records nothing; /ta probe still runs.
 Modules\Infrastructure\Harvester.lua
+# Detect other addons and coexist. No reskin.
+Modules\Infrastructure\AddonBridge.lua
 Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\RotationLists.lua
 Modules\Infrastructure\RotationBoard.lua

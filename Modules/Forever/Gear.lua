@@ -835,6 +835,110 @@ local function RenderSlots(content, y, rows)
     return y
 end
 
+--- Class token and spec name for the priority table. Class goes through
+--- Compat (ApiGuard first). Spec is the trait section with the most points.
+local function PlayerClassAndSpec()
+    local classToken
+    if TA.Compat and TA.Compat.UnitClass then
+        local _, token = TA.Compat.UnitClass("player")
+        if type(token) == "string" and token ~= "" then classToken = token end
+    end
+    local specName
+    if U and U.GetPlayerSpec then
+        local _, name = U.GetPlayerSpec()
+        if type(name) == "string" and name ~= "" then specName = name end
+    end
+    return classToken, specName
+end
+
+--- Layout status for one item-stat key, or nil when this spec has no tone.
+local function StatToneStatus(key)
+    local SP = TA.StatPriority
+    if not (SP and SP.ToneForItemKey and SP.BarStatus) then return nil end
+    local classToken, specName = PlayerClassAndSpec()
+    if not (classToken and specName) then return nil end
+    return SP:BarStatus(SP:ToneForItemKey(classToken, specName, key))
+end
+
+local function ShowSource(SP, content, y, src)
+    if not (src and SP:SourceVisible(src.name)) then return y end
+    local head = tostring(src.name or "Guide")
+    if src.updated and src.updated ~= "" then
+        head = head .. " (" .. src.updated .. ")"
+    end
+    y = L:Paragraph(content, y, head, { color = L.C_HEADER })
+    for _, list in ipairs(src.lists or {}) do
+        local line = tostring(list.line or "")
+        if list.label and list.label ~= "" then
+            line = list.label .. ": " .. line
+        end
+        y = L:Paragraph(content, y, line)
+    end
+    if src.caveat and src.caveat ~= "" then
+        y = L:Paragraph(content, y, tostring(src.caveat), { color = L.C_DIM })
+    end
+    if src.url and src.url ~= "" then
+        y = L:Paragraph(content, y, tostring(src.url), { color = L.C_DIM })
+    end
+    return y
+end
+
+local function RenderStatPriority(content, y)
+    y = L:SectionHeader(content, y, "Suggested stat priority",
+        "Public Forever guides. Not a score. Which list to follow is not decided yet.")
+    local SP = TA.StatPriority
+    if SP and SP.View and SP.SetView and L.ButtonRow then
+        local mode = SP:View()
+        local function pick(nextMode)
+            return function()
+                if TA.db then SP:SetView(nextMode) end
+                if TA.QueueUIRefresh then TA:QueueUIRefresh("STAT_PRIORITY_VIEW") end
+            end
+        end
+        y = L:ButtonRow(content, y, {
+            { label = "Both", active = mode == "both", onClick = pick("both") },
+            { label = "Icy Veins", active = mode == "iv", onClick = pick("iv") },
+            { label = "Wowhead", active = mode == "wh", onClick = pick("wh") },
+        }, { label = "Show" })
+    end
+    local classToken, specName = PlayerClassAndSpec()
+    if not (SP and SP.Get and classToken and specName) then
+        y = L:Paragraph(content, y,
+            "No spec yet. The tree with the most points spent is the spec. "
+            .. "Until one tree leads, there is no suggested order.",
+            { color = L.C_DIM })
+        return y
+    end
+    local entry = SP:Get(classToken, specName)
+    if not entry then
+        y = L:Paragraph(content, y,
+            "No Forever guide is stored for " .. specName .. " yet, so this tab "
+            .. "does not suggest an order.",
+            { color = L.C_DIM })
+        return y
+    end
+    y = L:DataRow(content, y, {
+        label = specName,
+        value = "CONFLICT",
+        status = "warn",
+    })
+    local rows = SP.Rows and SP:Rows(entry) or { entry }
+    for _, row in ipairs(rows) do
+        if row.label and row.label ~= "" then
+            y = L:Paragraph(content, y, tostring(row.label) .. " - CONFLICT", { color = L.C_HEADER })
+        end
+        for _, src in ipairs(row.sources or {}) do
+            y = ShowSource(SP, content, y, src)
+        end
+    end
+    y = L:Paragraph(content, y,
+        "Both orders are shown, labeled by guide. Nothing here merges them. "
+        .. "Green on a total means that stat is in the top three of both guides. "
+        .. "Grey is every other stat. Red is not used: neither guide calls a stat useless.",
+        { color = L.C_DIM })
+    return y
+end
+
 local function RenderTotals(content, y, totals, contrib)
     y = L:SectionHeader(content, y, "Combined Stats",
         "Summed from equipped items as the client reports them. Hover a bar to "
@@ -874,18 +978,21 @@ local function RenderTotals(content, y, totals, contrib)
 
     for _, e in ipairs(ordered) do
         local segs = contrib[e.key]
+        local toneStatus = StatToneStatus(e.key)
         if scale and L.StackBar and segs and #segs > 0 then
             y = L:StackBar(content, y, {
                 label = StatLabel(e.key),
                 segments = segs, scale = scale,
                 text = string.format("%d", e.v),
-                status = STAT_LABELS[e.key] and nil or "dim",
+                status = toneStatus or (STAT_LABELS[e.key] and nil or "dim"),
+                labelStatus = toneStatus,
             })
         else
             y = L:DataRow(content, y, {
                 label = StatLabel(e.key),
                 value = string.format("%d", e.v),
-                status = STAT_LABELS[e.key] and "neutral" or "dim",
+                status = toneStatus or (STAT_LABELS[e.key] and "neutral" or "dim"),
+                labelStatus = toneStatus,
             })
         end
     end
@@ -915,12 +1022,11 @@ end
 local function RenderFooter(content, y)
     y = L:SectionHeader(content, y, "Scoring")
     y = L:Paragraph(content, y,
-        "No stat weights yet: Forever's have not been measured, and a score built "
-        .. "on guessed weights is confidently wrong. The Gear Check above sticks to "
-        .. "what the client reports -- item level, your skills, your racials -- and "
-        .. "shows bag upgrades stat by stat so the trade is visible. ForeverGear, "
-        .. "the dedicated gear addon, ships Level-20 stat-priority profiles if you "
-        .. "want a score.")
+        "There is still no gear score. The suggestion above is an order from "
+        .. "public Forever guides, and where those guides disagree both orders "
+        .. "are shown. The Gear Check sticks to what the client reports -- item "
+        .. "level, your skills, your racials -- and bag rows show the stat "
+        .. "difference so the trade stays visible.")
     return y
 end
 
@@ -960,6 +1066,8 @@ function M:Render(content, side)
     y = RenderHeadline(content, y, rows, equippedCount, emptyCount, avgIlvl)
     y = L:Divider(content, y)
     y = RenderSlots(content, y, rows)
+    y = L:Divider(content, y)
+    y = RenderStatPriority(content, y)
     y = L:Divider(content, y)
     y = RenderTotals(content, y, totals, contrib)
     y = L:Divider(content, y)

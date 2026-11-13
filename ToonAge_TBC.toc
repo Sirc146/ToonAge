@@ -82,6 +82,8 @@ Modules\Infrastructure\Harvester.lua
 # registered, so TBC gets Quest Automation (AutoQuest/AutoEquip/VendorAssist),
 # Module Health, module switches, Export/Import and About -- nothing retail-only.
 Modules\Infrastructure\Settings.lua
+# Detect other addons and coexist. No reskin.
+Modules\Infrastructure\AddonBridge.lua
 # Shared spell/item button above the action bars. Overload is retail-only.
 Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\RotationLists.lua
