@@ -179,6 +179,31 @@ function C.IsSpellKnown(spellID)
     return false
 end
 
+--- true, false, or nil when no spell API answered. Each lookup is pcall'd.
+--- IsPlayerSpell first, then IsSpellKnown, then C_SpellBook.IsSpellKnown.
+--- A throw is a miss for that variant, not an error for the caller.
+function C.PlayerKnowsSpell(spellID)
+    if type(spellID) ~= "number" then return nil end
+    local answered = false
+    if type(IsPlayerSpell) == "function" then
+        local ok, known = pcall(function() return IsPlayerSpell(spellID) end)
+        if ok and known == true then return true end
+        if ok and known == false then answered = true end
+    end
+    if type(IsSpellKnown) == "function" then
+        local ok, known = pcall(function() return IsSpellKnown(spellID) end)
+        if ok and known == true then return true end
+        if ok and known == false then answered = true end
+    end
+    if C_SpellBook and type(C_SpellBook.IsSpellKnown) == "function" then
+        local ok, known = pcall(function() return C_SpellBook.IsSpellKnown(spellID) end)
+        if ok and known == true then return true end
+        if ok and known == false then answered = true end
+    end
+    if answered then return false end
+    return nil
+end
+
 -- ── Items ──────────────────────────────────────────────────────────────────
 
 local function ValueUnusable(v)
@@ -390,6 +415,74 @@ function C.GetItemCount(item, ...)
     end
     if type(GetItemCount) == "function" then return GetItemCount(item, ...) end
     return nil
+end
+
+--- Bag count, then the extra amount sitting in the bank.
+--- Variants, each pcall'd, in order:
+---   C_Item.GetItemCount, C_Container.GetItemCount (only when that call
+---   accepts an item id and returns a number), then global GetItemCount.
+--- A throw or a non-number skips that variant. Nil bags means every variant
+--- was missing, which the caller shows as "count unavailable".
+--- The first return is bags only (includeBank false). The second is the
+--- bank remainder, or nil when the bank flag could not be asked. Bank is
+--- never folded into the bag count.
+--- @return number|nil bags, number|nil bank, string|nil which
+function C.ItemCounts(itemID)
+    if type(itemID) ~= "number" then return nil, nil, nil end
+
+    local function finish(bags, withBank, which)
+        if type(bags) ~= "number" then return nil end
+        local bank
+        if type(withBank) == "number" and withBank >= bags then
+            bank = withBank - bags
+        end
+        return bags, bank, which
+    end
+
+    local function from(ask, which)
+        local ok, bags = ask(false)
+        if not ok or type(bags) ~= "number" then
+            ok, bags = ask(nil)
+        end
+        if not (ok and type(bags) == "number") then return nil end
+        local okBank, withBank = ask(true)
+        if not okBank then withBank = nil end
+        return finish(bags, withBank, which)
+    end
+
+    if C_Item and type(C_Item.GetItemCount) == "function" then
+        local bags, bank, which = from(function(includeBank)
+            if includeBank == nil then
+                return pcall(C_Item.GetItemCount, itemID)
+            end
+            return pcall(C_Item.GetItemCount, itemID, includeBank)
+        end, "C_Item.GetItemCount")
+        if bags ~= nil then return bags, bank, which end
+    end
+
+    -- C_Container.GetItemCount is not a documented bag API. Use it only when
+    -- the call accepts an item id and comes back as a number.
+    if C_Container and type(C_Container.GetItemCount) == "function" then
+        local bags, bank, which = from(function(includeBank)
+            if includeBank == nil then
+                return pcall(C_Container.GetItemCount, itemID)
+            end
+            return pcall(C_Container.GetItemCount, itemID, includeBank)
+        end, "C_Container.GetItemCount")
+        if bags ~= nil then return bags, bank, which end
+    end
+
+    if type(GetItemCount) == "function" then
+        local bags, bank, which = from(function(includeBank)
+            if includeBank == nil then
+                return pcall(GetItemCount, itemID)
+            end
+            return pcall(GetItemCount, itemID, includeBank)
+        end, "GetItemCount")
+        if bags ~= nil then return bags, bank, which end
+    end
+
+    return nil, nil, nil
 end
 
 function C.GetDetailedItemLevelInfo(item)

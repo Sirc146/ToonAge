@@ -58,9 +58,9 @@ RE_NS = re.compile(r'\bC_([A-Za-z]+)\.([A-Za-z0-9_]+)')
 # either differ between retail and classic, or that Blizzard has moved into a
 # C_ namespace at some point. Everything else is noise.
 BARE_GLOBALS = [
-    "GetItemInfo", "GetItemInfoInstant", "GetContainerItemLink",
+    "GetItemCount", "GetItemInfo", "GetItemInfoInstant", "GetContainerItemLink",
     "GetContainerNumSlots", "GetSpellInfo", "GetSpellCooldown",
-    "GetSpellCharges", "IsSpellKnown", "GetNumQuestLogEntries",
+    "GetSpellCharges", "IsPlayerSpell", "IsSpellKnown", "GetNumQuestLogEntries",
     "GetQuestLogTitle", "GetQuestLogIndexByID", "GetTalentInfo",
     "GetSpecialization", "GetSpecializationInfo", "GetAverageItemLevel",
     "GetInventoryItemLink", "UnitAura", "GetProfessions",
