@@ -215,6 +215,15 @@ function Settings:Render(content, sidebar)
     local y = -10
     local w = content:GetWidth()
 
+    local function GuideToggle(rowY, key, label)
+        if not (TA.AddonBridge and TA.AddonBridge.GuideDeferEnabled) then return rowY end
+        return MakeToggleRow(content, rowY, w, label, function()
+            return TA.AddonBridge:GuideDeferEnabled(key)
+        end, function()
+            TA.AddonBridge:ToggleGuideDefer(key)
+        end)
+    end
+
     -- Waypoints, HUD and map pins: guide-era navigation, not shipped on every flavour.
     if Has("Arrow", "NavHud", "MapPins", "TravelRouter") then
         -- ═══════════════════════════════════════════════════════════════════
@@ -321,7 +330,8 @@ function Settings:Render(content, sidebar)
     y = y - 8
 
     -- Quest automation: the protected-action features. Absent from builds that removed them.
-    if Has("AutoQuest", "AutoEquip", "QuestTracker", "VendorAssist") then
+    local guideHosts = Has("AutoQuest", "AutoEquip", "QuestTracker", "VendorAssist")
+    if guideHosts then
         y = MakeSection(content, y, w, "QUEST AUTOMATION")
 
         y = MakeToggleRow(content, y, w, "Let Zygor handle questing, arrow and auto-equip when it's loaded", function()
@@ -333,6 +343,9 @@ function Settings:Render(content, sidebar)
                 TA.charDB.tracker.deferToZygor = not on
             end
         end)
+
+        y = GuideToggle(y, "deferToMittenQuest", "Let MittenQuest handle questing, arrow and auto-equip when it's loaded")
+        y = GuideToggle(y, "deferToMelloQuestList", "Let MelloUI Quest List handle questing, arrow and auto-equip when it's loaded")
 
         -- QuestTracker reads tracker.autoRewardPick and its paused message
         -- tells the player to turn this on "in Settings" -- so it must be here.
@@ -645,6 +658,18 @@ function Settings:Render(content, sidebar)
         y = y - 16
     end
 
+    if not guideHosts then
+        y = MakeSection(content, y, w, "GUIDE ADDONS")
+        y = GuideToggle(y, "deferToZygor", "Let Zygor handle questing, arrow and auto-equip when it's loaded")
+        y = GuideToggle(y, "deferToMittenQuest", "Let MittenQuest handle questing, arrow and auto-equip when it's loaded")
+        y = GuideToggle(y, "deferToMelloQuestList", "Let MelloUI Quest List handle questing, arrow and auto-equip when it's loaded")
+        y = y - 8
+    end
+
+    if TA.AddonBridge and TA.AddonBridge.DrawReport then
+        y = TA.AddonBridge:DrawReport(content, y, w, self.frames)
+    end
+
     -- ═══════════════════════════════════════════════════════════════════
     -- INFO / ABOUT
     -- ═══════════════════════════════════════════════════════════════════
@@ -891,6 +916,8 @@ function Settings:Init() end
 local PROFILE_KEYS = {
 
     "tracker.deferToZygor",
+    "tracker.deferToMittenQuest",
+    "tracker.deferToMelloQuestList",
     "tracker.autoRewardPick",
     "tracker.replaceBlizzTracker",
     "tracker.showAvailableQuests",

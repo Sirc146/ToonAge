@@ -274,6 +274,8 @@ end
 -- ── Per-tick update ───────────────────────────────────────────────────────
 
 function Arrow:Tick(f)
+    local stepBack = (U.DeferToZygor and U.DeferToZygor())
+        or (U.DeferToOtherGuides and U.DeferToOtherGuides())
     -- Guide-step titles are gold. A /way label overrides this below.
     if f.titleF and f.titleF.SetTextColor then
         f.titleF:SetTextColor(1, 0.82, 0, 1)
@@ -297,6 +299,10 @@ function Arrow:Tick(f)
         label    = self.manualWaypoint.title or "Waypoint"
         isManualWP = true
     else
+        if stepBack then
+            f:Hide()
+            return
+        end
         step = GetTargetStep()
         PaintEstimate(f, (step and step.coord) and step or nil)
 
@@ -792,7 +798,11 @@ end
 function Arrow:Init()
     self:InitFrame()
     local saved = TA.charDB and TA.charDB.arrow
-    if saved and saved.visible then self.frame:Show() end
+    if saved and saved.visible
+        and not (U.DeferToZygor and U.DeferToZygor())
+        and not (U.DeferToOtherGuides and U.DeferToOtherGuides()) then
+        self.frame:Show()
+    end
     -- /way is claimed on PLAYER_LOGIN, not here. Setup runs later.
 end
 

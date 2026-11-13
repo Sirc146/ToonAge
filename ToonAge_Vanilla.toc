@@ -51,6 +51,8 @@ Modules\Infrastructure\ErrorLog.lua
 # Shared probes (waypoint APIs included). No Era harvest pack, so this
 # records nothing; /ta probe still runs. The arrow is not ported here.
 Modules\Infrastructure\Harvester.lua
+# Detect other addons and coexist. No reskin.
+Modules\Infrastructure\AddonBridge.lua
 # Shared spell/item button. Hidden until a feature offers a candidate.
 Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\RotationLists.lua

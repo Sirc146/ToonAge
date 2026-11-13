@@ -106,6 +106,7 @@ local function ShouldAct()
     if Try(IsShiftKeyDown) then return false end
     -- Zygor drives accept/turn-in/rewards itself.
     if U and U.DeferToZygor and U.DeferToZygor() then return false end
+    if U and U.DeferToOtherGuides and U.DeferToOtherGuides() then return false end
     return true
 end
 

@@ -436,6 +436,18 @@ function C.GetAddOnMetadata(name, field)
     return nil
 end
 
+--- name, title, notes, enabled, loadable, reason, security. Nil when the
+--- client has neither the namespaced call nor the classic global.
+function C.GetAddOnInfo(name)
+    if C_AddOns and type(C_AddOns.GetAddOnInfo) == "function" then
+        return C_AddOns.GetAddOnInfo(name)
+    end
+    if type(GetAddOnInfo) == "function" then
+        return GetAddOnInfo(name)
+    end
+    return nil
+end
+
 -- ── Talent tabs (Classic family only) ──────────────────────────────────────
 -- Retail has no tree/tab talent API (it uses the C_Traits loadout system), so
 -- these return nil/0 there. Classic-family flavors (Vanilla/TBC/Wrath/Cata/

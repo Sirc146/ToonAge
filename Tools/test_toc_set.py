@@ -63,6 +63,7 @@ FOREVER_TOC = "ToonAge_Camelot.toc"     # filename fixed by the loader; see the 
 FOREVER_MODULES = [
     "Modules/Infrastructure/ErrorLog.lua",
     "Modules/Infrastructure/Settings.lua",
+    "Modules/Infrastructure/AddonBridge.lua",
     "Modules/Infrastructure/ContextAction.lua",
     "Modules/Infrastructure/RotationLists.lua",
     "Modules/Infrastructure/ChatCopy.lua",
@@ -250,6 +251,7 @@ def test_scaffold_tocs_are_core_only():
                   sorted(mods),
                   ["Modules/Character/ProfessionBoard.lua",
                    "Modules/Character/ProfessionSkills.lua",
+                   "Modules/Infrastructure/AddonBridge.lua",
                    "Modules/Infrastructure/ContextAction.lua",
                    "Modules/Infrastructure/ErrorLog.lua",
                    "Modules/Infrastructure/Harvester.lua",
@@ -264,7 +266,8 @@ def test_scaffold_tocs_are_core_only():
             check(f"{name}: ErrorLog plus the shared probe core (+ self-test)",
                   [m for m in mods if m != SELFTEST],
                   ["Modules/Infrastructure/ErrorLog.lua",
-                   "Modules/Infrastructure/Harvester.lua"])
+                   "Modules/Infrastructure/Harvester.lua",
+                   "Modules/Infrastructure/AddonBridge.lua"])
         check(f"{name}: includes Core/Environment",
               any(f.endswith("Core/Environment.lua") for f in files), True)
         check(f"{name}: includes Core/Profile",
