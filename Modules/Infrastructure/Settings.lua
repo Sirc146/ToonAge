@@ -670,6 +670,15 @@ function Settings:Render(content, sidebar)
         y = TA.AddonBridge:DrawReport(content, y, w, self.frames)
     end
 
+    local restock = TA.GetModule and TA:GetModule("ForeverRestock")
+    if restock and type(restock.DrawSettings) == "function" then
+        y = MakeSection(content, y, w, "REAGENT RESTOCK")
+        y = restock:DrawSettings(content, y, w, function(frame)
+            table.insert(self.frames, frame)
+        end)
+        y = y - 8
+    end
+
     -- ═══════════════════════════════════════════════════════════════════
     -- INFO / ABOUT
     -- ═══════════════════════════════════════════════════════════════════

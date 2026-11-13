@@ -94,6 +94,7 @@ FOREVER_MODULES = [
     "Modules/Forever/Rotation.lua",
     "Modules/Forever/Pets.lua",
     "Modules/Forever/PvP.lua",
+    "Modules/Forever/Restock.lua",
     "Modules/Forever/Scrolls.lua",
     "Modules/Forever/CastLog.lua",
     # Added 2026-10-01..03: login "since last session" check and the beta
@@ -389,8 +390,19 @@ def test_forever_toc_carries_no_retail_content():
             # the entry check has to ignore that prefix.
             bad = re.search(r"(?<![A-Za-z])verified\s*=\s*true", text)
             return "unverified = true" in text and not bad
+        # Reagent restock. The only item id allowed is Light Feather, and it
+        # has to cite the Forever item page. Other rows stay UNKNOWN.
+        if f == "Data/Forever/Reagents.lua":
+            try:
+                text = (ROOT / f).read_text(encoding="utf-8")
+            except OSError:
+                return False
+            ids = re.findall(r"itemID\s*=\s*(\d+)", text)
+            return (ids == ["17056"]
+                    and "https://db.icy-veins.com/wow-forever/items/17056" in text
+                    and 'status = "UNKNOWN"' in text)
         return False
-    check("Forever: ships no game data beyond the manifest, the sourced coach, measured harvest data, the unverified profession list and the unverified rotation list",
+    check("Forever: ships no game data beyond the manifest, the sourced coach, measured harvest data, the unverified profession list, the unverified rotation list and the sourced reagent list",
           [f for f in data if not allowed_data(f)], [])
     coach = ROOT / "Data/Forever/Coach.lua"
     if coach.exists():
