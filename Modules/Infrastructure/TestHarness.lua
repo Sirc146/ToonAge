@@ -1414,6 +1414,40 @@ local function SuiteBlocks(S)
 end
 
 -- ── Registry ─────────────────────────────────────────────────────────────
+local function SuiteBridge(S)
+    local bridge = TA.AddonBridge
+    if not bridge or type(bridge.Detect) ~= "function" then
+        S(SKIP, "AddonBridge is not loaded")
+        return
+    end
+    local ok, rows = pcall(function() return bridge:Detect() end)
+    if not ok then
+        S(FAIL, "addon detection threw: " .. tostring(rows))
+        return
+    end
+    S(PASS, "addon detection completed")
+    if type(rows) ~= "table" then
+        S(FAIL, "addon detection returned no report")
+        return
+    end
+    for i = 1, #rows do
+        local row = rows[i]
+        local state = row.loaded and "loaded" or "not loaded"
+        local note = row.note and row.note ~= "" and (" " .. row.note) or ""
+        S(INFO, tostring(row.label) .. ": " .. state .. note)
+    end
+    if bridge.Reskins and bridge:Reskins() then
+        S(FAIL, "AddonBridge reskins the UI")
+    else
+        S(PASS, "no UI reskin")
+    end
+    if bridge.GlowHooks and bridge:GlowHooks() then
+        S(FAIL, "AddonBridge hooks action-bar glows")
+    else
+        S(PASS, "no action-bar glow hooks")
+    end
+end
+
 local SUITES = {
     { id = "env",      title = "Flavor detection",          fn = SuiteEnv      },
     { id = "gate",     title = "Dual gate (TOC + profile + ApiGuard)", fn = SuiteGate },
@@ -1423,6 +1457,7 @@ local SUITES = {
     { id = "events",   title = "Mock events",               fn = SuiteEvents   },
     { id = "tabs",     title = "Tabs: state, render, refresh", fn = SuiteTabs  },
     { id = "settings", title = "Settings drawer",           fn = SuiteSettings },
+    { id = "bridge",   title = "Addon bridge",              fn = SuiteBridge   },
     { id = "perf",     title = "Render cost and frame leaks", fn = SuitePerf   },
     { id = "blocks",   title = "No Blizzard-UI block from ToonAge", fn = SuiteBlocks },
 }

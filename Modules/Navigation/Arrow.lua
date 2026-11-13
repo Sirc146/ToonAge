@@ -468,6 +468,8 @@ end
 -- ── Per-tick update ───────────────────────────────────────────────────────
 
 function Arrow:Tick(f)
+    local stepBack = (U.DeferToZygor and U.DeferToZygor())
+        or (U.DeferToOtherGuides and U.DeferToOtherGuides())
     -- Guide-step titles are gold. A /way label overrides this below.
     if f.titleF and f.titleF.SetTextColor then
         f.titleF:SetTextColor(1, 0.82, 0, 1)
@@ -491,8 +493,8 @@ function Arrow:Tick(f)
         label    = self.manualWaypoint.title or "Waypoint"
         isManualWP = true
     else
-        -- Zygor draws its own arrow; don't put a second one on screen.
-        if U.DeferToZygor and U.DeferToZygor() then
+        -- A guide addon draws its own arrow; don't put a second one on screen.
+        if stepBack then
             f:Hide()
             return
         end
@@ -583,7 +585,7 @@ function Arrow:Tick(f)
         if isSameArea then
             -- Same area — treat coordMap as current map for bearing calculation
             coordMap = currentMap
-        else
+        elseif not (TA.flavor == "forever" and isManualWP) then
             -- ── TRAVEL ROUTER INTERCEPT ───────────────────────────────────
             local TR = TA:GetModule("TravelRouter")
             local route = TR and TR:FindRoute(currentMap, coordMap)
@@ -650,6 +652,18 @@ function Arrow:Tick(f)
         pCont, pN, pW = WP(currentMap, px, py)
         tCont, tN, tW = WP(targetMap, cx, cy)
     end
+    -- Forever only. UnitPosition is a player-point fallback when the map
+    -- world position is missing. It is used only when its continent number
+    -- equals the target's, so the two spaces are not mixed on a guess.
+    if TA.flavor == "forever" and pN == nil and tN ~= nil then
+        local UP = TA.Compat and TA.Compat.PlayerWorldPosition
+        if type(UP) == "function" then
+            local uCont, uN, uW = UP()
+            if type(uN) == "number" and type(uW) == "number" and uCont == tCont then
+                pCont, pN, pW = uCont, uN, uW
+            end
+        end
+    end
     local yards, bearing
     -- A world north of 0 is a real position. Compare against nil, not truth.
     if pCont ~= nil and pCont == tCont and pN ~= nil and pW ~= nil and tN ~= nil and tW ~= nil then
@@ -667,6 +681,38 @@ function Arrow:Tick(f)
     else
         self._lastNorth, self._lastWest = nil, nil
     end
+    -- Forever draws its own marker (a vertical beam). Retail keeps the
+    -- rotating waypoint below. PaintBeam is assigned by Modules/Forever/Pins.lua.
+    if TA.flavor == "forever" and type(self.PaintBeam) == "function" then
+        local arrivedNow = false
+        if yards ~= nil then
+            local _
+            _, arrivedNow = U.WaypointArrowAlpha(yards)
+        end
+        local speed
+        if type(yards) == "number" then
+            local now = GetTime()
+            local dt = now - lastTime
+            if dt > 0.1 and lastDist then
+                speedSamples[1] = speedSamples[2]
+                speedSamples[2] = (lastDist - yards) / dt
+            end
+            lastDist = yards
+            lastTime = now
+            speed = (speedSamples[1] + speedSamples[2]) / 2
+        end
+        self:PaintBeam(f, {
+            yards = yards,
+            speed = speed,
+            angle = (yards ~= nil and facing) and (bearing - facing) or nil,
+            arrived = arrivedNow,
+            label = label,
+            quest = (manual and manual.quest) or (step and step.questID ~= nil),
+            isManual = isManualWP,
+        })
+        return
+    end
+
     -- Full-colour art. Fades between 8 and 5 yards, then the arrived ring.
     -- A missing world position is not arrival, and it does not invent yards.
     -- No facing: hide the arrow. A guess of "north" aims the wrong way.
@@ -1075,7 +1121,9 @@ end
 function Arrow:Init()
     self:InitFrame()
     local saved = TA.charDB and TA.charDB.arrow
-    if saved and saved.visible and not (U.DeferToZygor and U.DeferToZygor()) then
+    if saved and saved.visible
+        and not (U.DeferToZygor and U.DeferToZygor())
+        and not (U.DeferToOtherGuides and U.DeferToOtherGuides()) then
         self.frame:Show()
     end
 

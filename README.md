@@ -111,14 +111,15 @@ ToonAge has no network access. It cannot send anything anywhere, and it stores
 your settings and character data only in your own `ToonAgeDB` saved-variables
 file.
 
-The one exception is optional usage reporting, and it needs three things to be
-true at once before a single value is recorded:
+The one exception is optional usage reporting. It is off unless you turn it on,
+and nothing is recorded until all three of these are true:
 
 1. You have the **Wago App** installed, with its data sharing switched on. The
    Wago App's own addon does the recording and the uploading. ToonAge just
    writes values into it, and with the app absent those calls do nothing.
 2. The build carries a Wago project id in its `.toc`.
-3. You have not turned it off in Settings → "Share anonymous usage stats".
+3. You turned it on in Settings → "Share anonymous usage stats". It is off
+   unless you turn it on.
 
 What it records is fixed and coarse: which game version you are on, whether the
 unified or fragmented layout is in use, whether auto-quest, auto-equip and

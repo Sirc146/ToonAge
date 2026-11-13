@@ -763,6 +763,18 @@ function U.DeferToZygor()
     return U.ZygorLoaded()
 end
 
+--- True when MittenQuest or MelloUI Quest List should own questing, the
+--- arrow, and auto-equip. Each guide has its own toggle (nil = defer).
+--- Zygor stays on DeferToZygor so the existing opt-out is unchanged.
+function U.DeferToOtherGuides()
+    local bridge = TA.AddonBridge
+    if bridge and type(bridge.DeferOtherGuides) == "function" then
+        local ok, defer = pcall(bridge.DeferOtherGuides, bridge)
+        return ok and defer and true or false
+    end
+    return false
+end
+
 --- Returns the addon's display title, or nil if it isn't installed.
 function U.GetAddOnTitle(name)
     if C_AddOns and C_AddOns.GetAddOnInfo then

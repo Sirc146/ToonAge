@@ -483,6 +483,8 @@ end
 function QT:HandleAutoQuest(event)
     if not (TA.charDB and TA.charDB.tracker and TA.charDB.tracker.autoQuest) then return end
     if IsShiftKeyDown() then return end
+    if U.DeferToZygor and U.DeferToZygor() then return end
+    if U.DeferToOtherGuides and U.DeferToOtherGuides() then return end
 
     if event == "QUEST_DETAIL" then
         AcceptQuest()
