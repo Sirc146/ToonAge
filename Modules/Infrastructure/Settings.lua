@@ -470,6 +470,20 @@ function Settings:Render(content, sidebar)
         y = y - 8
     end
 
+    if Has("ForeverMageSuggest") then
+        y = MakeSection(content, y, w, "MAGE SUGGESTION")
+        y = MakeToggleRow(content, y, w, "Lock the Mage suggestion frame", function()
+            return TA.db and TA.db.mageSuggest and TA.db.mageSuggest.locked and true or false
+        end, function()
+            if not TA.db then return end
+            TA.db.mageSuggest = TA.db.mageSuggest or {}
+            TA.db.mageSuggest.locked = not TA.db.mageSuggest.locked
+            local mod = TA:GetModule("ForeverMageSuggest")
+            if mod and mod.ApplyLock then mod:ApplyLock() end
+        end)
+        y = y - 8
+    end
+
     -- Combat: rotation prediction and nameplate markers.
     if Has("CombatState", "SpecAdaptive", "NameplateObjectives", "TooltipScorer") then
         -- ═══════════════════════════════════════════════════════════════════

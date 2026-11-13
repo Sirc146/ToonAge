@@ -1356,6 +1356,63 @@ local function SuiteGuides(S)
     end
 end
 
+-- ── blocks: no Blizzard-UI-only action attributed to ToonAge ─────────────
+-- ADDON_ACTION_BLOCKED / ADDON_ACTION_FORBIDDEN are not Lua errors. The
+-- suggestion frame listens for the whole session. This window listens again
+-- while the suite runs, including one refresh of that frame.
+local function SuiteBlocks(S)
+    local window = { blocked = 0, forbidden = 0 }
+    local watcher
+    local function Ours(addon)
+        if addon == nil then return false end
+        if type(issecretvalue) == "function" then
+            local ok, secret = pcall(issecretvalue, addon)
+            if not ok or secret == true then return false end
+        end
+        return addon == ADDON
+    end
+    local ok, err = pcall(function()
+        watcher = CreateFrame("Frame", "ToonAgeBlockProbe", UIParent)
+        watcher:SetSize(1, 1)
+        if watcher.SetAlpha then watcher:SetAlpha(0) end
+        if not (InCombatLockdown and InCombatLockdown()) and watcher.Hide then
+            watcher:Hide()
+        end
+        watcher:RegisterEvent("ADDON_ACTION_BLOCKED")
+        watcher:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+        watcher:SetScript("OnEvent", function(_, event, addon)
+            if not Ours(addon) then return end
+            if event == "ADDON_ACTION_BLOCKED" then window.blocked = window.blocked + 1
+            elseif event == "ADDON_ACTION_FORBIDDEN" then window.forbidden = window.forbidden + 1 end
+        end)
+    end)
+    if not ok then
+        S(FAIL, "could not register the block-event test window: " .. tostring(err))
+        return
+    end
+    local mod = TA.GetModule and TA:GetModule("ForeverMageSuggest")
+    if mod and mod.Refresh then pcall(mod.Refresh, mod) end
+    if coroutine.running() then coroutine.yield() end
+    local liveBlocked, liveForbidden = 0, 0
+    if mod and mod.BlockCounts then
+        local b, f = mod:BlockCounts()
+        if type(b) == "number" then liveBlocked = b end
+        if type(f) == "number" then liveForbidden = f end
+    end
+    if watcher then
+        if watcher.UnregisterAllEvents then watcher:UnregisterAllEvents() end
+        if watcher.SetScript then watcher:SetScript("OnEvent", nil) end
+    end
+    local msg = format(
+        "Blizzard-UI block events attributed to ToonAge: test window blocked=%d forbidden=%d; rotation frame blocked=%d forbidden=%d",
+        window.blocked, window.forbidden, liveBlocked, liveForbidden)
+    if window.blocked + window.forbidden + liveBlocked + liveForbidden == 0 then
+        S(PASS, msg)
+    else
+        S(FAIL, msg)
+    end
+end
+
 -- ── Registry ─────────────────────────────────────────────────────────────
 local function SuiteBridge(S)
     local bridge = TA.AddonBridge
@@ -1402,6 +1459,7 @@ local SUITES = {
     { id = "settings", title = "Settings drawer",           fn = SuiteSettings },
     { id = "bridge",   title = "Addon bridge",              fn = SuiteBridge   },
     { id = "perf",     title = "Render cost and frame leaks", fn = SuitePerf   },
+    { id = "blocks",   title = "No Blizzard-UI block from ToonAge", fn = SuiteBlocks },
 }
 
 -- ══════════════════════════════════════════════════════════════════════════

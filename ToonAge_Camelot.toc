@@ -187,6 +187,8 @@ Modules\Forever\Gear.lua
 Modules\Forever\StatPriority.lua
 Modules\Forever\Talents.lua
 Modules\Forever\MageGuidance.lua
+# Next-spell suggestion icon. Its own frame. No action-button glow.
+Modules\Forever\MageSuggest.lua
 Modules\Forever\Rotation.lua
 Modules\Forever\Pets.lua
 Modules\Forever\PvP.lua
