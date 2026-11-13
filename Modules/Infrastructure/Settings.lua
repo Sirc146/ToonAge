@@ -677,6 +677,42 @@ function Settings:Render(content, sidebar)
         y = y - 16
     end
 
+    -- Forever only. The module file is not in any other TOC, so Has is false
+    -- everywhere else and this block does not draw.
+    if Has("ForeverJourney") then
+        y = MakeSection(content, y, w, "SESSION JOURNAL")
+        y = MakeInfoRow(content, y, w, "Storage",
+            "On this computer only. Never uploaded.")
+
+        local copyBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+        copyBtn:SetSize(220, 22)
+        copyBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
+        copyBtn:SetText("Copy recent sessions")
+        copyBtn:SetScript("OnClick", function()
+            local M = TA:GetRegisteredModule("ForeverJourney")
+            if M and M.ShowSummary then M:ShowSummary() end
+        end)
+        table.insert(self.frames, copyBtn)
+        y = y - 26
+
+        local clearBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+        clearBtn:SetSize(220, 22)
+        clearBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 14, y)
+        local function ClearLabel()
+            local M = TA:GetRegisteredModule("ForeverJourney")
+            if M and M._confirmClear then return "Really clear journal?" end
+            return "Clear journal"
+        end
+        clearBtn:SetText(ClearLabel())
+        clearBtn:SetScript("OnClick", function(btn)
+            local M = TA:GetRegisteredModule("ForeverJourney")
+            if M and M.RequestClear then M:RequestClear() end
+            btn:SetText(ClearLabel())
+        end)
+        table.insert(self.frames, clearBtn)
+        y = y - 30
+    end
+
     if not guideHosts then
         y = MakeSection(content, y, w, "GUIDE ADDONS")
         y = GuideToggle(y, "deferToZygor", "Let Zygor handle questing, arrow and auto-equip when it's loaded")

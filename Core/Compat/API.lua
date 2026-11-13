@@ -1468,4 +1468,114 @@ function C.ProbeGlobalItemCount(itemID)
     end)
 end
 
+-- ── Session journal readers ───────────────────────────────────────────────
+-- WoW Forever's login-to-logout journal calls these and nothing else.
+-- Each one asks ApiGuard first, then refuses to call a value that is not a
+-- function, and swallows a throw. A missing API is nil, which the journal
+-- skips. None of these run at file load.
+
+function C.ServerTime()
+    if TA.HasAPI and not TA:HasAPI("time") then return nil end
+    if type(time) ~= "function" then return nil end
+    local ok, t = pcall(time)
+    if not ok or type(t) ~= "number" then return nil end
+    return t
+end
+
+function C.FormatTime(t)
+    if type(t) ~= "number" then return "" end
+    if TA.HasAPI and not TA:HasAPI("date") then return tostring(t) end
+    if type(date) ~= "function" then return tostring(t) end
+    local ok, text = pcall(date, "%Y-%m-%d %H:%M", t)
+    if not ok or type(text) ~= "string" or text == "" then return tostring(t) end
+    return text
+end
+
+function C.PlayerXP()
+    if TA.HasAPI and not TA:HasAPI("UnitXP") then return nil end
+    if type(UnitXP) ~= "function" then return nil end
+    local ok, v = pcall(function() return UnitXP("player") end)
+    if not ok or type(v) ~= "number" then return nil end
+    return v
+end
+
+function C.PlayerMoney()
+    if TA.HasAPI and not TA:HasAPI("GetMoney") then return nil end
+    if type(GetMoney) ~= "function" then return nil end
+    local ok, v = pcall(function() return GetMoney() end)
+    if not ok or type(v) ~= "number" then return nil end
+    return v
+end
+
+function C.ZoneText()
+    if TA.HasAPI and not TA:HasAPI("GetZoneText") then return nil end
+    if type(GetZoneText) ~= "function" then return nil end
+    local ok, v = pcall(function() return GetZoneText() end)
+    if not ok or type(v) ~= "string" or v == "" then return nil end
+    return v
+end
+
+function C.RealZoneText()
+    if TA.HasAPI and not TA:HasAPI("GetRealZoneText") then return nil end
+    if type(GetRealZoneText) ~= "function" then return nil end
+    local ok, v = pcall(function() return GetRealZoneText() end)
+    if not ok or type(v) ~= "string" or v == "" then return nil end
+    return v
+end
+
+--- uiMapID, zone name. Either may be nil when that API is absent.
+function C.PlayerMap()
+    local mapID, name
+    if not (TA.HasAPI and not TA:HasAPI("C_Map.GetBestMapForUnit"))
+        and C_Map and type(C_Map.GetBestMapForUnit) == "function" then
+        local ok, id = pcall(function() return C_Map.GetBestMapForUnit("player") end)
+        if ok and type(id) == "number" and id > 0 then mapID = id end
+    end
+    if mapID and not (TA.HasAPI and not TA:HasAPI("C_Map.GetMapInfo"))
+        and C_Map and type(C_Map.GetMapInfo) == "function" then
+        local ok, info = pcall(function() return C_Map.GetMapInfo(mapID) end)
+        if ok and type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
+            name = info.name
+        end
+    end
+    if not name then name = C.RealZoneText() or C.ZoneText() end
+    return mapID, name
+end
+
+function C.QuestTitle(questID)
+    if type(questID) ~= "number" then return nil end
+    if TA.HasAPI and not TA:HasAPI("C_QuestLog.GetTitleForQuestID") then return nil end
+    if not (C_QuestLog and type(C_QuestLog.GetTitleForQuestID) == "function") then return nil end
+    local ok, title = pcall(function() return C_QuestLog.GetTitleForQuestID(questID) end)
+    if not ok or type(title) ~= "string" or title == "" then return nil end
+    return title
+end
+
+--- Item quality number, or nil when neither item API can answer.
+function C.ItemQuality(item)
+    if item == nil then return nil end
+    if not (TA.HasAPI and not TA:HasAPI("C_Item.GetItemInfo"))
+        and C_Item and type(C_Item.GetItemInfo) == "function" then
+        local ok, a, _, quality = pcall(function() return C_Item.GetItemInfo(item) end)
+        if ok then
+            if type(a) == "table" and type(a.quality) == "number" then return a.quality end
+            if type(quality) == "number" then return quality end
+        end
+    end
+    if not (TA.HasAPI and not TA:HasAPI("GetItemInfo")) and type(GetItemInfo) == "function" then
+        local ok, _, _, quality = pcall(function() return GetItemInfo(item) end)
+        if ok and type(quality) == "number" then return quality end
+    end
+    return nil
+end
+
+--- true / false when UnitOnTaxi answers, nil when the API is absent.
+function C.OnTaxi()
+    if TA.HasAPI and not TA:HasAPI("UnitOnTaxi") then return nil end
+    if type(UnitOnTaxi) ~= "function" then return nil end
+    local ok, v = pcall(function() return UnitOnTaxi("player") end)
+    if not ok or v == nil then return nil end
+    return v == true or v == 1
+end
+
 return C

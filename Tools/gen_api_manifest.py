@@ -88,6 +88,10 @@ BARE_GLOBALS = [
     "GetQuestMoneyToGet", "IsQuestCompletable", "QuestIsFromAreaTrigger",
     "GetNumAvailableQuests", "GetNumActiveQuests", "SelectAvailableQuest",
     "SelectActiveQuest", "UnitIsInMyGuild", "GetRealmName",
+    # Session journal (Forever). Each is absent on at least one client the
+    # addon ships to, so ApiGuard has to see the call rather than discover
+    # it as an error in game.
+    "GetMoney", "UnitXP", "GetZoneText", "GetRealZoneText", "UnitOnTaxi",
     # Already probed on Forever. The generator list had dropped them, so a
     # regen removed GetBuildInfo and UnitGUID from the manifest.
     "GetBuildInfo", "UnitGUID",

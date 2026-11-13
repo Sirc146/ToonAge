@@ -31,6 +31,10 @@
 --     its catalog ranges, its own probes and tab rows. The TOC is the
 --     packaging gate: a client's TOC lists only its own pack. With no pack for
 --     this client recording stands down at Init. Shared probes still run.
+--
+-- The session journal (Modules/Forever/Journey.lua, Forever TOC only) is a
+-- separate store, TA.db.journey. It does not write this harvest store and it
+-- does not run or change probes.
 
 local TA = ToonAge
 
