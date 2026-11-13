@@ -971,4 +971,123 @@ function C.UnitRace(unit)
     return Shown(localized), Shown(token)
 end
 
+-- ── Mage suggestion reads ────────────────────────────────────────────────
+-- Cooldowns stay on GetSpellCooldown above. These classify the other reads
+-- the Forever Mage suggestion frame needs. A missing function or a secret
+-- value comes back as nil / "unknown"; the caller skips that rule.
+
+local function TriState(path, fn, spellID)
+    if TA and TA.HasAPI and not TA:HasAPI(path) then return "unknown" end
+    if type(fn) ~= "function" then return "unknown" end
+    local ok, value = pcall(fn, spellID)
+    if not ok or SecretValue(value) then return "unknown" end
+    if value == true or value == 1 then return "yes" end
+    if value == false or value == 0 then return "no" end
+    return "unknown"
+end
+
+--- Same yes / no / unknown split MageGuidance uses: IsPlayerSpell, then
+--- IsSpellKnown. A yes from either wins. Unknown from either, with no yes,
+--- stays unknown.
+function C.SpellLearned(spellID)
+    if SecretValue(spellID) or type(spellID) ~= "number" then return "unknown" end
+    local first = TriState("IsPlayerSpell", IsPlayerSpell, spellID)
+    local second = TriState("IsSpellKnown", IsSpellKnown, spellID)
+    if first == "yes" or second == "yes" then return "yes" end
+    if first == "unknown" or second == "unknown" then return "unknown" end
+    if first == "no" and second == "no" then return "no" end
+    return "unknown"
+end
+
+--- Current mana and maximum mana, still raw. The caller tests each one
+--- with issecretvalue / canaccessvalue before dividing.
+function C.PlayerMana()
+    if type(UnitPower) ~= "function" or type(UnitPowerMax) ~= "function" then
+        return nil, nil
+    end
+    if TA and TA.HasAPI and (not TA:HasAPI("UnitPower") or not TA:HasAPI("UnitPowerMax")) then
+        return nil, nil
+    end
+    local powerType = 0
+    if Enum and Enum.PowerType then
+        local mana = Enum.PowerType.Mana
+        local okType, kind = pcall(type, mana)
+        if okType and kind == "number" and not SecretValue(mana) then
+            powerType = mana
+        end
+    end
+    local okCur, current = pcall(UnitPower, "player", powerType)
+    local okMax, maxValue = pcall(UnitPowerMax, "player", powerType)
+    if not okCur or not okMax then return nil, nil end
+    return current, maxValue
+end
+
+local function AuraRow(name, applications)
+    if SecretValue(name) or type(name) ~= "string" or name == "" then return nil, true end
+    local count
+    if not SecretValue(applications) and type(applications) == "number" then
+        count = applications
+    end
+    return { name = name, applications = count }, false
+end
+
+--- Player or target auras. Nil when neither C_UnitAuras nor AuraUtil is
+--- there, or when a name in the list is secret (the rule stays unknown).
+--- An empty list is a real read with nothing present.
+function C.ReadAuras(unit, filter)
+    unit = unit or "player"
+    filter = filter or "HELPFUL"
+    if C_UnitAuras and type(C_UnitAuras.GetAuraDataByIndex) == "function"
+        and not (TA and TA.HasAPI and not TA:HasAPI("C_UnitAuras.GetAuraDataByIndex")) then
+        local out = {}
+        for i = 1, 40 do
+            local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, filter)
+            if not ok or SecretValue(aura) then return nil end
+            if aura == nil then return out end
+            if type(aura) ~= "table" then return nil end
+            local row, blocked = AuraRow(aura.name, aura.applications)
+            if blocked then return nil end
+            if row then out[#out + 1] = row end
+        end
+        return out
+    end
+    if AuraUtil and type(AuraUtil.ForEachAura) == "function" then
+        local out, blocked = {}, false
+        local ok = pcall(AuraUtil.ForEachAura, unit, filter, nil, function(a, _, c)
+            if blocked then return end
+            local name, apps = a, c
+            if type(a) == "table" then name, apps = a.name, a.applications end
+            local row, stop = AuraRow(name, apps)
+            if stop then blocked = true; return end
+            if row then out[#out + 1] = row end
+        end)
+        if not ok or blocked then return nil end
+        return out
+    end
+    return nil
+end
+
+--- Duel distance (distIndex 3, about 10 yards) stands in for "too close"
+--- on the Frost Nova suggestion. Nil when the query is missing or secret.
+function C.TargetInMelee(unit)
+    unit = unit or "target"
+    if type(UnitExists) == "function" then
+        local ok, exists = pcall(UnitExists, unit)
+        if ok and exists == false then return false end
+        if not ok or SecretValue(exists) then return nil end
+    end
+    if TA and TA.HasAPI and not TA:HasAPI("CheckInteractDistance") then return nil end
+    if type(CheckInteractDistance) ~= "function" then return nil end
+    local ok, dist = pcall(CheckInteractDistance, unit, 3)
+    if not ok or SecretValue(dist) then return nil end
+    return dist
+end
+
+function C.InCombat()
+    if type(InCombatLockdown) ~= "function" then return false end
+    local ok, locked = pcall(InCombatLockdown)
+    if not ok or SecretValue(locked) then return false end
+    return locked and true or false
+end
+
 return C

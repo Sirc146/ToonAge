@@ -60,6 +60,7 @@ RE_NS = re.compile(r'\bC_([A-Za-z]+)\.([A-Za-z0-9_]+)')
 BARE_GLOBALS = [
     "GetItemInfo", "GetItemInfoInstant", "GetContainerItemLink",
     "GetContainerNumSlots", "GetSpellInfo", "GetSpellCooldown",
+    "IsPlayerSpell", "UnitPower", "UnitPowerMax", "CheckInteractDistance",
     "GetSpellCharges", "IsSpellKnown", "GetNumQuestLogEntries",
     "GetQuestLogTitle", "GetQuestLogIndexByID", "GetTalentInfo",
     "GetSpecialization", "GetSpecializationInfo", "GetAverageItemLevel",
