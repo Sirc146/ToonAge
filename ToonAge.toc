@@ -167,6 +167,8 @@ Modules\Infrastructure\CoordHarvester.lua
 # Shared probes (waypoint APIs included). No retail harvest pack, so this
 # records nothing until one exists; /ta probe still runs.
 Modules\Infrastructure\Harvester.lua
+# Detect other addons and coexist. No reskin. Loads on every flavor.
+Modules\Infrastructure\AddonBridge.lua
 Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\RotationLists.lua
 

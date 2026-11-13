@@ -215,6 +215,15 @@ function Settings:Render(content, sidebar)
     local y = -10
     local w = content:GetWidth()
 
+    local function GuideToggle(rowY, key, label)
+        if not (TA.AddonBridge and TA.AddonBridge.GuideDeferEnabled) then return rowY end
+        return MakeToggleRow(content, rowY, w, label, function()
+            return TA.AddonBridge:GuideDeferEnabled(key)
+        end, function()
+            TA.AddonBridge:ToggleGuideDefer(key)
+        end)
+    end
+
     -- Waypoints, HUD and map pins: guide-era navigation, not shipped on every flavour.
     if Has("Arrow", "NavHud", "MapPins", "TravelRouter") then
         -- ═══════════════════════════════════════════════════════════════════
@@ -312,11 +321,16 @@ function Settings:Render(content, sidebar)
     -- ═══════════════════════════════════════════════════════════════════
     -- QUEST AUTOMATION
     -- ═══════════════════════════════════════════════════════════════════
-    y = MakeToggleRow(content, y, w, "Share anonymous usage stats (only if you run the Wago App)", function()
-        return not (TA.db and TA.db.analytics == false)
-    end, function()
-        if TA.db then TA.db.analytics = (TA.db.analytics == false) end
-    end)
+    y = MakeToggleRow(content, y, w,
+        "Share anonymous usage stats (off unless you turn this on; needs the Wago App)",
+        function()
+            return TA.Analytics and TA.Analytics:IsOptedIn()
+        end,
+        function()
+            if TA.Analytics then
+                TA.Analytics:SetOptIn(not TA.Analytics:IsOptedIn())
+            end
+        end)
 
     y = y - 8
 
@@ -347,7 +361,8 @@ function Settings:Render(content, sidebar)
     end
 
     -- Quest automation: the protected-action features. Absent from builds that removed them.
-    if Has("AutoQuest", "AutoEquip", "QuestTracker", "VendorAssist") then
+    local guideHosts = Has("AutoQuest", "AutoEquip", "QuestTracker", "VendorAssist")
+    if guideHosts then
         y = MakeSection(content, y, w, "QUEST AUTOMATION")
 
         y = MakeToggleRow(content, y, w, "Let Zygor handle questing, arrow and auto-equip when it's loaded", function()
@@ -359,6 +374,9 @@ function Settings:Render(content, sidebar)
                 TA.charDB.tracker.deferToZygor = not on
             end
         end)
+
+        y = GuideToggle(y, "deferToMittenQuest", "Let MittenQuest handle questing, arrow and auto-equip when it's loaded")
+        y = GuideToggle(y, "deferToMelloQuestList", "Let MelloUI Quest List handle questing, arrow and auto-equip when it's loaded")
 
         -- QuestTracker reads tracker.autoRewardPick and its paused message
         -- tells the player to turn this on "in Settings" -- so it must be here.
@@ -671,6 +689,27 @@ function Settings:Render(content, sidebar)
         y = y - 16
     end
 
+    if not guideHosts then
+        y = MakeSection(content, y, w, "GUIDE ADDONS")
+        y = GuideToggle(y, "deferToZygor", "Let Zygor handle questing, arrow and auto-equip when it's loaded")
+        y = GuideToggle(y, "deferToMittenQuest", "Let MittenQuest handle questing, arrow and auto-equip when it's loaded")
+        y = GuideToggle(y, "deferToMelloQuestList", "Let MelloUI Quest List handle questing, arrow and auto-equip when it's loaded")
+        y = y - 8
+    end
+
+    if TA.AddonBridge and TA.AddonBridge.DrawReport then
+        y = TA.AddonBridge:DrawReport(content, y, w, self.frames)
+    end
+
+    local restock = TA.GetModule and TA:GetModule("ForeverRestock")
+    if restock and type(restock.DrawSettings) == "function" then
+        y = MakeSection(content, y, w, "REAGENT RESTOCK")
+        y = restock:DrawSettings(content, y, w, function(frame)
+            table.insert(self.frames, frame)
+        end)
+        y = y - 8
+    end
+
     -- ═══════════════════════════════════════════════════════════════════
     -- INFO / ABOUT
     -- ═══════════════════════════════════════════════════════════════════
@@ -869,6 +908,10 @@ function Settings:RenderSidebar(parent)
     AddBtn("Error Log", function() TA:SlashCommand("errors copy") end)
     AddBtn("Debug Mode", function() TA:SlashCommand("debug") end)
     AddBtn("State Keys", function() TA:SlashCommand("state") end)
+    -- Forever only (ToonAge_Camelot.toc). The label is a literal, like the buttons above.
+    if TA.ScrollProbe and TA.ScrollProbe.Open and (TA.IsForever or TA.flavor == "forever") then
+        AddBtn("Scroll Probe", function() TA.ScrollProbe:Open() end)
+    end
 
     -- ── System ────────────────────────────────────────────────────
     AddHdr("SYSTEM")
@@ -913,6 +956,8 @@ function Settings:Init() end
 local PROFILE_KEYS = {
 
     "tracker.deferToZygor",
+    "tracker.deferToMittenQuest",
+    "tracker.deferToMelloQuestList",
     "tracker.autoRewardPick",
     "tracker.replaceBlizzTracker",
     "tracker.showAvailableQuests",

@@ -64,6 +64,7 @@ local EQUIP_LOC_TO_SLOT = {
 local function ShouldAutoEquip()
     -- Zygor can equip gear too; two addons swapping items fight each other.
     if U.DeferToZygor and U.DeferToZygor() then return false end
+    if U.DeferToOtherGuides and U.DeferToOtherGuides() then return false end
     return TA.charDB
         and TA.charDB.tracker
         and TA.charDB.tracker.autoEquip
