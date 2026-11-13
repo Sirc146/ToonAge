@@ -325,11 +325,12 @@ local DB_DEFAULTS = {
     -- /ta verbose <error|warn|info|debug> changes it.
     logLevel = 2,   -- TA.LOG.WARN
 
-    -- Usage reporting (Core/Analytics.lua). Records a handful of aggregate
-    -- switches into the Wago App's analytics addon IF the player has that app
-    -- installed with sharing on; ToonAge itself never sends anything. false
-    -- here turns it off regardless. Settings -> Usage reporting.
-    analytics = true,
+    -- Usage reporting (Core/Analytics.lua). Off unless the player turns it
+    -- on in Settings. ToonAge never sends anything; when on, and only when
+    -- the Wago App is installed with sharing on, a handful of aggregate
+    -- switches are written into that app.
+    -- Settings -> Share anonymous usage stats.
+    analytics = false,
 
     -- Safe Mode boot flag. Persisted deliberately: the whole point is to
     -- survive a reload when the addon is too broken to reach its own UI.
@@ -458,6 +459,21 @@ local ACCOUNT_MIGRATIONS = {
             db.onboardScope     = nil
             db.onboardedAccount = nil
         end
+    end,
+
+    -- [2] Usage reporting shipped as analytics = true. That was the default,
+    -- not a choice, so any saved true without an explicit Settings opt-in
+    -- (analyticsOptedIn) is turned off once. A real opt-in is left as the
+    -- player set it, including analyticsOptInAt. analyticsOptInMigration is
+    -- the one-time flag: a second entry returns immediately, and the schema
+    -- stamp keeps later logins from entering this step at all. No other
+    -- saved key is read or written.
+    [2] = function(db)
+        if db.analyticsOptInMigration == 1 then return end
+        if db.analytics == true and db.analyticsOptedIn ~= true then
+            db.analytics = false
+        end
+        db.analyticsOptInMigration = 1
     end,
 }
 

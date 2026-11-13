@@ -13,7 +13,9 @@
 --   1. The TOC carries an X-Wago-ID (blank until the Wago project exists).
 --   2. The Wago App's WagoAnalytics addon is present — otherwise the shim in
 --      Libs/WagoAnalytics hands back empty functions.
---   3. TA.db.analytics is not false (Settings -> Usage reporting).
+--   3. The player turned it on in Settings. It is off unless you turn it on.
+--      Both TA.db.analytics and TA.db.analyticsOptedIn must be true. Settings
+--      is the only writer of that opt-in record.
 --
 -- What is recorded is deliberately coarse: which client, which layout, which
 -- optional behaviors are on, how many modules loaded, how many errors were
@@ -36,14 +38,44 @@ A.enabled  = false
 A.reason   = "not started"
 local sink          -- the recorder handed back by the shim
 
---- Has the player opted out in ToonAge's own settings?
-local function OptedOut()
-    return TA.db and TA.db.analytics == false
+--- True only after Settings records an explicit opt-in. A missing value, a
+--- leftover default of analytics = true, or analytics without the record are
+--- all off.
+local function OptedIn()
+    local db = TA.db
+    return type(db) == "table" and db.analytics == true and db.analyticsOptedIn == true
+end
+
+function A:IsOptedIn()
+    return OptedIn()
+end
+
+--- Settings calls this and nothing else writes the opt-in record. Turning it
+--- on stores analytics, analyticsOptedIn and analyticsOptInAt. Turning it off
+--- clears the two booleans and leaves the timestamp, so a later migration can
+--- see that a choice was made. No other saved key is touched.
+function A:SetOptIn(on)
+    if type(TA.db) ~= "table" then return end
+    if on then
+        TA.db.analytics = true
+        TA.db.analyticsOptedIn = true
+        if type(time) == "function" then
+            local ok, t = pcall(time)
+            if ok and type(t) == "number" then
+                TA.db.analyticsOptInAt = t
+            end
+        end
+    else
+        TA.db.analytics = false
+        TA.db.analyticsOptedIn = false
+    end
+    self:Init()
 end
 
 function A:Init()
-    if OptedOut() then
-        self.enabled, self.reason = false, "turned off in settings"
+    if not OptedIn() then
+        sink = nil
+        self.enabled, self.reason = false, "off unless you turn it on in Settings"
         return
     end
 
@@ -70,17 +102,17 @@ end
 -- inside someone else's addon must never surface as a ToonAge error.
 
 function A:Switch(name, value)
-    if not (self.enabled and sink) then return end
+    if not (OptedIn() and self.enabled and sink) then return end
     pcall(sink.Switch, sink, name, value and true or false)
 end
 
 function A:Count(name, n)
-    if not (self.enabled and sink) then return end
+    if not (OptedIn() and self.enabled and sink) then return end
     pcall(sink.IncrementCounter, sink, name, n or 1)
 end
 
 function A:Set(name, n)
-    if not (self.enabled and sink) then return end
+    if not (OptedIn() and self.enabled and sink) then return end
     pcall(sink.SetCounter, sink, name, n or 0)
 end
 
@@ -88,7 +120,7 @@ end
 -- Called once per session, after modules have initialized.
 
 function A:RecordSession()
-    if not self.enabled then return end
+    if not (OptedIn() and self.enabled) then return end
     local db      = TA.db or {}
     local charDB  = (TA.charDB) or {}
     local tracker = charDB.tracker or {}
@@ -119,8 +151,11 @@ end
 
 --- One line for /ta health, so the state is inspectable rather than magic.
 function A:StatusLine()
-    if self.enabled then
+    if self.enabled and OptedIn() then
         return "Usage reporting: on (Wago App present, opted in)."
+    end
+    if not OptedIn() then
+        return "Usage reporting: off unless you turn it on in Settings."
     end
     return "Usage reporting: off (" .. tostring(self.reason) .. ")."
 end
