@@ -67,8 +67,9 @@ check("opted out -> disabled", A.enabled, False)
 A.RecordSession(A)
 check("opted out -> records nothing", len(list(lua.globals().recorded.values())), 0)
 
-# ── All gates open ────────────────────────────────────────────────────────
+# ── All gates open (player explicitly opted in; the default is off) ──────
 lua = load(WITH_LIB)
+lua.execute("ToonAge.db.analytics = true; ToonAge.db.analyticsOptedIn = true")
 A = lua.globals().ToonAge.Analytics
 A.Init(A)
 check("all gates open -> enabled", A.enabled, True)

@@ -468,6 +468,8 @@ end
 -- ── Per-tick update ───────────────────────────────────────────────────────
 
 function Arrow:Tick(f)
+    local stepBack = (U.DeferToZygor and U.DeferToZygor())
+        or (U.DeferToOtherGuides and U.DeferToOtherGuides())
     -- Guide-step titles are gold. A /way label overrides this below.
     if f.titleF and f.titleF.SetTextColor then
         f.titleF:SetTextColor(1, 0.82, 0, 1)
@@ -491,8 +493,8 @@ function Arrow:Tick(f)
         label    = self.manualWaypoint.title or "Waypoint"
         isManualWP = true
     else
-        -- Zygor draws its own arrow; don't put a second one on screen.
-        if U.DeferToZygor and U.DeferToZygor() then
+        -- A guide addon draws its own arrow; don't put a second one on screen.
+        if stepBack then
             f:Hide()
             return
         end
@@ -1075,7 +1077,9 @@ end
 function Arrow:Init()
     self:InitFrame()
     local saved = TA.charDB and TA.charDB.arrow
-    if saved and saved.visible and not (U.DeferToZygor and U.DeferToZygor()) then
+    if saved and saved.visible
+        and not (U.DeferToZygor and U.DeferToZygor())
+        and not (U.DeferToOtherGuides and U.DeferToOtherGuides()) then
         self.frame:Show()
     end
 
