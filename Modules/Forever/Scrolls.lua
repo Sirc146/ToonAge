@@ -718,6 +718,11 @@ function M:Render(content, side)
         y = L:Spacer(y, 6)
     end
 
+    local restock = TA.GetModule and TA:GetModule("ForeverRestock")
+    if restock and type(restock.Draw) == "function" then
+        y = restock:Draw(content, y)
+    end
+
     if #entries == 0 then
         y = L:SectionHeader(content, y, "Scrolls")
         y = L:Paragraph(content, y,

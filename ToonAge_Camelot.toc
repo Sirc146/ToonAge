@@ -106,6 +106,8 @@ Data\Forever\Racials.lua
 Data\Forever\Spells.lua
 Data\Forever\Talents.lua
 Data\Forever\Items.lua
+# Mage reagent restock list. Light Feather is sourced; unsourced names stay UNKNOWN.
+Data\Forever\Reagents.lua
 Data\Forever\SpellRanks.lua
 # Unverified profession caps and skill lines. The tab says so until a probe
 # confirms them. Comprehension (3012) is the one id a probe has already seen.
@@ -181,6 +183,8 @@ Modules\Forever\MageGuidance.lua
 Modules\Forever\Rotation.lua
 Modules\Forever\Pets.lua
 Modules\Forever\PvP.lua
+# Reagent restock for the Scrolls tab. Targets stay in ToonAgeDB.
+Modules\Forever\Restock.lua
 Modules\Forever\Scrolls.lua
 # Read-only Settings > Debug report. Types waypoint setters; never calls them.
 Modules\Forever\ScrollProbe.lua
