@@ -325,6 +325,9 @@ local PROFILES = {
             -- line. Not a rotation — Vanilla exposes none — a readout of known
             -- spells and their ranks, guarded against both spellbook APIs.
             ForeverRotation  = true,
+            -- Suggested next spell for a Mage, in its own movable frame.
+            -- Forever Frost leveling guide. It does not cast or glow a button.
+            ForeverMageSuggest = true,
             -- Pets: only shown for classes that actually command a pet
             -- (Hunter/Warlock), gated by the tab's condition below.
             ForeverPets      = true,

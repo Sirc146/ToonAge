@@ -89,6 +89,7 @@ FOREVER_MODULES = [
     "Modules/Forever/Character.lua",
     "Modules/Forever/Gear.lua",
     "Modules/Forever/MageGuidance.lua",
+    "Modules/Forever/MageSuggest.lua",
     "Modules/Forever/Talents.lua",
     "Modules/Forever/Rotation.lua",
     "Modules/Forever/Pets.lua",
