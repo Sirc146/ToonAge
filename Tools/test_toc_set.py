@@ -98,6 +98,7 @@ FOREVER_MODULES = [
     # Added 2026-10-01..03: login "since last session" check and the beta
     # world-refresh notice (both tab-less), plus the flavor-neutral self-test.
     "Modules/Forever/SessionCheck.lua",
+    "Modules/Forever/Journey.lua",
     "Modules/Forever/WorldRefresh.lua",
     # Shared profession cards. The skill list is Data/Forever/ProfessionSkills.lua
     # and stays unverified until an in-game probe confirms it.

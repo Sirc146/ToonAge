@@ -351,6 +351,8 @@ local PROFILES = {
             -- logout with the live character (ranks to train, low ranks on
             -- bars, unspent talents, skills behind the cap, new gear). No tab.
             ForeverSessionCheck = true,
+            -- Login-to-logout journal. Local SavedVariables only, not analytics.
+            ForeverJourney   = true,
             -- Beta "world will refresh in N minutes" notice: countdown bar,
             -- 60s/10s warnings, and a log (/ta refreshlog). No tab.
             ForeverWorldRefresh = true,
