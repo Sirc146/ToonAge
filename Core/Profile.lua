@@ -297,13 +297,13 @@ local PROFILES = {
             -- what dragged SpecAdaptive and the rest of the retail chain in
             -- behind it. A guide tab with nothing to guide you through is
             -- worse than no tab.
-            -- No HUD either, as of 2026-09-22. It was the last piece of the
-            -- guide-era overlay stack left here: it drew waypoints that no
-            -- longer exist, and gather dots for a recorder whose loot-API path
-            -- is unverified on this client. The arrow, the tracker drawer, the
-            -- map pins, the ant trail and the coordinate resolver went for the
-            -- same reason — they point at guide steps, and there are none.
-            -- Still shipped on retail and Mists; this is a Forever-only cut.
+            -- The arrow and the map pins are back for one job: a manual pin
+            -- the player asks for (library, auction house). They do not read
+            -- a guide. AntTrail, the HUD and the coordinate resolver still
+            -- point at guide steps, and there are none.
+            -- No HUD, as of 2026-09-22. It drew waypoints that no longer
+            -- exist, and gather dots for a recorder whose loot-API path is
+            -- unverified on this client.
             -- Leveling quality of life
             XPTracker        = true,
             RestOptimizer    = true,
@@ -325,6 +325,9 @@ local PROFILES = {
             -- line. Not a rotation — Vanilla exposes none — a readout of known
             -- spells and their ranks, guarded against both spellbook APIs.
             ForeverRotation  = true,
+            -- Suggested next spell for a Mage, in its own movable frame.
+            -- Forever Frost leveling guide. It does not cast or glow a button.
+            ForeverMageSuggest = true,
             -- Pets: only shown for classes that actually command a pet
             -- (Hunter/Warlock), gated by the tab's condition below.
             ForeverPets      = true,
@@ -344,6 +347,12 @@ local PROFILES = {
             -- a matching line on every item tooltip. Mage Comprehension gates
             -- are shown against the player's skill when the client reports it.
             ForeverScrolls   = true,
+            -- Reagent restock on the Scrolls tab. Targets stay in
+            -- ToonAgeDB.addonBridge.restock. MelloUI Restock is read only.
+            ForeverRestock   = true,
+            -- Read-only Settings > Debug paste-out. Types waypoint setters
+            -- and never calls them. No casts, no saved-variable writes.
+            ForeverScrollProbe = true,
             -- Cast order per fight. Replaces the banned Combat tab on Forever:
             -- own frame, player spell-cast event only, no combat log.
             ForeverCastLog   = true,
@@ -362,6 +371,12 @@ local PROFILES = {
             -- Guarded reputation reads. Unverified until Harvest probes them.
             -- No guide stack: Run this faction does nothing without QuestTracker.
             FactionTracker   = true,
+            -- Manual pin only. QuestTracker stays off, so these never follow a
+            -- retail guide step. ForeverPins places the library and the
+            -- Light Feather auction-house suggestion.
+            Arrow            = true,
+            MapPins          = true,
+            ForeverPins      = true,
         },
         tabs      = {
             { id = "character",  label = "Character",  module = "ForeverCharacter" },

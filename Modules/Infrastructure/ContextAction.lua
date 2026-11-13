@@ -310,6 +310,7 @@ function CA:EnsureButton()
     btn.keyText = keyText
     btn:SetScript("OnDragStart", function(f)
         if CA.InCombat() then return end
+        CA:KeepIndependent(f)
         if f.StartMoving then f:StartMoving() end
     end)
     btn:SetScript("OnDragStop", function(f)
@@ -352,8 +353,22 @@ function CA:EnsureButton()
     return btn
 end
 
+--- The slot stays on UIParent. A host bar never becomes its parent.
+function CA:KeepIndependent(btn)
+    if type(btn) ~= "table" or CA.InCombat() then return end
+    local parent = UIParent
+    if not parent or type(btn.GetParent) ~= "function" or type(btn.SetParent) ~= "function" then
+        return
+    end
+    local ok, current = pcall(btn.GetParent, btn)
+    if ok and current ~= parent then
+        pcall(btn.SetParent, btn, parent)
+    end
+end
+
 function CA:Place(btn)
     if not btn or btn._placed or not btn.SetPoint then return end
+    CA:KeepIndependent(btn)
     if CA.InCombat() then
         self._placeQueued = true
         return

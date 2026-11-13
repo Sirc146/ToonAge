@@ -55,6 +55,8 @@ local EQUIP_LOC_TO_SLOT = {
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
 local function ShouldAutoEquip()
+    if U.DeferToZygor and U.DeferToZygor() then return false end
+    if U.DeferToOtherGuides and U.DeferToOtherGuides() then return false end
     return TA.charDB
         and TA.charDB.tracker
         and TA.charDB.tracker.autoEquip

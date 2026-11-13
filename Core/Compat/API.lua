@@ -179,6 +179,31 @@ function C.IsSpellKnown(spellID)
     return false
 end
 
+--- true, false, or nil when no spell API answered. Each lookup is pcall'd.
+--- IsPlayerSpell first, then IsSpellKnown, then C_SpellBook.IsSpellKnown.
+--- A throw is a miss for that variant, not an error for the caller.
+function C.PlayerKnowsSpell(spellID)
+    if type(spellID) ~= "number" then return nil end
+    local answered = false
+    if type(IsPlayerSpell) == "function" then
+        local ok, known = pcall(function() return IsPlayerSpell(spellID) end)
+        if ok and known == true then return true end
+        if ok and known == false then answered = true end
+    end
+    if type(IsSpellKnown) == "function" then
+        local ok, known = pcall(function() return IsSpellKnown(spellID) end)
+        if ok and known == true then return true end
+        if ok and known == false then answered = true end
+    end
+    if C_SpellBook and type(C_SpellBook.IsSpellKnown) == "function" then
+        local ok, known = pcall(function() return C_SpellBook.IsSpellKnown(spellID) end)
+        if ok and known == true then return true end
+        if ok and known == false then answered = true end
+    end
+    if answered then return false end
+    return nil
+end
+
 -- ── Items ──────────────────────────────────────────────────────────────────
 
 local function ValueUnusable(v)
@@ -192,7 +217,7 @@ end
 function C.PlayerGUID()
     if TA and TA.HasAPI and not TA:HasAPI("UnitGUID") then return nil end
     if type(UnitGUID) ~= "function" then return nil end
-    local ok, guid = pcall(function() return UnitGUID("player") end)
+    local ok, guid = pcall(UnitGUID, "player")
     if not ok or ValueUnusable(guid) or type(guid) ~= "string" then return nil end
     local okBlank, blank = pcall(function() return guid == "" end)
     if not okBlank or blank then return nil end
@@ -202,7 +227,7 @@ end
 function C.ClientBuild()
     if TA and TA.HasAPI and not TA:HasAPI("GetBuildInfo") then return {} end
     if type(GetBuildInfo) ~= "function" then return {} end
-    local ok, version, build, _, iface = pcall(function() return GetBuildInfo() end)
+    local ok, version, build, _, iface = pcall(GetBuildInfo)
     if not ok then return {} end
     local function plain(v)
         if ValueUnusable(v) then return nil end
@@ -392,6 +417,74 @@ function C.GetItemCount(item, ...)
     return nil
 end
 
+--- Bag count, then the extra amount sitting in the bank.
+--- Variants, each pcall'd, in order:
+---   C_Item.GetItemCount, C_Container.GetItemCount (only when that call
+---   accepts an item id and returns a number), then global GetItemCount.
+--- A throw or a non-number skips that variant. Nil bags means every variant
+--- was missing, which the caller shows as "count unavailable".
+--- The first return is bags only (includeBank false). The second is the
+--- bank remainder, or nil when the bank flag could not be asked. Bank is
+--- never folded into the bag count.
+--- @return number|nil bags, number|nil bank, string|nil which
+function C.ItemCounts(itemID)
+    if type(itemID) ~= "number" then return nil, nil, nil end
+
+    local function finish(bags, withBank, which)
+        if type(bags) ~= "number" then return nil end
+        local bank
+        if type(withBank) == "number" and withBank >= bags then
+            bank = withBank - bags
+        end
+        return bags, bank, which
+    end
+
+    local function from(ask, which)
+        local ok, bags = ask(false)
+        if not ok or type(bags) ~= "number" then
+            ok, bags = ask(nil)
+        end
+        if not (ok and type(bags) == "number") then return nil end
+        local okBank, withBank = ask(true)
+        if not okBank then withBank = nil end
+        return finish(bags, withBank, which)
+    end
+
+    if C_Item and type(C_Item.GetItemCount) == "function" then
+        local bags, bank, which = from(function(includeBank)
+            if includeBank == nil then
+                return pcall(C_Item.GetItemCount, itemID)
+            end
+            return pcall(C_Item.GetItemCount, itemID, includeBank)
+        end, "C_Item.GetItemCount")
+        if bags ~= nil then return bags, bank, which end
+    end
+
+    -- C_Container.GetItemCount is not a documented bag API. Use it only when
+    -- the call accepts an item id and comes back as a number.
+    if C_Container and type(C_Container.GetItemCount) == "function" then
+        local bags, bank, which = from(function(includeBank)
+            if includeBank == nil then
+                return pcall(C_Container.GetItemCount, itemID)
+            end
+            return pcall(C_Container.GetItemCount, itemID, includeBank)
+        end, "C_Container.GetItemCount")
+        if bags ~= nil then return bags, bank, which end
+    end
+
+    if type(GetItemCount) == "function" then
+        local bags, bank, which = from(function(includeBank)
+            if includeBank == nil then
+                return pcall(GetItemCount, itemID)
+            end
+            return pcall(GetItemCount, itemID, includeBank)
+        end, "GetItemCount")
+        if bags ~= nil then return bags, bank, which end
+    end
+
+    return nil, nil, nil
+end
+
 function C.GetDetailedItemLevelInfo(item)
     if C_Item and type(C_Item.GetDetailedItemLevelInfo) == "function" then
         return C_Item.GetDetailedItemLevelInfo(item)
@@ -433,6 +526,18 @@ function C.GetAddOnMetadata(name, field)
         return C_AddOns.GetAddOnMetadata(name, field)
     end
     if GetAddOnMetadata then return GetAddOnMetadata(name, field) end
+    return nil
+end
+
+--- name, title, notes, enabled, loadable, reason, security. Nil when the
+--- client has neither the namespaced call nor the classic global.
+function C.GetAddOnInfo(name)
+    if C_AddOns and type(C_AddOns.GetAddOnInfo) == "function" then
+        return C_AddOns.GetAddOnInfo(name)
+    end
+    if type(GetAddOnInfo) == "function" then
+        return GetAddOnInfo(name)
+    end
     return nil
 end
 
@@ -961,6 +1066,111 @@ function C.UnitClass(unit)
     return Shown(localized), Shown(token)
 end
 
+--- "Horde" or "Alliance". Nil when the client will not say. A third faction
+--- is not treated as either of those two.
+function C.PlayerFaction()
+    if TA.HasAPI and not TA:HasAPI("UnitFactionGroup") then return nil end
+    if type(UnitFactionGroup) ~= "function" then return nil end
+    local ok, _, token = pcall(function() return UnitFactionGroup("player") end)
+    if not ok or type(token) ~= "string" then return nil end
+    if token ~= "Horde" and token ~= "Alliance" then return nil end
+    return token
+end
+
+--- Bag count. Nil means the count could not be read, which is not zero.
+--- Each variant is called only when it is a function, and only inside pcall.
+--- C_Item, then C_Container, then the global. The first number wins.
+function C.CountItem(itemID)
+    if type(itemID) ~= "number" then return nil end
+    local function one(fn)
+        if type(fn) ~= "function" then return nil end
+        local ok, n = pcall(fn, itemID)
+        if not ok or type(n) ~= "number" or n ~= n then return nil end
+        return n
+    end
+    if not (TA.HasAPI and not TA:HasAPI("C_Item.GetItemCount")) then
+        if C_Item and type(C_Item.GetItemCount) == "function" then
+            local n = one(C_Item.GetItemCount)
+            if n ~= nil then return n end
+        end
+    end
+    if not (TA.HasAPI and not TA:HasAPI("C_Container.GetItemCount")) then
+        if C_Container and type(C_Container.GetItemCount) == "function" then
+            local n = one(C_Container.GetItemCount)
+            if n ~= nil then return n end
+        end
+    end
+    if TA.HasAPI and not TA:HasAPI("GetItemCount") then return nil end
+    if type(GetItemCount) ~= "function" then return nil end
+    local ok, n = pcall(function() return GetItemCount(itemID) end)
+    if not ok or type(n) ~= "number" or n ~= n then return nil end
+    return n
+end
+
+--- Player map id. Nil when the call is missing or does not return a number.
+function C.BestMapForUnit(unit)
+    if TA.HasAPI and not TA:HasAPI("C_Map.GetBestMapForUnit") then return nil end
+    if not (C_Map and type(C_Map.GetBestMapForUnit) == "function") then return nil end
+    local ok, id = pcall(C_Map.GetBestMapForUnit, unit or "player")
+    if not ok or type(id) ~= "number" or id == 0 then return nil end
+    return id
+end
+
+--- Map fractions 0-1 for the player on a map. Nil when unread.
+function C.PlayerMapFraction(mapID)
+    if type(mapID) ~= "number" then return nil end
+    if TA.HasAPI and not TA:HasAPI("C_Map.GetPlayerMapPosition") then return nil end
+    if not (C_Map and type(C_Map.GetPlayerMapPosition) == "function") then return nil end
+    local ok, pos = pcall(C_Map.GetPlayerMapPosition, mapID, "player")
+    if not ok or type(pos) ~= "table" or type(pos.GetXY) ~= "function" then return nil end
+    local okXY, x, y = pcall(pos.GetXY, pos)
+    if not okXY or type(x) ~= "number" or type(y) ~= "number" then return nil end
+    return x, y
+end
+
+--- UnitPosition yards: continent, north, west. The 4th return is compared
+--- with GetWorldPosFromMapPos's continent only by the caller. Nil if unread.
+function C.PlayerWorldPosition()
+    if TA.HasAPI and not TA:HasAPI("UnitPosition") then return nil end
+    if type(UnitPosition) ~= "function" then return nil end
+    local ok, north, west, _, cont = pcall(function() return UnitPosition("player") end)
+    if not ok or type(north) ~= "number" or type(west) ~= "number" then return nil end
+    if type(cont) ~= "number" then cont = nil end
+    return cont, north, west
+end
+
+--- Blizzard's user waypoint. Both the waypoint and the supertrack call are
+--- unverified on Forever 70888. Each runs only when type() is function, and
+--- only inside pcall. A missing call returns false. The addon's own arrow
+--- still points.
+function C.TryUserWaypoint(mapID, x, y)
+    if type(mapID) ~= "number" or mapID <= 0 then return false end
+    if type(x) ~= "number" or type(y) ~= "number" then return false end
+    if type(C_Map) ~= "table" then return false end
+    if type(C_Map.CanSetUserWaypointOnMap) == "function" then
+        if not (TA.HasAPI and not TA:HasAPI("C_Map.CanSetUserWaypointOnMap")) then
+            local okCan, can = pcall(C_Map.CanSetUserWaypointOnMap, mapID)
+            if not okCan or can ~= true then return false end
+        end
+    end
+    if type(C_Map.SetUserWaypoint) ~= "function" then return false end
+    if TA.HasAPI and not TA:HasAPI("C_Map.SetUserWaypoint") then return false end
+    if type(UiMapPoint) ~= "table" or type(UiMapPoint.CreateFromCoordinates) ~= "function" then
+        return false
+    end
+    local okPoint, point = pcall(UiMapPoint.CreateFromCoordinates, mapID, x, y)
+    if not okPoint or point == nil then return false end
+    local okSet = pcall(C_Map.SetUserWaypoint, point)
+    if not okSet then return false end
+    if type(C_SuperTrack) == "table"
+        and type(C_SuperTrack.SetSuperTrackedUserWaypoint) == "function" then
+        if not (TA.HasAPI and not TA:HasAPI("C_SuperTrack.SetSuperTrackedUserWaypoint")) then
+            pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
+        end
+    end
+    return true
+end
+
 --- Game order: localized name, then English token (for example "Night Elf", "NightElf").
 --- @return string localized, string token
 function C.UnitRace(unit)
@@ -969,6 +1179,293 @@ function C.UnitRace(unit)
     local ok, localized, token = pcall(UnitRace, unit or "player")
     if not ok then return "", "" end
     return Shown(localized), Shown(token)
+end
+
+-- ── Mage suggestion reads ────────────────────────────────────────────────
+-- Cooldowns stay on GetSpellCooldown above. These classify the other reads
+-- the Forever Mage suggestion frame needs. A missing function or a secret
+-- value comes back as nil / "unknown"; the caller skips that rule.
+
+local function TriState(path, fn, spellID)
+    if TA and TA.HasAPI and not TA:HasAPI(path) then return "unknown" end
+    if type(fn) ~= "function" then return "unknown" end
+    local ok, value = pcall(fn, spellID)
+    if not ok or SecretValue(value) then return "unknown" end
+    if value == true or value == 1 then return "yes" end
+    if value == false or value == 0 then return "no" end
+    return "unknown"
+end
+
+--- Same yes / no / unknown split MageGuidance uses: IsPlayerSpell, then
+--- IsSpellKnown. A yes from either wins. Unknown from either, with no yes,
+--- stays unknown.
+function C.SpellLearned(spellID)
+    if SecretValue(spellID) or type(spellID) ~= "number" then return "unknown" end
+    local first = TriState("IsPlayerSpell", IsPlayerSpell, spellID)
+    local second = TriState("IsSpellKnown", IsSpellKnown, spellID)
+    if first == "yes" or second == "yes" then return "yes" end
+    if first == "unknown" or second == "unknown" then return "unknown" end
+    if first == "no" and second == "no" then return "no" end
+    return "unknown"
+end
+
+--- Current mana and maximum mana, still raw. The caller tests each one
+--- with issecretvalue / canaccessvalue before dividing.
+function C.PlayerMana()
+    if type(UnitPower) ~= "function" or type(UnitPowerMax) ~= "function" then
+        return nil, nil
+    end
+    if TA and TA.HasAPI and (not TA:HasAPI("UnitPower") or not TA:HasAPI("UnitPowerMax")) then
+        return nil, nil
+    end
+    local powerType = 0
+    if Enum and Enum.PowerType then
+        local mana = Enum.PowerType.Mana
+        local okType, kind = pcall(type, mana)
+        if okType and kind == "number" and not SecretValue(mana) then
+            powerType = mana
+        end
+    end
+    local okCur, current = pcall(UnitPower, "player", powerType)
+    local okMax, maxValue = pcall(UnitPowerMax, "player", powerType)
+    if not okCur or not okMax then return nil, nil end
+    return current, maxValue
+end
+
+local function AuraRow(name, applications)
+    if SecretValue(name) or type(name) ~= "string" or name == "" then return nil, true end
+    local count
+    if not SecretValue(applications) and type(applications) == "number" then
+        count = applications
+    end
+    return { name = name, applications = count }, false
+end
+
+--- Player or target auras. Nil when neither C_UnitAuras nor AuraUtil is
+--- there, or when a name in the list is secret (the rule stays unknown).
+--- An empty list is a real read with nothing present.
+function C.ReadAuras(unit, filter)
+    unit = unit or "player"
+    filter = filter or "HELPFUL"
+    if C_UnitAuras and type(C_UnitAuras.GetAuraDataByIndex) == "function"
+        and not (TA and TA.HasAPI and not TA:HasAPI("C_UnitAuras.GetAuraDataByIndex")) then
+        local out = {}
+        for i = 1, 40 do
+            local ok, aura = pcall(C_UnitAuras.GetAuraDataByIndex, unit, i, filter)
+            if not ok or SecretValue(aura) then return nil end
+            if aura == nil then return out end
+            if type(aura) ~= "table" then return nil end
+            local row, blocked = AuraRow(aura.name, aura.applications)
+            if blocked then return nil end
+            if row then out[#out + 1] = row end
+        end
+        return out
+    end
+    if AuraUtil and type(AuraUtil.ForEachAura) == "function" then
+        local out, blocked = {}, false
+        local ok = pcall(AuraUtil.ForEachAura, unit, filter, nil, function(a, _, c)
+            if blocked then return end
+            local name, apps = a, c
+            if type(a) == "table" then name, apps = a.name, a.applications end
+            local row, stop = AuraRow(name, apps)
+            if stop then blocked = true; return end
+            if row then out[#out + 1] = row end
+        end)
+        if not ok or blocked then return nil end
+        return out
+    end
+    return nil
+end
+
+--- Duel distance (distIndex 3, about 10 yards) stands in for "too close"
+--- on the Frost Nova suggestion. Nil when the query is missing or secret.
+function C.TargetInMelee(unit)
+    unit = unit or "target"
+    if type(UnitExists) == "function" then
+        local ok, exists = pcall(UnitExists, unit)
+        if ok and exists == false then return false end
+        if not ok or SecretValue(exists) then return nil end
+    end
+    if TA and TA.HasAPI and not TA:HasAPI("CheckInteractDistance") then return nil end
+    if type(CheckInteractDistance) ~= "function" then return nil end
+    local ok, dist = pcall(CheckInteractDistance, unit, 3)
+    if not ok or SecretValue(dist) then return nil end
+    return dist
+end
+
+function C.InCombat()
+    if type(InCombatLockdown) ~= "function" then return false end
+    local ok, locked = pcall(InCombatLockdown)
+    if not ok or SecretValue(locked) then return false end
+    return locked and true or false
+end
+
+-- ── Scroll probe (read-only) ───────────────────────────────────────────────
+-- Settings > Debug on Forever asks these. Every name goes through HasAPI and
+-- a pcall. A missing name is "MISSING"; a thrown call is "ERROR: ...".
+-- Waypoint setters are not wrapped here. The probe may ask ProbeType for
+-- them and must not call them.
+
+local function Resolve(path)
+    if type(path) ~= "string" or path == "" then
+        return nil, "ERROR: bad path"
+    end
+    if TA and TA.HasAPI and not TA:HasAPI(path) then
+        return nil, "MISSING"
+    end
+    local ok, value = pcall(function()
+        local node = _G
+        for seg in string.gmatch(path, "[^%.]+") do
+            if type(node) ~= "table" then return nil end
+            local okI, child = pcall(function() return node[seg] end)
+            if not okI then error(child, 0) end
+            node = child
+        end
+        return node
+    end)
+    if not ok then
+        local msg = tostring(value)
+        if msg:sub(1, 7) ~= "ERROR: " then msg = "ERROR: " .. msg end
+        return nil, msg
+    end
+    if value == nil then return nil, "MISSING" end
+    return value, nil
+end
+
+--- type() of a dotted or global name. Never calls the value.
+--- @return string  "function" | "MISSING" | "ERROR: ..." | other type() result
+function C.ProbeType(path)
+    local value, err = Resolve(path)
+    if err then return err end
+    local ok, kind = pcall(type, value)
+    if not ok then return "ERROR: " .. tostring(kind) end
+    if kind == "nil" then return "MISSING" end
+    return kind
+end
+
+local function Pack(ok, ...)
+    local n = select("#", ...)
+    local t = { n = n }
+    for i = 1, n do t[i] = select(i, ...) end
+    return ok, t
+end
+
+--- Call `thunk` only when `path` resolves to a function.
+--- @return string status  "ok" | "MISSING" | "ERROR: ..."
+--- @return table|nil packed  { n = count, [i] = return } when status is "ok"
+local function GuardedPack(path, thunk)
+    local state = C.ProbeType(path)
+    if state ~= "function" then
+        if type(state) == "string" and state:sub(1, 7) == "ERROR: " then
+            return state
+        end
+        return "MISSING"
+    end
+    if type(thunk) ~= "function" then return "ERROR: no call" end
+    local ok, packed = Pack(pcall(thunk))
+    if not ok then
+        local msg = packed[1]
+        if type(msg) ~= "string" then msg = tostring(msg) end
+        if msg:sub(1, 7) ~= "ERROR: " then msg = "ERROR: " .. msg end
+        return msg
+    end
+    return "ok", packed
+end
+
+function C.ProbeDate()
+    local status, packed = GuardedPack("date", function() return date() end)
+    if status ~= "ok" then return status end
+    if type(packed) ~= "table" or packed[1] == nil then return "nil" end
+    local ok, text = pcall(tostring, packed[1])
+    if not ok then return "ERROR: " .. tostring(text) end
+    return text
+end
+
+function C.ProbeGetBuildInfo()
+    return GuardedPack("GetBuildInfo", function() return GetBuildInfo() end)
+end
+
+function C.ProbeBestMap()
+    return GuardedPack("C_Map.GetBestMapForUnit", function()
+        return C_Map.GetBestMapForUnit("player")
+    end)
+end
+
+--- Player position on mapID. Does not call the reader when mapID is not a number.
+--- @return string status  "ok" | "nil" | "MISSING" | "ERROR: ..."
+--- @return number|nil x
+--- @return number|nil y
+function C.ProbeMapXY(mapID)
+    if type(mapID) ~= "number" then return "nil" end
+    local status, packed = GuardedPack("C_Map.GetPlayerMapPosition", function()
+        return C_Map.GetPlayerMapPosition(mapID, "player")
+    end)
+    if status ~= "ok" then return status end
+    if type(packed) ~= "table" or (packed.n or 0) == 0 or packed[1] == nil then
+        return "nil"
+    end
+    local pos, second = packed[1], packed[2]
+    if type(pos) == "number" then
+        if type(second) ~= "number" then return "nil" end
+        return "ok", pos, second
+    end
+    local ok, x, y = pcall(function()
+        local kind = type(pos)
+        if kind ~= "table" and kind ~= "userdata" then return nil, nil end
+        if type(pos.x) == "number" and type(pos.y) == "number" then
+            return pos.x, pos.y
+        end
+        if type(pos.GetXY) == "function" then return pos:GetXY() end
+        return nil, nil
+    end)
+    if not ok then return "ERROR: " .. tostring(x) end
+    if type(x) ~= "number" or type(y) ~= "number" then return "nil" end
+    return "ok", x, y
+end
+
+function C.ProbeIsSpellKnown(spellID)
+    return GuardedPack("IsSpellKnown", function() return IsSpellKnown(spellID) end)
+end
+
+function C.ProbeIsPlayerSpell(spellID)
+    return GuardedPack("IsPlayerSpell", function() return IsPlayerSpell(spellID) end)
+end
+
+function C.ProbeQuestFlagNS(questID)
+    return GuardedPack("C_QuestLog.IsQuestFlaggedCompleted", function()
+        return C_QuestLog.IsQuestFlaggedCompleted(questID)
+    end)
+end
+
+function C.ProbeQuestFlagGlobal(questID)
+    return GuardedPack("IsQuestFlaggedCompleted", function()
+        return IsQuestFlaggedCompleted(questID)
+    end)
+end
+
+function C.ProbeSkillLine(skillID)
+    return GuardedPack("C_SkillInfo.GetSkillLineInfoByID", function()
+        return C_SkillInfo.GetSkillLineInfoByID(skillID)
+    end)
+end
+
+--- Bags only: the second argument is includeBank false on every counter.
+function C.ProbeCItemCount(itemID)
+    return GuardedPack("C_Item.GetItemCount", function()
+        return C_Item.GetItemCount(itemID, false)
+    end)
+end
+
+function C.ProbeCContainerCount(itemID)
+    return GuardedPack("C_Container.GetItemCount", function()
+        return C_Container.GetItemCount(itemID, false)
+    end)
+end
+
+function C.ProbeGlobalItemCount(itemID)
+    return GuardedPack("GetItemCount", function()
+        return GetItemCount(itemID, false)
+    end)
 end
 
 -- ── Session journal readers ───────────────────────────────────────────────

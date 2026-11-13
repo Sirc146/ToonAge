@@ -45,6 +45,8 @@ Modules\Infrastructure\ErrorLog.lua
 # Shared probes (waypoint APIs included). No Cataclysm harvest pack, so this
 # records nothing; /ta probe still runs. The arrow is not ported here.
 Modules\Infrastructure\Harvester.lua
+# Detect other addons and coexist. No reskin.
+Modules\Infrastructure\AddonBridge.lua
 
 # In-game self-test: /ta test, /tatest, or the Self-test title-bar button. Loads last.
 # Not a registered module (not profile-gated): it only runs when invoked, so

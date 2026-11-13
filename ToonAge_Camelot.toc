@@ -53,9 +53,11 @@
 #                      GetLootSlotLink, GetItemInfoInstant -- was this list
 #                      being discovered one error at a time instead.
 #   Core/StatEngine    Retail diminishing-returns math. Meaningless here.
-#   The guide stack    Forever ships no guides. QuestTracker, Arrow, MapPins,
-#                      AntTrail, CoordResolver and the Guide* modules all point
-#                      at guide steps that do not exist.
+#   The guide stack    Forever ships no guides. QuestTracker, AntTrail,
+#                      CoordResolver and the Guide* modules all point at guide
+#                      steps that do not exist. Arrow and MapPins are listed
+#                      below for a manual pin only (a library or an auction
+#                      house). They do not load a guide.
 #   Every advisor      Gear, Rotation, Talents, Professions, Pets, Delves,
 #                      Weekly: all of them rank things using Data/Retail.
 #
@@ -94,6 +96,9 @@ Core\Analytics.lua
 # ── Sourced reference (names and roles only, each spec cites its guide) ──
 # Icy Veins WoW Forever spec guides, read 2026-09-27. Not game numbers.
 Data\Forever\Coach.lua
+# Stat priority orders. Icy Veins and Wowhead Forever guides, read 2026-11-13.
+# Each spec cites its page. Not a weight table.
+Data\Forever\StatPriority.lua
 # Rotation priorities. Forever entries stay verified=false until a harvest
 # confirms the rank IDs. Retail, TBC, Mists, and Era lists are not loaded here.
 Data\Forever\RotationLists.lua
@@ -106,6 +111,8 @@ Data\Forever\Racials.lua
 Data\Forever\Spells.lua
 Data\Forever\Talents.lua
 Data\Forever\Items.lua
+# Mage reagent restock list. Light Feather is sourced; unsourced names stay UNKNOWN.
+Data\Forever\Reagents.lua
 Data\Forever\SpellRanks.lua
 # Unverified profession caps and skill lines. The tab says so until a probe
 # confirms them. Comprehension (3012) is the one id a probe has already seen.
@@ -118,6 +125,8 @@ Data\Forever\ApiManifest.lua
 # ── Infrastructure ────────────────────────────────────────────────────
 Modules\Infrastructure\ErrorLog.lua
 Modules\Infrastructure\Settings.lua
+# Detect other addons and coexist. No reskin.
+Modules\Infrastructure\AddonBridge.lua
 # Shared spell/item button. Nothing on this client offers a candidate yet.
 Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\RotationLists.lua
@@ -174,12 +183,20 @@ Modules\Character\ProfessionBatch.lua
 Modules\Progression\FactionTracker.lua
 Modules\Forever\Character.lua
 Modules\Forever\Gear.lua
+# Per-spec stat priority lookup for the Gear tab. Data lives in Data/Forever.
+Modules\Forever\StatPriority.lua
 Modules\Forever\Talents.lua
 Modules\Forever\MageGuidance.lua
+# Next-spell suggestion icon. Its own frame. No action-button glow.
+Modules\Forever\MageSuggest.lua
 Modules\Forever\Rotation.lua
 Modules\Forever\Pets.lua
 Modules\Forever\PvP.lua
+# Reagent restock for the Scrolls tab. Targets stay in ToonAgeDB.
+Modules\Forever\Restock.lua
 Modules\Forever\Scrolls.lua
+# Read-only Settings > Debug report. Types waypoint setters; never calls them.
+Modules\Forever\ScrollProbe.lua
 # Cast order per fight, own frame, player spell-cast event only (see file header).
 Modules\Forever\CastLog.lua
 # "Since last session" at login, from the snapshot saved at logout. No tab.
@@ -188,5 +205,12 @@ Modules\Forever\SessionCheck.lua
 Modules\Forever\Journey.lua
 # Beta "world will refresh" notice: countdown, warnings, log. No tab.
 Modules\Forever\WorldRefresh.lua
+# Manual pin. The retail arrow and map pins, with no guide behind them.
+# A library or auction-house suggestion sets Arrow.manualWaypoint. The beam
+# look and the two buttons live in Modules/Forever/Pins.lua.
+Modules\Navigation\Arrow.lua
+Modules\Navigation\MapPins.xml
+Modules\Navigation\MapPins.lua
+Modules\Forever\Pins.lua
 # In-game self-test: /ta test, /tatest, or the Self-test title-bar button. Loads last.
 Modules\Infrastructure\TestHarness.lua

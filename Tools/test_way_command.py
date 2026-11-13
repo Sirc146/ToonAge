@@ -605,8 +605,10 @@ def check_bare_dispatch():
     help_text = g(bare, "HELP_TEXT")
     check("help without an arrow does not mention /ta way", "/ta way" not in help_text and "tacommand:way" not in help_text)
 
+    # Forever loads Arrow.lua, so /ta way lives there. The other flavors
+    # below still have no arrow, and must not grow a /way help string.
     for toc in ("ToonAge_TBC.toc", "ToonAge_Vanilla.toc", "ToonAge_Wrath.toc",
-                "ToonAge_Cata.toc", "ToonAge_Camelot.toc"):
+                "ToonAge_Cata.toc"):
         files = []
         for line in read(toc).splitlines():
             s = line.strip()
@@ -622,6 +624,19 @@ def check_bare_dispatch():
                     or '"/way"' in body or "'/way'" in body):
                 hits.append(rel)
         check(f"{toc} has no help text for /ta way or /way", hits, [])
+
+    forever_hits = []
+    for line in read("ToonAge_Camelot.toc").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        s = s.split("[")[0].strip().replace("\\", "/")
+        if not s.lower().endswith(".lua"):
+            continue
+        body = read(s)
+        if '"/way"' in body or "'/way'" in body:
+            forever_hits.append(s)
+    check("Forever /way lives in the arrow", forever_hits, ["Modules/Navigation/Arrow.lua"])
 
 
 def check_talents():

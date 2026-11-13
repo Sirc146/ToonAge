@@ -334,7 +334,15 @@ function Gear:InjectTooltipScore(tooltip, itemLink)
     local kind
     if equippedScore > 0 and diff > 0 then kind = "upgrade"
     elseif equippedScore > 0 and diff < 0 then kind = "downgrade" end
-    if kind then
+    -- A skinned host tooltip already owns the name line. Append the score
+    -- underneath it. Standalone still rewrites the name the way it does today.
+    local hostTip = false
+    local bridge = TA.AddonBridge
+    if bridge and type(bridge.HostOwnsTooltip) == "function" then
+        local okHost, owned = pcall(bridge.HostOwnsTooltip, bridge)
+        hostTip = okHost and owned and true or false
+    end
+    if kind and not hostTip then
         local nameFS = _G[(tooltip:GetName() or "GameTooltip") .. "TextLeft1"]
         if nameFS and nameFS.GetText and nameFS.SetText then
             nameFS:SetText(U.MarkItemName(nameFS:GetText() or "", kind, true))

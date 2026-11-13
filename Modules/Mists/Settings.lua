@@ -223,6 +223,19 @@ function Settings:Render(content, sidebar)
         end
     end)
 
+    if TA.AddonBridge and TA.AddonBridge.GuideDeferEnabled then
+        local function GuideToggle(label, key)
+            y = MakeToggleRow(content, y, w, label, function()
+                return TA.AddonBridge:GuideDeferEnabled(key)
+            end, function()
+                TA.AddonBridge:ToggleGuideDefer(key)
+            end)
+        end
+        GuideToggle("Let Zygor handle questing, arrow and auto-equip when it's loaded", "deferToZygor")
+        GuideToggle("Let MittenQuest handle questing, arrow and auto-equip when it's loaded", "deferToMittenQuest")
+        GuideToggle("Let MelloUI Quest List handle questing, arrow and auto-equip when it's loaded", "deferToMelloQuestList")
+    end
+
     -- ═══════════════════════════════════════════════════════════════════
     -- VENDOR
     -- ═══════════════════════════════════════════════════════════════════
@@ -450,6 +463,9 @@ function Settings:Render(content, sidebar)
     end
 
     y = y - 8
+    if TA.AddonBridge and TA.AddonBridge.DrawReport then
+        y = TA.AddonBridge:DrawReport(content, y, w, self.frames)
+    end
     y = MakeSection(content, y, w, "ABOUT")
     y = MakeInfoRow(content, y, w, "Version", TA.version or "1.0.0-classic")
     y = MakeInfoRow(content, y, w, "Author", "Chris")
