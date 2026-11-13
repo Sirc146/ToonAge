@@ -313,9 +313,9 @@ local PROFILES = {
             -- the client itself is the only one, and playing is how it gets
             -- read. Everything Data/Forever eventually contains starts here.
             DataHarvester    = true,
-            -- Gear: a Vanilla-correct readout of what is equipped (per-slot
-            -- item + item level) and the combined stats those items carry.
-            -- Reports facts only; no scoring until Data/Forever weights exist.
+            -- Gear: a readout of equipped items and their stats, plus labeled
+            -- suggestions from the stored Forever guide orders. The guides
+            -- are not merged into one score.
             ForeverGear      = true,
             -- Talents: a readout of the three Vanilla trees and the points in
             -- each. Guards the classic talent globals heavily and says so

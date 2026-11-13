@@ -90,6 +90,8 @@ FOREVER_MODULES = [
     "Modules/Forever/Gear.lua",
     # Gear Stage 1: the per-spec priority table. Not a tab.
     "Modules/Forever/StatPriority.lua",
+    # Gear Stage 2: tooltip suggestions and upgrade arrows. Not a tab.
+    "Modules/Forever/GearAdvice.lua",
     "Modules/Forever/MageGuidance.lua",
     "Modules/Forever/Talents.lua",
     "Modules/Forever/Rotation.lua",

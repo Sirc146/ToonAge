@@ -320,6 +320,32 @@ function Settings:Render(content, sidebar)
 
     y = y - 8
 
+    -- Forever gear suggestions. The module file is Forever's TOC only, so
+    -- this section does not draw on a client that never registered ForeverGear.
+    if Has("ForeverGear") then
+        y = MakeSection(content, y, w, "GEAR SUGGESTIONS")
+
+        y = MakeToggleRow(content, y, w, "Suggest gear upgrades on item tooltips", function()
+            return not (TA.db and TA.db.foreverGearTooltip == false)
+        end, function()
+            if not TA.db then return end
+            local on = not (TA.db.foreverGearTooltip == false)
+            TA.db.foreverGearTooltip = not on
+        end)
+
+        y = MakeToggleRow(content, y, w, "Suggest gear upgrades with arrows on bags, loot and quest rewards", function()
+            return not (TA.db and TA.db.foreverGearArrows == false)
+        end, function()
+            if not TA.db then return end
+            local on = not (TA.db.foreverGearArrows == false)
+            TA.db.foreverGearArrows = not on
+            local advice = TA.GearAdvice
+            if advice and advice.RefreshArrows then pcall(advice.RefreshArrows, advice) end
+        end)
+
+        y = y - 8
+    end
+
     -- Quest automation: the protected-action features. Absent from builds that removed them.
     if Has("AutoQuest", "AutoEquip", "QuestTracker", "VendorAssist") then
         y = MakeSection(content, y, w, "QUEST AUTOMATION")

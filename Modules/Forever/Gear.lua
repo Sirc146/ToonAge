@@ -8,11 +8,10 @@
 -- slot with the item's name (in its quality colour) and item level, then a
 -- combined tally of the stats those items carry, read straight from the client.
 --
--- It does NOT score gear, rank upgrades, or say "equip this". Vanilla stat
--- weights for this game have not been verified, and a scorer built on guessed
--- weights hands out confidently wrong advice — the same reason the Character
--- tab stays a readout. When real Data/Forever weights exist, an advisory layer
--- can sit on top of this; until then it reports facts.
+-- The rows below are a readout. GearAdvice.lua adds a separate suggestion
+-- on item tooltips and a small arrow on bags, loot and quest rewards. That
+-- suggestion scores each stored Forever guide on its own and does not merge
+-- them. The Gear tab still does not replace this readout with one score.
 --
 -- APIs: C_Item.GetItemInfo / C_Item.GetItemStats (confirmed present in
 -- Data/Forever/ApiManifest.lua) with the old globals as a fallback, and
@@ -892,6 +891,9 @@ local function RenderStatPriority(content, y)
         local function pick(nextMode)
             return function()
                 if TA.db then SP:SetView(nextMode) end
+                if TA.GearAdvice and TA.GearAdvice.RefreshArrows then
+                    pcall(TA.GearAdvice.RefreshArrows, TA.GearAdvice)
+                end
                 if TA.QueueUIRefresh then TA:QueueUIRefresh("STAT_PRIORITY_VIEW") end
             end
         end
@@ -936,6 +938,9 @@ local function RenderStatPriority(content, y)
         .. "Green on a total means that stat is in the top three of both guides. "
         .. "Grey is every other stat. Red is not used: neither guide calls a stat useless.",
         { color = L.C_DIM })
+    if SP.BracketNote then
+        y = L:Paragraph(content, y, SP:BracketNote(), { color = L.C_DIM })
+    end
     return y
 end
 
@@ -1022,11 +1027,12 @@ end
 local function RenderFooter(content, y)
     y = L:SectionHeader(content, y, "Scoring")
     y = L:Paragraph(content, y,
-        "There is still no gear score. The suggestion above is an order from "
-        .. "public Forever guides, and where those guides disagree both orders "
-        .. "are shown. The Gear Check sticks to what the client reports -- item "
-        .. "level, your skills, your racials -- and bag rows show the stat "
-        .. "difference so the trade stays visible.")
+        "Tooltip lines and the small arrows on bags, loot and quest rewards "
+        .. "are a suggestion from the level 60 guide order above. Each guide "
+        .. "is scored on its own. The two are not averaged. Caps named by a "
+        .. "guide are shown as text and are not part of the score. The Gear "
+        .. "Check still sticks to what the client reports -- item level, your "
+        .. "skills, your racials -- and bag rows show the stat difference.")
     return y
 end
 
@@ -1522,6 +1528,9 @@ local function HideVendorFlags()
 end
 
 function M:OnEvent(event)
+    if TA.GearAdvice and TA.GearAdvice.OnGearEvent then
+        pcall(TA.GearAdvice.OnGearEvent, TA.GearAdvice, event)
+    end
     if event == "MERCHANT_SHOW" or event == "MERCHANT_UPDATE" then
         -- Page turns and the buy/buyback tabs redraw through MerchantFrame_Update;
         -- hooked once, after the fact, so Blizzard's own code runs untouched.
@@ -1563,6 +1572,10 @@ M.Events = {
     -- Vendor flags.
     "MERCHANT_SHOW", "MERCHANT_UPDATE", "MERCHANT_CLOSED", "GET_ITEM_INFO_RECEIVED",
     "PLAYER_MONEY",   -- selling junk can make a flagged item affordable
+    -- Suggestion arrows. Missing events are recorded, not thrown.
+    "LOOT_OPENED", "LOOT_SLOT_CHANGED", "LOOT_CLOSED",
+    "QUEST_COMPLETE", "QUEST_ITEM_UPDATE", "QUEST_FINISHED",
+    "PLAYER_REGEN_ENABLED",
     -- Recipe recording (absorbed if this client lacks any of them).
     "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_UPDATE", "CRAFT_SHOW", "CRAFT_UPDATE",
 }
