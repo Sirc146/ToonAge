@@ -185,6 +185,8 @@ Modules\Forever\Character.lua
 Modules\Forever\Gear.lua
 # Per-spec stat priority lookup for the Gear tab. Data lives in Data/Forever.
 Modules\Forever\StatPriority.lua
+# Tooltip suggestions and bag/loot/quest arrows from those orders. Not a module.
+Modules\Forever\GearAdvice.lua
 Modules\Forever\Talents.lua
 Modules\Forever\MageGuidance.lua
 # Next-spell suggestion icon. Its own frame. No action-button glow.

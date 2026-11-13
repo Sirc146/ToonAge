@@ -217,7 +217,7 @@ end
 function C.PlayerGUID()
     if TA and TA.HasAPI and not TA:HasAPI("UnitGUID") then return nil end
     if type(UnitGUID) ~= "function" then return nil end
-    local ok, guid = pcall(UnitGUID, "player")
+    local ok, guid = pcall(function() return UnitGUID("player") end)
     if not ok or ValueUnusable(guid) or type(guid) ~= "string" then return nil end
     local okBlank, blank = pcall(function() return guid == "" end)
     if not okBlank or blank then return nil end
@@ -227,7 +227,7 @@ end
 function C.ClientBuild()
     if TA and TA.HasAPI and not TA:HasAPI("GetBuildInfo") then return {} end
     if type(GetBuildInfo) ~= "function" then return {} end
-    local ok, version, build, _, iface = pcall(GetBuildInfo)
+    local ok, version, build, _, iface = pcall(function() return GetBuildInfo() end)
     if not ok then return {} end
     local function plain(v)
         if ValueUnusable(v) then return nil end
@@ -389,13 +389,81 @@ function C.CollapseFactionHeader(index)
     return ok and true or false
 end
 
+local function ApiAllowed(path)
+    if not (TA and TA.HasAPI) then return true end
+    return TA:HasAPI(path) and true or false
+end
+
 function C.GetItemStats(itemLink)
     if not itemLink then return nil end
-    if C_Item and type(C_Item.GetItemStats) == "function" then
-        return C_Item.GetItemStats(itemLink)
+    local nsOk = ApiAllowed("C_Item.GetItemStats")
+    local glOk = ApiAllowed("GetItemStats")
+    if not nsOk and not glOk then return nil end
+    -- C_Item first, then the global. Both calls sit inside pcall. A failed
+    -- namespaced call falls through; a nil answer does not, matching the
+    -- previous "return whatever the first present API returned".
+    if nsOk and C_Item and type(C_Item.GetItemStats) == "function" then
+        local ok, stats = pcall(function() return C_Item.GetItemStats(itemLink) end)
+        if ok then return stats end
     end
-    if type(GetItemStats) == "function" then return GetItemStats(itemLink) end
+    if glOk and type(GetItemStats) == "function" then
+        local ok, stats = pcall(function() return GetItemStats(itemLink) end)
+        if ok then return stats end
+    end
     return nil
+end
+
+--- Equipped item link. Nil when the slot is empty or this client has no answer.
+function C.GetInventoryItemLink(unit, slot)
+    if not ApiAllowed("GetInventoryItemLink") then return nil end
+    if type(GetInventoryItemLink) ~= "function" or type(slot) ~= "number" then return nil end
+    local ok, link = pcall(function() return GetInventoryItemLink(unit or "player", slot) end)
+    if not ok or type(link) ~= "string" or link == "" then return nil end
+    return link
+end
+
+--- Loot window. Nil when the client has no loot API. Never calls a missing global.
+function C.GetNumLootItems()
+    if not ApiAllowed("GetNumLootItems") then return nil end
+    if type(GetNumLootItems) ~= "function" then return nil end
+    local ok, n = pcall(function() return GetNumLootItems() end)
+    if not ok or type(n) ~= "number" then return nil end
+    return n
+end
+
+function C.GetLootSlotLink(slot)
+    if not ApiAllowed("GetLootSlotLink") then return nil end
+    if type(GetLootSlotLink) ~= "function" then return nil end
+    local ok, link = pcall(function() return GetLootSlotLink(slot) end)
+    if not ok or type(link) ~= "string" or link == "" then return nil end
+    return link
+end
+
+--- Quest reward and choice items. kind is the token the client documents
+--- ("choice" or "reward"). Nil when that call is absent.
+function C.GetQuestItemLink(kind, index)
+    if not ApiAllowed("GetQuestItemLink") then return nil end
+    if type(GetQuestItemLink) ~= "function" then return nil end
+    if type(kind) ~= "string" or type(index) ~= "number" then return nil end
+    local ok, link = pcall(function() return GetQuestItemLink(kind, index) end)
+    if not ok or type(link) ~= "string" or link == "" then return nil end
+    return link
+end
+
+function C.GetNumQuestChoices()
+    if not ApiAllowed("GetNumQuestChoices") then return nil end
+    if type(GetNumQuestChoices) ~= "function" then return nil end
+    local ok, n = pcall(function() return GetNumQuestChoices() end)
+    if not ok or type(n) ~= "number" then return nil end
+    return n
+end
+
+function C.GetNumQuestRewards()
+    if not ApiAllowed("GetNumQuestRewards") then return nil end
+    if type(GetNumQuestRewards) ~= "function" then return nil end
+    local ok, n = pcall(function() return GetNumQuestRewards() end)
+    if not ok or type(n) ~= "number" then return nil end
+    return n
 end
 
 --- Nil when the item is uncached or neither API exists. Never calls a nil.
