@@ -321,11 +321,16 @@ function Settings:Render(content, sidebar)
     -- ═══════════════════════════════════════════════════════════════════
     -- QUEST AUTOMATION
     -- ═══════════════════════════════════════════════════════════════════
-    y = MakeToggleRow(content, y, w, "Share anonymous usage stats (only if you run the Wago App)", function()
-        return not (TA.db and TA.db.analytics == false)
-    end, function()
-        if TA.db then TA.db.analytics = (TA.db.analytics == false) end
-    end)
+    y = MakeToggleRow(content, y, w,
+        "Share anonymous usage stats (off unless you turn this on; needs the Wago App)",
+        function()
+            return TA.Analytics and TA.Analytics:IsOptedIn()
+        end,
+        function()
+            if TA.Analytics then
+                TA.Analytics:SetOptIn(not TA.Analytics:IsOptedIn())
+            end
+        end)
 
     y = y - 8
 
