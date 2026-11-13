@@ -118,6 +118,8 @@ Data\Forever\ApiManifest.lua
 # ── Infrastructure ────────────────────────────────────────────────────
 Modules\Infrastructure\ErrorLog.lua
 Modules\Infrastructure\Settings.lua
+# Detect other addons and coexist. No reskin.
+Modules\Infrastructure\AddonBridge.lua
 # Shared spell/item button. Nothing on this client offers a candidate yet.
 Modules\Infrastructure\ContextAction.lua
 Modules\Infrastructure\RotationLists.lua

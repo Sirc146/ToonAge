@@ -1051,6 +1051,7 @@ function QT:HandleAutoQuest(event)
     if IsShiftKeyDown() then return end
     -- Zygor handles accept/turn-in/rewards; doing it twice picks rewards twice.
     if U.DeferToZygor and U.DeferToZygor() then return end
+    if U.DeferToOtherGuides and U.DeferToOtherGuides() then return end
 
     -- ── Safety: NPC Blocklist ─────────────────────────────────────────
     -- NPCs that should NEVER be auto-accepted/completed because they have

@@ -654,6 +654,9 @@ local ERROR_PRINT_LIMIT = 3
 local ENGINE_MODULES = {
     ApiGuard = true, State = true, SkillScan = true, TBCStats = true,
     ErrorLog = true,   -- a client that errors is when you need this most
+    -- Coexistence is part of the engine: every flavor that loads the file
+    -- detects other addons. The profile gate must not skip that.
+    AddonBridge = true,
 }
 
 local SAFE_MODE_KEEP = {

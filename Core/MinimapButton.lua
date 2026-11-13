@@ -7,6 +7,14 @@ local TA = ToonAge
 function TA:InitMinimap()
     if self.minimapBtn then return end
 
+    -- LibDBIcon draws the button when that library is loaded. Any failure,
+    -- or no library at all, falls through to the Blizzard minimap button.
+    local bridge = self.AddonBridge
+    if bridge and type(bridge.TryLibDBIcon) == "function" then
+        local ok, used = pcall(bridge.TryLibDBIcon, bridge)
+        if ok and used then return end
+    end
+
     local btn = CreateFrame("Button", "ToonAgeMinimapButton", Minimap)
     btn:SetSize(31, 31)
     btn:SetFrameLevel(Minimap:GetFrameLevel() + 2)
