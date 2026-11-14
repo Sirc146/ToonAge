@@ -502,7 +502,21 @@ local function widget()
     function f:GetHeight() return self.h or 0 end
     function f:SetPoint(...) self.points[#self.points + 1] = { ... } end
     function f:ClearAllPoints() self.points = {} end
-    function f:SetParent(p) self.parent = p end
+    function f:SetParent(p)
+        -- A redraw re-parents pooled nodes. kids has to follow, or the next
+        -- tree still counts buttons that were handed back to the pool.
+        if self.parent and self.parent.kids then
+            for i = #self.parent.kids, 1, -1 do
+                if self.parent.kids[i] == self then
+                    table.remove(self.parent.kids, i)
+                end
+            end
+        end
+        self.parent = p
+        if type(p) == "table" and p.kids then
+            p.kids[#p.kids + 1] = self
+        end
+    end
     function f:GetParent() return self.parent end
     function f:CreateTexture() return widget() end
     function f:CreateFontString() return widget() end
@@ -539,9 +553,8 @@ end
 CreateFrame = function(kind, name, parent, template)
     local f = widget()
     f.kind, f.name, f.template = kind, name, template
-    f.parent = parent
-    if parent and parent.kids then parent.kids[#parent.kids + 1] = f end
     if name then _G[name] = f end
+    if parent then f:SetParent(parent) end
     return f
 end
 
