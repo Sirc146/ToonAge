@@ -402,6 +402,61 @@ def test_professions():
     check("profession redraw keeps the typed batch size", g.kept, "7")
 
 
+def load_spells(lua):
+    lua.execute(PRELUDE)
+    lua.execute(read("Core/Layout.lua"))
+    lua.execute(read("Modules/Forever/MageGuidance.lua"))
+    lua.execute(read("Modules/Forever/Rotation.lua"))
+    lua.execute(r"""
+content = CreateFrame("Frame")
+content:SetSize(667, 800)
+content:SetFrameLevel(4)
+content._laPane = true
+side = CreateFrame("Frame")
+side:SetSize(184, 400)
+side:SetFrameLevel(4)
+side._laPane = true
+ToonAge.UI = { frame = { GetWidth = function() return 900 end }, contentChild = content, sideChild = side }
+ToonAge.Caps = { Call = function(path, ...)
+    local fn = _G[path]
+    if type(fn) ~= "function" then return false, "missing" end
+    return true, fn(...)
+end }
+local M = ToonAge.modules.ForeverRotation
+local before = created
+M:Render(content, side)
+firstNew = created - before
+orphans = CountDescendants(content) + CountDescendants(side)
+local scroll = _G.TAMageGuideCopyScroll
+local copy = _G.TAMageGuideCopy
+local notes = _G.TAMageGuideNotes
+present = (scroll and copy and notes) and 1 or 0
+copyText = copy and copy:GetText() or ""
+Rebuild(content)
+Rebuild(side)
+local again = created
+M:Render(content, side)
+secondNew = created - again
+orphans2 = CountDescendants(content) + CountDescendants(side)
+local function marked(f) return f and f._laKind ~= nil end
+marks = (marked(scroll) and marked(copy) and marked(notes)) and 1 or 0
+copyText2 = copy and copy:GetText() or ""
+""")
+
+
+def test_spells():
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    load_spells(lua)
+    g = lua.globals()
+    check("spell guide builds its scroll and both fields", g.present, 1)
+    check("spell guide frames are marked reused", g.marks, 1)
+    check("first spells render reports 0 orphans", g.orphans, 0)
+    check("spells redraw creates no frames", g.secondNew, 0)
+    check("spells redraw reports 0 orphans", g.orphans2, 0)
+    check("spells redraw keeps the feedback text",
+          g.copyText2 == g.copyText and g.copyText not in ("", None), True)
+
+
 def test_talents():
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     load_talents(lua)
@@ -427,6 +482,7 @@ def test_talents():
 def main():
     test_talents()
     test_professions()
+    test_spells()
     passed = sum(_results)
     total = len(_results)
     print(f"\n{passed}/{total} passed")
