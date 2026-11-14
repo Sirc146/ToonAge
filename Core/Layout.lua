@@ -301,9 +301,20 @@ function L:DataRow(parent, y, opts)
     row:SetSize(w, height)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
 
+    -- The value used to be anchored TOPRIGHT. Right-anchored text draws blank
+    -- on this client (same reason StatBar keeps its number in a left-anchored
+    -- box). The bag count on the Scrolls tab was that value, so the row showed
+    -- only the note ("need 20  bank 0"). The box ends short of the row edge so
+    -- the scroll bar does not cover it.
+    local VALUE_W = 96
+    local EDGE = 16
+    local labelW = math.max(w - VALUE_W - EDGE - 8, 40)
     StyleText(row.label, { text = opts.label, size = 10, color = opts.labelStatus or L.C_SECONDARY })
     row.label:ClearAllPoints()
     row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2)
+    row.label:SetWidth(labelW)
+    if row.label.SetWordWrap then row.label:SetWordWrap(true) end
+    row.label:SetJustifyH("LEFT")
 
     StyleText(row.value, {
         text = opts.value, size = opts.valueSize or 11,
@@ -311,14 +322,22 @@ function L:DataRow(parent, y, opts)
         color = opts.status, justify = "RIGHT",
     })
     row.value:ClearAllPoints()
-    row.value:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, -2)
+    row.value:SetPoint("TOPLEFT", row, "TOPLEFT", w - VALUE_W - EDGE, -2)
+    row.value:SetWidth(VALUE_W)
+    if row.value.SetWordWrap then row.value:SetWordWrap(false) end
 
     if hasNote then
         StyleText(row.note, { text = opts.note, size = 9, color = opts.noteColor or L.C_DIM })
         row.note:ClearAllPoints()
         row.note:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -16)
         row.note:SetWidth(w)
-        row.note:SetHeight(0)
+        if row.note.SetWordWrap then row.note:SetWordWrap(true) end
+        row.note:SetJustifyH("LEFT")
+        row.note:SetHeight(200)
+        local noteH = math.max(12, math.floor((row.note:GetStringHeight() or 12) + 2))
+        row.note:SetHeight(noteH)
+        height = math.max(height, 18 + noteH)
+        row:SetHeight(height)
         row.note:Show()
     else
         row.note:SetText("")
@@ -950,9 +969,15 @@ function L:Paragraph(parent, y, text, opts)
     y = math.floor(y)
     local fs = Text(parent, { text = text, size = opts.size or 10, color = opts.color or "dim" })
     fs:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
+    if fs.SetWordWrap then fs:SetWordWrap(true) end
+    fs:SetJustifyH("LEFT")
     fs:SetWidth(self:Width(parent))
-    fs:SetHeight(0)
-    local h = math.max(12, math.floor(fs:GetStringHeight() + 2))
+    -- Height 0 does not wrap on Forever. The line runs to the scroll child's
+    -- edge and the frame clips it ("classify correctly the first ti").
+    -- Measure against a tall box, then size the string to the wrapped lines.
+    fs:SetHeight(400)
+    local h = math.max(12, math.floor((fs:GetStringHeight() or 12) + 2))
+    fs:SetHeight(h)
     return y - h - (opts.gap or 4)
 end
 
