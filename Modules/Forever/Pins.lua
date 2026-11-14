@@ -138,6 +138,37 @@ function M.BeamCaption(yards, speed)
     return yd .. " · about " .. mins .. " min"
 end
 
+--- A single library record, or a list of them. One record stays one record.
+function M.AsLibraryList(entry)
+    if type(entry) ~= "table" then return nil end
+    if type(entry[1]) == "table" then return entry end
+    return { entry }
+end
+
+--- The library on the player's continent. One entry is returned as-is.
+--- Several on that continent: the nearest world point. None on it: nil.
+function M.ChooseLibrary(list, playerCont, contOf, origin, worldOf)
+    if type(list) ~= "table" or #list == 0 then return nil end
+    if #list == 1 then return list[1] end
+    local on = {}
+    for _, place in ipairs(list) do
+        local cont = type(contOf) == "function" and contOf(place) or nil
+        if playerCont ~= nil and cont == playerCont then
+            on[#on + 1] = place
+        end
+    end
+    if #on == 0 then return nil end
+    if #on == 1 then return on[1] end
+    if type(worldOf) ~= "function" then return nil end
+    local points = {}
+    for i, place in ipairs(on) do
+        points[i] = worldOf(place) or {}
+    end
+    local idx = M.NearestIndex(origin, points)
+    if not idx then return nil end
+    return on[idx]
+end
+
 --- Index of the closest point that has north and west. Nil when origin or
 --- every point is missing those numbers.
 function M.NearestIndex(origin, points)
@@ -211,7 +242,11 @@ function M:TryTomTom(mapID, xPct, yPct, title)
     if type(TomTom) ~= "table" or type(TomTom.AddWaypoint) ~= "function" then
         return false
     end
-    local ok = pcall(TomTom.AddWaypoint, TomTom, mapID, xPct, yPct, { title = title })
+    local ok, uid = pcall(TomTom.AddWaypoint, TomTom, mapID, xPct, yPct, { title = title })
+    if ok then
+        local A = TA:GetModule("Arrow")
+        if A then A._tomtomUid = uid end
+    end
     return ok and true or false
 end
 
@@ -238,7 +273,9 @@ function M:Pin(place, quest)
     end
     local C = TA.Compat
     if C and type(C.TryUserWaypoint) == "function" then
-        C.TryUserWaypoint(mapID, place.x / 100, place.y / 100)
+        if C.TryUserWaypoint(mapID, place.x / 100, place.y / 100) then
+            Arrow._userWaypointSet = true
+        end
     end
     self:TryTomTom(mapID, place.x / 100, place.y / 100, title)
     local MP = TA:GetModule("MapPins")
@@ -252,9 +289,31 @@ end
 function M:SuggestLibrary()
     local C = TA.Compat
     local faction = C and type(C.PlayerFaction) == "function" and C.PlayerFaction() or nil
-    local place = faction and M.LIBRARIES[faction]
-    if not place then
+    local list = M.AsLibraryList(faction and M.LIBRARIES[faction])
+    if not list then
         self:Say("Suggestion withheld: the faction could not be read, so no library was chosen.")
+        return false
+    end
+    local Arrow = TA:GetModule("Arrow")
+    local mapID, _, origin = PlayerHere()
+    local infoFn = C and C.MapInfo
+    local playerCont = Arrow and Arrow.WalkContinent and select(1, Arrow.WalkContinent(mapID, infoFn)) or nil
+    local function contOf(place)
+        if not (Arrow and type(Arrow.MapIDForZone) == "function" and type(Arrow.WalkContinent) == "function") then
+            return nil
+        end
+        local id = Arrow.MapIDForZone(place.zone)
+        return select(1, Arrow.WalkContinent(id, infoFn))
+    end
+    local function worldOf(place)
+        if not (Arrow and type(Arrow.MapIDForZone) == "function") then return nil end
+        local id = Arrow.MapIDForZone(place.zone)
+        if type(id) ~= "number" then return nil end
+        return WorldPoint(id, place.x, place.y)
+    end
+    local place = M.ChooseLibrary(list, playerCont, contOf, origin, worldOf)
+    if not place then
+        self:Say("Suggestion withheld: no library on this continent could be measured.")
         return false
     end
     return self:Pin(place, true)
@@ -383,14 +442,6 @@ function M.Paint(arrow, f, info)
         if not arrow._arrived then
             arrow._arrived = true
             arrow._arrivedTime = now
-        end
-        if info.isManual and arrow._arrivedTime and (now - arrow._arrivedTime > 3) then
-            arrow.manualWaypoint = nil
-            arrow._arrived = false
-            arrow._arrivedTime = nil
-            if TA.Raw and TA.LOG then
-                TA:Raw(TA.LOG.INFO, "|cFFFFD100[TA Arrow]|r Waypoint reached — cleared.")
-            end
         end
         return
     end
