@@ -1155,6 +1155,9 @@ local function Box(name, parent)
     else
         Attach(box, parent)
     end
+    -- Reused by name across pane rebuilds. Without _laKind the self-test
+    -- (TestHarness.lua CountDescendants) counts the box as orphaned.
+    box._laKind = "ForeverSpellGuide"
     if box.Show then box:Show() end
     ApplyBoxChrome(box)
     BindFocus(box)
@@ -1203,6 +1206,9 @@ local function ScrollFrame(name, parent)
     else
         Attach(frame, parent)
     end
+    -- The template's scrollbar stays parented here. Marking the scroll
+    -- covers that subtree; the frame is the same one every redraw.
+    frame._laKind = "ForeverSpellGuide"
     if frame.Show then frame:Show() end
     return frame
 end

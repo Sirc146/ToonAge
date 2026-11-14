@@ -203,6 +203,11 @@ function DrawLearned(content, y, cards)
             box.fieldKey = field.key
             PB.boxes[field.key] = box
         end
+        -- Kept in PB.boxes and re-parented after RebuildChild. The self-test
+        -- (TestHarness.lua CountDescendants) still counts them as orphaned
+        -- unless they carry _laKind. Layout does not pool them: an edit box
+        -- must not be handed out later as a button.
+        box._laKind = "ProfessionField"
         local detached = box.GetParent and box:GetParent() ~= content
         if box.SetParent then box:SetParent(content) end
         if box.ClearAllPoints then box:ClearAllPoints() end
