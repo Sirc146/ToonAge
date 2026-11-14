@@ -234,12 +234,13 @@ function M:Pin(place, quest)
     if type(Arrow.manualWaypoint) == "table" then
         Arrow.manualWaypoint.quest = quest and true or false
         Arrow.manualWaypoint.questID = place.questID
+        Arrow.manualWaypoint.zone = place.zone
     end
     local C = TA.Compat
     if C and type(C.TryUserWaypoint) == "function" then
         C.TryUserWaypoint(mapID, place.x / 100, place.y / 100)
     end
-    self:TryTomTom(mapID, place.x, place.y, title)
+    self:TryTomTom(mapID, place.x / 100, place.y / 100, title)
     local MP = TA:GetModule("MapPins")
     if MP and type(MP.Refresh) == "function" then MP:Refresh() end
     local note = quest and "Library quest. Optional." or "Auction house. Optional."

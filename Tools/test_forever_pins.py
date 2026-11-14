@@ -168,6 +168,96 @@ def main():
     """)
     check("item count falls through a throwing C_Item", lua.eval("ToonAge.Compat.CountItem(17056)"), 0)
 
+    # Owen Thadd's pin is drawn from the stored target, not from the player
+    # and not from a nil coordinate (canvas center) or a 0x0 canvas (origin).
+    lua.execute(read("Modules/Navigation/MapPins.lua"))
+    lua.execute(r"""
+        ToonAge.flavor = "forever"
+        local Arrow = {
+            manualWaypoint = {
+                map = 1458, zone = "Undercity",
+                x = 73.7 / 100, y = 33.1 / 100,
+                title = "Owen Thadd",
+            },
+        }
+        function ToonAge:GetModule(name)
+            if name == "Arrow" then return Arrow end
+            return nil
+        end
+        CANVAS = { w = 1000, h = 800 }
+        function CANVAS:GetWidth() return self.w end
+        function CANVAS:GetHeight() return self.h end
+        POINT = {}
+        local pin = {}
+        function pin:ClearAllPoints()
+            POINT.x, POINT.y = nil, nil
+        end
+        function pin:SetPoint(point, rel, relPoint, x, y)
+            POINT.point = point
+            POINT.rel = rel
+            POINT.relPoint = relPoint
+            POINT.x = x
+            POINT.y = y
+        end
+        function pin:GetMap()
+            return { GetCanvas = function() return CANVAS end }
+        end
+        -- Forever's ApplyCurrentPosition: a missing coordinate is the canvas
+        -- center, and a zero size is offset 0 (the canvas TOPLEFT).
+        function pin:SetPosition(x, y)
+            local w, h = CANVAS:GetWidth(), CANVAS:GetHeight()
+            self:SetPoint("CENTER", CANVAS, "TOPLEFT", (x or 0.5) * (w or 0), -((y or 0.5) * (h or 0)))
+        end
+        local map = { playerX = 0.214, playerY = 0.482 }
+        function map:GetMapID() return 1458 end
+        function map:GetCanvas() return CANVAS end
+        function map:AcquirePin()
+            -- Dropped coordinates. The canvas formula then anchors at the
+            -- center, or at 0,0 when the canvas has no size.
+            pin:SetPosition(nil, nil)
+            return pin
+        end
+        local DP = ToonAge.modules.MapPins.DataProvider
+        function DP:GetMap() return map end
+        PLACED = DP:PlaceForeverPin()
+        OWEN_X = POINT.x
+        OWEN_Y = POINT.y
+        OWEN_POINT = POINT.point
+        OWEN_REL = POINT.relPoint
+        PLAYER_X = map.playerX * CANVAS.w
+        PLAYER_Y = -(map.playerY * CANVAS.h)
+    """)
+    def near(v):
+        return round(v, 4) if isinstance(v, float) else v
+
+    ox = lua.eval("OWEN_X")
+    oy = lua.eval("OWEN_Y")
+    px = lua.eval("PLAYER_X")
+    py = lua.eval("PLAYER_Y")
+    check("library pin was placed", lua.eval("PLACED"), True)
+    check("Owen anchor is the target x, not the player", near(ox), round(73.7 / 100 * 1000, 4))
+    check("Owen anchor is the target y, not the player", near(oy), round(-(33.1 / 100 * 800), 4))
+    check("Owen anchor is not the player arrow", (near(ox), near(oy)) != (near(px), near(py)), True)
+    check("Owen anchor is not the canvas center", (round(ox, 4), round(oy, 4)) != (500.0, -400.0), True)
+    check("Owen anchor is not the canvas origin", (round(ox, 4), round(oy, 4)) != (0.0, 0.0), True)
+    check("pin point is the canvas top-left", (lua.eval("OWEN_POINT"), lua.eval("OWEN_REL")), ("CENTER", "TOPLEFT"))
+
+    lua.execute(r"""
+        CANVAS.w, CANVAS.h = 0, 0
+        POINT.x, POINT.y = nil, nil
+        local DP = ToonAge.modules.MapPins.DataProvider
+        DP:PlaceForeverPin()
+        ZERO_X, ZERO_Y = POINT.x, POINT.y
+        CANVAS.w, CANVAS.h = 1000, 800
+        local again = DP.OnCanvasSizeChanged and DP:OnCanvasSizeChanged()
+        SIZED_X, SIZED_Y = POINT.x, POINT.y
+    """)
+    zx, zy = lua.eval("ZERO_X"), lua.eval("ZERO_Y")
+    check("a 0x0 canvas does not anchor at the origin", (zx, zy) != (0, 0), True)
+    sx, sy = lua.eval("SIZED_X"), lua.eval("SIZED_Y")
+    check("size change puts Owen on the target x", near(sx), round(73.7 / 100 * 1000, 4))
+    check("size change puts Owen on the target y", near(sy), round(-(33.1 / 100 * 800), 4))
+
     passed = sum(_results)
     total = len(_results)
     print(f"[{'OK' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")
