@@ -102,6 +102,9 @@ local PROFILES = {
             -- Shared drawer, self-gating per section (G9, 2026-10-04). Shipped
             -- by ToonAge_TBC.toc; without it the gear button opened nothing.
             Settings          = true,
+            -- Shipped by ToonAge_TBC.toc. Detection report and the guide-defer
+            -- toggles. Profile-gated, so a flavor that omits it does not Init.
+            AddonBridge       = true,
             -- Shared spell/item button above the action bars. Overload is
             -- retail-only and is not on this TOC; the button still loads.
             ContextAction     = true,
@@ -169,6 +172,9 @@ local PROFILES = {
             GatherTracker = true,
             DeathRecovery = true,
             Settings     = true,
+            -- Shipped by ToonAge_Mists.toc. Detection report and the guide-defer
+            -- toggles. Profile-gated, so a flavor that omits it does not Init.
+            AddonBridge  = true,
             ChatCopy     = true,
             -- Shipped by ToonAge_Mists.toc but previously denied here.
             AutoEquip    = true,
@@ -347,6 +353,11 @@ local PROFILES = {
             -- a matching line on every item tooltip. Mage Comprehension gates
             -- are shown against the player's skill when the client reports it.
             ForeverScrolls   = true,
+            -- Other-addon detection and the standalone restock list.
+            -- ForeverRestock writes that list. Not an engine exemption: the
+            -- self-test fails when this initialises on a flavor that does
+            -- not list it.
+            AddonBridge      = true,
             -- Reagent restock on the Scrolls tab. Targets stay in
             -- ToonAgeDB.addonBridge.restock. MelloUI Restock is read only.
             ForeverRestock   = true,
