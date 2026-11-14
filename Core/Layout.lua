@@ -236,6 +236,38 @@ function L:Width(parent)
     return math.floor(math.max(w - L.PAD * 2, 40))
 end
 
+-- Settings-drawer rows. The drawer is ~230px wide and the state text (OFF,
+-- ON, or a choice) is anchored to the row's right edge. A label with no
+-- width draws through that text. These insets match MakeToggleRow: the label
+-- starts 22px in, the state ends 8px in, and 8px is kept clear between them.
+L.TOGGLE_LABEL_LEFT = 22
+L.TOGGLE_STATE_RIGHT = 8
+L.TOGGLE_STATE_GAP = 8
+
+function L:ToggleLabelWidth(rowWidth, stateWidth)
+    local row = tonumber(rowWidth) or 0
+    local state = tonumber(stateWidth) or 0
+    if state < 1 then state = 28 end
+    local span = row - L.TOGGLE_LABEL_LEFT - L.TOGGLE_STATE_RIGHT - L.TOGGLE_STATE_GAP - state
+    return math.max(math.floor(span), 40)
+end
+
+--- Row height for a label that may wrap. minHeight is the single-line row.
+function L:WrappedRowHeight(textHeight, minHeight)
+    local minH = tonumber(minHeight) or 22
+    local h = tonumber(textHeight) or 0
+    if h < 1 then return math.floor(minH) end
+    return math.max(math.floor(minH), math.ceil(h + 6))
+end
+
+--- Vertical span of a caption plus OptionsSliderTemplate.
+--- The template's track is 17px. Low and High are GameFontHighlightSmall
+--- anchored under the track, so they occupy another line the 16px SetSize
+--- does not include. 14 caption + 4 gap + 17 track + 14 under-track + 4 gap.
+function L:SliderBlockHeight()
+    return 14 + 4 + 17 + 14 + 4
+end
+
 
 --- Hover tooltip on a pooled row, or none. Pooled frames keep their mouse
 --- state between uses, so this always sets it explicitly.
