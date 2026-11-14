@@ -343,6 +343,65 @@ backSame = snap.buttons[1] and again.buttons[1] and snap.buttons[1].frame == aga
 """)
 
 
+def load_professions(lua):
+    lua.execute(PRELUDE)
+    lua.execute(read("Core/Layout.lua"))
+    lua.execute(read("Modules/Character/ProfessionBatch.lua"))
+    lua.execute(read("Modules/Character/ProfessionBoard.lua"))
+    lua.execute(r"""
+content = CreateFrame("Frame")
+content:SetSize(667, 400)
+content:SetFrameLevel(4)
+content:SetFrameStrata("MEDIUM")
+content._laPane = true
+side = CreateFrame("Frame")
+side:SetSize(184, 400)
+side:SetFrameLevel(4)
+side._laPane = true
+ToonAge.ProfessionSkills = { Collect = function()
+    return { reader = "skillinfo", cards = { { id = 197, name = "Tailoring", rank = 23, max = 75 } } }
+end }
+ToonAge.UI = { contentChild = content, sideChild = side, activeTab = "professions" }
+local B = ToonAge.modules.ProfessionBoard
+local PB = ToonAge.ProfessionBatch
+local before = created
+B:Render(content, side)
+firstNew = created - before
+orphans = CountDescendants(content) + CountDescendants(side)
+local function boxes()
+    local n, marked, text = 0, 0, nil
+    for _, box in pairs(PB.boxes) do
+        n = n + 1
+        if box._laKind then marked = marked + 1 end
+        if box.fieldKey == "n" then text = box:GetText() end
+    end
+    return n, marked, text
+end
+boxCount, marked, _ = boxes()
+PB.boxes.n:SetText("7")
+Rebuild(content)
+Rebuild(side)
+local again = created
+B:Render(content, side)
+secondNew = created - again
+orphans2 = CountDescendants(content) + CountDescendants(side)
+boxCount2, marked2, kept = boxes()
+""")
+
+
+def test_professions():
+    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
+    load_professions(lua)
+    g = lua.globals()
+    check("profession form has 14 fields", g.boxCount, 14)
+    check("profession fields are marked reused", g.marked, 14)
+    check("first profession render reports 0 orphans", g.orphans, 0)
+    check("profession redraw creates no frames", g.secondNew, 0)
+    check("profession redraw reports 0 orphans", g.orphans2, 0)
+    check("profession redraw keeps 14 fields", g.boxCount2, 14)
+    check("profession redraw keeps the typed batch size", g.kept, "7")
+
+
 def test_talents():
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     load_talents(lua)
@@ -367,6 +426,7 @@ def test_talents():
 
 def main():
     test_talents()
+    test_professions()
     passed = sum(_results)
     total = len(_results)
     print(f"\n{passed}/{total} passed")
