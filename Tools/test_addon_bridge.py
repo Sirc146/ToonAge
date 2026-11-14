@@ -430,7 +430,9 @@ def test_sources_and_tocs():
     check("self-test has an addon bridge suite", 'id = "bridge"' in harness, True)
 
     init = read("Core/Init.lua")
-    check("addon bridge is engine-exempt", "AddonBridge = true" in init[init.index("local ENGINE_MODULES"):init.index("local SAFE_MODE_KEEP")], True)
+    check("addon bridge is not engine-exempt",
+          "AddonBridge = true" in init[init.index("local ENGINE_MODULES"):init.index("local SAFE_MODE_KEEP")],
+          False)
 
     for toc in sorted(ROOT.glob("ToonAge*.toc")):
         text = toc.read_text(encoding="utf-8")

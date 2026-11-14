@@ -138,7 +138,9 @@ def test_scaffolds_inert():
     for mod in ("ErrorLog", "Settings", "ContextAction", "XPTracker", "GatherTracker",
                 "RestOptimizer", "DeathRecovery",
                 "ForeverScrolls", "ForeverCastLog", "ProfessionBoard",
-                "Arrow", "MapPins", "ForeverPins"):
+                "Arrow", "MapPins", "ForeverPins",
+                # ForeverRestock writes the standalone list this module owns.
+                "AddonBridge"):
         check(f"forever allows {mod}",   ta.ModuleInProfile(ta, mod), True)
     # What does not: anything driven by Data/Retail values that are wrong for
     # Vanilla-era content.
@@ -236,6 +238,64 @@ def load_init_with_flavor(project_id, interface_code):
     return lua, ta
 
 
+def _engine_names(src, marker):
+    import re
+    i = src.index(marker)
+    blk = src[i:src.index("}", i)]
+    return set(re.findall(r"(\w+)\s*=\s*true", blk))
+
+
+def test_addonbridge_profile_gate():
+    """AddonBridge follows the profile, the same as every other product module.
+
+    Forever Restock writes through it, so the Forever profile lists it and
+    Init runs. A scaffold that does not list it must not initialise it, and
+    GetModule must not hand it out. The engine exemption is what let a module
+    outside the profile start anyway; the self-test's ENGINE mirror is the
+    contract that exemption has to match.
+    """
+    section("AddonBridge is profile-gated, not engine-exempt")
+    init = _read("Core/Init.lua")
+    harness = _read("Modules/Infrastructure/TestHarness.lua")
+    init_engine = _engine_names(init, "local ENGINE_MODULES")
+    harness_engine = _engine_names(harness, "local ENGINE =")
+    check("Init ENGINE_MODULES omits AddonBridge", "AddonBridge" in init_engine, False)
+    check("self-test ENGINE mirror matches Init",
+          sorted(init_engine), sorted(harness_engine))
+
+    for pid, ic, name, listed in (
+        (1, 16001, "forever", True),
+        (5, 20506, "tbc", True),
+        (19, 50504, "mists", True),
+        (2, 11507, "vanilla", False),
+    ):
+        _, ta = load_profile(pid, ic)
+        check(f"{name} ModuleInProfile(AddonBridge)",
+              ta.ModuleInProfile(ta, "AddonBridge"), listed)
+
+    lua, ta = load_init_with_flavor(1, 16001)
+    lua.execute("""
+        _bridgeInit = false
+        ToonAge:RegisterModule("AddonBridge", { Init = function() _bridgeInit = true end })
+    """)
+    ta.InitModules(ta)
+    check("forever: AddonBridge Init ran", lua.globals()._bridgeInit, True)
+    check("forever: GetModule reaches AddonBridge",
+          ta.GetModule(ta, "AddonBridge") is not None, True)
+
+    lua, ta = load_init_with_flavor(2, 11507)
+    lua.execute("""
+        _bridgeInit = false
+        ToonAge:RegisterModule("AddonBridge", { Init = function() _bridgeInit = true end })
+    """)
+    ta.InitModules(ta)
+    mod = ta.modules.AddonBridge
+    check("vanilla: AddonBridge Init did not run", lua.globals()._bridgeInit, False)
+    check("vanilla: AddonBridge profile-skipped", mod._profileSkipped, True)
+    check("vanilla: GetModule hides AddonBridge",
+          ta.GetModule(ta, "AddonBridge") is None, True)
+
+
 def test_initmodules_gate():
     section("InitModules skips profile-disallowed modules")
     # On retail (allow-all), a fake module initialises.
@@ -266,6 +326,7 @@ def main():
     test_nonretail_explicit_list()
     test_scaffolds_inert()
     test_unknown_fallback()
+    test_addonbridge_profile_gate()
     test_initmodules_gate()
 
     passed = sum(1 for ok, *_ in _results if ok)
