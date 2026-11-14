@@ -118,6 +118,91 @@ function Arrow.SameArea(currentMap, coordMap)
     return false
 end
 
+-- Dungeon maps are instances. Continent maps are mapType 2.
+Arrow.MAP_TYPE_CONTINENT = 2
+Arrow.MAP_TYPE_DUNGEON = 4
+-- Same-map arrival only. A nil distance never clears.
+Arrow.CLEAR_ON_ARRIVAL_YARDS = 8
+
+--- Walk parents to a continent id. The second return is "instance" when the
+--- start map is a dungeon, "continent" when a continent map was found.
+function Arrow.WalkContinent(mapID, infoFn)
+    if type(mapID) ~= "number" or mapID <= 0 or type(infoFn) ~= "function" then
+        return nil, nil
+    end
+    local seen, id, instance = {}, mapID, false
+    for _ = 1, 8 do
+        if seen[id] then break end
+        seen[id] = true
+        local info = infoFn(id)
+        if type(info) ~= "table" then
+            return nil, instance and "instance" or nil
+        end
+        if info.mapType == Arrow.MAP_TYPE_DUNGEON then instance = true end
+        if info.mapType == Arrow.MAP_TYPE_CONTINENT then
+            return id, instance and "instance" or "continent"
+        end
+        local parent = info.parentMapID
+        if type(parent) ~= "number" or parent <= 0 then
+            return nil, instance and "instance" or nil
+        end
+        id = parent
+    end
+    return nil, instance and "instance" or nil
+end
+
+--- "same", "other", "instance", or "unknown". The same map id is "same"
+--- unless that map itself is a dungeon.
+function Arrow.ContinentRelation(playerMap, targetMap, infoFn)
+    local _, pKind = Arrow.WalkContinent(playerMap, infoFn)
+    local _, tKind = Arrow.WalkContinent(targetMap, infoFn)
+    if pKind == "instance" or tKind == "instance" then return "instance" end
+    if type(playerMap) == "number" and playerMap == targetMap and playerMap > 0 then
+        return "same"
+    end
+    local pCont = select(1, Arrow.WalkContinent(playerMap, infoFn))
+    local tCont = select(1, Arrow.WalkContinent(targetMap, infoFn))
+    if type(pCont) ~= "number" or type(tCont) ~= "number" then return "unknown" end
+    if pCont == tCont then return "same" end
+    return "other"
+end
+
+function Arrow.ShouldDrawMarker(relation)
+    return relation == "same"
+end
+
+function Arrow.OtherContinentText(zone)
+    if type(zone) ~= "string" or zone == "" then zone = "that zone" end
+    return "Other continent: " .. zone
+end
+
+--- Yards and bearing from world north/west. Nil when either point is missing.
+function Arrow.WorldBearing(pN, pW, tN, tW)
+    if type(pN) ~= "number" or type(pW) ~= "number" then return nil, nil end
+    if type(tN) ~= "number" or type(tW) ~= "number" then return nil, nil end
+    if pN ~= pN or pW ~= pW or tN ~= tN or tW ~= tW then return nil, nil end
+    local dN, dW = tN - pN, tW - pW
+    return math.sqrt(dN * dN + dW * dW), math.atan2(dW, dN)
+end
+
+function Arrow.ShouldAutoClear(sameMap, yards, radius)
+    if sameMap ~= true then return false end
+    if type(yards) ~= "number" or yards ~= yards or yards < 0 then return false end
+    if type(radius) ~= "number" then return false end
+    return yards <= radius
+end
+
+function Arrow.DropPersistedWaypoint(db)
+    if type(db) ~= "table" then return end
+    db.activeWaypoint = nil
+    db.waypoint = nil
+    if type(db.arrow) == "table" then
+        db.arrow.waypoint = nil
+        db.arrow.activeWaypoint = nil
+        db.arrow.manualWaypoint = nil
+    end
+end
+
 -- Shortest-path angle interpolation (avoids spinning the long way around
 -- when the target bearing crosses the -pi/pi wrap boundary).
 local function LerpAngle(current, target, factor)
@@ -355,25 +440,20 @@ function Arrow:InitFrame()
         if TA.charDB then TA.charDB.arrow = TA.charDB.arrow or {}; TA.charDB.arrow.size = size end
     end)
 
-    -- Right-click to toggle drag lock
+    -- Right-click opens the menu. Lock stays a menu entry. Clear is a button.
     f:RegisterForClicks("RightButtonUp")
     f:SetScript("OnClick", function(fr, button)
         if button ~= "RightButton" then return end
-        TA.charDB.arrow = TA.charDB.arrow or {}
-        TA.charDB.arrow.locked = not TA.charDB.arrow.locked
-        if TA.charDB.arrow.locked then
-            fr:RegisterForDrag()
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Locked. Right-click to unlock.")
-        else
-            fr:RegisterForDrag("LeftButton")
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Unlocked. Drag to move.")
-        end
+        self:ToggleWaypointMenu(fr)
     end)
+    self:BuildClearButton(f)
+    self:BuildWaypointMenu(f)
 
     f:SetScript("OnEnter", function(fr)
         GameTooltip:SetOwner(fr, "ANCHOR_BOTTOM")
         GameTooltip:SetText("Guide Arrow", 1, 0.82, 0)
         GameTooltip:AddLine("Right-click: Lock / Unlock", 1, 1, 1)
+        GameTooltip:AddLine("Clear: remove this waypoint", 1, 1, 1)
         GameTooltip:AddLine("Scroll: Resize", 1, 1, 1)
         GameTooltip:AddLine("Drag: Move", 0.7, 0.7, 0.7)
         U.AddEstimatedTip(GameTooltip, fr._estimateStep)
@@ -585,6 +665,13 @@ function Arrow:Tick(f)
         if isSameArea then
             -- Same area — treat coordMap as current map for bearing calculation
             coordMap = currentMap
+        elseif TA.flavor == "forever" and isManualWP then
+            local infoFn = TA.Compat and TA.Compat.MapInfo
+            local relation = Arrow.ContinentRelation(currentMap, coordMap, infoFn)
+            if not Arrow.ShouldDrawMarker(relation) then
+                self:ShowOtherContinent(f, manual and manual.zone)
+                return
+            end
         elseif not (TA.flavor == "forever" and isManualWP) then
             -- ── TRAVEL ROUTER INTERCEPT ───────────────────────────────────
             local TR = TA:GetModule("TravelRouter")
@@ -667,12 +754,24 @@ function Arrow:Tick(f)
     local yards, bearing
     -- A world north of 0 is a real position. Compare against nil, not truth.
     if pCont ~= nil and pCont == tCont and pN ~= nil and pW ~= nil and tN ~= nil and tW ~= nil then
-        local dN = tN - pN
-        local dW = tW - pW
-        yards = math.sqrt(dN * dN + dW * dW)
-        bearing = math.atan2(dW, dN)
+        yards, bearing = Arrow.WorldBearing(pN, pW, tN, tW)
+    elseif TA.flavor == "forever" and isManualWP and coordMap ~= 0 and coordMap ~= currentMap then
+        -- Different maps do not share a 0-1 grid. A fraction delta aims at
+        -- nothing and the beam then sits in front of the player.
+        yards, bearing = nil, nil
     else
         bearing = Arrow.Bearing(dx, dy)
+    end
+    if TA.flavor == "forever" and isManualWP
+        and Arrow.ShouldAutoClear(manual and manual.map == currentMap, yards, Arrow.CLEAR_ON_ARRIVAL_YARDS) then
+        self:ClearActiveWaypoint("arrival")
+        return
+    end
+    if TA.flavor == "forever" and isManualWP and bearing == nil and coordMap ~= currentMap then
+        self:HideBeam(f)
+        if f.distF then f.distF:SetText("") end
+        if f.titleF then f.titleF:SetText(label) end
+        return
     end
     local facing = ResolveFacing(self, px, py, pN, pW)
     self._lastPx, self._lastPy = px, py
@@ -887,6 +986,10 @@ function Arrow:SetWaypoint(mapID, x, y, title)
     }
     self._arrived = false
     self._arrivedTime = nil
+    self._otherSaid = nil
+    self:ReleaseExternalWaypoints()
+    Arrow.DropPersistedWaypoint(TA.charDB)
+    Arrow.DropPersistedWaypoint(TA.db)
 
     -- Auto-show the arrow when setting a waypoint
     if self.frame and not self.frame:IsVisible() then
@@ -895,11 +998,153 @@ function Arrow:SetWaypoint(mapID, x, y, title)
     end
 end
 
---- Clear the current manual waypoint, returning to guide-driven navigation.
-function Arrow:ClearWaypoint()
+--- Remove only the TomTom pin and user waypoint this addon created.
+function Arrow:ReleaseExternalWaypoints()
+    if self._tomtomUid ~= nil and type(TomTom) == "table" and type(TomTom.RemoveWaypoint) == "function" then
+        pcall(TomTom.RemoveWaypoint, TomTom, self._tomtomUid)
+    end
+    self._tomtomUid = nil
+    if self._userWaypointSet and TA.Compat and type(TA.Compat.ClearUserWaypoint) == "function" then
+        TA.Compat.ClearUserWaypoint()
+    end
+    self._userWaypointSet = nil
+end
+
+function Arrow:ToggleLock()
+    if not TA.charDB then return end
+    TA.charDB.arrow = TA.charDB.arrow or {}
+    TA.charDB.arrow.locked = not TA.charDB.arrow.locked
+    local fr = self.frame
+    if TA.charDB.arrow.locked then
+        if fr and fr.RegisterForDrag then fr:RegisterForDrag() end
+        if TA.Raw and TA.LOG then
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Locked. Right-click to unlock.")
+        end
+    else
+        if fr and fr.RegisterForDrag then fr:RegisterForDrag("LeftButton") end
+        if TA.Raw and TA.LOG then
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Unlocked. Drag to move.")
+        end
+    end
+end
+
+function Arrow:BuildClearButton(f)
+    if not f or type(f.CreateFontString) ~= "function" or type(CreateFrame) ~= "function" then return end
+    if f.clearBtn then return end
+    local b = CreateFrame("Button", "TAWaypointArrowClear", f)
+    b:SetSize(44, 16)
+    b:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    if fs then
+        fs:SetPoint("CENTER")
+        fs:SetText("Clear")
+    end
+    b:SetScript("OnClick", function()
+        self:ClearActiveWaypoint("button")
+    end)
+    f.clearBtn = b
+end
+
+function Arrow:BuildWaypointMenu(f)
+    if not f or f.menu or type(CreateFrame) ~= "function" then return end
+    local menu = CreateFrame("Frame", "TAWaypointArrowMenu", f)
+    menu:SetSize(110, 44)
+    if menu.SetFrameStrata then menu:SetFrameStrata("DIALOG") end
+    menu:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
+    menu:Hide()
+    local function item(text, y, click)
+        local b = CreateFrame("Button", nil, menu)
+        b:SetSize(102, 18)
+        b:SetPoint("TOPLEFT", 4, y)
+        local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        if fs then
+            fs:SetPoint("LEFT", 4, 0)
+            fs:SetText(text)
+        end
+        b.label = fs
+        b:SetScript("OnClick", click)
+        return b
+    end
+    menu.lockBtn = item("Lock", -2, function()
+        self:ToggleLock()
+        menu:Hide()
+    end)
+    menu.clearBtn = item("Clear", -22, function()
+        self:ClearActiveWaypoint("menu")
+        menu:Hide()
+    end)
+    f.menu = menu
+end
+
+function Arrow:ToggleWaypointMenu(f)
+    self:BuildWaypointMenu(f)
+    if not f.menu then return end
+    if f.menu:IsShown() then
+        f.menu:Hide()
+        return
+    end
+    local locked = TA.charDB and TA.charDB.arrow and TA.charDB.arrow.locked
+    if f.menu.lockBtn and f.menu.lockBtn.label and f.menu.lockBtn.label.SetText then
+        f.menu.lockBtn.label:SetText(locked and "Unlock" or "Lock")
+    end
+    f.menu:Show()
+end
+
+function Arrow:HideBeam(f)
+    f = f or self.frame
+    if not f then return end
+    if f.beamTex and f.beamTex.Hide then f.beamTex:Hide() end
+    if f.ringTex and f.ringTex.Hide then f.ringTex:Hide() end
+    if f.flagTex and f.flagTex.Hide then f.flagTex:Hide() end
+    if f.arrowTex and f.arrowTex.Hide then f.arrowTex:Hide() end
+    if f.arrivedTex and f.arrivedTex.Hide then f.arrivedTex:Hide() end
+    if f.pill and f.pill.Hide then f.pill:Hide() end
+end
+
+function Arrow:ShowOtherContinent(f, zone)
+    local text = Arrow.OtherContinentText(zone)
+    self:HideBeam(f)
+    if f.distF then f.distF:SetText("") end
+    if f.etaF and f.etaF.SetText then f.etaF:SetText("") end
+    if f.titleF then f.titleF:SetText(text) end
+    if U and U.RevealWaypoint then U.RevealWaypoint(f, true) end
+    if not self._otherSaid and TA.Raw and TA.LOG then
+        self._otherSaid = true
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r " .. text)
+    end
+end
+
+--- Clear the manual pin, the beam, the screen arrow, and only the TomTom
+--- and user waypoint this addon created. Drops any saved waypoint key.
+function Arrow:ClearActiveWaypoint(reason)
     self.manualWaypoint = nil
     self._arrived = false
     self._arrivedTime = nil
+    self._otherSaid = nil
+    self:ReleaseExternalWaypoints()
+    Arrow.DropPersistedWaypoint(TA.charDB)
+    Arrow.DropPersistedWaypoint(TA.db)
+    if TA.charDB and type(TA.charDB.arrow) == "table" then
+        TA.charDB.arrow.visible = false
+    end
+    self:HideBeam(self.frame)
+    if self.frame and self.frame.Hide then self.frame:Hide() end
+    if self.frame and self.frame.menu and self.frame.menu.Hide then self.frame.menu:Hide() end
+    local MP = TA.GetModule and TA:GetModule("MapPins")
+    if MP then MP._foreverPin = nil end
+    if MP and type(MP.Refresh) == "function" then MP:Refresh() end
+    local msg = "Waypoint cleared."
+    if reason == "arrival" then
+        msg = string.format("Waypoint cleared: within %d yd.", Arrow.CLEAR_ON_ARRIVAL_YARDS)
+    end
+    if TA.Raw and TA.LOG then
+        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r " .. msg)
+    end
+end
+
+--- Clear the current manual waypoint, returning to guide-driven navigation.
+function Arrow:ClearWaypoint()
+    self:ClearActiveWaypoint("command")
 end
 
 --- A display coordinate is 0-100. "45,2" is 45.2. A token outside that range
@@ -994,8 +1239,7 @@ function Arrow:ParseWayCommand(args)
     -- Handle subcommands
     local first = tokens[1] and tokens[1]:lower()
     if first == "clear" or first == "remove" or first == "off" then
-        self:ClearWaypoint()
-        TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Manual waypoint cleared.")
+        self:ClearActiveWaypoint("command")
         return
     end
 
@@ -1120,6 +1364,8 @@ end
 
 function Arrow:Init()
     self:InitFrame()
+    Arrow.DropPersistedWaypoint(TA.charDB)
+    Arrow.DropPersistedWaypoint(TA.db)
     local saved = TA.charDB and TA.charDB.arrow
     if saved and saved.visible
         and not (U.DeferToZygor and U.DeferToZygor())

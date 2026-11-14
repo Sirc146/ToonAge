@@ -80,6 +80,23 @@ local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
     return y - 26
 end
 
+local function MakeActionRow(parent, y, width, label, onClick)
+    local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    row:SetSize(width - 28, 22)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y)
+    row:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+    row:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
+    row:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.8)
+    local lbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
+    lbl:SetText(label)
+    lbl:SetTextColor(1, 0.82, 0, 1)
+    lbl:SetPoint("LEFT", row, "LEFT", 8, 0)
+    row:SetScript("OnClick", onClick)
+    table.insert(Settings.frames, row)
+    return y - 26
+end
+
 --- A row that cycles through a fixed set of values on click, for settings with
 --- more than two states. Mirrors MakeToggleRow's (parent, y, width, ...) -> newY
 --- convention so it drops into the same layout flow.
@@ -237,6 +254,11 @@ function Settings:Render(content, sidebar)
         end, function()
             local A = TA:GetModule("Arrow")
             if A then A:Toggle() end
+        end)
+
+        y = MakeActionRow(content, y, w, "Clear waypoint", function()
+            local A = TA:GetModule("Arrow")
+            if A and A.ClearActiveWaypoint then A:ClearActiveWaypoint("settings") end
         end)
 
         y = MakeToggleRow(content, y, w, "NavHud (transparent FarmHud-style overlay with nodes & waypoints)", function()

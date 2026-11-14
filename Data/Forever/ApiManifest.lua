@@ -42,6 +42,7 @@ TA.Data.ApiManifest = {
         ["C_Item.RequestLoadItemDataByID"] = { "Core/Utils.lua" },
         ["C_MajorFactions.GetMajorFactionData"] = { "Modules/Harvest/Packs/Forever.lua", "Modules/Progression/FactionTracker.lua" },
         ["C_Map.CanSetUserWaypointOnMap"] = { "Core/Compat/API.lua", "Modules/Forever/ScrollProbe.lua" },
+        ["C_Map.ClearUserWaypoint"] = { "Core/Compat/API.lua" },
         ["C_Map.GetBestMapForUnit"] = { "Core/Compat/API.lua", "Core/Utils.lua", "Modules/Automation/DeathRecovery.lua", "Modules/Farming/GatherTracker.lua", "Modules/Forever/ScrollProbe.lua", "Modules/Infrastructure/CoordHarvester.lua", "Modules/Infrastructure/Harvester.lua", "Modules/Navigation/Arrow.lua" },
         ["C_Map.GetMapInfo"] = { "Core/Compat/API.lua", "Modules/Infrastructure/CoordHarvester.lua", "Modules/Navigation/Arrow.lua" },
         ["C_Map.GetMapPosFromWorldPos"] = { "Modules/Navigation/Arrow.lua" },
