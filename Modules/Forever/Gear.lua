@@ -1118,6 +1118,10 @@ local function EnchantID(link)
 end
 M._EnchantID = EnchantID
 
+-- Declared here so RecordRecipes, which is above the definitions, closes
+-- over these locals rather than a global.
+local BlankProfession, NamedProfession
+
 --- Read the open profession window into charDB.recipes[profession].
 function M:RecordRecipes()
     local c = TA.charDB
@@ -1136,8 +1140,10 @@ function M:RecordRecipes()
                 end
             end
             local base = TS.GetBaseProfessionInfo and Try(TS.GetBaseProfessionInfo)
-            prof = type(base) == "table" and base.professionName or nil
-            if not prof and _G.GetTradeSkillLine then prof = Try(GetTradeSkillLine) end
+            -- An empty professionName is not a name. Falling through lets the
+            -- skill line supply "Tailoring" instead of saving a second bucket.
+            prof = type(base) == "table" and NamedProfession(base.professionName) or nil
+            if not prof and _G.GetTradeSkillLine then prof = NamedProfession(Try(GetTradeSkillLine)) end
         end
     end
     if not api and _G.GetNumTradeSkills then
@@ -1151,7 +1157,7 @@ function M:RecordRecipes()
                         link = Try(_G.GetTradeSkillItemLink, i) }
                 end
             end
-            prof = Try(_G.GetTradeSkillLine)
+            prof = NamedProfession(Try(_G.GetTradeSkillLine))
         end
     end
     if not api and _G.GetNumCrafts then
@@ -1165,14 +1171,17 @@ function M:RecordRecipes()
                         link = Try(_G.GetCraftItemLink, i) }
                 end
             end
-            prof = Try(_G.GetCraftDisplaySkillLine)
+            prof = NamedProfession(Try(_G.GetCraftDisplaySkillLine))
         end
     end
+    -- "" keeps a read the client has not named yet. Dropping it would lose
+    -- the list. The same items are merged with the named read when it arrives.
+    prof = NamedProfession(prof) or ""
     c.recipeProbe = (date and date("%Y-%m-%d %H:%M") or "?") .. " | " .. tostring(api or "no trade skill API answered")
-        .. " | profession=" .. tostring(prof) .. " recipes=" .. #list
-    if not (api and prof and #list > 0) then return end
+        .. " | profession=" .. (prof ~= "" and prof or "?") .. " recipes=" .. #list
+    if not (api and #list > 0) then return end
     c.recipes = c.recipes or {}
-    c.recipes[tostring(prof)] = { at = time and time() or nil, api = api, list = list }
+    c.recipes[prof] = { at = time and time() or nil, api = api, list = list }
     if TA.QueueUIRefresh then TA:QueueUIRefresh("RECIPES_RECORDED") end
 end
 
@@ -1181,6 +1190,98 @@ local function QueueRecipes()
     if recipePending then return end
     recipePending = true
     C_Timer.After(0.5, function() recipePending = false; pcall(M.RecordRecipes, M) end)
+end
+
+--- A profession label the client did not actually give.
+function BlankProfession(name)
+    if type(name) ~= "string" then return true end
+    local trimmed = name:match("^%s*(.-)%s*$")
+    return trimmed == nil or trimmed == "" or trimmed == "nil"
+end
+
+function NamedProfession(name)
+    if BlankProfession(name) then return nil end
+    return (name:match("^%s*(.-)%s*$"))
+end
+
+local function ItemIDFromLink(link)
+    if type(link) ~= "string" then return nil end
+    return tonumber(link:match("item:(%-?%d+)"))
+end
+
+local function PreferProfession(a, b)
+    local aNamed, bNamed = not BlankProfession(a), not BlankProfession(b)
+    if aNamed and not bNamed then return a end
+    if bNamed and not aNamed then return b end
+    if aNamed and bNamed and a ~= b then
+        if a:find(b, 1, true) then return a end
+        if b:find(a, 1, true) then return b end
+        return a .. " / " .. b
+    end
+    if aNamed then return a end
+    return ""
+end
+
+--- One row per item. Item id wins; name and slot cover a link with no id.
+--- The profession is kept when only one row has it. Material count keeps the
+--- higher number, so a named row does not wipe a count the other row had.
+function M.MergeCraftRows(rows)
+    local order, byKey = {}, {}
+    local function adopt(prev, row)
+        local prevBlank = BlankProfession(prev.prof)
+        local rowNamed = not BlankProfession(row.prof)
+        prev.prof = PreferProfession(prev.prof, row.prof)
+        if (tonumber(row.avail) or 0) > (tonumber(prev.avail) or 0) then prev.avail = row.avail end
+        if (type(prev.link) ~= "string" or prev.link == "") and type(row.link) == "string" then
+            prev.link = row.link
+        end
+        if rowNamed and prevBlank and type(row.v) == "table" then prev.v = row.v end
+        if (tonumber(row.at) or 0) > (tonumber(prev.at) or 0) then prev.at = row.at end
+    end
+    for _, row in ipairs(rows or {}) do
+        if type(row) == "table" then
+            local v = row.v
+            local id = ItemIDFromLink(row.link)
+            local name = type(v) == "table" and v.name or nil
+            local slot = type(v) == "table" and v.slot or nil
+            local ns = (type(name) == "string" and name ~= "") and (name .. "\0" .. (slot or "")) or nil
+            local idKey = id and ("id:" .. id) or nil
+            local nsKey = ns and ("ns:" .. ns) or nil
+            local prev = (idKey and byKey[idKey]) or (nsKey and byKey[nsKey])
+            if not prev then
+                if BlankProfession(row.prof) then row.prof = "" end
+                order[#order + 1] = row
+                prev = row
+            else
+                adopt(prev, row)
+            end
+            if idKey then byKey[idKey] = prev end
+            if nsKey then byKey[nsKey] = prev end
+        end
+    end
+    return order
+end
+
+--- Recipe products that beat what you wear, one row per item.
+function M.CraftRows(recipes, evaluate)
+    local craft = {}
+    if type(recipes) ~= "table" or type(evaluate) ~= "function" then return craft end
+    for prof, rec in pairs(recipes) do
+        local list = type(rec) == "table" and rec.list or nil
+        if type(list) == "table" then
+            for _, r in ipairs(list) do
+                if type(r) == "table" and type(r.link) == "string" then
+                    local v = evaluate(r.link)
+                    if type(v) == "table" and v.verdict and v.verdict ~= "unchecked" then
+                        craft[#craft + 1] = {
+                            v = v, avail = r.avail, prof = prof, at = rec.at, link = r.link,
+                        }
+                    end
+                end
+            end
+        end
+    end
+    return M.MergeCraftRows(craft)
 end
 
 local function Ago(at)
@@ -1261,15 +1362,12 @@ RenderEnchants = function(content, y)
     end
 
     -- Craftable upgrades: every recipe product through the shared verdict.
-    local ctx, craft = JudgeContext(), {}
-    for prof, rec in pairs(recipes) do
-        for _, r in ipairs(rec.list or {}) do
-            local v = r.link and EvaluateLink(r.link, ctx)
-            if v and v.verdict ~= "unchecked" then
-                craft[#craft + 1] = { v = v, avail = r.avail, prof = prof, at = rec.at }
-            end
-        end
-    end
+    -- The same window can be recorded twice, once before the client names the
+    -- profession and once as Tailoring. Those used to list each item twice.
+    local ctx = JudgeContext()
+    local craft = M.CraftRows(recipes, function(link)
+        return EvaluateLink(link, ctx)
+    end)
     local function NetNegative(diff)
         if not diff or diff == "" then return false end
         local anyPos = false
@@ -1293,8 +1391,9 @@ RenderEnchants = function(content, y)
         if c.avail and c.avail > 0 then
             note = "materials for " .. c.avail .. ((note ~= "") and (" · " .. note) or "")
         end
+        local who = (type(c.prof) == "string" and c.prof ~= "") and c.prof or nil
         y = L:DataRow(content, y, {
-            label = c.v.slot .. " — " .. c.prof,
+            label = who and (c.v.slot .. " — " .. who) or (c.v.slot or ""),
             value = U.MarkItemName(Colored(c.v.name, c.v.quality),
                 (c.v.verdict == "better") and "upgrade" or "sidegrade", true),
             note = note,
