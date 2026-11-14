@@ -33,6 +33,37 @@ local function MakeSection(parent, y, width, title)
     return y - 22
 end
 
+--- Keep the label in the space left of the state text and grow the row
+--- when that label wraps. Shared arithmetic lives on TA.Layout.
+local function FitStateLabel(row, lbl, statusLbl)
+    local L = TA.Layout
+    local stateW = 28
+    if statusLbl.GetStringWidth then
+        local measured = statusLbl:GetStringWidth()
+        if type(measured) == "number" and measured > 0 then stateW = measured end
+    end
+    local labelW = 40
+    if L and L.ToggleLabelWidth then
+        labelW = L:ToggleLabelWidth(row:GetWidth(), stateW)
+    end
+    lbl:ClearAllPoints()
+    lbl:SetPoint("LEFT", row, "LEFT", L and L.TOGGLE_LABEL_LEFT or 22, 0)
+    lbl:SetWidth(labelW)
+    if lbl.SetWordWrap then lbl:SetWordWrap(true) end
+    lbl:SetJustifyH("LEFT")
+    if lbl.SetHeight then lbl:SetHeight(400) end
+    local textH = (lbl.GetStringHeight and lbl:GetStringHeight()) or 14
+    local rowH = 22
+    if L and L.WrappedRowHeight then
+        rowH = L:WrappedRowHeight(textH, 22)
+    elseif type(textH) == "number" and textH + 6 > rowH then
+        rowH = math.ceil(textH + 6)
+    end
+    if lbl.SetHeight then lbl:SetHeight(math.max(math.floor(textH or 14), 12)) end
+    row:SetHeight(rowH)
+    return rowH
+end
+
 local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
     row:SetSize(width - 28, 22)
@@ -49,12 +80,12 @@ local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
     lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
     lbl:SetText(label)
     lbl:SetTextColor(0.88, 0.83, 0.65, 1)
-    lbl:SetPoint("LEFT", row, "LEFT", 22, 0)
 
     local statusLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     statusLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
     statusLbl:SetPoint("RIGHT", row, "RIGHT", -8, 0)
 
+    local rowH = 22
     local function Refresh()
         local on = getValue()
         if on then
@@ -66,6 +97,7 @@ local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
             statusLbl:SetText("|cFFFF4444OFF|r")
             row:SetBackdropBorderColor(0.30, 0.25, 0.08, 0.4)
         end
+        rowH = FitStateLabel(row, lbl, statusLbl)
     end
 
     row:SetScript("OnClick", function()
@@ -77,7 +109,7 @@ local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
 
     Refresh()
     table.insert(Settings.frames, row)
-    return y - 26
+    return y - rowH - 4
 end
 
 --- A row that cycles through a fixed set of values on click, for settings with
@@ -101,7 +133,6 @@ local function MakeChoiceRow(parent, y, width, label, options, getValue, setValu
     lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
     lbl:SetText(label)
     lbl:SetTextColor(0.88, 0.83, 0.65, 1)
-    lbl:SetPoint("LEFT", row, "LEFT", 22, 0)
 
     local statusLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     statusLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
@@ -114,8 +145,10 @@ local function MakeChoiceRow(parent, y, width, label, options, getValue, setValu
         return 1
     end
 
+    local rowH = 22
     local function Refresh()
         statusLbl:SetText(options[IndexOf(getValue())].text)
+        rowH = FitStateLabel(row, lbl, statusLbl)
     end
 
     row:SetScript("OnClick", function()
@@ -129,43 +162,59 @@ local function MakeChoiceRow(parent, y, width, label, options, getValue, setValu
 
     Refresh()
     table.insert(Settings.frames, row)
-    return y - 26
+    return y - rowH - 4
 end
 
 --- A labeled slider row for numeric settings (scale, opacity, etc.).
 --- Mirrors MakeToggleRow's (parent, y, width, ...) -> newY convention.
+local function QuietSliderText(slider)
+    for _, key in ipairs({ "Low", "High", "Text" }) do
+        local fs = slider[key]
+        if fs then
+            if fs.SetText then fs:SetText("") end
+            if fs.Hide then fs:Hide() end
+        end
+    end
+end
+
 local function MakeSliderRow(parent, y, width, label, minVal, maxVal, step, getValue, setValue)
+    local blockH = (TA.Layout and TA.Layout.SliderBlockHeight and TA.Layout:SliderBlockHeight()) or 53
     local lbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
     lbl:SetTextColor(0.88, 0.83, 0.65, 1)
     lbl:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y)
+    lbl:SetWidth(math.max(width - 28, 40))
+    if lbl.SetWordWrap then lbl:SetWordWrap(true) end
+    lbl:SetJustifyH("LEFT")
     table.insert(Settings.frames, lbl)
 
     local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
     slider:SetOrientation("HORIZONTAL")
-    slider:SetSize(width - 100, 16)
-    slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y - 16)
+    slider:SetSize(width - 100, 17)
+    -- Caption line (14) plus the gap before the track. The rest of blockH is
+    -- the track and the Low/High line the template anchors under it.
+    slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y - 18)
     slider:SetMinMaxValues(minVal, maxVal)
     slider:SetValueStep(step)
     slider:SetObeyStepOnDrag(true)
-    if slider.Low  then slider.Low:SetText("")  end
-    if slider.High then slider.High:SetText("") end
-    if slider.Text then slider.Text:SetText("") end
+    QuietSliderText(slider)
     table.insert(Settings.frames, slider)
 
     local function Refresh()
         local v = getValue()
         slider:SetValue(v)
         lbl:SetText(label .. "  |cFFFFD100" .. string.format("%.2f", v) .. "|r")
+        QuietSliderText(slider)
     end
 
     slider:SetScript("OnValueChanged", function(self, v)
         setValue(v)
         lbl:SetText(label .. "  |cFFFFD100" .. string.format("%.2f", v) .. "|r")
+        QuietSliderText(slider)
     end)
 
     Refresh()
-    return y - 36
+    return y - blockH
 end
 
 local function MakeInfoRow(parent, y, width, label, value)
