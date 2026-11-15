@@ -1591,6 +1591,26 @@ function C.RealZoneText()
     return v
 end
 
+--- name, mapType, parentMapID. Nil when the call is missing or not a table.
+function C.MapInfo(mapID)
+    if type(mapID) ~= "number" or mapID <= 0 then return nil end
+    if TA.HasAPI and not TA:HasAPI("C_Map.GetMapInfo") then return nil end
+    if not (C_Map and type(C_Map.GetMapInfo) == "function") then return nil end
+    local ok, info = pcall(C_Map.GetMapInfo, mapID)
+    if not ok or type(info) ~= "table" then return nil end
+    local name = type(info.name) == "string" and info.name ~= "" and info.name or nil
+    local mapType = type(info.mapType) == "number" and info.mapType or nil
+    local parent = type(info.parentMapID) == "number" and info.parentMapID or nil
+    return { name = name, mapType = mapType, parentMapID = parent }
+end
+
+--- Drop the user waypoint this addon set. False when the call is absent.
+function C.ClearUserWaypoint()
+    if TA.HasAPI and not TA:HasAPI("C_Map.ClearUserWaypoint") then return false end
+    if not (C_Map and type(C_Map.ClearUserWaypoint) == "function") then return false end
+    return pcall(C_Map.ClearUserWaypoint) and true or false
+end
+
 --- uiMapID, zone name. Either may be nil when that API is absent.
 function C.PlayerMap()
     local mapID, name

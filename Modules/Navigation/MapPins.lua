@@ -75,7 +75,13 @@ function MapPins.DataProvider:PlaceForeverPin()
     local map = self:GetMap()
     if type(map) ~= "table" or type(map.GetMapID) ~= "function" then return false end
     local okID, mapID = pcall(map.GetMapID, map)
-    if not okID or mapID ~= wp.map then return false end
+    if not okID or type(mapID) ~= "number" then return false end
+    local same = mapID == wp.map
+    if not same and type(wp.zone) == "string" and type(Arrow.MapName) == "function" then
+        local openName = Arrow.MapName(mapID)
+        same = type(openName) == "string" and openName:lower() == wp.zone:lower()
+    end
+    if not same then return false end
     if type(map.AcquirePin) ~= "function" then return false end
     local step = {
         type = wp.quest and "quest" or "npc",
@@ -83,8 +89,95 @@ function MapPins.DataProvider:PlaceForeverPin()
         questID = wp.questID,
     }
     local color = PIN_COLORS[step.type] or PIN_COLORS.default
-    pcall(map.AcquirePin, map, PIN_TEMPLATE, wp.x, wp.y, step, 1, color, true)
+    step.foreverPin = true
+    -- Acquire from Lua, not pcall(fn, ...). This client's AcquirePin forwards
+    -- its coordinates through the Lua 5.0 `arg` table, and a C pcall does not
+    -- install that table, so OnAcquired used to run with no x,y.
+    local pin
+    local function acquire()
+        pin = map:AcquirePin(PIN_TEMPLATE, wp.x, wp.y, step, 1, color, true)
+    end
+    local ok = pcall(acquire)
+    if ok and type(pin) == "table" then
+        -- OnAcquired may already have anchored. Do it again from the stored
+        -- target: a dropped `arg` leaves SetPosition(nil), which this canvas
+        -- draws at its center, on top of the player the view is following.
+        MapPins.FinishForeverPin(pin, wp.x, wp.y)
+    end
     return true
+end
+
+--- Pixel offset from the canvas TOPLEFT. x,y are 0-1, or 0-100 display
+--- coords. Nil when the canvas has no size, so the caller does not anchor at 0,0.
+function MapPins.CanvasOffset(width, height, x, y)
+    if type(width) ~= "number" or type(height) ~= "number" then return nil end
+    if width <= 0 or height <= 0 then return nil end
+    if type(x) ~= "number" or type(y) ~= "number" or x ~= x or y ~= y then return nil end
+    if math.abs(x) > 1 then x = x / 100 end
+    if math.abs(y) > 1 then y = y / 100 end
+    return x * width, -y * height
+end
+
+function MapPins.PinCanvas(pin)
+    if type(pin) ~= "table" or type(pin.GetMap) ~= "function" then return nil end
+    local ok, map = pcall(pin.GetMap, pin)
+    if not ok or type(map) ~= "table" or type(map.GetCanvas) ~= "function" then return nil end
+    local okC, canvas = pcall(map.GetCanvas, map)
+    if not okC or type(canvas) ~= "table" or type(canvas.GetWidth) ~= "function" then
+        return nil
+    end
+    return canvas
+end
+
+--- CENTER on the canvas TOPLEFT at the target. False when the canvas is not sized.
+function MapPins.AnchorPin(pin, x, y)
+    local canvas = MapPins.PinCanvas(pin)
+    if not canvas or type(pin.SetPoint) ~= "function" then return false end
+    local okW, width = pcall(canvas.GetWidth, canvas)
+    local okH, height = pcall(canvas.GetHeight, canvas)
+    if not okW or not okH then return false end
+    local ox, oy = MapPins.CanvasOffset(width, height, x, y)
+    if ox == nil then return false end
+    if type(pin.ClearAllPoints) == "function" then pin:ClearAllPoints() end
+    pin:SetPoint("CENTER", canvas, "TOPLEFT", ox, oy)
+    return true
+end
+
+--- Remember the target and anchor it once the canvas has a size. Scale stays 1:
+--- on this canvas a counter-scale moves the SetPoint offset.
+function MapPins.FinishForeverPin(pin, x, y)
+    if type(pin) ~= "table" then return false end
+    if type(x) == "number" and math.abs(x) > 1 then x = x / 100 end
+    if type(y) == "number" and math.abs(y) > 1 then y = y / 100 end
+    if type(x) ~= "number" or type(y) ~= "number" then return false end
+    pin._taX, pin._taY = x, y
+    MapPins._foreverPin = pin
+    if type(pin.SetScalingLimits) == "function" then
+        pcall(pin.SetScalingLimits, pin, 0, 1, 1)
+    end
+    if type(pin.SetScale) == "function" then
+        pcall(pin.SetScale, pin, 1)
+    end
+    local placed = MapPins.AnchorPin(pin, x, y)
+    if placed and type(pin.SetPosition) == "function" then
+        pcall(pin.SetPosition, pin, x, y)
+        MapPins.AnchorPin(pin, x, y)
+    elseif not placed and type(pin.ClearAllPoints) == "function" then
+        -- A 0x0 canvas would have anchored at the origin. Drop that point
+        -- until a later size change can place the target.
+        pin:ClearAllPoints()
+    end
+    return placed
+end
+
+function MapPins.DataProvider:OnCanvasSizeChanged()
+    local pin = MapPins._foreverPin
+    if type(pin) ~= "table" or type(pin._taX) ~= "number" then return end
+    MapPins.FinishForeverPin(pin, pin._taX, pin._taY)
+end
+
+function MapPins.DataProvider:OnShow()
+    self:OnCanvasSizeChanged()
 end
 
 function MapPins.DataProvider:RefreshAllData(fromOnShow)
@@ -164,11 +257,23 @@ end
 
 function TAMapPinMixin:OnLoad()
     self:UseFrameLevelType("PIN_FRAME_LEVEL_AREA_POI")
-    self:SetScalingLimits(1, 0.5, 1.5)
+    if TA.flavor == "forever" then
+        -- Offsets are in the pin's own units on this canvas. scaleFactor 0
+        -- keeps scale at 1 so the anchor is not pulled toward the corner.
+        self:SetScalingLimits(0, 1, 1)
+    else
+        self:SetScalingLimits(1, 0.5, 1.5)
+    end
 end
 
 function TAMapPinMixin:OnAcquired(x, y, step, relNum, color, isCurrent)
-    self:SetPosition(x, y)
+    if type(x) == "number" and math.abs(x) > 1 then x = x / 100 end
+    if type(y) == "number" and math.abs(y) > 1 then y = y / 100 end
+    if step and step.foreverPin and type(x) == "number" and type(y) == "number" then
+        MapPins.FinishForeverPin(self, x, y)
+    elseif type(x) == "number" and type(y) == "number" and type(self.SetPosition) == "function" then
+        self:SetPosition(x, y)
+    end
 
     local size = isCurrent and (PIN_SIZE_BASE * 1.4) or PIN_SIZE_BASE
     self:SetSize(size, size)

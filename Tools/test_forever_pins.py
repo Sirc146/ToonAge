@@ -168,6 +168,213 @@ def main():
     """)
     check("item count falls through a throwing C_Item", lua.eval("ToonAge.Compat.CountItem(17056)"), 0)
 
+    # Owen Thadd's pin is drawn from the stored target, not from the player
+    # and not from a nil coordinate (canvas center) or a 0x0 canvas (origin).
+    lua.execute(read("Modules/Navigation/MapPins.lua"))
+    lua.execute(r"""
+        ToonAge.flavor = "forever"
+        local Arrow = {
+            manualWaypoint = {
+                map = 1458, zone = "Undercity",
+                x = 73.7 / 100, y = 33.1 / 100,
+                title = "Owen Thadd",
+            },
+        }
+        function ToonAge:GetModule(name)
+            if name == "Arrow" then return Arrow end
+            return nil
+        end
+        CANVAS = { w = 1000, h = 800 }
+        function CANVAS:GetWidth() return self.w end
+        function CANVAS:GetHeight() return self.h end
+        POINT = {}
+        local pin = {}
+        function pin:ClearAllPoints()
+            POINT.x, POINT.y = nil, nil
+        end
+        function pin:SetPoint(point, rel, relPoint, x, y)
+            POINT.point = point
+            POINT.rel = rel
+            POINT.relPoint = relPoint
+            POINT.x = x
+            POINT.y = y
+        end
+        function pin:GetMap()
+            return { GetCanvas = function() return CANVAS end }
+        end
+        -- Forever's ApplyCurrentPosition: a missing coordinate is the canvas
+        -- center, and a zero size is offset 0 (the canvas TOPLEFT).
+        function pin:SetPosition(x, y)
+            local w, h = CANVAS:GetWidth(), CANVAS:GetHeight()
+            self:SetPoint("CENTER", CANVAS, "TOPLEFT", (x or 0.5) * (w or 0), -((y or 0.5) * (h or 0)))
+        end
+        local map = { playerX = 0.214, playerY = 0.482 }
+        function map:GetMapID() return 1458 end
+        function map:GetCanvas() return CANVAS end
+        function map:AcquirePin()
+            -- Dropped coordinates. The canvas formula then anchors at the
+            -- center, or at 0,0 when the canvas has no size.
+            pin:SetPosition(nil, nil)
+            return pin
+        end
+        local DP = ToonAge.modules.MapPins.DataProvider
+        function DP:GetMap() return map end
+        PLACED = DP:PlaceForeverPin()
+        OWEN_X = POINT.x
+        OWEN_Y = POINT.y
+        OWEN_POINT = POINT.point
+        OWEN_REL = POINT.relPoint
+        PLAYER_X = map.playerX * CANVAS.w
+        PLAYER_Y = -(map.playerY * CANVAS.h)
+    """)
+    def near(v):
+        return round(v, 4) if isinstance(v, float) else v
+
+    ox = lua.eval("OWEN_X")
+    oy = lua.eval("OWEN_Y")
+    px = lua.eval("PLAYER_X")
+    py = lua.eval("PLAYER_Y")
+    check("library pin was placed", lua.eval("PLACED"), True)
+    check("Owen anchor is the target x, not the player", near(ox), round(73.7 / 100 * 1000, 4))
+    check("Owen anchor is the target y, not the player", near(oy), round(-(33.1 / 100 * 800), 4))
+    check("Owen anchor is not the player arrow", (near(ox), near(oy)) != (near(px), near(py)), True)
+    check("Owen anchor is not the canvas center", (round(ox, 4), round(oy, 4)) != (500.0, -400.0), True)
+    check("Owen anchor is not the canvas origin", (round(ox, 4), round(oy, 4)) != (0.0, 0.0), True)
+    check("pin point is the canvas top-left", (lua.eval("OWEN_POINT"), lua.eval("OWEN_REL")), ("CENTER", "TOPLEFT"))
+
+    lua.execute(r"""
+        CANVAS.w, CANVAS.h = 0, 0
+        POINT.x, POINT.y = nil, nil
+        local DP = ToonAge.modules.MapPins.DataProvider
+        DP:PlaceForeverPin()
+        ZERO_X, ZERO_Y = POINT.x, POINT.y
+        CANVAS.w, CANVAS.h = 1000, 800
+        local again = DP.OnCanvasSizeChanged and DP:OnCanvasSizeChanged()
+        SIZED_X, SIZED_Y = POINT.x, POINT.y
+    """)
+    zx, zy = lua.eval("ZERO_X"), lua.eval("ZERO_Y")
+    check("a 0x0 canvas does not anchor at the origin", (zx, zy) != (0, 0), True)
+    sx, sy = lua.eval("SIZED_X"), lua.eval("SIZED_Y")
+    check("size change puts Owen on the target x", near(sx), round(73.7 / 100 * 1000, 4))
+    check("size change puts Owen on the target y", near(sy), round(-(33.1 / 100 * 800), 4))
+
+    # Cross-continent beam, nearest library, and clear. The map pin test above
+    # does not cover the screen beam.
+    lua.execute(read("Modules/Navigation/Arrow.lua"))
+    lua.execute(r"""
+        local function info(id)
+            local rows = {
+                [1] = { mapType = 2, parentMapID = 0, name = "Kalimdor" },
+                [2] = { mapType = 2, parentMapID = 0, name = "Eastern Kingdoms" },
+                [10] = { mapType = 3, parentMapID = 1, name = "The Barrens" },
+                [20] = { mapType = 3, parentMapID = 2, name = "Undercity" },
+                [11] = { mapType = 3, parentMapID = 1, name = "Orgrimmar" },
+                [30] = { mapType = 4, parentMapID = 1, name = "Ragefire Chasm" },
+            }
+            return rows[id]
+        end
+        local A = ToonAge.modules.Arrow
+        REL_OTHER = A.ContinentRelation(10, 20, info)
+        REL_SAME = A.ContinentRelation(10, 11, info)
+        REL_INST = A.ContinentRelation(10, 30, info)
+        DRAW_OTHER = A.ShouldDrawMarker(REL_OTHER)
+        DRAW_SAME = A.ShouldDrawMarker(REL_SAME)
+        NOTICE = A.OtherContinentText("Undercity")
+        local y0, b0 = A.WorldBearing(0, 0, 0, 100)
+        local y1, b1 = A.WorldBearing(40, 0, 0, 100)
+        BEAR_Y0, BEAR_B0, BEAR_Y1 = y0, b0, y1
+        AUTO_IN = A.ShouldAutoClear(true, 8, A.CLEAR_ON_ARRIVAL_YARDS)
+        AUTO_OUT = A.ShouldAutoClear(true, 9, A.CLEAR_ON_ARRIVAL_YARDS)
+        AUTO_OTHER = A.ShouldAutoClear(false, 1, A.CLEAR_ON_ARRIVAL_YARDS)
+        AUTO_NIL = A.ShouldAutoClear(true, nil, A.CLEAR_ON_ARRIVAL_YARDS)
+
+        local P = ToonAge.modules.ForeverPins
+        local owen = P.LIBRARIES.Horde
+        local wabang = P.AUCTION.Horde[1]
+        local function contOf(place)
+            if place.zone == "Orgrimmar" then return 1 end
+            if place.zone == "Undercity" then return 2 end
+            return nil
+        end
+        local function worldOf(place)
+            if place.zone == "Orgrimmar" then return { cont = 1, north = 10, west = 0 } end
+            return { cont = 1, north = 400, west = 0 }
+        end
+        local origin = { cont = 1, north = 0, west = 0 }
+        ONE = P.ChooseLibrary({ owen }, 1, contOf, origin, worldOf)
+        NEAR = P.ChooseLibrary({ owen, wabang }, 1, contOf, origin, worldOf)
+        local function bothKalimdor(place)
+            return 1
+        end
+        NEAREST = P.ChooseLibrary(
+            { { name = "Far", zone = "Undercity", x = owen.x, y = owen.y },
+              { name = "Near", zone = "Orgrimmar", x = wabang.x, y = wabang.y } },
+            1, bothKalimdor, origin, worldOf)
+
+        REMOVED, CLEARED_UW = nil, false
+        TomTom = { RemoveWaypoint = function(_, uid) REMOVED = uid end }
+        ToonAge.Compat = ToonAge.Compat or {}
+        function ToonAge.Compat.ClearUserWaypoint() CLEARED_UW = true return true end
+        ToonAge.charDB = { arrow = { waypoint = { map = 20 }, visible = true, manualWaypoint = { x = 1 } }, activeWaypoint = { map = 20 } }
+        ToonAge.LOG = ToonAge.LOG or { OUTPUT = 0 }
+        function ToonAge:Raw() end
+        function ToonAge:GetModule(name)
+            if name == "Arrow" then return A end
+            if name == "MapPins" then return { Refresh = function() end } end
+            return nil
+        end
+        A.manualWaypoint = { map = 20, x = 0.737, y = 0.331, title = "Owen Thadd", zone = "Undercity" }
+        A._tomtomUid = "only-ours"
+        A._userWaypointSet = true
+        A.frame = {
+            hidden = false,
+            Hide = function(self) self.hidden = true end,
+            beamTex = { hidden = false, Hide = function(self) self.hidden = true end },
+            menu = { Hide = function() end },
+        }
+        A:ClearActiveWaypoint("button")
+        GONE = A.manualWaypoint
+        FRAME_HIDDEN = A.frame.hidden
+        BEAM_HIDDEN = A.frame.beamTex.hidden
+        SAVED = ToonAge.charDB.arrow.waypoint
+        SAVED_MANUAL = ToonAge.charDB.arrow.manualWaypoint
+        SAVED_ACTIVE = ToonAge.charDB.activeWaypoint
+        SAVED_VISIBLE = ToonAge.charDB.arrow.visible
+    """)
+    Arel = lua.eval("REL_OTHER")
+    check("Barrens to Undercity is another continent", Arel, "other")
+    check("another continent hides the marker", lua.eval("DRAW_OTHER"), False)
+    check("Barrens to Orgrimmar is the same continent", lua.eval("REL_SAME"), "same")
+    check("the same continent draws the marker", lua.eval("DRAW_SAME"), True)
+    check("an instance hides the marker", lua.eval("ToonAge.modules.Arrow.ShouldDrawMarker(REL_INST)"), False)
+    check("other continent notice names the zone", lua.eval("NOTICE"), "Other continent: Undercity")
+    check("bearing is east of the player", round(lua.eval("BEAR_B0"), 4), round(3.141592653589793 / 2, 4))
+    check("moving the player changes the distance", lua.eval("BEAR_Y0") != lua.eval("BEAR_Y1"), True)
+    check("inside the arrival radius clears", lua.eval("AUTO_IN"), True)
+    check("outside the arrival radius stays", lua.eval("AUTO_OUT"), False)
+    check("another map does not auto-clear", lua.eval("AUTO_OTHER"), False)
+    check("a missing distance does not auto-clear", lua.eval("AUTO_NIL"), False)
+    check("one library stays that library", lua.eval("ONE.name"), "Owen Thadd")
+    check("nearest on this continent is Orgrimmar", lua.eval("NEAR.zone"), "Orgrimmar")
+    check("two on one continent picks the nearer", lua.eval("NEAREST.name"), "Near")
+    check("clear removes the waypoint", lua.eval("GONE"), None)
+    check("clear removes only our TomTom pin", lua.eval("REMOVED"), "only-ours")
+    check("clear removes the user waypoint we set", lua.eval("CLEARED_UW"), True)
+    check("clear hides the arrow frame", lua.eval("FRAME_HIDDEN"), True)
+    check("clear hides the beam", lua.eval("BEAM_HIDDEN"), True)
+    check("clear drops the saved waypoint", lua.eval("SAVED"), None)
+    check("clear drops the saved manual waypoint", lua.eval("SAVED_MANUAL"), None)
+    check("clear drops the saved active waypoint", lua.eval("SAVED_ACTIVE"), None)
+    check("clear does not leave the arrow visible", lua.eval("SAVED_VISIBLE"), False)
+
+    arrow_src = read("Modules/Navigation/Arrow.lua")
+    settings = read("Modules/Infrastructure/Settings.lua")
+    check("lock control is on TAWaypointArrow", 'CreateFrame("Button", "TAWaypointArrow"' in arrow_src, True)
+    check("lock tooltip is Right-click: Lock / Unlock", "Right-click: Lock / Unlock" in arrow_src, True)
+    check("Clear button label", 'fs:SetText("Clear")' in arrow_src, True)
+    check("Clear menu entry", 'item("Clear"' in arrow_src, True)
+    check("settings Clear waypoint button", '"Clear waypoint"' in settings, True)
+
     passed = sum(_results)
     total = len(_results)
     print(f"[{'OK' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")
