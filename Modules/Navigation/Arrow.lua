@@ -452,7 +452,7 @@ function Arrow:InitFrame()
     f:SetScript("OnEnter", function(fr)
         GameTooltip:SetOwner(fr, "ANCHOR_BOTTOM")
         GameTooltip:SetText("Guide Arrow", 1, 0.82, 0)
-        GameTooltip:AddLine("Right-click: Lock / Unlock", 1, 1, 1)
+        GameTooltip:AddLine("Right-click: Lock / Clear menu", 1, 1, 1)
         GameTooltip:AddLine("Clear: remove this waypoint", 1, 1, 1)
         GameTooltip:AddLine("Scroll: Resize", 1, 1, 1)
         GameTooltip:AddLine("Drag: Move", 0.7, 0.7, 0.7)
@@ -999,6 +999,8 @@ function Arrow:SetWaypoint(mapID, x, y, title)
 end
 
 --- Remove only the TomTom pin and user waypoint this addon created.
+--- The user waypoint goes through Compat.ClearUserWaypoint (HasAPI + pcall
+--- in Core/Compat/API.lua). Arrow does not call the map API itself.
 function Arrow:ReleaseExternalWaypoints()
     if self._tomtomUid ~= nil and type(TomTom) == "table" and type(TomTom.RemoveWaypoint) == "function" then
         pcall(TomTom.RemoveWaypoint, TomTom, self._tomtomUid)
@@ -1114,12 +1116,33 @@ function Arrow:ShowOtherContinent(f, zone)
     end
 end
 
---- Clear the manual pin, the beam, the screen arrow, and only the TomTom
---- and user waypoint this addon created. Drops any saved waypoint key.
-function Arrow:ClearActiveWaypoint(reason)
+--- The three fields /way clear cleared before the pinned clear. Shared so
+--- the Forever path and the older path cannot drift apart.
+local function DropManualWaypoint(self)
     self.manualWaypoint = nil
     self._arrived = false
     self._arrivedTime = nil
+end
+
+--- Pinned clear belongs to the Forever profile. TA.IsForever and TA.flavor
+--- are set in Core/Environment.lua; Core/Profile.lua keys the Forever
+--- profile off flavor "forever". No client API is read here.
+function Arrow.OnForeverProfile()
+    if TA.IsForever then return true end
+    if TA.flavor == "forever" then return true end
+    return false
+end
+
+--- Clear the manual pin, the beam, the screen arrow, and only the TomTom
+--- and user waypoint this addon created. Drops any saved waypoint key.
+--- Forever only. Every other profile drops the manual waypoint and leaves
+--- the arrow up so guide navigation can draw it again.
+function Arrow:ClearActiveWaypoint(reason)
+    if not Arrow.OnForeverProfile() then
+        DropManualWaypoint(self)
+        return
+    end
+    DropManualWaypoint(self)
     self._otherSaid = nil
     self:ReleaseExternalWaypoints()
     Arrow.DropPersistedWaypoint(TA.charDB)
@@ -1143,8 +1166,13 @@ function Arrow:ClearActiveWaypoint(reason)
 end
 
 --- Clear the current manual waypoint, returning to guide-driven navigation.
+--- Forever uses the pinned clear. Every other profile is the pre-pinned
+--- clear: the manual waypoint goes away and the arrow stays for the guide.
 function Arrow:ClearWaypoint()
-    self:ClearActiveWaypoint("command")
+    if Arrow.OnForeverProfile() then
+        return self:ClearActiveWaypoint("command")
+    end
+    DropManualWaypoint(self)
 end
 
 --- A display coordinate is 0-100. "45,2" is 45.2. A token outside that range
@@ -1239,7 +1267,10 @@ function Arrow:ParseWayCommand(args)
     -- Handle subcommands
     local first = tokens[1] and tokens[1]:lower()
     if first == "clear" or first == "remove" or first == "off" then
-        self:ClearActiveWaypoint("command")
+        self:ClearWaypoint()
+        if not Arrow.OnForeverProfile() then
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[TA Arrow]|r Manual waypoint cleared.")
+        end
         return
     end
 
