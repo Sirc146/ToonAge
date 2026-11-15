@@ -1,5 +1,5 @@
 # BigWigs packager manifest — controls what ends up in the published zip.
-# Used by the Wago upload workflow (.github/workflows/wago.yml).
+# release.yml runs BigWigsMods/packager, which reads this file. wago.yml no longer uploads.
 package-as: ToonAge
 
 # The Wago Analytics shim is vendored in Libs/ rather than pulled as an
@@ -12,6 +12,7 @@ ignore:
     - .claude
     - .rules.md
     - CLAUDE.md
+    - AGENTS.md
     - Art
     - Docs
     - docs
