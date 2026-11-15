@@ -58,11 +58,13 @@ def runtime(class_token="HUNTER", level=90, spec=253):
         function hooksecurefunc() end
         ITEMSTATS = {}
         function GetItemStats(link) return ITEMSTATS[link] end
+        C_Item = {}
         local stub = setmetatable({}, { __index = function() return function() return stub end end,
                                         __call = function() return stub end })
         setmetatable(_G, { __index = function(_, k) return stub end })
     """)
     lua.execute(read("Data/Mists/StatWeights.lua"))
+    lua.execute(read("Core/Compat/API.lua"))
     lua.execute(read("Modules/Mists/Gear.lua"))
     return lua
 

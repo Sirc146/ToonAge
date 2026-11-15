@@ -9,6 +9,7 @@
 
 local TA = ToonAge
 
+
 local DR = {}
 TA:RegisterModule("DeathRecovery", DR)
 
@@ -34,7 +35,7 @@ local function EstimateAverageItemLevel()
         if slot ~= 4 then  -- skip shirt
             local link = GetInventoryItemLink("player", slot)
             if link then
-                local _, _, _, ilvl = GetItemInfo(link)
+                local _, _, _, ilvl = TA.Compat.GetItemInfo(link)
                 if ilvl and ilvl > 0 then
                     totalIlvl = totalIlvl + ilvl
                     count = count + 1
