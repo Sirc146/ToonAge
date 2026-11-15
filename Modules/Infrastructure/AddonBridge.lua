@@ -11,6 +11,9 @@
 --   ElvUI folder — Docs/EVOLUTION_TRACKER.md cites ElvUI_TBC.toc.
 --   Zygor folders and the ZygorGuidesViewer global — Core/Utils.lua.
 --   TomTom folder — Modules/Navigation/Arrow.lua and Modules/Mists/Arrow.lua.
+--   MelloUI.Restock — a module inside MelloUI (Forever, MelloUI 2.1.51),
+--   not a separate MelloUI_Restock addon. MelloUI:GetModule("Restock") is
+--   the same module. The legacy addon name remains a fallback.
 
 local TA = ToonAge or {}
 ToonAge = TA
@@ -140,8 +143,30 @@ function B:EntryById(id)
     end
 end
 
+--- Restock shipped inside MelloUI. Nil unless that addon is loaded and the
+--- module table is actually there. Lookup goes through Compat, then a
+--- guarded field or GetModule. A throw or a non-table is "not present".
+function B:MelloRestockEmbedded()
+    local C = TA.Compat
+    if not (C and type(C.IsAddOnLoaded) == "function") then return nil end
+    local okLoaded, loaded = pcall(C.IsAddOnLoaded, "MelloUI")
+    if not (okLoaded and loaded) then return nil end
+    local okUI, mello = pcall(function() return rawget(_G, "MelloUI") end)
+    if not okUI or type(mello) ~= "table" then return nil end
+    local field = rawget(mello, "Restock")
+    if type(field) == "table" then return field end
+    local getModule = rawget(mello, "GetModule")
+    if type(getModule) ~= "function" then return nil end
+    local okMod, mod = pcall(getModule, mello, "Restock")
+    if okMod and type(mod) == "table" then return mod end
+    return nil
+end
+
 function B:EntryLoaded(entry)
     if entry.id == "blizzard" then return BlizzardHost() end
+    -- Embedded module first. The folder and global checks below stay for
+    -- an older MelloUI_Restock addon.
+    if entry.id == "mellorest" and self:MelloRestockEmbedded() then return true end
     if entry.id == "zygor" then
         local U = TA.Utils
         if U and type(U.ZygorLoaded) == "function" then
@@ -346,8 +371,62 @@ local function CopyPlain(value, depth)
     return out
 end
 
+--- In-memory MelloUIDB.Restock only. Never loads an addon and never runs a file.
+function B:LiveMelloSettings()
+    local ok, db = pcall(function() return rawget(_G, "MelloUIDB") end)
+    if not ok or type(db) ~= "table" then return nil end
+    local okS, settings = pcall(function() return rawget(db, "Restock") end)
+    if not okS or type(settings) ~= "table" then return nil end
+    return settings
+end
+
+local function ParseIdQtyBlob(text)
+    local rows = {}
+    if type(text) ~= "string" then return rows end
+    for token in string.gmatch(text, "%S+") do
+        local idText, qtyText = string.match(token, "^(%d+):(%d+)$")
+        local id = tonumber(idText)
+        local qty = tonumber(qtyText)
+        if id and qty and id > 0 and id == math.floor(id)
+            and qty >= 0 and qty == math.floor(qty) then
+            rows[#rows + 1] = { id = id, qty = qty }
+        end
+    end
+    return rows
+end
+
+--- Rows for this character from list_<GUID> strings. Nil when this table is
+--- not that shape, so a legacy host db keeps its own items array.
+--- {} when the shape is present but this character's list is not.
+function B:MelloCharacterRows(settings)
+    if type(settings) ~= "table" then return nil end
+    local saw = false
+    local okScan = pcall(function()
+        for k, v in pairs(settings) do
+            if type(k) == "string" and string.sub(k, 1, 5) == "list_" and type(v) == "string" then
+                saw = true
+            end
+        end
+    end)
+    if not okScan or not saw then return nil end
+    local guid
+    local C = TA.Compat
+    if C and type(C.PlayerGUID) == "function" then
+        local ok, g = pcall(C.PlayerGUID)
+        if ok and type(g) == "string" and g ~= "" then guid = g end
+    end
+    if not guid then return {} end
+    local okV, blob = pcall(function() return rawget(settings, "list_" .. guid) end)
+    if not okV or type(blob) ~= "string" then return {} end
+    return ParseIdQtyBlob(blob)
+end
+
 function B:HostRestockTable()
     if not self:IsLoaded("mellorest") then return nil end
+    if self:MelloRestockEmbedded() then
+        local live = self:LiveMelloSettings()
+        if type(live) == "table" then return live end
+    end
     local entry = self:EntryById("mellorest")
     if not entry then return nil end
     for _, name in ipairs(entry.saved or {}) do
@@ -367,6 +446,10 @@ end
 function B:ReadRestock()
     local host = self:HostRestockTable()
     if type(host) == "table" then
+        if self:MelloRestockEmbedded() and host == self:LiveMelloSettings() then
+            local rows = self:MelloCharacterRows(host)
+            if rows then return { items = rows }, "melloui" end
+        end
         return CopyPlain(host, 0), "melloui"
     end
     local own = TA.db and TA.db.addonBridge and TA.db.addonBridge.restock
