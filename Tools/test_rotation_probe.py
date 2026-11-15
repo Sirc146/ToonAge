@@ -116,7 +116,14 @@ def test_files():
     check("the self-test prints the labeled miss line",
           "RL.MissLine(" in harness, True)
     rows = [line for line in forever.splitlines() if "spellID=1310707" in line]
-    check("Mutilate 1310707 stays in the Forever list", len(rows), 6)
+    spec = forever.split("Assassination = {", 1)[1].split("Combat = {", 1)[0]
+    band_2039 = spec.split("['20-39']", 1)[1].split("['40-59']", 1)[0]
+    band_40 = spec.split("['40-59']", 1)[1]
+    check("Mutilate 1310707 stays in the Forever list", len(rows), 4)
+    check("Mutilate is absent from the 20-39 band", "spellID=1310707" not in band_2039, True)
+    check("Sinister Strike stays a 20-39 builder", "name='Sinister Strike'" in band_2039, True)
+    check("Backstab stays a 20-39 builder", "name='Backstab'" in band_2039, True)
+    check("Mutilate is present at 40+", band_40.count("spellID=1310707"), 4)
     check("every Mutilate 1310707 row is level 40",
           all("level=40" in line for line in rows), True)
     check("no Mutilate 1310707 row stays at level 30",
@@ -124,7 +131,9 @@ def test_files():
     check("Mutilate keeps rank id 1310707",
           all("rankIDs={1310707, 399956, 1241582, 1241584}" in line for line in rows), True)
     check("Mutilate stays unverified",
-          "spellID=1310707, name='Mutilate'" in forever and "verified=false" in forever, True)
+          bool(rows) and all(
+              "name='Mutilate'" in line and "verified=false" in line for line in rows
+          ), True)
     check("Mutilate level note no longer says 21-pt at 30",
           "Mutilate is a 21-pt talent at 30" not in forever, True)
     check("Mutilate level note says Row 7 at level 40",
