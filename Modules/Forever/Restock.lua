@@ -213,6 +213,13 @@ local function UseLines(item)
     return lines
 end
 
+--- Bags, then the extra sitting in the bank.
+--- Compat.ItemCounts tries C_Item.GetItemCount, then C_Container.GetItemCount,
+--- then global GetItemCount. Each call is includeBank false for bags and true
+--- for bags+bank; the bank figure is the difference, never added into bags.
+--- Data/Forever/ApiManifest.lua only lists those three as call sites. It does
+--- not say which one Forever 1.60.1 implements. That is UNVERIFIED offline.
+--- A nil bag count stays "count unavailable" rather than a guessed zero.
 local function ApplyCount(row, compat)
     local have, bank
     if row.itemID and compat and type(compat.ItemCounts) == "function" then
