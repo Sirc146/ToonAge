@@ -59,24 +59,66 @@ local function Try(fn, ...)
     return select(2, unpack(res))
 end
 
--- MEASURED on this client, 2026-09-23, mid-combat:
+-- MEASURED on this client, 2026-09-23, mid-combat only:
 --     UnitHealth("player") -> 307, issecretvalue(that) -> TRUE
+--     arithmetic on that value RAISES
 --     C_Spell.GetSpellCooldown(133).duration -> issecretvalue -> false
--- So health and power really are secret values in combat here, while cooldowns
--- are not. A secret cannot be compared, converted with tonumber, used in
--- arithmetic or used as a table key -- every one of those RAISES. It can be
--- passed to SetText, which is why the number still renders on screen.
+-- There is no out-of-combat measurement of these predicates on build 70862.
+-- Blizzard's own frames drawing a number is not evidence the addon can read it.
 --
--- Num is the choke point every read in this file passes through, so the guard
--- lives here: a secret becomes nil, which every caller already handles as
--- "n/a". Without it, opening this tab in combat threw on `hp >= hpMax`.
-local isSecret = _G.issecretvalue or function() return false end
+-- canaccessvalue (Secret Values, patch 12.0) returns whether THIS caller may
+-- operate on the value. issecretvalue returns whether the value is secret.
+-- Both are looked up per call. A predicate that errors is not permission.
+-- type() == "number" is not permission. tostring is not a way through: the
+-- string of a secret is still secret.
+--
+-- Arithmetic runs only after permission. The result is checked again. A
+-- result that is still secret is not compared and not formatted.
+local function Predicate(fn, v)
+    if type(fn) ~= "function" then return nil end
+    local ok, r = pcall(fn, v)
+    if not ok then return "error" end
+    return r == true
+end
+
+local function isSecret(v)
+    local r = Predicate(_G.issecretvalue, v)
+    if r == "error" or r == true then return true end
+    return false
+end
 
 local function Num(v)
-    if v == nil then return nil end
-    if isSecret(v) then return nil end
-    local n = tonumber(tostring(v))
-    return n
+    if v == nil or isSecret(v) then return nil end
+    if type(v) == "number" then return v end
+    local n = tonumber(v)
+    if type(n) == "number" and not isSecret(n) then return n end
+    return nil
+end
+
+--- A number this caller may compare, or nil and a reason.
+--- Reasons: "missing", "restricted", "predicate", "unavailable".
+local function UsableNumber(v)
+    if v == nil then return nil, "missing" end
+    local access = Predicate(_G.canaccessvalue, v)
+    local secret = Predicate(_G.issecretvalue, v)
+    if access == "error" or secret == "error" then return nil, "predicate" end
+    if access == false then return nil, "restricted" end
+    if access == nil and secret == nil then
+        if type(v) ~= "number" then return nil, "unavailable" end
+        return v, nil
+    end
+    if access ~= true and secret ~= false then return nil, "restricted" end
+    local ok, n = pcall(function() return v + 0 end)
+    if not ok or type(n) ~= "number" then return nil, "restricted" end
+    local nAccess = Predicate(_G.canaccessvalue, n)
+    local nSecret = Predicate(_G.issecretvalue, n)
+    if nAccess == "error" or nSecret == "error" then return nil, "predicate" end
+    if nSecret == true or nAccess == false then return nil, "restricted" end
+    return n, nil
+end
+
+local function InCombat()
+    return type(InCombatLockdown) == "function" and InCombatLockdown() and true or false
 end
 
 -- MEASURED THE HARD WAY, 2026-09-23. tostring() on a secret survives and the
@@ -97,6 +139,7 @@ end
 -- of our own.
 local HIDDEN_TEXT = "—"
 local HIDDEN_FOOTNOTE = "Health and mana are secret in combat, so those rows show a dash until you leave combat."
+local WITHHELD_FOOTNOTE = "Health and mana were withheld by the client. A secret number cannot be read here, so those rows stay a dash."
 
 --- "n/a" for a missing answer, the formatted number otherwise.
 local function Show(value, fmt)
@@ -299,14 +342,23 @@ local function RenderHeadline(content, y)
         })
     end
 
+    local function Withheld(why)
+        return why == "restricted" or why == "predicate"
+    end
+
+    -- CapBar divides current/cap and compares them. A secret cannot take
+    -- that path. Layout's FontString height is also tainted by a secret
+    -- string (measured 2026-09-23), so the raw value is not handed to a
+    -- widget either. Only an accessible, non-secret result is drawn.
     local rawHP, rawHPM = Try(UnitHealth, "player"), Try(UnitHealthMax, "player")
-    local hp, hpMax = Num(rawHP), Num(rawHPM)
+    local hp, hpWhy = UsableNumber(rawHP)
+    local hpMax, hpMaxWhy = UsableNumber(rawHPM)
     if hp and hpMax and hpMax > 0 then
         y = L:CapBar(content, y, {
             label = "Health", value = string.format("%d / %d", hp, hpMax),
             current = hp, cap = hpMax, capped = hp >= hpMax,
         })
-    elseif rawHP ~= nil and isSecret(rawHP) then
+    elseif Withheld(hpWhy) or Withheld(hpMaxWhy) then
         y = L:DataRow(content, y, {
             label = "Health", value = HIDDEN_TEXT, status = "dim",
         })
@@ -316,20 +368,22 @@ local function RenderHeadline(content, y)
     -- Power type 0 is mana. A class without it reports 0 max, and a bar of
     -- zero out of zero says nothing -- so it simply does not draw.
     local rawMP, rawMPM = Try(UnitPower, "player", 0), Try(UnitPowerMax, "player", 0)
-    local mp, mpMax = Num(rawMP), Num(rawMPM)
+    local mp, mpWhy = UsableNumber(rawMP)
+    local mpMax, mpMaxWhy = UsableNumber(rawMPM)
     if mp and mpMax and mpMax > 0 then
         y = L:CapBar(content, y, {
             label = "Mana", value = string.format("%d / %d", mp, mpMax),
             current = mp, cap = mpMax, capped = mp >= mpMax,
         })
-    elseif rawMP ~= nil and isSecret(rawMP) then
+    elseif Withheld(mpWhy) or Withheld(mpMaxWhy) then
         y = L:DataRow(content, y, {
             label = "Mana", value = HIDDEN_TEXT, status = "dim",
         })
         secretNote = true
     end
     if secretNote then
-        y = L:Paragraph(content, y, HIDDEN_FOOTNOTE, { color = L.C_DIM, size = 9 })
+        local note = InCombat() and HIDDEN_FOOTNOTE or WITHHELD_FOOTNOTE
+        y = L:Paragraph(content, y, note, { color = L.C_DIM, size = 9 })
     end
     return y
 end
