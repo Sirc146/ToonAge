@@ -2,7 +2,7 @@
 
 Standing instructions for every bot working on ToonAge. Christopher (Sirc / Sirc146) is owner and final authority. The repo https://github.com/Sirc146/ToonAge on `test` is the single source of truth. Box copies, including `/workspace/toonage-docs/`, are drafts only until he approves them and they are committed.
 
-Sister files: [README.md](README.md), [docs/HANDOVER.md](docs/HANDOVER.md), [docs/HISTORY.md](docs/HISTORY.md), [docs/architecture.md](docs/architecture.md).
+Sister files: [README.md](README.md), [Docs/HANDOVER.md](Docs/HANDOVER.md), [Docs/HISTORY.md](Docs/HISTORY.md), [Docs/ARCHITECTURE_OVERVIEW.md](Docs/ARCHITECTURE_OVERVIEW.md).
 
 ## Purpose and non-goals
 
@@ -16,7 +16,7 @@ Use these instructions whenever you plan, code, review, research, install, docum
 
 ## Read-first rule
 
-Every bot reads `AGENTS.md`, `docs/HANDOVER.md` and `docs/HISTORY.md` **from the repo** (Sirc146/ToonAge, `test`, unless Sirc names another approved ref) before working, and records its own part in `docs/HANDOVER.md` afterward **as a commit**: dated scope/card, source/head, changes, tests, review, merge/install state, blockers and next step. Check `docs/HISTORY.md` before retrying something that may already have been tried. Box copies are drafts only and are not the source of truth.
+Every bot reads `AGENTS.md`, `Docs/HANDOVER.md` and `Docs/HISTORY.md` **from the repo** (Sirc146/ToonAge, `test`, unless Sirc names another approved ref) before working, and records its own part in `Docs/HANDOVER.md` afterward **as a commit**: dated scope/card, source/head, changes, tests, review, merge/install state, blockers and next step. Check `Docs/HISTORY.md` before retrying something that may already have been tried. Box copies are drafts only and are not the source of truth.
 
 Christopher: **“I'd rather have everything working off git.”**
 
@@ -32,9 +32,9 @@ Christopher’s workflow after a change is live-tested, verbatim:
 
 > After each verified test and its working it's pushed up
 
-That means: change → Sirc’s live test passes → push to the repo promptly as a small commit and record the result in `docs/HANDOVER.md`. Release tags still need his explicit approval. Docs and code changes go in as their own commits so one can be rolled back if needed.
+That means: change → Sirc’s live test passes → push to the repo promptly as a small commit and record the result in `Docs/HANDOVER.md`. Release tags still need his explicit approval. Docs and code changes go in as their own commits so one can be rolled back if needed.
 
-README.md and docs/HANDOVER.md are updated in the same push after each verified test.
+README.md and Docs/HANDOVER.md are updated in the same push after each verified test.
 
 ## Standing rules (imported) — November 9, 2026, 8:19 PM PST
 

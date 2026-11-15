@@ -2,14 +2,14 @@
 
 Single shared record for Christopher (Sirc / Sirc146) and the ToonAge team. All plans, decisions and final approvals lead to Sirc.
 
-The repo https://github.com/Sirc146/ToonAge on branch `test` is the single source of truth. Sister files in this repo: [README.md](../README.md) (human overview), [AGENTS.md](../AGENTS.md) (standing rules and bot workflow), [HISTORY.md](HISTORY.md) (superseded and already-tried archive), [architecture.md](architecture.md) (clients, TOCs, modules, API audit). Box copies, including `/workspace/toonage-docs/`, are drafts only until approved and committed.
+The repo https://github.com/Sirc146/ToonAge on branch `test` is the single source of truth. Sister files in this repo: [README.md](../README.md) (human overview), [AGENTS.md](../AGENTS.md) (standing rules and bot workflow), [HISTORY.md](HISTORY.md) (superseded and already-tried archive), [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md) (clients, TOCs, modules, API audit). Box copies, including `/workspace/toonage-docs/`, are drafts only until approved and committed.
 
 **Updated:** November 14, 2026. **Repo:** https://github.com/Sirc146/ToonAge · **Integration:** `test` · **Head:** `6eeb530` (author time 2026-11-15 00:18:31 UTC, merge of PR #77).
 **Trunk mapping: SETTLED — `test`.** Confirmed by Sirc November 11, 2026: installs come from `test`, PRs target `test`, `main` and release tags are held for his separate approval. This settles the UNKNOWN flagged in the November 9 draft; do not silently change branches.
 **Merge note (Nov 11, 2026):** this file is PR #63's HANDOVER with the November 11 restructure merged into it. The G01–G24 cards, first-task tables, live fix list, product decisions, and evidence below are PR #63's, kept intact. The overlay adds the guardrails, the Muse/merge rules, the pull/push/commit timing, the CurseForge release card, the Gemini/Copilot/snippet sections, and the test-status template. It replaces the standalone restructured draft — do not save that draft as a second HANDOVER. Merged Nov 11, 2026 with `WoW-AddOn-Build-Workflow.md` (workspace/user/files/WoW-AddOn-Build-Workflow.md) — the six phases, four gates, Blizzard policy, Phase 0 setup, hand-off contracts, and task prompt below come from it, translated to ToonAge's settled rules (see “How this merge was done” in the phases section).
-**When PR #63 merges — remove these conditionals (verified Nov 11, 2026: PR #63 is 2 commits ahead of `test`, fast-forward, 0 conflicts, 5 files (README.md, AGENTS.md, docs/HANDOVER.md, docs/HISTORY.md, docs/architecture.md) — Riley merges it in one action; Muse cannot merge from here. Sequencing: PR #63 still carries the old 476-line HANDOVER, so commit this merged file to the PR branch (grok/docs-source-of-truth) FIRST, then merge — if PR #63 merges as it stands, the old HANDOVER lands on `test`):** (1) this merge note itself — its content lives in the Team work log; (2) the Gemini prompt parenthetical "(Until PR #63 merges, the live files on test are .rules.md and Docs/ARCHITECTURE.md. Do not use CLAUDE.md — it is archived.)"; (3) the Copilot section parenthetical "(`.rules.md` until PR #63 merges)". After that, this file describes one state: `AGENTS.md` + `docs/` on `test`.
+**When PR #63 merges — remove these conditionals (verified Nov 11, 2026: PR #63 is 2 commits ahead of `test`, fast-forward, 0 conflicts, 5 files (README.md, AGENTS.md, Docs/HANDOVER.md, Docs/HISTORY.md, Docs/ARCHITECTURE_OVERVIEW.md) — Riley merges it in one action; Muse cannot merge from here. Sequencing: PR #63 still carries the old 476-line HANDOVER, so commit this merged file to the PR branch (grok/docs-source-of-truth) FIRST, then merge — if PR #63 merges as it stands, the old HANDOVER lands on `test`):** (1) this merge note itself — its content lives in the Team work log; (2) the Gemini prompt parenthetical "(Until PR #63 merges, the live files on test are .rules.md and Docs/ARCHITECTURE.md. Do not use CLAUDE.md — it is archived.)"; (3) the Copilot section parenthetical "(`.rules.md` until PR #63 merges)". After that, this file describes one state: `AGENTS.md` + `Docs/` on `test`.
 
-**November 14, 2026.** `test` is `6eeb530`. PRs #65–#73, #76, and #77–#84 are merged into `test`. #74 is absent from that merged set. Checked November 15, 2026 06:21 UTC: #74 is closed with no merge commit. There is no pull request #75. Christopher's live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (his call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. This branch adds `AGENTS.md`, `docs/HANDOVER.md`, `docs/HISTORY.md`, the README additions, `docs/architecture.md`, and the `.pkgmeta` ignore for `AGENTS.md` from PR #63 onto `6eeb530`, and updates this file. That is the whole of PR #63, so PR #63 is fully redundant. It stays open until someone else closes it. The November 11 conditional above stays as history.
+**November 14, 2026.** `test` is `6eeb530`. PRs #65–#73, #76, and #77–#84 are merged into `test`. #74 is absent from that merged set. Checked November 15, 2026 06:21 UTC: #74 is closed with no merge commit. There is no pull request #75. Christopher's live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (his call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. This branch adds `AGENTS.md`, `Docs/HANDOVER.md`, `Docs/HISTORY.md`, the README additions, `Docs/ARCHITECTURE_OVERVIEW.md`, and the `.pkgmeta` ignore for `AGENTS.md` from PR #63 onto `6eeb530`, and updates this file. That is the whole of PR #63, so PR #63 is fully redundant. It stays open until someone else closes it. The November 11 conditional above stays as history.
 
 ## 1 PROJECT OVERVIEW
 
@@ -29,7 +29,7 @@ ToonAge is a multi-client WoW addon: shared Lua engine, per-client data/modules/
 
 Muse (formerly Pepper) audits, coordinates, and assists with snippets; not a builder on a branch. Claude Code and Kiro are archived as builders — they no longer implement or build features. Snippets from them, if Sirc brings them, arrive as outside code under the snippet rules below.
 
-**Workflow rule:** plan with Conductor, write the plan here, then obtain Sirc’s applicable approval. If Conductor is unreachable, work pauses — no bot proceeds on its own spec or takes a decision to Sirc directly. **Every bot reads `AGENTS.md`, `docs/HANDOVER.md` and `docs/HISTORY.md` from the repo before working and records its part afterward as a commit**: dated scope/card, source/head, changes, tests, review, merge/install state, blockers and next step. If the file or evidence is inaccessible, ask a concrete question; do not guess. Christopher: **“I'd rather have everything working off git.”** After a verified live test: **“After each verified test and its working it's pushed up.”**
+**Workflow rule:** plan with Conductor, write the plan here, then obtain Sirc’s applicable approval. If Conductor is unreachable, work pauses — no bot proceeds on its own spec or takes a decision to Sirc directly. **Every bot reads `AGENTS.md`, `Docs/HANDOVER.md` and `Docs/HISTORY.md` from the repo before working and records its part afterward as a commit**: dated scope/card, source/head, changes, tests, review, merge/install state, blockers and next step. If the file or evidence is inaccessible, ask a concrete question; do not guess. Christopher: **“I'd rather have everything working off git.”** After a verified live test: **“After each verified test and its working it's pushed up.”**
 Small feature branches and reviewed PRs target `test`; a plan, static GO or relayed approval is not blanket authority. Native approvals must be received directly where required. Preserve Sirc’s exact words; do not turn historical permissions into new ones. Release tags still need his explicit approval. Docs and code changes go in as their own commits so one can be rolled back if needed.
 
 ### Guardrails — hard rules, no exceptions (added Nov 11, 2026)
@@ -46,7 +46,7 @@ Small feature branches and reviewed PRs target `test`; a plan, static GO or rela
 - **Buttons — verified in code; sighting is Sirc's 30-second check.** Re-read on `test` at `6eeb530` (November 14, 2026). The Self-test button exists in code (`Modules/Infrastructure/TestHarness.lua:1684`, `ToonAgeSelfTestButton`, title bar; the `-dev` or `TA.debug` gate is at lines 1681–1682) but only shows on dev builds (version contains `-dev`) or when `/ta debug` is on at login. The Module Health button exists in code (`Modules/Infrastructure/Settings.lua:1025`, `AddBtn("Module Health", ...)`; the health command opens the copyable report at `Core/Init.lua:1491`). What is still open is the in-game sighting on the installed build — see the check-card in "Open checks for Sirc." The Settings → Debug "Run Self-test" button (Settings.lua:1027) shows on any build — that is the check; do not type `/ta debug`. If a needed button genuinely does not exist, that is a card to build it — not a reason to type a probe, and the check waits until the card is done. The wrong-edition notice goes to chat by design. The November 11 line numbers (TestHarness.lua:1582, Settings.lua:839–840, Init.lua:1587) stay in the work log.
 - **Data rule.** Verify game facts against official sources plus Wowhead and Icy Veins. Merge what checks out. Remove something only with disproving evidence. Flag anything unverified for Sirc — never silently present it as fact. The Stats role may also use the Battle.net Game Data web API offline to generate data tables (Game Data only, never Profile endpoints); the client ID and secret live in a local `.env`, never in the repo and never in a bot's prompt.
 - **Guidance is suggestions, and stays optional.** Word guidance as suggestions, never commands. Roles and recommendations follow what the character can actually do. BiS lists are never presented as fact.
-- **No bot names an API function, event, or interface number from memory.** It cites the verified source (architecture.md, the harvest record, or the official source behind it) or stops and asks for research. Model memory is not a source.
+- **No bot names an API function, event, or interface number from memory.** It cites the verified source (ARCHITECTURE_OVERVIEW.md, the harvest record, or the official source behind it) or stops and asks for research. Model memory is not a source.
 - **No placeholder functions, no commented-out code, no TODO left in a PR.** A PR that carries any of those is not reviewed.
 - **No bot holds an upload token.** CurseForge and GitHub tokens live only in GitHub Actions secrets.
 
@@ -108,7 +108,7 @@ Source attribution is in **History (before Nov 2026)**; these are only the addit
 
 ## 2 CURRENT CODEBASE & STRUCTURE
 
-Clients, TOCs, module layout, the dual-gate rule, install boundaries, existing test/syntax/package commands and the missing-API audit are in [architecture.md](architecture.md).
+Clients, TOCs, module layout, the dual-gate rule, install boundaries, existing test/syntax/package commands and the missing-API audit are in [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md).
 
 **Audit baseline:** `4555883f13a34f911628ea5946c7e5c316e1ae3e`. **Latest reported installed merge:** `c9c5308a` (November 9 install; November 11 SHA256 check matched that zip). **`test` head on November 14, 2026:** `6eeb530`. No install of `6eeb530` is recorded here, and Christopher's live verification of that head is open. Runtime ZIPs omit `.git`, `.github`, `Tools` and `Docs`: they are not development checkouts or the approved Forever install method.
 
@@ -198,7 +198,7 @@ Vespera level 15 Mage, Forever 70862/interface 16001: **89 pass, 0 fail, 32 warn
 
 ### Missing-API audit
 
-The 17 manifest absences, pinned call sites, guarded results and the live 93/110 ApiGuard summary are in [architecture.md](architecture.md). **No unguarded loaded call found** for those 17. Guards do not certify arguments/returns or other clients.
+The 17 manifest absences, pinned call sites, guarded results and the live 93/110 ApiGuard summary are in [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md). **No unguarded loaded call found** for those 17. Guards do not certify arguments/returns or other clients.
 
 **Open PRs, as last read:** PR57 Health/Mana head `ba776cec41f1ba0d55110c6d03d2bb88bfee0f3e`, unmerged: guards/wording, not numeric dashes fixed; canaccessvalue live behavior UNKNOWN. PR60 pooling head `1b251c23c880b7254667dbaeade57b58828d10c7`, unmerged, reported 223 tests; re-review current head. Preserve secrecy and art; a secure native display does not authorize addon numeric access.
 Legacy Forever static approximate beta 70245 lists remain UNVERIFIED outside the installed Mage slice; redraw is not learned-state adaptation. Learned-recipe ingestion, bank/AH capture (no AH recorder), talent routes, full gear what-next scoring and planning narrative are unbuilt.
@@ -260,7 +260,7 @@ Owners: Riley, Glitch/Warden, Gilder diagnostic copy, Sirc native comparison. Se
 | `docs(diagnostics): record client label acceptance` | Exact-head tests/review pass; after Sirc-approved deployment and each-case preflight, button-opened Module Health output matches native build/interface, clean error log, warning disposition recorded. |
 
 **Prompt for validation — addressed to the team bots:**
-> Conductor, Riley, Glitch, Warden, Gilder and Chronicler: read `AGENTS.md`, `docs/HANDOVER.md` and `docs/HISTORY.md` from the repo before work and validate this phase/Kanban plan against Sirc146/ToonAge on `test`. Confirm the current head, exact c9c5308a installation provenance, trunk mapping, real TOCs/Profile gates, existing tests and open PR57/60. Diagnose freshness, version, cross-client differences, button-opened health/errors and Git history before code. Preserve Sirc’s settled choices, art, data and learned/equipment gates. Validate the three first tasks and each tiny commit’s DoD; list assumptions, UNKNOWNs, source/build conflicts and missing dependencies. Official sources first. Do not invent a weight, timing, full SHA or live pass. Ask Sirc concrete questions through Conductor. Wait for applicable approval before PR/merge/install/release; do not contact another bot just because this plan names it. Record your dated part afterward as a commit. After each verified test and its working it's pushed up. Return only the next reviewable green slice and Sirc’s button/copy-window acceptance steps; no large code drop.
+> Conductor, Riley, Glitch, Warden, Gilder and Chronicler: read `AGENTS.md`, `Docs/HANDOVER.md` and `Docs/HISTORY.md` from the repo before work and validate this phase/Kanban plan against Sirc146/ToonAge on `test`. Confirm the current head, exact c9c5308a installation provenance, trunk mapping, real TOCs/Profile gates, existing tests and open PR57/60. Diagnose freshness, version, cross-client differences, button-opened health/errors and Git history before code. Preserve Sirc’s settled choices, art, data and learned/equipment gates. Validate the three first tasks and each tiny commit’s DoD; list assumptions, UNKNOWNs, source/build conflicts and missing dependencies. Official sources first. Do not invent a weight, timing, full SHA or live pass. Ask Sirc concrete questions through Conductor. Wait for applicable approval before PR/merge/install/release; do not contact another bot just because this plan names it. Record your dated part afterward as a commit. After each verified test and its working it's pushed up. Return only the next reviewable green slice and Sirc’s button/copy-window acceptance steps; no large code drop.
 
 ### Gap closure plan — all G01–G24 retained
 
@@ -542,7 +542,7 @@ Superseded and already-tried items, earlier tools, Pepper who later named hersel
 ### Team work log — append after each part
 
 November 9, 2026, 9:03 PM PST — Conductor/executor documentation pass: backed up the 650-line record, centered it on Sirc’s team, retained all 24 G-cards/standing rules/quotes/data boundaries, and replaced obsolete first-task ordering with installed Mage acceptance → Training → labels. Fresh read-only `test` tree/LICENSE/.rules check supports the policy-doc filename findings; no repo writes, PRs, installs, bot messages or policy changes. Exact talent-tree quotation/transparent-mode details remain UNKNOWN, not invented. Sirc’s final decisions and live tests are still required.
-November 9, 2026, 9:10 PM PST — Conductor/executor documentation draft (box only, not committed): split the 578-line shared record into README.md, AGENTS.md, docs/HANDOVER.md, docs/HISTORY.md and docs/architecture.md under `/workspace/toonage-docs/` in repo layout. The repo (Sirc146/ToonAge, `test`) is the intended source of truth; box copies are drafts. Standing rules, all 24 G-cards, Muse quotes and history items retained. Added Sirc’s git preference and “After each verified test and its working it's pushed up.” No repo writes, PRs, installs, bot messages or policy changes.
+November 9, 2026, 9:10 PM PST — Conductor/executor documentation draft (box only, not committed): split the 578-line shared record into README.md, AGENTS.md, Docs/HANDOVER.md, Docs/HISTORY.md and Docs/ARCHITECTURE_OVERVIEW.md under `/workspace/toonage-docs/` in repo layout. The repo (Sirc146/ToonAge, `test`) is the intended source of truth; box copies are drafts. Standing rules, all 24 G-cards, Muse quotes and history items retained. Added Sirc’s git preference and “After each verified test and its working it's pushed up.” No repo writes, PRs, installs, bot messages or policy changes.
 November 11, 2026 — Muse restructure merged into PR #63's HANDOVER (box copy, not committed): trunk mapping settled as `test` per Sirc; guardrails added (push-when-verified, Riley merge rule, Muse formerly Pepper, Claude/Kiro archived, tag approval, backup for whichever client is tested, buttons with UNVERIFIED existence + missing-button card, data rule, suggestion wording); merge-timing model written as merge-to-`test`-after-review+CI → install → live-check, matching PRs #58/#59/#61/#62 — Sirc confirmed this model Nov 11 ("merge to test first, then you test, and your go marks it Done"); CurseForge/Wago release card added (pipeline exists in release.yml; no `v*` tag on current `test` head `c9c5308`, newest dated release tag `v2.0.3` Sep 18, 2026; secret presence UNVERIFIED); Gemini/Copilot/snippet sections and test-status template added. The standalone restructured draft is superseded by this merged file — do not save it as a second HANDOVER. G01–G24 cards, first-task tables, and PR #63 evidence kept intact.
 November 11, 2026 (later) — Muse: applied Conductor's 8.5/10 fixes — Gemini prompt pointed at the Test status template and Team work log (no section 9 exists); the two Team work log headings merged into this one; step 8 now names exactly what gets pushed after a go (the README and HANDOVER update commit); leftover draft sentence removed. Data rule added (Sirc, Nov 11): git is the only store — code, docs, and approved evidence live in `Sirc146/ToonAge`; one backup folder on the PC only (bare repo backup + dated SavedVariables backups), no second working copy or PC-only branches. Correction, same day: the "21 commits on main not in test" claim was withdrawn — it came from a shallow-clone check, and a full clone confirms `e060761` is in `test` and `main` has 0 commits not in `test`. The DISPUTED note and the reconciliation card were removed and the plain fact restored. `origin/reskin` does not exist on GitHub (only `cursor/ui-bugs-reskin-dba9`); nothing to retire, no action on that branch.
 November 11, 2026 (later still) — Muse: closed what could be closed from the repo side — Self-test button verified in code (`Modules/Infrastructure/TestHarness.lua:1582`, gated on `-dev` version or `/ta debug` at login) and Module Health button verified in code (`Modules/Infrastructure/Settings.lua:839`, copy-window output per `Core/Init.lua:1587`); in-game sighting is now a 30-second check-card for Sirc. `Tools/build_flavors.ps1 -Install` verified in code; which command Riley ran at 8:21 is a one-line question for Riley. Secrets cannot be verified from a clone — check-card added for Sirc (repo Settings + run-log line). PR #63 verified mergeable: 2 commits ahead of `test`, fast-forward, 0 conflicts — Riley merges in one action; post-merge cleanup list added (3 conditional spots). Test status seeded with the PR #62 / G01 entry awaiting Sirc's Spells check plus #58/#59/#61 pending. Guardrails trimmed to a single full copy — Gemini prompt and validation prompt now point to it.
@@ -555,8 +555,8 @@ November 11, 2026, 8:48 AM PT — Sirc approved the merged HANDOVER as the team 
 Nov 9, 2026 ~8:21 PM PST (recorded Nov 11, 2026): Riley did NOT run `Tools/build_flavors.ps1 -Install` for the PR #62 install. The executor built the runtime from test c9c5308 on Riley's box and copied the 4 changed files (Modules/Forever/MageGuidance.lua added; RotationLists.lua, Rotation.lua, ToonAge_Camelot.toc changed) onto Jarvis by hand, after a fresh backup at `_forever_\Interface\ToonAge-backup-20261109-201958`. SavedVariables unchanged. Whole-install match to c9c5308 via build_flavors.ps1 is UNVERIFIED. Future installs use only `Tools/build_flavors.ps1 -Install` after a SavedVariables backup.
 Nov 11, 2026 8:59 AM PST (relayed by Conductor): Sirc ran a read-only SHA256 check of `_forever_\Interface\AddOns\ToonAge` against the 425 files in ToonAge-test-c9c5308.zip (sha256 ced4d25f...): all 425 match exactly, none missing or different; the only extra file is `.rules.md`. SavedVariables backup: `C:\Users\calik\ToonAge-backups\SV-20261111-0859`. No reinstall needed for G01. The build_flavors.ps1 Forever install path (`_classic_beta_` instead of `_forever_`, line 156) is a pending card; held until it arrives.
 
-November 14, 2026 — Docs draft on current `test` (`6eeb530`): `AGENTS.md`, `docs/HISTORY.md`, and this file taken from PR #63 (`grok/docs-source-of-truth` at `eb06f6c`) and this HANDOVER brought forward. Quotes already in the file are unchanged, including Sirc's "Lets make this the workflow I Like this and let everyone know their part even Riley", "I'd rather have everything working off git.", "After each verified test and its working it's pushed up", and "merge to test first, then you test, and your go marks it Done". Merges #65–#73, #76, and #77–#84 are recorded from git. Live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (Christopher's call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. Button line numbers in the guardrails were re-read at `6eeb530`; the November 11 numbers remain in the earlier log lines. No install, no tag, and no merge was performed for this entry.
-November 15, 2026 — The same draft also takes PR #63's README additions, `docs/architecture.md`, and the `.pkgmeta` ignore for `AGENTS.md`. The README keeps the opt-in usage wording already on `test` at `6eeb530`. Two README sentences that #63 still had as UNKNOWN are aligned with this file: trunk mapping is `test` (November 11), and the November 9 8:21 PM PST install was a hand copy. PR #63 is fully redundant and was not closed.
+November 14, 2026 — Docs draft on current `test` (`6eeb530`): `AGENTS.md`, `Docs/HISTORY.md`, and this file taken from PR #63 (`grok/docs-source-of-truth` at `eb06f6c`) and this HANDOVER brought forward. Quotes already in the file are unchanged, including Sirc's "Lets make this the workflow I Like this and let everyone know their part even Riley", "I'd rather have everything working off git.", "After each verified test and its working it's pushed up", and "merge to test first, then you test, and your go marks it Done". Merges #65–#73, #76, and #77–#84 are recorded from git. Live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (Christopher's call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. Button line numbers in the guardrails were re-read at `6eeb530`; the November 11 numbers remain in the earlier log lines. No install, no tag, and no merge was performed for this entry.
+November 15, 2026 — The same draft also takes PR #63's README additions, `Docs/ARCHITECTURE_OVERVIEW.md`, and the `.pkgmeta` ignore for `AGENTS.md`. The README keeps the opt-in usage wording already on `test` at `6eeb530`. Two README sentences that #63 still had as UNKNOWN are aligned with this file: trunk mapping is `test` (November 11), and the November 9 8:21 PM PST install was a hand copy. PR #63 is fully redundant and was not closed.
 
 ### Pull / push / commit / merge / install / live-check — when each happens (added Nov 11, 2026)
 
@@ -579,9 +579,9 @@ The addon moves through six phases. Bots do the work inside each phase; Sirc app
 
 #### How this merge was done — kept, translated, not taken
 
-- **Kept as settled:** trunk is `test` (never `main`); `docs/HANDOVER.md` is the single shared record; branches are `<builder>/<feature>`; the approved install is `Tools/build_flavors.ps1 -Install`; in-game checks use buttons and copyable windows; the merge-timing model (merge → install → live-check); push-when-verified; the offline gates are `Tools/check_lua.py` and `Tools/test_*.py`.
+- **Kept as settled:** trunk is `test` (never `main`); `Docs/HANDOVER.md` is the single shared record; branches are `<builder>/<feature>`; the approved install is `Tools/build_flavors.ps1 -Install`; in-game checks use buttons and copyable windows; the merge-timing model (merge → install → live-check); push-when-verified; the offline gates are `Tools/check_lua.py` and `Tools/test_*.py`.
 - **Translated:** the pipeline doc's `main` becomes `test` everywhere (release tags are cut from `test` on Sirc's approval); its `docs/STATE.md` role is played by this file plus Test status; its `feat/<criterion-id>` branches become `<builder>/<feature>`; its `luacheck` / LuaLS checks are a local option, not a gate — the gates are the repo's own scripts; its directory-junction install is not adopted.
-- **Not taken:** separate `SPEC.md` / `API.md` / `DATA.md` / `THEORY.md` / `DESIGN.md` / `LORE.md` files — their jobs are done here by the G-cards, `architecture.md`, the harvest store, and Gilder's design direction. No second record is created. Friends-testing through a beta issue template is not adopted — there is no beta-tester process yet.
+- **Not taken:** separate `SPEC.md` / `API.md` / `DATA.md` / `THEORY.md` / `DESIGN.md` / `LORE.md` files — their jobs are done here by the G-cards, `ARCHITECTURE_OVERVIEW.md`, the harvest store, and Gilder's design direction. No second record is created. Friends-testing through a beta issue template is not adopted — there is no beta-tester process yet.
 
 | Phase | Lead | With | Output | Human gate before the next phase |
 | --- | --- | --- | --- | --- |
@@ -689,7 +689,7 @@ The repo already exists, so this is a verify-once list, not a build step. Items 
 5. API token — see the secrets check and the `CF_API_TOKEN` note in the release section.
 6. Local tooling: VS Code with LuaLS and the WoW API extension, BugGrabber with BugSack in the game client. `luacheck` is a local option, not a gate.
 7. Install method: the pipeline doc links the repo into the game with a directory junction. **Not adopted — ToonAge's only approved install is `Tools/build_flavors.ps1 -Install`.** Never the all-client release ZIP, never `Tools/deploy.ps1`.
-8. `.pkgmeta` gap — `AGENTS.md` would ship in the zip. On `test` at `6eeb530`, before this draft, `.pkgmeta` ignores `docs/` and does not ignore `AGENTS.md`, and the header says the file is used by `wago.yml`. This draft brings PR #63's `.pkgmeta` change: ignore `AGENTS.md`, and the header names `release.yml`. `wago.yml` no longer uploads.
+8. `.pkgmeta` gap — `AGENTS.md` would ship in the zip. On `test` at `6eeb530`, before this draft, `.pkgmeta` ignores `Docs/` and does not ignore `AGENTS.md`, and the header says the file is used by `wago.yml`. This draft brings PR #63's `.pkgmeta` change: ignore `AGENTS.md`, and the header names `release.yml`. `wago.yml` no longer uploads.
 
 ### Open-PR triage — the backlog has an owner (added Nov 11, 2026)
 
@@ -726,10 +726,10 @@ the GitHub repo Sirc146/ToonAge, with a flavor-specific .toc per client
 (Retail/Midnight, TBC Anniversary, Mists, Forever/Camelot, Classic Era,
 Cataclysm, Wrath). The .toc decides what loads, Core/Profile.lua decides
 what may start, and Core/ApiGuard.lua probes what the running client
-actually exposes. Read this file (docs/HANDOVER.md) first, then README.md,
-AGENTS.md, docs/HISTORY.md, and docs/architecture.md before proposing
+actually exposes. Read this file (Docs/HANDOVER.md) first, then README.md,
+AGENTS.md, Docs/HISTORY.md, and Docs/ARCHITECTURE_OVERVIEW.md before proposing
 anything. On test, once this November 14 draft is there, read AGENTS.md,
-docs/HANDOVER.md, docs/HISTORY.md, and docs/architecture.md from the repo.
+Docs/HANDOVER.md, Docs/HISTORY.md, and Docs/ARCHITECTURE_OVERVIEW.md from the repo.
 .rules.md and Docs/ARCHITECTURE.md are still in the tree. Do not use
 CLAUDE.md — it is archived.
 
@@ -747,14 +747,14 @@ HOW THIS TEAM WORKS:
    review + CI — then Christopher installs from test and live-checks.
 3. You never clear your own work. Riley's code is tested by Glitch,
    reviewed by Warden, and verified in-game only by Christopher. The
-   Guardrails section of docs/HANDOVER.md governs the rest — read it in
+   Guardrails section of Docs/HANDOVER.md governs the rest — read it in
    full before proposing anything (test branch, merge rule, backups,
    buttons, data rule, suggestion wording, release tags). State exactly
    what you checked and what you could not check without the game.
 4. Honesty and data rules: see the Guardrails — they govern what counts
    as verified. Guard every API call; Retail APIs do not exist on older
    clients.
-5. Update docs/HANDOVER.md — the Test status template and the Team work
+5. Update Docs/HANDOVER.md — the Test status template and the Team work
    log — when your work changes state. No update, no handoff. Release
    tags (v*) need Christopher's approval before pushing.
 6. Merges into test are Riley's job, only on Christopher's direct word.
@@ -766,7 +766,7 @@ and interface labels (G02) — full card scopes and DoDs are in this file.
 Then G04/G05 frame regressions, then the rest of G06–G24. Work only the
 card Conductor assigns you.
 
-Start by: summarising what you read in docs/HANDOVER.md in five lines,
+Start by: summarising what you read in Docs/HANDOVER.md in five lines,
 listing the questions you would ask before touching code, and naming the
 first bite-sized commit you would make. Post all three in the team chat, then wait for Conductor's go.
 ```
@@ -783,12 +783,12 @@ Output: <file path or branch name>
 Done when: <checkable condition>
 May touch: <files>
 Must not: <scope limits>
-On a blocker: write it to docs/HANDOVER.md under Blocked / waiting on a decision and stop.
+On a blocker: write it to Docs/HANDOVER.md under Blocked / waiting on a decision and stop.
 ```
 
 ### Instructions for Copilot (added Nov 11, 2026)
 
-GitHub Copilot works inside the IDE, on the card Conductor assigned — it is a pair of hands at the keyboard, not a second planner. The repo already carries `.github/copilot-instructions.md`; that file and `AGENTS.md` govern every suggestion, and this section governs how the team uses it. `.rules.md` is still in the tree. `docs/architecture.md` is part of this draft.
+GitHub Copilot works inside the IDE, on the card Conductor assigned — it is a pair of hands at the keyboard, not a second planner. The repo already carries `.github/copilot-instructions.md`; that file and `AGENTS.md` govern every suggestion, and this section governs how the team uses it. `.rules.md` is still in the tree. `Docs/ARCHITECTURE_OVERVIEW.md` is part of this draft.
 
 - **One card, one branch, one suggestion at a time.** Open the card's `copilot/<feature>` branch, state the card and its definition of done in the chat before accepting code, and review every completion line by line. A suggestion that touches a file outside the card's scope is rejected, however good it looks.
 - **Use Copilot for what it is good at here:** completing the module pattern from `AGENTS.md`, drafting the offline `Tools/test_*.py` case for a change, repeating an established UI component call (`TA.Modern:SectionHeader`, `DataRow`, `ActionButton`, and the rest) instead of hand-rolling a new one, and summarising a diff against the card's definition of done.
@@ -822,7 +822,7 @@ Conductor keeps this section current. Each bot updates its own work as soon as i
 - PR #58 — Forever reputations — merged to test Nov 8 — in-game verification pending
 - PR #59 — Forever profession dedup — merged to test Nov 8 — in-game verification pending
 - PR #61 — Manual profession batch calculator — merged to test Nov 8 — in-game verification pending
-- PR #63 — fully redundant with the November 14 draft (AGENTS.md, HANDOVER.md, HISTORY.md, README additions, architecture.md, .pkgmeta). Left open — since Nov 11, 2026
+- PR #63 — fully redundant with the November 14 draft (AGENTS.md, HANDOVER.md, HISTORY.md, README additions, ARCHITECTURE_OVERVIEW.md, .pkgmeta). Left open — since Nov 11, 2026
 - PRs #65–#73, #76, #77–#84 — merged to test — head 6eeb530 — owner: Sirc for the live check — what is left: Christopher's live verification of 6eeb530
 
 ## Waiting on Sirc

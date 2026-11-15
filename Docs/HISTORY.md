@@ -44,7 +44,7 @@ Historical CharacterAdvisor used Blizzard Game Data API client-credentials for o
 
 ## Dual-gate wording (retained, not superseded)
 
-Retained verbatim from the Copilot-export history and still the packaging/runtime rule (see [architecture.md](architecture.md)):
+Retained verbatim from the Copilot-export history and still the packaging/runtime rule (see [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md)):
 
 **“the TOC file is the packaging backstop (what actually gets loaded), and Core/Profile.lua is the runtime backstop (what is allowed to initialize).”**
 

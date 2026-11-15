@@ -235,14 +235,14 @@ Bundles `Libs/LibStub.lua` (Public Domain).
 
 Installs come from the `test` branch. The repo is the single source of truth; box copies of these docs are drafts only until they are approved and committed.
 
-Read [AGENTS.md](AGENTS.md), [docs/HANDOVER.md](docs/HANDOVER.md), [docs/HISTORY.md](docs/HISTORY.md) and [docs/architecture.md](docs/architecture.md) from the repo before working.
+Read [AGENTS.md](AGENTS.md), [Docs/HANDOVER.md](Docs/HANDOVER.md), [Docs/HISTORY.md](Docs/HISTORY.md) and [Docs/ARCHITECTURE_OVERVIEW.md](Docs/ARCHITECTURE_OVERVIEW.md) from the repo before working.
 
 | File | Who it is for |
 |---|---|
 | [AGENTS.md](AGENTS.md) | Bot standing rules and workflow |
-| [docs/HANDOVER.md](docs/HANDOVER.md) | Current plan, delivery state, G-cards and work log |
-| [docs/HISTORY.md](docs/HISTORY.md) | Dated archive of superseded or already-tried items |
-| [docs/architecture.md](docs/architecture.md) | Clients, TOCs, modules, dual-gate and API audit |
+| [Docs/HANDOVER.md](Docs/HANDOVER.md) | Current plan, delivery state, G-cards and work log |
+| [Docs/HISTORY.md](Docs/HISTORY.md) | Dated archive of superseded or already-tried items |
+| [Docs/ARCHITECTURE_OVERVIEW.md](Docs/ARCHITECTURE_OVERVIEW.md) | Clients, TOCs, modules, dual-gate and API audit |
 
 All plans, decisions and final approvals lead to Sirc.
 
@@ -256,7 +256,7 @@ Forever installation is only `Tools/build_flavors.ps1 -Install`, never the all-c
 
 `C:\Program Files (x86)\World of Warcraft\_<flavor>_\Interface\AddOns\ToonAge`
 
-Confirm the real client and avoid nested AddOns folders. `Tools/build_flavors.ps1 -Check` is report-only: it compares installed clients against the trunk and does not install. `Tools/deploy.ps1` is not the Forever method; its `robocopy /MIR` can be destructive. The November 9, 2026, 8:21 PM PST install was a hand copy of four files from `c9c5308`, recorded in [docs/HANDOVER.md](docs/HANDOVER.md). It was not `Tools/build_flavors.ps1 -Install`. A whole-install match through that script is UNVERIFIED. No install commands are run from this document.
+Confirm the real client and avoid nested AddOns folders. `Tools/build_flavors.ps1 -Check` is report-only: it compares installed clients against the trunk and does not install. `Tools/deploy.ps1` is not the Forever method; its `robocopy /MIR` can be destructive. The November 9, 2026, 8:21 PM PST install was a hand copy of four files from `c9c5308`, recorded in [Docs/HANDOVER.md](Docs/HANDOVER.md). It was not `Tools/build_flavors.ps1 -Install`. A whole-install match through that script is UNVERIFIED. No install commands are run from this document.
 
 ### `Update-ToonAge.ps1` flow (not an approved Forever path)
 
