@@ -406,17 +406,25 @@ function RL.DrawList(content, y, L, view, title)
     return y
 end
 
-local function WalkIDs(node, acc, seen)
+local function IsClassKey(key)
+    return type(key) == "string" and not SKIP_KEY[key] and key:match("^[A-Z]+$") ~= nil
+end
+
+local function WalkIDs(node, acc, seen, classToken)
     if type(node) ~= "table" or seen[node] then return end
     seen[node] = true
     if IsEntry(node) then
         for _, id in ipairs(RankList(node)) do
-            acc[#acc + 1] = { id = id, name = node.name }
+            acc[#acc + 1] = { id = id, name = node.name, class = classToken }
         end
         return
     end
-    for _, child in pairs(node) do
-        if type(child) == "table" then WalkIDs(child, acc, seen) end
+    for key, child in pairs(node) do
+        if type(child) == "table" then
+            local nextClass = classToken
+            if not nextClass and IsClassKey(key) then nextClass = key end
+            WalkIDs(child, acc, seen, nextClass)
+        end
     end
 end
 
@@ -427,24 +435,58 @@ function RL.AllSpellIDs(data)
     return acc
 end
 
+local function UniqueCount(ids)
+    local seen, n = {}, 0
+    for _, row in ipairs(ids) do
+        if row.id and not seen[row.id] then
+            seen[row.id] = true
+            n = n + 1
+        end
+    end
+    return n
+end
+
 --- lookup(spellID) is C_Spell.GetSpellInfo. A miss is a failed call, a secret
 --- name, or a result with no name. nil lookup means the function is absent.
+--- Each id is checked once. The same rank listed in several bands is one miss.
+--- The count is unique ids, not rows walked.
 function RL.Misses(lookup, data)
     data = data or (TA.Data and TA.Data.RotationLists)
     if type(data) ~= "table" then return nil, 0 end
     local ids = RL.AllSpellIDs(data)
-    if type(lookup) ~= "function" then return {}, #ids, false end
+    local unique = UniqueCount(ids)
+    if type(lookup) ~= "function" then return {}, unique, false end
     local U = TA.Utils
-    local misses = {}
+    local seen, misses = {}, {}
     for _, row in ipairs(ids) do
-        local ok, info = pcall(lookup, row.id)
-        local name = info
-        if ok and type(info) == "table" then name = info.name end
-        if not ok or (U and U.IsSecret and U.IsSecret(name)) or type(name) ~= "string" or name == "" then
-            misses[#misses + 1] = row
+        if row.id and not seen[row.id] then
+            seen[row.id] = true
+            local ok, info = pcall(lookup, row.id)
+            local name = info
+            if ok and type(info) == "table" then name = info.name end
+            if not ok or (U and U.IsSecret and U.IsSecret(name)) or type(name) ~= "string" or name == "" then
+                misses[#misses + 1] = row
+            end
         end
     end
-    return misses, #ids, true
+    return misses, unique, true
+end
+
+--- One self-test warning. Other classes stay in the probe: GetSpellInfo reads
+--- the client spell database, not the spellbook. A miss for another class is
+--- labeled so it is not read as this character's rotation.
+function RL.MissLine(row, playerClass)
+    row = type(row) == "table" and row or {}
+    local id = tonumber(row.id) or 0
+    local name = (type(row.name) == "string" and row.name ~= "") and row.name or "?"
+    local className = (type(row.class) == "string" and row.class ~= "") and row.class or "?"
+    local yours = className ~= "?" and type(playerClass) == "string" and playerClass ~= ""
+        and Token(playerClass) == Token(className)
+    if yours or className == "?" or type(playerClass) ~= "string" or playerClass == "" then
+        return string.format("rotation spell %d (%s, %s): GetSpellInfo missed", id, name, className)
+    end
+    return string.format("rotation spell %d (%s, %s, not your class): GetSpellInfo missed",
+        id, name, className)
 end
 
 function RL.StatusLine()
@@ -463,7 +505,8 @@ function RL.StatusLine()
     local parts = {}
     local show = math.min(#misses, 8)
     for i = 1, show do
-        parts[#parts + 1] = string.format("%s (%d)", misses[i].name or "?", misses[i].id)
+        parts[#parts + 1] = string.format("%s (%d, %s)",
+            misses[i].name or "?", misses[i].id, misses[i].class or "?")
     end
     local extra = ""
     if #misses > show then

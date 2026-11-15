@@ -812,9 +812,12 @@ local function SuiteApi(S)
         end
     end
 
-    -- Every spell id in this version's rotation list. Other versions' files
-    -- are not loaded, so they are not checked. Misses are listed here and on
-    -- /ta health.
+    -- Every spell id in this version's rotation list, each id once. Other
+    -- versions' files are not loaded. Other classes stay in the check:
+    -- GetSpellInfo reads the client spell database, not this character's
+    -- spellbook, so a Mage can still confirm a Paladin id. A miss for
+    -- another class is labeled "not your class". Misses are listed here
+    -- and on /ta health.
     do
         local RL = TA.RotationLists
         if not RL or type(RL.Misses) ~= "function" then
@@ -846,8 +849,14 @@ local function SuiteApi(S)
                 for _, row in ipairs(misses or {}) do
                     shown = shown + 1
                     if shown <= 12 then
-                        S(WARN, format("rotation spell %d (%s): GetSpellInfo missed",
-                            row.id, row.name or "?"))
+                        local line
+                        if type(RL.MissLine) == "function" then
+                            line = RL.MissLine(row, classToken)
+                        else
+                            line = format("rotation spell %d (%s): GetSpellInfo missed",
+                                row.id, row.name or "?")
+                        end
+                        S(WARN, line)
                     end
                 end
                 if shown > 12 then
