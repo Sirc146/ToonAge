@@ -20,6 +20,7 @@ TA:RegisterModule("ForeverScrollProbe", M)
 local TYPE_PATHS = {
     "C_Map.SetUserWaypoint",
     "C_Map.CanSetUserWaypointOnMap",
+    "C_Map.ClearUserWaypoint",
     "C_SuperTrack.SetSuperTrackedUserWaypoint",
     "C_Map.GetBestMapForUnit",
     "C_Map.GetPlayerMapPosition",
