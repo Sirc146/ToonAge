@@ -391,6 +391,88 @@ def main():
             OUT = view.rankHint or ""
           """) or ""), True)
 
+    def rank_hint(extra):
+        return eval_case(base + extra + r"""
+            local view = G.Evaluate(ctx)
+            OUT = view.rankHint or ""
+        """) or ""
+
+    learned_ids = rank_hint(r"""
+        ctx.level = 15
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+            { name = "Eclair de givre", spellID = 205 },
+            { name = "Eclair de givre", spellID = 837 },
+            { name = "Trait de feu", spellID = 2137 },
+        }
+    """)
+    check("spell 205 confirms the Frostbolt rank learned at 8",
+          "Frostbolt rank 2 (spell 205) is confirmed." in learned_ids
+          and "Frostbolt rank at 8 is trainer-listed, not confirmed learned."
+          not in learned_ids, True)
+    check("spell 837 confirms the Frostbolt rank learned at 14",
+          "Frostbolt rank 3 (spell 837) is confirmed." in learned_ids
+          and "Frostbolt rank at 14 is trainer-listed, not confirmed learned."
+          not in learned_ids, True)
+    check("spell 2137 confirms the Fire Blast rank learned at 14",
+          "Fire Blast rank 2 (spell 2137) is confirmed." in learned_ids
+          and "Fire Blast rank at 14 is trainer-listed, not confirmed learned."
+          not in learned_ids, True)
+
+    name_only = rank_hint(r"""
+        ctx.level = 15
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+            { name = "Frostbolt" },
+            { name = "Fire Blast" },
+            { name = "Frostbolt", spellID = 116 },
+        }
+    """)
+    check("an English name or another Frostbolt rank does not confirm those lines",
+          "Frostbolt rank at 8 is trainer-listed, not confirmed learned." in name_only
+          and "Frostbolt rank at 14 is trainer-listed, not confirmed learned." in name_only
+          and "Fire Blast rank at 14 is trainer-listed, not confirmed learned." in name_only
+          and "Frostbolt rank 2 (spell 205) is confirmed." not in name_only
+          and "Frostbolt rank 3 (spell 837) is confirmed." not in name_only
+          and "Fire Blast rank 2 (spell 2137) is confirmed." not in name_only, True)
+
+    asked_yes = rank_hint(r"""
+        ctx.level = 15
+        ctx.ask = function(id)
+            if id == 145 or id == 5143 or id == 205 or id == 837 or id == 2137 then
+                return "yes"
+            end
+            return "no"
+        end
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+        }
+    """)
+    check("a yes from the known-spell check confirms the three rank lines",
+          "Frostbolt rank 2 (spell 205) is confirmed." in asked_yes
+          and "Frostbolt rank 3 (spell 837) is confirmed." in asked_yes
+          and "Fire Blast rank 2 (spell 2137) is confirmed." in asked_yes, True)
+
+    early = rank_hint(r"""
+        ctx.level = 10
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+            { name = "Eclair de givre", spellID = 837 },
+            { name = "Trait de feu", spellID = 2137 },
+        }
+    """)
+    check("a confirmed rank is named even before the trainer window",
+          "Frostbolt rank 3 (spell 837) is confirmed." in early
+          and "Fire Blast rank 2 (spell 2137) is confirmed." in early
+          and "Frostbolt rank at 14 is trainer-listed" not in early
+          and "Fire Blast rank at 14 is trainer-listed" not in early, True)
+    check("the rank-hint comment matches the lower-bound gate",
+          "only within two levels" not in src and "lower bound" in src, True)
+
     check("client name is used when the id is confirmed",
           eval_case(base + r"""
             ctx.spellbook = { { name = "Boule de feu", spellID = 145 } }
@@ -618,6 +700,88 @@ def main():
           "Frostbolt" in (lua.eval("WHY") or "")
           and "not a cooldown press" in (lua.eval("WHY") or "")
           and "No page-stated next spell" not in (lua.eval("WHY") or ""), True)
+
+    ENGAGED_NOVA_TIP = (
+        "Conditional tip, not a next press. If an enemy reaches melee range, "
+        "Frost Nova can freeze it so you can make space and keep casting. "
+        "Icy Veins Frost leveling."
+    )
+    ENGAGED_NOVA_URL = "https://www.icy-veins.com/wow-forever/frost-mage-leveling"
+
+    def engaged_case(extra):
+        got = eval_case(base + extra + r"""
+            ctx.situation = "engaged"
+            local view = G.Evaluate(ctx)
+            OUT = tostring(view.press) .. "\n" .. (view.why or "") .. "\n"
+                .. (view.label or "") .. "\n" .. (view.src or "") .. "\n"
+                .. (G.Feedback(view, "") or "")
+        """) or ""
+        parts = got.split("\n", 3)
+        while len(parts) < 4:
+            parts.append("")
+        return parts
+
+    by_id = engaged_case(r"""
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+            { name = "Nova de gelo", spellID = 122 },
+        }
+    """)
+    check("melee offers the Frost Nova tip when spell 122 is in the spellbook",
+          by_id[0] == "false"
+          and by_id[1] == ENGAGED_NOVA_TIP
+          and by_id[2] == ""
+          and ENGAGED_NOVA_URL in by_id[3], True)
+    by_ask = engaged_case(r"""
+        ctx.ask = function(id)
+            if id == 145 or id == 5143 or id == 122 then return "yes" end
+            return "no"
+        end
+    """)
+    check("melee offers the Frost Nova tip when the known-spell check says yes for 122",
+          by_ask[0] == "false" and by_ask[1] == ENGAGED_NOVA_TIP, True)
+    by_name = engaged_case(r"""
+        ctx.spellbook = {
+            { name = "Fireball", spellID = 145 },
+            { name = "Arcane Missiles", spellID = 5143 },
+            { name = "Frost Nova" },
+        }
+    """)
+    check("an English Frost Nova name does not offer the melee tip",
+          by_name[1] != ENGAGED_NOVA_TIP
+          and "No spell is pressed once the enemy has reached you." in by_name[1]
+          and by_name[0] == "false", True)
+    without = engaged_case("")
+    check("melee without Frost Nova 122 keeps the no-press note",
+          without[0] == "false"
+          and "No spell is pressed once the enemy has reached you." in without[1]
+          and ENGAGED_NOVA_TIP not in without[1], True)
+    pack_held = eval_case(base + r"""
+        ctx.situation = "pack"
+        ctx.spellbook = {
+            { name = "Nova de gelo", spellID = 122 },
+            { name = "Fireball", spellID = 145 },
+        }
+        local view = G.Evaluate(ctx)
+        OUT = tostring(view.press) .. "|" .. (view.label or "")
+        PACK_WHY = view.why or ""
+    """)
+    check("several mobs still holds Frost Nova until an area spell is learned",
+          pack_held == "false|"
+          and ENGAGED_NOVA_TIP not in (lua.eval("PACK_WHY") or "")
+          and "Arcane Explosion" in (lua.eval("PACK_WHY") or ""), True)
+    check("several mobs still suggests Frost Nova once an area spell is named",
+          eval_case(base + r"""
+            ctx.situation = "pack"
+            ctx.spellbook = {
+                { name = "Frost Nova" },
+                { name = "Arcane Explosion" },
+                { name = "Fireball", spellID = 145 },
+            }
+            local view = G.Evaluate(ctx)
+            OUT = tostring(view.press) .. "|" .. (view.label or "") .. "|" .. (view.why or "")
+          """).startswith("true|Frost Nova|Frost Nova freezes the enemies together"), True)
 
     check("Fireball is labeled a Fire-style opener",
           "Fire-style opener" in (eval_case(base + r"""
