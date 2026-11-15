@@ -273,6 +273,7 @@ All cards inherit the standing backup/freshness/button/launch gates and Sirc app
 - **C 2** `docs(release): record approved Mage artifact and acceptance` — **DoD:** Record reviewed full SHA, CI, artifact hash, merge SHA, backup/target/settings/rollback and separate install result only after those actions actually occur; no invented full SHA or advance-to-Done from this plan.
 **Current execution:** First task 1 is live acceptance of unchanged installed bytes; the comment-only C1 is independent/nonblocking.
 **Sirc:** Confirm trunk mapping/install method; perform own explained backup before each check; use Reload UI, Spells, Module Health/Error Log buttons and copyable windows. Send Vespera Spells screenshot to Gilder for length/labels; test learned/rank/selector behavior without respec. Do not report live pass from installed hashes.
+G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage Spells guide on Forever build 70888 with Vespera at level 15. His words: "Go for the changes". Score 7.5/10. Self-test: 88 pass, 0 fail, 33 warn. Fixes he asked for: (1) the Frostbolt 8/14 and Fire Blast 14 lines always say "not confirmed learned" (PR #64, not on test yet); (2) "Enemy has reached me" suggests nothing even though Frost Nova was learned. This pass covers #62 on 70888, not test 6eeb530; the 6eeb530 live check is still open. Source: Conductor's log, relayed Nov 15, 2026.
 
 #### G02 — ApiGuard swapped build/interface labels
 **Owners:** Riley; Glitch + Warden QA; Gilder diagnostic copy. **Priority:** P0 / quick win. **D:** 4 installed label bug (8/10). **P:** 2 fix approach specified; no implementation claimed (4/10).
@@ -813,6 +814,7 @@ Conductor keeps this section current. Each bot updates its own work as soon as i
 ```markdown
 ## Test status
 - PR #62 / G01 — Experimental Mage 10-19 spell guide (Forever), test @ c9c5308 — offline checks: CI green, 425/425 hashes match, no deletes, SavedVariables identical; Glitch/Warden/Gilder GOs, Chronicler fact confirmation — rules review: clear — visual review: Gilder GO (copy/art) — in-game verified by Christopher: NO, awaiting Sirc's Spells check: Reload UI → Spells; Module Health / Error Log copy windows; learned/unlearned/rank redraw; explicit selector; wand states
+- G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage Spells guide on Forever build 70888 with Vespera at level 15. His words: "Go for the changes". Score 7.5/10. Self-test: 88 pass, 0 fail, 33 warn. Fixes he asked for: (1) the Frostbolt 8/14 and Fire Blast 14 lines always say "not confirmed learned" (PR #64, not on test yet); (2) "Enemy has reached me" suggests nothing even though Frost Nova was learned. This pass covers #62 on 70888, not test 6eeb530; the 6eeb530 live check is still open. Source: Conductor's log, relayed Nov 15, 2026.
 
 ## Done
 - (none yet — first Done entry is PR #62's go from Sirc)
