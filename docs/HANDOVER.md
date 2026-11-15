@@ -9,7 +9,7 @@ The repo https://github.com/Sirc146/ToonAge on branch `test` is the single sourc
 **Merge note (Nov 11, 2026):** this file is PR #63's HANDOVER with the November 11 restructure merged into it. The G01–G24 cards, first-task tables, live fix list, product decisions, and evidence below are PR #63's, kept intact. The overlay adds the guardrails, the Muse/merge rules, the pull/push/commit timing, the CurseForge release card, the Gemini/Copilot/snippet sections, and the test-status template. It replaces the standalone restructured draft — do not save that draft as a second HANDOVER. Merged Nov 11, 2026 with `WoW-AddOn-Build-Workflow.md` (workspace/user/files/WoW-AddOn-Build-Workflow.md) — the six phases, four gates, Blizzard policy, Phase 0 setup, hand-off contracts, and task prompt below come from it, translated to ToonAge's settled rules (see “How this merge was done” in the phases section).
 **When PR #63 merges — remove these conditionals (verified Nov 11, 2026: PR #63 is 2 commits ahead of `test`, fast-forward, 0 conflicts, 5 files (README.md, AGENTS.md, docs/HANDOVER.md, docs/HISTORY.md, docs/architecture.md) — Riley merges it in one action; Muse cannot merge from here. Sequencing: PR #63 still carries the old 476-line HANDOVER, so commit this merged file to the PR branch (grok/docs-source-of-truth) FIRST, then merge — if PR #63 merges as it stands, the old HANDOVER lands on `test`):** (1) this merge note itself — its content lives in the Team work log; (2) the Gemini prompt parenthetical "(Until PR #63 merges, the live files on test are .rules.md and Docs/ARCHITECTURE.md. Do not use CLAUDE.md — it is archived.)"; (3) the Copilot section parenthetical "(`.rules.md` until PR #63 merges)". After that, this file describes one state: `AGENTS.md` + `docs/` on `test`.
 
-**November 14, 2026.** `test` is `6eeb530`. PRs #65–#73, #76, and #77–#84 are merged into `test`. #74 is absent from that merged set. Checked November 15, 2026 06:21 UTC: #74 is closed with no merge commit. There is no pull request #75. Christopher's live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (his call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. This commit adds `AGENTS.md`, `docs/HANDOVER.md`, and `docs/HISTORY.md` from PR #63 onto `6eeb530` and updates this file. PR #63 is still open and still carries `README.md` additions, `docs/architecture.md`, and the `.pkgmeta` ignore for `AGENTS.md`. Those three are not in this commit, so PR #63 is not fully redundant. The November 11 conditional above stays as history.
+**November 14, 2026.** `test` is `6eeb530`. PRs #65–#73, #76, and #77–#84 are merged into `test`. #74 is absent from that merged set. Checked November 15, 2026 06:21 UTC: #74 is closed with no merge commit. There is no pull request #75. Christopher's live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (his call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. This branch adds `AGENTS.md`, `docs/HANDOVER.md`, `docs/HISTORY.md`, the README additions, `docs/architecture.md`, and the `.pkgmeta` ignore for `AGENTS.md` from PR #63 onto `6eeb530`, and updates this file. That is the whole of PR #63, so PR #63 is fully redundant. It stays open until someone else closes it. The November 11 conditional above stays as history.
 
 ## 1 PROJECT OVERVIEW
 
@@ -555,7 +555,8 @@ November 11, 2026, 8:48 AM PT — Sirc approved the merged HANDOVER as the team 
 Nov 9, 2026 ~8:21 PM PST (recorded Nov 11, 2026): Riley did NOT run `Tools/build_flavors.ps1 -Install` for the PR #62 install. The executor built the runtime from test c9c5308 on Riley's box and copied the 4 changed files (Modules/Forever/MageGuidance.lua added; RotationLists.lua, Rotation.lua, ToonAge_Camelot.toc changed) onto Jarvis by hand, after a fresh backup at `_forever_\Interface\ToonAge-backup-20261109-201958`. SavedVariables unchanged. Whole-install match to c9c5308 via build_flavors.ps1 is UNVERIFIED. Future installs use only `Tools/build_flavors.ps1 -Install` after a SavedVariables backup.
 Nov 11, 2026 8:59 AM PST (relayed by Conductor): Sirc ran a read-only SHA256 check of `_forever_\Interface\AddOns\ToonAge` against the 425 files in ToonAge-test-c9c5308.zip (sha256 ced4d25f...): all 425 match exactly, none missing or different; the only extra file is `.rules.md`. SavedVariables backup: `C:\Users\calik\ToonAge-backups\SV-20261111-0859`. No reinstall needed for G01. The build_flavors.ps1 Forever install path (`_classic_beta_` instead of `_forever_`, line 156) is a pending card; held until it arrives.
 
-November 14, 2026 — Docs draft on current `test` (`6eeb530`): `AGENTS.md`, `docs/HISTORY.md`, and this file taken from PR #63 (`grok/docs-source-of-truth` at `eb06f6c`) and this HANDOVER brought forward. Quotes already in the file are unchanged, including Sirc's "Lets make this the workflow I Like this and let everyone know their part even Riley", "I'd rather have everything working off git.", "After each verified test and its working it's pushed up", and "merge to test first, then you test, and your go marks it Done". Merges #65–#73, #76, and #77–#84 are recorded from git. Live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (Christopher's call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. Button line numbers in the guardrails were re-read at `6eeb530`; the November 11 numbers remain in the earlier log lines. `.pkgmeta` on `test` still does not ignore `AGENTS.md`. No install, no tag, and no merge was performed for this entry.
+November 14, 2026 — Docs draft on current `test` (`6eeb530`): `AGENTS.md`, `docs/HISTORY.md`, and this file taken from PR #63 (`grok/docs-source-of-truth` at `eb06f6c`) and this HANDOVER brought forward. Quotes already in the file are unchanged, including Sirc's "Lets make this the workflow I Like this and let everyone know their part even Riley", "I'd rather have everything working off git.", "After each verified test and its working it's pushed up", and "merge to test first, then you test, and your go marks it Done". Merges #65–#73, #76, and #77–#84 are recorded from git. Live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (Christopher's call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. Button line numbers in the guardrails were re-read at `6eeb530`; the November 11 numbers remain in the earlier log lines. No install, no tag, and no merge was performed for this entry.
+November 15, 2026 — The same draft also takes PR #63's README additions, `docs/architecture.md`, and the `.pkgmeta` ignore for `AGENTS.md`. The README keeps the opt-in usage wording already on `test` at `6eeb530`. Two README sentences that #63 still had as UNKNOWN are aligned with this file: trunk mapping is `test` (November 11), and the November 9 8:21 PM PST install was a hand copy. PR #63 is fully redundant and was not closed.
 
 ### Pull / push / commit / merge / install / live-check — when each happens (added Nov 11, 2026)
 
@@ -688,7 +689,7 @@ The repo already exists, so this is a verify-once list, not a build step. Items 
 5. API token — see the secrets check and the `CF_API_TOKEN` note in the release section.
 6. Local tooling: VS Code with LuaLS and the WoW API extension, BugGrabber with BugSack in the game client. `luacheck` is a local option, not a gate.
 7. Install method: the pipeline doc links the repo into the game with a directory junction. **Not adopted — ToonAge's only approved install is `Tools/build_flavors.ps1 -Install`.** Never the all-client release ZIP, never `Tools/deploy.ps1`.
-8. `.pkgmeta` gap — `AGENTS.md` would ship in the zip. Re-read November 14, 2026: on `test` at `6eeb530`, `.pkgmeta` ignores `docs/` and does not ignore `AGENTS.md`. The header still says the file is used by `wago.yml`. On PR #63's branch `grok/docs-source-of-truth` (`eb06f6c`), `.pkgmeta` ignores `AGENTS.md` and the header names `release.yml`. This November 14 commit does not change `.pkgmeta`. That ignore stays on PR #63.
+8. `.pkgmeta` gap — `AGENTS.md` would ship in the zip. On `test` at `6eeb530`, before this draft, `.pkgmeta` ignores `docs/` and does not ignore `AGENTS.md`, and the header says the file is used by `wago.yml`. This draft brings PR #63's `.pkgmeta` change: ignore `AGENTS.md`, and the header names `release.yml`. `wago.yml` no longer uploads.
 
 ### Open-PR triage — the backlog has an owner (added Nov 11, 2026)
 
@@ -727,10 +728,10 @@ Cataclysm, Wrath). The .toc decides what loads, Core/Profile.lua decides
 what may start, and Core/ApiGuard.lua probes what the running client
 actually exposes. Read this file (docs/HANDOVER.md) first, then README.md,
 AGENTS.md, docs/HISTORY.md, and docs/architecture.md before proposing
-anything. On test, once this November 14 commit is there, read AGENTS.md,
-docs/HANDOVER.md, and docs/HISTORY.md from the repo. docs/architecture.md is
-still only on PR #63. .rules.md and Docs/ARCHITECTURE.md are still in the
-tree. Do not use CLAUDE.md — it is archived.
+anything. On test, once this November 14 draft is there, read AGENTS.md,
+docs/HANDOVER.md, docs/HISTORY.md, and docs/architecture.md from the repo.
+.rules.md and Docs/ARCHITECTURE.md are still in the tree. Do not use
+CLAUDE.md — it is archived.
 
 HOW THIS TEAM WORKS:
 1. Questions before code. If anything about your task is unclear, missing,
@@ -787,7 +788,7 @@ On a blocker: write it to docs/HANDOVER.md under Blocked / waiting on a decision
 
 ### Instructions for Copilot (added Nov 11, 2026)
 
-GitHub Copilot works inside the IDE, on the card Conductor assigned — it is a pair of hands at the keyboard, not a second planner. The repo already carries `.github/copilot-instructions.md`; that file and `AGENTS.md` govern every suggestion, and this section governs how the team uses it. `.rules.md` is still in the tree. `docs/architecture.md` is still only on PR #63.
+GitHub Copilot works inside the IDE, on the card Conductor assigned — it is a pair of hands at the keyboard, not a second planner. The repo already carries `.github/copilot-instructions.md`; that file and `AGENTS.md` govern every suggestion, and this section governs how the team uses it. `.rules.md` is still in the tree. `docs/architecture.md` is part of this draft.
 
 - **One card, one branch, one suggestion at a time.** Open the card's `copilot/<feature>` branch, state the card and its definition of done in the chat before accepting code, and review every completion line by line. A suggestion that touches a file outside the card's scope is rejected, however good it looks.
 - **Use Copilot for what it is good at here:** completing the module pattern from `AGENTS.md`, drafting the offline `Tools/test_*.py` case for a change, repeating an established UI component call (`TA.Modern:SectionHeader`, `DataRow`, `ActionButton`, and the rest) instead of hand-rolling a new one, and summarising a diff against the card's definition of done.
@@ -821,7 +822,7 @@ Conductor keeps this section current. Each bot updates its own work as soon as i
 - PR #58 — Forever reputations — merged to test Nov 8 — in-game verification pending
 - PR #59 — Forever profession dedup — merged to test Nov 8 — in-game verification pending
 - PR #61 — Manual profession batch calculator — merged to test Nov 8 — in-game verification pending
-- PR #63 — November 11 HANDOVER and .pkgmeta fix remain on `grok/docs-source-of-truth`; merge waits on Sirc's direct word or GitHub click — since Nov 11, 2026. A November 14 draft carries AGENTS.md, HANDOVER.md, and HISTORY.md onto current test and does not include the README, architecture.md, or .pkgmeta edits
+- PR #63 — fully redundant with the November 14 draft (AGENTS.md, HANDOVER.md, HISTORY.md, README additions, architecture.md, .pkgmeta). Left open — since Nov 11, 2026
 - PRs #65–#73, #76, #77–#84 — merged to test — head 6eeb530 — owner: Sirc for the live check — what is left: Christopher's live verification of 6eeb530
 
 ## Waiting on Sirc
