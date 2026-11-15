@@ -670,9 +670,11 @@ local ERROR_PRINT_LIMIT = 3
 local ENGINE_MODULES = {
     ApiGuard = true, State = true, SkillScan = true, TBCStats = true,
     ErrorLog = true,   -- a client that errors is when you need this most
-    -- Coexistence is part of the engine: every flavor that loads the file
-    -- detects other addons. The profile gate must not skip that.
-    AddonBridge = true,
+    -- AddonBridge is not in this set. It is product: Forever restock and the
+    -- TBC/Mists settings report call it. Those profiles list it, so Init
+    -- runs there. A flavor that leaves it out never initialises it, which is
+    -- what the self-test gate requires. An exemption here is what made
+    -- Forever start it while the profile omitted it.
 }
 
 local SAFE_MODE_KEEP = {
