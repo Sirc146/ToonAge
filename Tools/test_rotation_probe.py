@@ -5,10 +5,11 @@ ToonAge -- rotation self-test probe scope
 On a Forever Mage, /ta test warned GetSpellInfo missed for Mutilate 1310707
 six times and Blessing of Light 19977, 19978, 19979 twice each.
 
-The check walks every class in this version's rotation file. GetSpellInfo
-reads the client spell database, not the spellbook, so other classes stay
-in the probe. Each id is reported once, and a miss for another class says
-so. The Forever ids are not removed and no cross-expansion id is added.
+Blessing of Light is removed from the Forever list. The check still walks
+every class in this version's rotation file. GetSpellInfo reads the client
+spell database, not the spellbook, so other classes stay in the probe. Each
+remaining id is reported once, and a miss for another class says so.
+Mutilate 1310707 stays, at level 40. No cross-expansion id is added.
 
 Usage:  python3 Tools/test_rotation_probe.py [-v]
 """
@@ -85,19 +86,18 @@ def test_probe():
     lua.execute(PROBE)
     check("Mutilate 1310707 is still probed on a full-file check", lua.eval("C1310707") > 0, True)
     check("Mutilate 1310707 is reported once", lua.eval("C1310707"), 1)
-    check("Blessing of Light 19977 is reported once", lua.eval("C19977"), 1)
-    check("Blessing of Light 19978 is reported once", lua.eval("C19978"), 1)
-    check("Blessing of Light 19979 is reported once", lua.eval("C19979"), 1)
+    check("Blessing of Light 19977 is not probed", lua.eval("C19977"), 0)
+    check("Blessing of Light 19978 is not probed", lua.eval("C19978"), 0)
+    check("Blessing of Light 19979 is not probed", lua.eval("C19979"), 0)
     check("Fireball 133 is reported once", lua.eval("C133"), 1)
     check("Mutilate's class is Rogue", lua.eval("MUTILATE.class"), "ROGUE")
-    check("Blessing of Light's class is Paladin", lua.eval("LIGHT.class"), "PALADIN")
+    check("Blessing of Light is absent from the probe hits", lua.eval("LIGHT"), None)
     check("Fireball's class is Mage", lua.eval("FIRE.class"), "MAGE")
     check("a Mage sees Mutilate labeled as not their class",
           lua.eval("MAGE_MUTILATE"),
           "rotation spell 1310707 (Mutilate, ROGUE, not your class): GetSpellInfo missed")
-    check("a Mage sees Blessing of Light labeled as not their class",
-          lua.eval("MAGE_LIGHT"),
-          "rotation spell 19977 (Blessing of Light, PALADIN, not your class): GetSpellInfo missed")
+    check("a removed Blessing of Light produces no miss line",
+          lua.eval("MAGE_LIGHT"), "")
     check("a Mage's own miss is not labeled as another class",
           lua.eval("MAGE_FIRE"),
           "rotation spell 133 (Fireball, MAGE): GetSpellInfo missed")
@@ -115,13 +115,34 @@ def test_files():
           "RL.Misses(C_Spell.GetSpellInfo)" in harness, True)
     check("the self-test prints the labeled miss line",
           "RL.MissLine(" in harness, True)
-    check("Mutilate 1310707 stays in the Forever list", "spellID=1310707" in forever, True)
+    rows = [line for line in forever.splitlines() if "spellID=1310707" in line]
+    check("Mutilate 1310707 stays in the Forever list", len(rows), 6)
+    check("every Mutilate 1310707 row is level 40",
+          all("level=40" in line for line in rows), True)
+    check("no Mutilate 1310707 row stays at level 30",
+          any("level=30" in line for line in rows), False)
+    check("Mutilate keeps rank id 1310707",
+          all("rankIDs={1310707, 399956, 1241582, 1241584}" in line for line in rows), True)
     check("Mutilate stays unverified",
           "spellID=1310707, name='Mutilate'" in forever and "verified=false" in forever, True)
-    for spell_id in ("19977", "19978", "19979"):
-        check(f"Blessing of Light {spell_id} stays in the Forever list", spell_id in forever, True)
+    check("Mutilate level note no longer says 21-pt at 30",
+          "Mutilate is a 21-pt talent at 30" not in forever, True)
+    check("Mutilate level note says Row 7 at level 40",
+          "Mutilate is Row 7 at level 40" in forever, True)
+    check("no Blessing of Light spell row", "name='Blessing of Light'" not in forever, True)
+    check("no Blessing of Light spellID", "spellID=19977" not in forever, True)
+    check("no Blessing of Light rank list", "rankIDs={19977, 19978, 19979}" not in forever, True)
     check("TBC Blessing of Light rank 27144 was not added", "27144" in forever, False)
     check("TBC Mutilate 1329 was not added", "spellID=1329" in forever, False)
+    talents = read("Data/Forever/Talents.lua")
+    check("Mutilate talent keeps spell 1310707 at level 40",
+          'spell = 1310707, name = "Mutilate", maxRanks = 1, level = 40' in talents, True)
+    check("Vanilla Blessing of Light is unchanged",
+          "spellID=19977" in read("Data/Vanilla/RotationLists.lua"), True)
+    check("TBC Blessing of Light is unchanged",
+          "spellID=19977" in read("Data/TBC/RotationLists.lua"), True)
+    check("Retail Mutilate stays level 12",
+          "spellID=1329, name='Mutilate', rankIDs={1329}, level=12" in read("Data/Retail/RotationLists.lua"), True)
 
 
 def main():

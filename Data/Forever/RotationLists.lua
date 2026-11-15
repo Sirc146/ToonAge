@@ -9,7 +9,8 @@ TA_Rotations.forever = {
       verified = false,
       basis = 'forever-guides',
       sources = 'Wowhead Forever Assassination L30 guide (2026-10-06), Wowhead Forever Assassination abilities (2026-09-23), stillsixty.com Forever rogue leveling + Assassination guide, wow-forever.gg rogue page (build 69913)',
-      notes = 'verified=false everywhere until an in-game Harvest dump confirms Rogue rank IDs (only Mage Fireball ranks 133/143/145/3140 confirmed in game so far). IDs = Classic Era rank IDs, plus Forever-only IDs (Mutilate 1310707/399956/1241582/1241584, Venom 1310703) from beta DB2 70245; idCheck=true means found in DB2 + Wowhead /forever. Bands 10-19/20-39 match beta-tested guides (beta cap 30). 40-59/60 come from datamined Forever talents (Venom 40, Seal Fate 35) and guide plans, not yet playable. Forever: Mutilate is a 21-pt talent at 30; Venom 31-pt finisher at 40; Coup de Grace (passive, 30) buffs Eviscerate per Deadly Poison stack; poisons trained at 20. Deadly Poison off-hand + Instant main-hand from 30.',
+      notes = 'verified=false everywhere until an in-game Harvest dump confirms Rogue rank IDs (only Mage Fireball ranks 133/143/145/3140 confirmed in game so far). IDs = Classic Era rank IDs, plus Forever-only IDs (Mutilate 1310707/399956/1241582/1241584, Venom 1310703) from beta DB2 70245; idCheck=true means found in DB2 + Wowhead /forever. Bands 10-19/20-39 match beta-tested guides (beta cap 30). 40-59/60 come from datamined Forever talents (Venom 40, Seal Fate 35) and guide plans, not yet playable. Forever: Mutilate is Row 7 at level 40; Venom 31-pt finisher at 40; Coup de Grace (passive, 30) buffs Eviscerate per Deadly Poison stack; poisons trained at 20. Deadly Poison off-hand + Instant main-hand from 30.',
+      -- UNVERIFIED: Icy Veins (only source) lists 1310707 removed in 70755, with 399956 as current Rank 1. Keep 1310707 until an in-game probe confirms.
       ['10-19'] = {
         st = {
           { spellID=5171, name='Slice and Dice', rankIDs={5171, 6774}, level=10, cp=1, cond='keep up on anything that lives more than a few seconds: 1-2 CP early, refresh only when about to expire', verified=false, idCheck=true },
@@ -38,7 +39,7 @@ TA_Rotations.forever = {
           { spellID=5171, name='Slice and Dice', rankIDs={5171, 6774}, level=10, cp=1, cond='keep up on anything that lives more than a few seconds: 1-2 CP early, refresh only when about to expire', verified=false, idCheck=true },
           { spellID=14177, name='Cold Blood', rankIDs={14177}, level=25, cond='(from 25) before a 5-CP Eviscerate on high-health mobs (on cooldown)', verified=false, talent=true, idCheck=true },
           { spellID=2098, name='Eviscerate', rankIDs={2098, 6760, 6761, 6762, 8623, 8624, 11299, 11300, 31016}, level=1, cp=5, cond='damage finisher at 5 CP (Forever: +2% per Deadly Poison stack via Coup de Grace from 30)', verified=false, idCheck=true },
-          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=30, cond='(from 30) main builder (needs 2 daggers): use at 3 CP or less, never at 4+', verified=false, talent=true, idCheck=true },
+          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=40, cond='(from 40) main builder (needs 2 daggers): use at 3 CP or less, never at 4+', verified=false, talent=true, idCheck=true },
           { spellID=8676, name='Ambush', rankIDs={8676, 8724, 8725, 11267, 11268, 11269}, level=18, cond='from Stealth/behind with a dagger (opener)', verified=false, idCheck=true },
           { spellID=53, name='Backstab', rankIDs={53, 2589, 2590, 2591, 8721, 11279, 11280, 11281, 25300}, level=4, cond='builder from behind with a dagger', verified=false, idCheck=true },
           { spellID=1752, name='Sinister Strike', rankIDs={1752, 1757, 1758, 1759, 1760, 8621, 11293, 11294}, level=1, cond='builder (until Mutilate / with non-daggers)', verified=false, idCheck=true },
@@ -46,7 +47,7 @@ TA_Rotations.forever = {
         aoe = {
           { spellID=5171, name='Slice and Dice', rankIDs={5171, 6774}, level=10, cp=1, cond='keep up on anything that lives more than a few seconds: 1-2 CP early, refresh only when about to expire', verified=false, idCheck=true },
           { spellID=2098, name='Eviscerate', rankIDs={2098, 6760, 6761, 6762, 8623, 8624, 11299, 11300, 31016}, level=1, cp=4, cond='kill mobs one at a time; 4-5 CP', verified=false, idCheck=true },
-          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=30, cond='(from 30) builder', verified=false, talent=true, idCheck=true },
+          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=40, cond='(from 40) builder', verified=false, talent=true, idCheck=true },
           { spellID=1752, name='Sinister Strike', rankIDs={1752, 1757, 1758, 1759, 1760, 8621, 11293, 11294}, level=1, cond='builder', verified=false, idCheck=true },
         },
         opener = 'Stealth to the mob; Cheap Shot (26+) or Ambush/Garrote from behind with a dagger, then Slice and Dice at 1-2 CP and build to 5.',
@@ -68,7 +69,7 @@ TA_Rotations.forever = {
           { spellID=1310703, name='Venom', rankIDs={1310703}, level=40, cp=4, cond='Forever finisher: keep up on long fights (poison +30%), 4-5 CP; alternate with Slice and Dice', verified=false, idCheck=true },
           { spellID=14177, name='Cold Blood', rankIDs={14177}, level=25, cond='before a 5-CP Eviscerate on high-health mobs (on cooldown)', verified=false, talent=true, idCheck=true },
           { spellID=2098, name='Eviscerate', rankIDs={2098, 6760, 6761, 6762, 8623, 8624, 11299, 11300, 31016}, level=1, cp=5, cond='damage finisher at 5 CP (Forever: +2% per Deadly Poison stack via Coup de Grace from 30)', verified=false, idCheck=true },
-          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=30, cond='main builder (needs 2 daggers): use at 3 CP or less, never at 4+', verified=false, talent=true, idCheck=true },
+          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=40, cond='main builder (needs 2 daggers): use at 3 CP or less, never at 4+', verified=false, talent=true, idCheck=true },
           { spellID=8676, name='Ambush', rankIDs={8676, 8724, 8725, 11267, 11268, 11269}, level=18, cond='from Stealth/behind with a dagger (opener)', verified=false, idCheck=true },
           { spellID=53, name='Backstab', rankIDs={53, 2589, 2590, 2591, 8721, 11279, 11280, 11281, 25300}, level=4, cond='builder from behind with a dagger', verified=false, idCheck=true },
           { spellID=1752, name='Sinister Strike', rankIDs={1752, 1757, 1758, 1759, 1760, 8621, 11293, 11294}, level=1, cond='builder (until Mutilate / with non-daggers)', verified=false, idCheck=true },
@@ -76,7 +77,7 @@ TA_Rotations.forever = {
         aoe = {
           { spellID=5171, name='Slice and Dice', rankIDs={5171, 6774}, level=10, cp=1, cond='keep up on anything that lives more than a few seconds: 1-2 CP early, refresh only when about to expire', verified=false, idCheck=true },
           { spellID=2098, name='Eviscerate', rankIDs={2098, 6760, 6761, 6762, 8623, 8624, 11299, 11300, 31016}, level=1, cp=4, cond='kill mobs one at a time; 4-5 CP', verified=false, idCheck=true },
-          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=30, cond='builder', verified=false, talent=true, idCheck=true },
+          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=40, cond='builder', verified=false, talent=true, idCheck=true },
           { spellID=1752, name='Sinister Strike', rankIDs={1752, 1757, 1758, 1759, 1760, 8621, 11293, 11294}, level=1, cond='builder', verified=false, idCheck=true },
         },
         opener = 'Stealth to the mob; Cheap Shot (26+) or Ambush/Garrote from behind with a dagger, then Slice and Dice at 1-2 CP and build to 5. From 40 open long fights with Venom instead of Slice and Dice; Cold Blood on a 5-CP Eviscerate.',
@@ -98,7 +99,7 @@ TA_Rotations.forever = {
           { spellID=1310703, name='Venom', rankIDs={1310703}, level=40, cp=4, cond='Forever finisher: keep up on long fights (poison +30%), 4-5 CP; alternate with Slice and Dice', verified=false, idCheck=true },
           { spellID=14177, name='Cold Blood', rankIDs={14177}, level=25, cond='before a 5-CP Eviscerate on high-health mobs (on cooldown)', verified=false, talent=true, idCheck=true },
           { spellID=2098, name='Eviscerate', rankIDs={2098, 6760, 6761, 6762, 8623, 8624, 11299, 11300, 31016}, level=1, cp=5, cond='damage finisher at 5 CP (Forever: +2% per Deadly Poison stack via Coup de Grace from 30)', verified=false, idCheck=true },
-          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=30, cond='main builder (needs 2 daggers): use at 3 CP or less, never at 4+', verified=false, talent=true, idCheck=true },
+          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=40, cond='main builder (needs 2 daggers): use at 3 CP or less, never at 4+', verified=false, talent=true, idCheck=true },
           { spellID=8676, name='Ambush', rankIDs={8676, 8724, 8725, 11267, 11268, 11269}, level=18, cond='from Stealth/behind with a dagger (opener)', verified=false, idCheck=true },
           { spellID=53, name='Backstab', rankIDs={53, 2589, 2590, 2591, 8721, 11279, 11280, 11281, 25300}, level=4, cond='builder from behind with a dagger', verified=false, idCheck=true },
           { spellID=1752, name='Sinister Strike', rankIDs={1752, 1757, 1758, 1759, 1760, 8621, 11293, 11294}, level=1, cond='builder (until Mutilate / with non-daggers)', verified=false, idCheck=true },
@@ -106,7 +107,7 @@ TA_Rotations.forever = {
         aoe = {
           { spellID=5171, name='Slice and Dice', rankIDs={5171, 6774}, level=10, cp=1, cond='keep up on anything that lives more than a few seconds: 1-2 CP early, refresh only when about to expire', verified=false, idCheck=true },
           { spellID=2098, name='Eviscerate', rankIDs={2098, 6760, 6761, 6762, 8623, 8624, 11299, 11300, 31016}, level=1, cp=4, cond='kill mobs one at a time; 4-5 CP', verified=false, idCheck=true },
-          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=30, cond='builder', verified=false, talent=true, idCheck=true },
+          { spellID=1310707, name='Mutilate', rankIDs={1310707, 399956, 1241582, 1241584}, level=40, cond='builder', verified=false, talent=true, idCheck=true },
           { spellID=1752, name='Sinister Strike', rankIDs={1752, 1757, 1758, 1759, 1760, 8621, 11293, 11294}, level=1, cond='builder', verified=false, idCheck=true },
         },
         opener = 'Stealth to the mob; Cheap Shot (26+) or Ambush/Garrote from behind with a dagger, then Slice and Dice at 1-2 CP and build to 5. From 40 open long fights with Venom instead of Slice and Dice; Cold Blood on a 5-CP Eviscerate.',
@@ -803,7 +804,7 @@ TA_Rotations.forever = {
           { spellID=20216, name='Divine Favor', rankIDs={20216}, level=25, cond='guaranteed crit on a big heal', verified=false, talent=true, idCheck=true },
           { spellID=635, name='Holy Light', rankIDs={635, 639, 647, 1026, 1042, 3472, 10328, 10329, 25292}, level=1, cond='main heal (downrank to save mana)', verified=false, idCheck=true },
           { spellID=19750, name='Flash of Light', rankIDs={19750, 19939, 19940, 19941, 19942, 19943}, level=20, cond='efficient small heal / tank top-up', verified=false, idCheck=true },
-          { spellID=19977, name='Blessing of Light', rankIDs={19977, 19978, 19979}, level=40, cond='raid healer buff (TBC/Era)', verified=false, idCheck=true },
+          -- Blessing of Light (19977, 19978, 19979) removed. Blizzard Forever dev notes post 9, Nov 2 2026, 7:20 PM PT: "Blessing of Light has been removed." https://us.forums.blizzard.com/en/wow/t/wow-forever-beta-development-notes-%E2%80%93-updated-november-2/2360696/9 Icy Veins: removed in 1.60.1.70755 (https://db.icy-veins.com/wow-forever/spells/19977 https://db.icy-veins.com/wow-forever/spells/19978 https://db.icy-veins.com/wow-forever/spells/19979).
           { spellID=4987, name='Cleanse', rankIDs={4987}, level=42, cond='(from 42) dispel', verified=false, idCheck=true },
         },
         aoe = {
@@ -837,7 +838,7 @@ TA_Rotations.forever = {
           { spellID=20216, name='Divine Favor', rankIDs={20216}, level=25, cond='guaranteed crit on a big heal', verified=false, talent=true, idCheck=true },
           { spellID=635, name='Holy Light', rankIDs={635, 639, 647, 1026, 1042, 3472, 10328, 10329, 25292}, level=1, cond='main heal (downrank to save mana)', verified=false, idCheck=true },
           { spellID=19750, name='Flash of Light', rankIDs={19750, 19939, 19940, 19941, 19942, 19943}, level=20, cond='efficient small heal / tank top-up', verified=false, idCheck=true },
-          { spellID=19977, name='Blessing of Light', rankIDs={19977, 19978, 19979}, level=40, cond='raid healer buff (TBC/Era)', verified=false, idCheck=true },
+          -- Blessing of Light (19977, 19978, 19979) removed. Blizzard Forever dev notes post 9, Nov 2 2026, 7:20 PM PT: "Blessing of Light has been removed." https://us.forums.blizzard.com/en/wow/t/wow-forever-beta-development-notes-%E2%80%93-updated-november-2/2360696/9 Icy Veins: removed in 1.60.1.70755 (https://db.icy-veins.com/wow-forever/spells/19977 https://db.icy-veins.com/wow-forever/spells/19978 https://db.icy-veins.com/wow-forever/spells/19979).
           { spellID=4987, name='Cleanse', rankIDs={4987}, level=42, cond='dispel', verified=false, idCheck=true },
         },
         aoe = {
