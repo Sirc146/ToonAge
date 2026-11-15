@@ -13,6 +13,7 @@
 -- This file stays off Forever: it names quest-log APIs that client does not ship.
 
 local TA = ToonAge
+
 TA.modules = TA.modules or {}
 
 local QC = {}
@@ -83,14 +84,8 @@ end
 
 function QC.Count(itemID)
     if type(itemID) ~= "number" then return nil end
-    if C_Item and type(C_Item.GetItemCount) == "function" then
-        local ok, n = pcall(C_Item.GetItemCount, itemID)
-        if ok and type(n) == "number" then return n end
-    end
-    if type(GetItemCount) == "function" then
-        local ok, n = pcall(GetItemCount, itemID)
-        if ok and type(n) == "number" then return n end
-    end
+    local ok, n = pcall(TA.Compat.GetItemCount, itemID)
+    if ok and type(n) == "number" then return n end
     return nil
 end
 
