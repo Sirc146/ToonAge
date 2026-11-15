@@ -813,7 +813,7 @@ Conductor keeps this section current. Each bot updates its own work as soon as i
 
 ```markdown
 ## Test status
-- PR #62 / G01 — Experimental Mage 10-19 spell guide (Forever), test @ c9c5308 — offline checks: CI green, 425/425 hashes match, no deletes, SavedVariables identical; Glitch/Warden/Gilder GOs, Chronicler fact confirmation — rules review: clear — visual review: Gilder GO (copy/art) — in-game verified by Christopher: NO, awaiting Sirc's Spells check: Reload UI → Spells; Module Health / Error Log copy windows; learned/unlearned/rank redraw; explicit selector; wand states
+- PR #62 / G01 — Experimental Mage 10-19 spell guide (Forever), test @ c9c5308 — offline checks: CI green, 425/425 hashes match, no deletes, SavedVariables identical; Glitch/Warden/Gilder GOs, Chronicler fact confirmation — rules review: clear — visual review: Gilder GO (copy/art) — in-game verified by Christopher: YES for PR #62 on Forever build 70888 (Nov 11, 2026, 7.5/10; see the G01 live test record below). Not yet verified on test 6eeb530.
 - G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage Spells guide on Forever build 70888 with Vespera at level 15. His words: "Go for the changes". Score 7.5/10. Self-test: 88 pass, 0 fail, 33 warn. Fixes he asked for: (1) the Frostbolt 8/14 and Fire Blast 14 lines always say "not confirmed learned" (PR #64, not on test yet); (2) "Enemy has reached me" suggests nothing even though Frost Nova was learned. This pass covers #62 on 70888, not test 6eeb530; the 6eeb530 live check is still open. Source: Conductor's log, relayed Nov 15, 2026.
 
 ## Done
