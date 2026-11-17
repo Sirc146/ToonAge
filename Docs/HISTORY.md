@@ -16,17 +16,17 @@ Muse is authoritative for prior direction, authority, roles, branches and gates;
 
 **November 9, 2026.** Christopher said Pepper named herself the way the bots named themselves. Record as: Pepper, who later named herself Muse. Pepper and Muse are the same assistant. Muse’s ToonAge context export (`Muse-ToonAge-Context-Export.txt`, covering October 3–November 8; read in full November 9 at 8:26 PM PST; SHA256 `5e6e522e6cfe9fab6b81ae43406c9edbc794305bd3c280dc9f3d069ec9cf929f`) is the authoritative prior-context source. Historical reports in it are not promoted to current verification.
 
-## Vespera character state
+## test Mage character state
 
-**ARCHIVED (superseded November 9, 2026):** November 6, 2026, 6:30 PM PST live Forever probe: Vespera Mage level 5, build 70840 / interface 16001, Mining 1/75 and Skinning 55/75, with root/child skill-line pairs (186/2946 and 393/2947). Later that evening (6:58 PM PST) Christopher confirmed he unlearned Mining and learned Tailoring, retaining Skinning.
+**ARCHIVED (superseded November 9, 2026):** November 6, 2026, 6:30 PM PST live Forever probe: test Mage L5, build 70840 / interface 16001, Mining 1/75 and Skinning 55/75, with root/child skill-line pairs (186/2946 and 393/2947). Later that evening (6:58 PM PST) Christopher confirmed he unlearned Mining and learned Tailoring, retaining Skinning.
 
-**Current (November 9, 2026, 7:36 PM PST live export):** Vespera is a level 15 Mage on Forever 70862 / interface 16001. Professions recorded in current memory and the live-fix context: Skinning 116/150, and in the level-15 replacement note Tailoring 49/75, First Aid 24/75, Fishing 20/75, Cooking 15/75, Comprehension 14/75 (Comprehend Scroll known); Mining remains unlearned. Comprehension 3012 native 14/75, minLevel 6, and Comprehend Scroll 1296017 known are also in the current HANDOVER live-fix list. Do not reuse the level-5 Mining 1/75 snapshot as current.
+**Current (November 9, 2026, 7:36 PM PST live export):** The test Mage L15 is on Forever 70862 / interface 16001. Professions recorded in current memory and the live-fix context: Skinning 116/150, and in the level-15 replacement note Tailoring 49/75, First Aid 24/75, Fishing 20/75, Cooking 15/75, Comprehension 14/75 (Comprehend Scroll known); Mining remains unlearned. Comprehension 3012 native 14/75, minLevel 6, and Comprehend Scroll 1296017 known are also in the current HANDOVER live-fix list. Do not reuse the level-5 Mining 1/75 snapshot as current.
 
 ## Duplicate profession bars
 
 **ARCHIVED (superseded November 8, 2026):** November 6 instruction that duplicate Skinning/Mining profession bars were report-only, with no ToonAge fix authorized. Christopher identified a Forever-side display issue to track (screenshot pending at that time); cause was not independently verified.
 
-**Replaced by:** On November 8 Christopher authorized scoped fixes, and the duplicate-profession fix became PR59 (merge `74f54bdc72…`, 100 checks reported, installed). Current boundary: Vespera single rows appear to hold, not all-toon certification. Drop child only if displayed parent AND name/rank/max match. Keep roots 393/197/185; matching children 2947/2945/2948 are examples. Remaining semantic/edge-case work is G18; live result is not all-toon certified.
+**Replaced by:** On November 8 Christopher authorized scoped fixes, and the duplicate-profession fix became PR59 (merge `74f54bdc72…`, 100 checks reported, installed). Current boundary: test character single rows appear to hold, not all-toon certification. Drop child only if displayed parent AND name/rank/max match. Keep roots 393/197/185; matching children 2947/2945/2948 are examples. Remaining semantic/edge-case work is G18; live result is not all-toon certified.
 
 ## Dugi to Zygor
 
@@ -58,9 +58,9 @@ Retail data/modules must never pollute other clients. The historical G3/profile-
 
 Baseline “0 guides resident” was generic-stack state, not a dedicated MageGuidance loading test; PR62 is now reported installed.
 
-## Vespera spec selector
+## test Mage spec selector
 
-Frost was selector demonstration, not a chosen spec. **November 9, 2026, 8:02 PM PST:** Vespera has no chosen spec. Explicit selection controls guidance; none defaults to Fire. That decision is closed. Do not silently select Frost or any spec from demonstration, casts or gear.
+Frost was selector demonstration, not a chosen spec. **November 9, 2026, 8:02 PM PST:** The test Mage has no chosen spec. Explicit selection controls guidance; none defaults to Fire. That decision is closed. Do not silently select Frost or any spec from demonstration, casts or gear.
 
 ## Muse-export verbatim quotes (October 3–8)
 
