@@ -13,6 +13,10 @@ old tab-based talent API and classic globals present, retail C_* absent), then:
   * asserts the profile allows the TBC module set and would deny an arbitrary
     retail-only module.
 
+The client is Tools/harness/wowsim.py fed by Tools/fixtures/api/tbc.lua.
+That snapshot is the old hand-written prelude: the same names, and nothing
+else. A name that is not in the snapshot is nil.
+
 This is the guarantee that the shared Core + TBC-specific files + Modules/TBC
 actually run together on a TBC client -- the core risk of folding a
 separately-authored build onto the shared engine.
@@ -21,18 +25,18 @@ Usage:  python Tools/test_tbc_boot.py [-v]
 """
 
 import sys
-import re
 from pathlib import Path
 
-try:
-    from lupa import lua51
-except ImportError:
-    sys.exit("lupa not installed.  python -m pip install --user lupa")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from harness.wowsim import World, toc_entries  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 VERBOSE = "-v" in sys.argv
 
-# A stubbed TBC client: classic globals + old talent-tab API, no retail C_*.
+# Other TBC suites still execute this string directly (test_tbc_render,
+# test_gear_scoring, test_dungeon_gear, test_next3, test_spellaudit). The
+# boot test below does not. It loads Tools/fixtures/api/tbc.lua through
+# wowsim, which is the same closed set of names.
 TBC_PRELUDE = r"""
 debugstack = function() return "" end
 WOW_PROJECT_ID = 5
@@ -130,18 +134,9 @@ geterrorhandler = function() return function(err) end end
 seterrorhandler = function() end
 """
 
-
 def toc_lua_files(toc_name):
-    toc = ROOT / toc_name
-    out = []
-    for line in toc.read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        token = s.split("[")[0].strip()
-        if token.lower().endswith(".lua"):
-            out.append(token.replace("\\", "/"))
-    return out
+    """Lua paths in TOC order. test_tbc_render.py still calls this."""
+    return [rel for kind, rel in toc_entries(toc_name) if kind == "lua"]
 
 
 _results = []
@@ -160,26 +155,14 @@ def check(name, got, want):
 
 
 def main():
-    lua = lua51.LuaRuntime(unpack_returned_tuples=True)
-    lua.execute(TBC_PRELUDE)
+    world = World("tbc", root=ROOT)
+    world.load()
+    lua = world.lua
 
-    files = toc_lua_files("ToonAge_TBC.toc")
-    load_errors = []
-    for rel in files:
-        path = ROOT / rel
-        if not path.exists():
-            load_errors.append(f"{rel}: MISSING FILE")
-            continue
-        try:
-            lua.execute(path.read_text(encoding="utf-8"))
-        except Exception as e:
-            first = str(e).splitlines()[0]
-            load_errors.append(f"{rel}: {first}")
-
-    check("all TBC files load without error", load_errors, [])
-    if load_errors and VERBOSE:
-        for e in load_errors:
-            print("      LOAD ERROR:", e)
+    check("all TBC files load without error", world.load_errors, [])
+    if world.load_errors and VERBOSE:
+        for err in world.load_errors:
+            print("      LOAD ERROR:", err)
 
     ta = lua.globals().ToonAge
     check("flavor detected as tbc", ta.flavor, "tbc")
