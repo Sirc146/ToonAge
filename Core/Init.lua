@@ -17,21 +17,6 @@ local ADDON_VERSION = (function()
     return "unknown"
 end)()
 
--- ── Dev Build Tester Lock ─────────────────────────────────────────────────────
--- When IS_DEV_BUILD is true, only characters listed in AUTHORIZED_TESTERS can
--- use the addon. Everyone else gets a one-line message and the addon disables.
--- Set IS_DEV_BUILD to false (or remove the -dev suffix from the version) for
--- public releases.
-local IS_DEV_BUILD = false  -- Disabled for testing; re-enable with -dev suffix for tester builds
-local AUTHORIZED_TESTERS = {
-    -- Add "Name-Server" keys for authorized testers
-    ["Ellacait-Vargoth"]  = true,
-    ["Asirc-Myzrael"]     = true,
-    ["Nethendera-Vargoth"] = true,
-    -- Add more testers here:
-    -- ["Character-Server"] = true,
-}
-
 -- Create the global addon table
 ToonAge = ToonAge or {}
 local TA = ToonAge
@@ -287,7 +272,7 @@ end
 -- Default saved variables schema
 local DB_DEFAULTS = {
     minimap = { minimized = false, position = 45 },
-    char    = {},  -- per-character data keyed by "Name-Server"
+    char    = {},  -- per-character data keyed by "Examplechar-Examplerealm"
 
     -- Module enable/disable toggles. Optional modules can be turned off by
     -- the user via /ta toggle <name>. Core modules (Character, Gear, Talents,
@@ -1185,18 +1170,6 @@ function TA:OnLogin()
             self._dbRecovered = true
         else
             ToonAgeDB = old    -- both failed: leave the original untouched
-        end
-    end
-
-    -- ── Dev Build Tester Lock ─────────────────────────────────────────────
-    -- Before /ta is registered: an unauthorized dev build stays fully inert.
-    if IS_DEV_BUILD then
-        local name   = UnitName("player") or "Unknown"
-        local server = GetRealmName() or "Unknown"
-        local charKey = name .. "-" .. server
-        if not AUTHORIZED_TESTERS[charKey] then
-            print("|cFFFF4444[ToonAge]|r Dev build — not authorized. Contact the developer.")
-            return  -- Abort login sequence, addon stays inert
         end
     end
 

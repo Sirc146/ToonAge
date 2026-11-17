@@ -27,8 +27,8 @@ function D:RecordCharacter()
     local realm = Try("GetRealmName") or "?"
     local cls   = select(2, Try("UnitClass", "player")) or "?"
     local race  = select(2, Try("UnitRace", "player")) or "?"
-    -- Keyed by GUID, not Name-Realm: the same Mage was recorded twice
-    -- ("Eramali Stryfe" at 15, "Eramali" at 17) because the name the client
+    -- Keyed by GUID, not Examplechar-Examplerealm: the same Mage was recorded twice
+    -- ("Examplechar" at 15, "Exampletoon" at 17) because the name the client
     -- reported changed between sessions. A GUID never does. Name and realm are
     -- kept as fields so the export still reads naturally. A GUID the client
     -- marks secret comes back from Caps as the word "secret": not a key.
@@ -40,7 +40,7 @@ function D:RecordCharacter()
         Clean(cls), Clean(race), Clean(Try("UnitLevel", "player")),
         Clean(Try("UnitSex", "player")), Clean(select(4, Try("GetBuildInfo"))),
     }, "\t")
-    -- The v1 record for this character (Name-Realm key) is superseded.
+    -- The v1 record for this character (Examplechar-Examplerealm key) is superseded.
     if guid then s.chars[name .. "-" .. realm] = nil end
     Hv:Touch("chars")
 end
