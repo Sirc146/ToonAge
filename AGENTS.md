@@ -83,7 +83,7 @@ Official Blizzard first, then Wowhead, Icy Veins, warcraft.wiki.gg and Forever-s
 
 In-game check (preferred). After Sirc has run his own explained SavedVariables backup and confirmed the installed build equals the agreed trunk, he clicks **Reload UI**, then **Spells** (or **Module Health** / **Error Log**). Diagnostic text stays in a copyable window. That is a complete check. Do not ask him to type `/ta health`, `/run` or `/dump` — those slash labels in the standing-rule quotation are historical report names.
 
-Report-only freshness, only after Sirc has confirmed trunk mapping (currently UNKNOWN; some scripts assume `main`) and approved the root/ref:
+Report-only freshness, only after Sirc has confirmed trunk mapping (trunk is `test`, settled per HANDOVER; some scripts assume `main`) and approved the root/ref:
 
 ```powershell
 # Report only: compare installed clients to the agreed trunk. Does not install or change files.
