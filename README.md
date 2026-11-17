@@ -4,7 +4,7 @@ One addon, every version of World of Warcraft. Character, gear, talents,
 rotation, professions, pets and PvP in one panel, with the game-rule content
 researched separately for each expansion instead of borrowed from another one.
 
-ToonAge is a multi-client World of Warcraft addon by Sirc (repo [Sirc146/ToonAge](https://github.com/Sirc146/ToonAge)). It uses a shared Lua engine, per-client data, modules and TOCs, Python verification, and observed client data to feed advice. It is for Christopher (Sirc) and players who want optional, skippable guidance — what, why, and alternatives — not an automated rotation and not a replacement for Zygor, WowUp, or other specialist tools. Readouts are not the same as reliable personalized guidance.
+ToonAge is a multi-client World of Warcraft addon by Sirc (repo [Sirc146/ToonAge](https://github.com/Sirc146/ToonAge)). It uses a shared Lua engine, per-client data, modules and TOCs, Python verification, and observed client data to feed advice. It is for the owner (Sirc) and players who want optional, skippable guidance — what, why, and alternatives — not an automated rotation and not a replacement for Zygor, WowUp, or other specialist tools. Readouts are not the same as reliable personalized guidance.
 
 **Version:** see [Releases](https://github.com/Sirc146/ToonAge/releases). A
 release stamps its tag into the `.toc`. · **Author:** Sirc
@@ -248,7 +248,7 @@ All plans, decisions and final approvals lead to Sirc.
 
 ### Before every test
 
-Close World of Warcraft first. Christopher runs his own SavedVariables backup PowerShell, with each command explained, before every test. Confirm the installed files and version match the agreed trunk before measuring. **Trunk mapping is `test`.** Sirc confirmed this on November 11, 2026: installs come from `test`, and PRs target `test`. Some scripts still assume `main`; confirm the script before running it. Do not silently change branches.
+Close World of Warcraft first. The owner runs his own SavedVariables backup PowerShell, with each command explained, before every test. Confirm the installed files and version match the agreed trunk before measuring. **Trunk mapping is `test`.** Sirc confirmed this on November 11, 2026: installs come from `test`, and PRs target `test`. Some scripts still assume `main`; confirm the script before running it. Do not silently change branches.
 
 ### Approved Forever install
 

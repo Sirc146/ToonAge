@@ -1,6 +1,6 @@
 # ToonAge — Agent instructions
 
-Standing instructions for every bot working on ToonAge. Christopher (Sirc / Sirc146) is owner and final authority. The repo https://github.com/Sirc146/ToonAge on `test` is the single source of truth. Box copies, including `/workspace/toonage-docs/`, are drafts only until he approves them and they are committed.
+Standing instructions for every bot working on ToonAge. The owner (Sirc / Sirc146) is owner and final authority. The repo https://github.com/Sirc146/ToonAge on `test` is the single source of truth. Box copies, including `/workspace/toonage-docs/`, are drafts only until he approves them and they are committed.
 
 Sister files: [README.md](README.md), [Docs/HANDOVER.md](Docs/HANDOVER.md), [Docs/HISTORY.md](Docs/HISTORY.md), [Docs/ARCHITECTURE_OVERVIEW.md](Docs/ARCHITECTURE_OVERVIEW.md).
 
@@ -18,7 +18,7 @@ Use these instructions whenever you plan, code, review, research, install, docum
 
 Every bot reads `AGENTS.md`, `Docs/HANDOVER.md` and `Docs/HISTORY.md` **from the repo** (Sirc146/ToonAge, `test`, unless Sirc names another approved ref) before working, and records its own part in `Docs/HANDOVER.md` afterward **as a commit**: dated scope/card, source/head, changes, tests, review, merge/install state, blockers and next step. Check `Docs/HISTORY.md` before retrying something that may already have been tried. Box copies are drafts only and are not the source of truth.
 
-Christopher: **“I'd rather have everything working off git.”**
+Sirc: **“I'd rather have everything working off git.”**
 
 ## Inputs, outputs, and done criteria
 
@@ -28,7 +28,7 @@ Christopher: **“I'd rather have everything working off git.”**
 
 **Done:** Applicable offline/review gates and Sirc’s recorded scenario acceptance, or an accepted research deliverable. Installed is not live-verified. Merged is not launch GO. Stage 5 only for passed exact scenarios.
 
-Christopher’s workflow after a change is live-tested, verbatim:
+Sirc’s workflow after a change is live-tested, verbatim:
 
 > After each verified test and its working it's pushed up
 
@@ -69,11 +69,11 @@ Official Blizzard first, then Wowhead, Icy Veins, warcraft.wiki.gg and Forever-s
 
 - **Approval gates:** Sirc approves scope, specs, merges, installs, releases and accepted risks. Wait for applicable approval before PR/merge/install/release. Do not contact another bot just because a plan names it.
 - **Backup before every test:** Sirc runs the explained SavedVariables PowerShell himself. Confirm installed files/version against the agreed trunk before measuring.
-- **No release tags** without Christopher's explicit approval.
+- **No release tags** without the owner's explicit approval.
 - **Copyable windows, not chat.** In-game checks are addon buttons, never `/dump` or `/run`.
 - **Forever first** for current work. Never edit `_retail_/Interface/AddOns/ToonAge/` as a Forever fix, and never let Retail data/modules pollute another client. Approved Forever install is only `build_flavors -Install`, never the all-client release ZIP or `Update-ToonAge.ps1`. Do not use `Tools/deploy.ps1` as a Forever shortcut.
 - **Official sources first;** flag UNVERIFIED. Outside URLs only as labeled read-only sources (Blizzard, Wowhead, Icy Veins, warcraft.wiki.gg, and Forever-specific sources).
-- **Only Christopher's own locations.** Project paths must be his. Box-local evidence is not automatically in GitHub; transfer only with explicit approved scope.
+- **Only Sirc's own locations.** Project paths must be his. Box-local evidence is not automatically in GitHub; transfer only with explicit approved scope.
 - **No tokens or personal data.** Never collect tokens. The WowUp token expired November 7 as exported; later regeneration UNKNOWN. Sirc regenerates and pastes it into WowUp settings himself, never in chat. Distinct imported label “WOWUP. IO” paste confirmation and “Courier-Utility” PAT purpose/authorization remain UNKNOWN; no token requested, read, changed or automatically revoked.
 - **Verify every API per client** against official docs/FrameXML and https://warcraft.wiki.gg/wiki/World_of_Warcraft_API. Retail evidence does not certify Forever. Never bypass refusal with arithmetic, conversion or UI pass-through. Use synthetic, nonpersonal fixtures.
 - **Preserve Talents art,** geometry, textures and visual identity. Gilder’s visual GO is required for visual changes.

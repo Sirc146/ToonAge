@@ -1,6 +1,6 @@
 # ToonAge — Sirc’s Shared Team Record
 
-Single shared record for Christopher (Sirc / Sirc146) and the ToonAge team. All plans, decisions and final approvals lead to Sirc.
+Single shared record for the owner (Sirc / Sirc146) and the ToonAge team. All plans, decisions and final approvals lead to Sirc.
 
 The repo https://github.com/Sirc146/ToonAge on branch `test` is the single source of truth. Sister files in this repo: [README.md](../README.md) (human overview), [AGENTS.md](../AGENTS.md) (standing rules and bot workflow), [HISTORY.md](HISTORY.md) (superseded and already-tried archive), [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md) (clients, TOCs, modules, API audit). Box copies, including `/workspace/toonage-docs/`, are drafts only until approved and committed.
 
@@ -9,7 +9,7 @@ The repo https://github.com/Sirc146/ToonAge on branch `test` is the single sourc
 **Merge note (Nov 11, 2026):** this file is PR #63's HANDOVER with the November 11 restructure merged into it. The G01–G24 cards, first-task tables, live fix list, product decisions, and evidence below are PR #63's, kept intact. The overlay adds the guardrails, the Muse/merge rules, the pull/push/commit timing, the CurseForge release card, the Gemini/Copilot/snippet sections, and the test-status template. It replaces the standalone restructured draft — do not save that draft as a second HANDOVER. Merged Nov 11, 2026 with `WoW-AddOn-Build-Workflow.md` (workspace/user/files/WoW-AddOn-Build-Workflow.md) — the six phases, four gates, Blizzard policy, Phase 0 setup, hand-off contracts, and task prompt below come from it, translated to ToonAge's settled rules (see “How this merge was done” in the phases section).
 **When PR #63 merges — remove these conditionals (verified Nov 11, 2026: PR #63 is 2 commits ahead of `test`, fast-forward, 0 conflicts, 5 files (README.md, AGENTS.md, Docs/HANDOVER.md, Docs/HISTORY.md, Docs/ARCHITECTURE_OVERVIEW.md) — Riley merges it in one action; Muse cannot merge from here. Sequencing: PR #63 still carries the old 476-line HANDOVER, so commit this merged file to the PR branch (grok/docs-source-of-truth) FIRST, then merge — if PR #63 merges as it stands, the old HANDOVER lands on `test`):** (1) this merge note itself — its content lives in the Team work log; (2) the Gemini prompt parenthetical "(Until PR #63 merges, the live files on test are .rules.md and Docs/ARCHITECTURE.md. Do not use CLAUDE.md — it is archived.)"; (3) the Copilot section parenthetical "(`.rules.md` until PR #63 merges)". After that, this file describes one state: `AGENTS.md` + `Docs/` on `test`.
 
-**November 14, 2026.** `test` is `6eeb530`. PRs #65–#73, #76, and #77–#84 are merged into `test`. #74 is absent from that merged set. Checked November 15, 2026 06:21 UTC: #74 is closed with no merge commit. There is no pull request #75. Christopher's live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (his call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. This branch adds `AGENTS.md`, `Docs/HANDOVER.md`, `Docs/HISTORY.md`, the README additions, `Docs/ARCHITECTURE_OVERVIEW.md`, and the `.pkgmeta` ignore for `AGENTS.md` from PR #63 onto `6eeb530`, and updates this file. That is the whole of PR #63, so PR #63 is fully redundant. It stays open until someone else closes it. The November 11 conditional above stays as history.
+**November 14, 2026.** `test` is `6eeb530`. PRs #65–#73, #76, and #77–#84 are merged into `test`. #74 is absent from that merged set. Checked November 15, 2026 06:21 UTC: #74 is closed with no merge commit. There is no pull request #75. The owner's live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (his call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. This branch adds `AGENTS.md`, `Docs/HANDOVER.md`, `Docs/HISTORY.md`, the README additions, `Docs/ARCHITECTURE_OVERVIEW.md`, and the `.pkgmeta` ignore for `AGENTS.md` from PR #63 onto `6eeb530`, and updates this file. That is the whole of PR #63, so PR #63 is fully redundant. It stays open until someone else closes it. The November 11 conditional above stays as history.
 
 ## 1 PROJECT OVERVIEW
 
@@ -19,7 +19,7 @@ ToonAge is a multi-client WoW addon: shared Lua engine, per-client data/modules/
 
 | Who | Responsibility |
 |---|---|
-| **Christopher / Sirc** | Owner, final authority and sole in-game tester. Approves scope, specs, merges, installs, releases and accepted risks. |
+| **The owner / Sirc** | Owner, final authority and sole in-game tester. Approves scope, specs, merges, installs, releases and accepted risks. |
 | Riley | Codes, prepares PRs, packages and installs approved exact builds with backups and settings preserved. |
 | Glitch | Tests, cross-class/client regression and GitHub go/no-go. |
 | Warden | Checks rules, QA, provenance and independent correctness. |
@@ -29,7 +29,7 @@ ToonAge is a multi-client WoW addon: shared Lua engine, per-client data/modules/
 
 Muse (formerly Pepper) audits, coordinates, and assists with snippets; not a builder on a branch. Claude Code and Kiro are archived as builders — they no longer implement or build features. Snippets from them, if Sirc brings them, arrive as outside code under the snippet rules below.
 
-**Workflow rule:** plan with Conductor, write the plan here, then obtain Sirc’s applicable approval. If Conductor is unreachable, work pauses — no bot proceeds on its own spec or takes a decision to Sirc directly. **Every bot reads `AGENTS.md`, `Docs/HANDOVER.md` and `Docs/HISTORY.md` from the repo before working and records its part afterward as a commit**: dated scope/card, source/head, changes, tests, review, merge/install state, blockers and next step. If the file or evidence is inaccessible, ask a concrete question; do not guess. Christopher: **“I'd rather have everything working off git.”** After a verified live test: **“After each verified test and its working it's pushed up.”**
+**Workflow rule:** plan with Conductor, write the plan here, then obtain Sirc’s applicable approval. If Conductor is unreachable, work pauses — no bot proceeds on its own spec or takes a decision to Sirc directly. **Every bot reads `AGENTS.md`, `Docs/HANDOVER.md` and `Docs/HISTORY.md` from the repo before working and records its part afterward as a commit**: dated scope/card, source/head, changes, tests, review, merge/install state, blockers and next step. If the file or evidence is inaccessible, ask a concrete question; do not guess. Sirc: **“I'd rather have everything working off git.”** After a verified live test: **“After each verified test and its working it's pushed up.”**
 Small feature branches and reviewed PRs target `test`; a plan, static GO or relayed approval is not blanket authority. Native approvals must be received directly where required. Preserve Sirc’s exact words; do not turn historical permissions into new ones. Release tags still need his explicit approval. Docs and code changes go in as their own commits so one can be rolled back if needed.
 
 ### Guardrails — hard rules, no exceptions (added Nov 11, 2026)
@@ -110,7 +110,7 @@ Source attribution is in **History (before Nov 2026)**; these are only the addit
 
 Clients, TOCs, module layout, the dual-gate rule, install boundaries, existing test/syntax/package commands and the missing-API audit are in [ARCHITECTURE_OVERVIEW.md](ARCHITECTURE_OVERVIEW.md).
 
-**Audit baseline:** `4555883f13a34f911628ea5946c7e5c316e1ae3e`. **Latest reported installed merge:** `c9c5308a` (November 9 install; November 11 SHA256 check matched that zip). **`test` head on November 14, 2026:** `6eeb530`. No install of `6eeb530` is recorded here, and Christopher's live verification of that head is open. Runtime ZIPs omit `.git`, `.github`, `Tools` and `Docs`: they are not development checkouts or the approved Forever install method.
+**Audit baseline:** `4555883f13a34f911628ea5946c7e5c316e1ae3e`. **Latest reported installed merge:** `c9c5308a` (November 9 install; November 11 SHA256 check matched that zip). **`test` head on November 14, 2026:** `6eeb530`. No install of `6eeb530` is recorded here, and the owner's live verification of that head is open. Runtime ZIPs omit `.git`, `.github`, `Tools` and `Docs`: they are not development checkouts or the approved Forever install method.
 
 ## 3 COMPLETED WORK AND CURRENT DELIVERY
 
@@ -126,7 +126,7 @@ Riley-reported Sirc message in Riley’s chat at **8:09 PM PST**: **“Merge PR 
 
 ### Merged into `test` after the November 11 record
 
-Read from `git log` on `test` at `6eeb530`. Author times are UTC. Christopher's live verification of `6eeb530` is open. This table is the merge record. It is not an in-game pass.
+Read from `git log` on `test` at `6eeb530`. Author times are UTC. The owner's live verification of `6eeb530` is open. This table is the merge record. It is not an in-game pass.
 
 | PR | Merge | What the merge or commit subject says |
 |---|---|---|
@@ -145,7 +145,7 @@ Read from `git log` on `test` at `6eeb530`. Author times are UTC. Christopher's 
 | #80 | `99a6ed7` 2026-11-15 00:13:20 | Settings layout. Commit subject: "Keep settings drawer labels clear of the ON/OFF text." |
 | #84 | `3de22ed` 2026-11-15 00:14:16 | Scrolls wrap. Commit subject: "Wrap the Scrolls footer and show the Light Feather bag count." |
 | #79 | `6d0efa7` 2026-11-15 00:15:22 | Enchants dedupe. Commit subject: "Gear: merge Enchants & crafting rows by item." |
-| #82 | `a5f94de` 2026-11-15 00:15:23 | Rotation warnings. Commit subject: "Rotation self-test: report each missed spell id once, labeled by class." Mutilate 1310707 stays UNVERIFIED (Christopher's call). |
+| #82 | `a5f94de` 2026-11-15 00:15:23 | Rotation warnings. Commit subject: "Rotation self-test: report each missed spell id once, labeled by class." Mutilate 1310707 stays UNVERIFIED (the owner's call). |
 | #83 | `87b7e4c` 2026-11-15 00:15:23 | Pooled frames. PR title: "Reuse Forever tab frames so Talents, Professions, and Spells stop orphaning widgets." |
 | #77 | `6eeb530` 2026-11-15 00:18:31 | Pin fix, the other-continent arrow, and Clear. PR title: "Place the library pin at the target, not on the player." Commit `a77e137` places the Forever library pin at the stored target. Commit `57cf230` hides the library beam on another continent and adds Clear. This merge is `test` head. |
 
@@ -153,9 +153,9 @@ The 2026-11-15 00:10–00:18 UTC merges are the same evening as November 14 in P
 
 **Still open**
 
-- Christopher's live verification of `6eeb530`.
+- The owner's live verification of `6eeb530`.
 - Mutilate 1310707 is UNVERIFIED (his call). PR #82 left the id in `Data/Forever/RotationLists.lua` with `verified=false`.
-- The Gear stat view decision is pending. See the #70 row. No choice from Christopher is recorded in this file.
+- The Gear stat view decision is pending. See the #70 row. No choice from the owner is recorded in this file.
 - The Orgrimmar Study probe is UNKNOWN. No result for a probe by that name is in this repo.
 
 ### PR62 review/content record — attributed, not rerun here
@@ -191,7 +191,7 @@ test Mage L15, Forever 70862/interface 16001: **89 pass, 0 fail, 32 warn, 1 skip
 2. **REGRESSION:** Muse October 3/beta 70205 reported 0.0 discarded frames/all eight tabs; the November 9 export on 70862 has Talents 112/Professions 14 per rerender. Root cause/workload equivalence UNKNOWN. PR #60 is still open (GitHub listed it CONFLICTING on November 15, 2026). PR #83 (merge `87b7e4c`) pools Forever tab frames on `test`. Frame counts after that merge are UNVERIFIED. Preserve art, input focus/text and distinct roots.
 3. **ApiGuard:** 93/110 present, 17 absent; audit of 60 loaded Lua files/20 direct sites plus helpers found **no unguarded call for those 17**. Ten wrapper smoke cases pass. This does not certify semantics or all clients.
 4. **Swapped labels:** `Core/ApiGuard.lua:124–125` mixes GetBuildInfo return 4/interface and return 1/version. Proposed readable build 1.60.1.70862/interface 16001, not implemented. Split PR56 label/probe/readable-zero work; native UnitDefenseSkill 71, 0 and UnitWeaponAttackPower 83, 7, 0 already observed, hit modifiers 0 versus unreadable n/a are distinct.
-5. **Rotation lookup:** The November 9 export's 12 warnings concern four IDs: Mutilate 1310707 and Blessing of Light 19977–19979. Cache misses are not removal proof. PR #82 (merge `a5f94de`) reports each missed spell id once and labels the class. It leaves the ids in the Forever list. Mutilate 1310707 is UNVERIFIED (Christopher's call). Blessing of Light 19977, 19978, and 19979 missed `GetSpellInfo` on the build named in that PR; whether Forever has them is UNVERIFIED. Baseline “0 guides resident” was generic-stack state, not a dedicated MageGuidance loading test; PR62 is now reported installed.
+5. **Rotation lookup:** The November 9 export's 12 warnings concern four IDs: Mutilate 1310707 and Blessing of Light 19977–19979. Cache misses are not removal proof. PR #82 (merge `a5f94de`) reports each missed spell id once and labels the class. It leaves the ids in the Forever list. Mutilate 1310707 is UNVERIFIED (the owner's call). Blessing of Light 19977, 19978, and 19979 missed `GetSpellInfo` on the build named in that PR; whether Forever has them is UNVERIFIED. Baseline “0 guides resident” was generic-stack state, not a dedicated MageGuidance loading test; PR62 is now reported installed.
 6. **Data corrections:** Touch of the Grave 1260201 tooltip 30%, not old 10%; item 3382 Elixirs/subclass 2, not Potions/subclass 1. Matching fields/history retained; no source import performed.
 7. **Professions:** Comprehension 3012 native 14/75, minLevel 6; Comprehend Scroll 1296017 known. Wrong-domain trade-skill 0/0 must not override native state. Dedup appears to hold narrowly; calculator widgets/math/persistence remain untested.
 8. **Acquisition/traits:** Study 1302508 known, nominal 6, first-seen 13 is not unlock; Research Access 97286 turn-in recorded. Curse 475 researched 18 versus table 20 is not settled by level 15 absence; Decimation needs Warlock evidence. 53 Mage mappings/18 conditions observed; Accelerant definition 11069 is bound, not automatically a cast/aura ID or universal level unlock.
@@ -273,7 +273,7 @@ All cards inherit the standing backup/freshness/button/launch gates and Sirc app
 - **C 2** `docs(release): record approved Mage artifact and acceptance` — **DoD:** Record reviewed full SHA, CI, artifact hash, merge SHA, backup/target/settings/rollback and separate install result only after those actions actually occur; no invented full SHA or advance-to-Done from this plan.
 **Current execution:** First task 1 is live acceptance of unchanged installed bytes; the comment-only C1 is independent/nonblocking.
 **Sirc:** Confirm trunk mapping/install method; perform own explained backup before each check; use Reload UI, Spells, Module Health/Error Log buttons and copyable windows. Send a test Mage Spells screenshot to Gilder for length/labels; test learned/rank/selector behavior without respec. Do not report live pass from installed hashes.
-G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage Spells guide on Forever build 70888 with the test Mage L15. His words: "Go for the changes". Score 7.5/10. Self-test: 88 pass, 0 fail, 33 warn. Fixes he asked for: (1) the Frostbolt 8/14 and Fire Blast 14 lines always say "not confirmed learned" (PR #64, not on test yet); (2) "Enemy has reached me" suggests nothing even though Frost Nova was learned. This pass covers #62 on 70888, not test 6eeb530; the 6eeb530 live check is still open. Source: Conductor's log, relayed Nov 15, 2026.
+G01 live test (Nov 11, 2026, 9:22 AM PT): the owner live-tested PR #62's Mage Spells guide on Forever build 70888 with the test Mage L15. His words: "Go for the changes". Score 7.5/10. Self-test: 88 pass, 0 fail, 33 warn. Fixes he asked for: (1) the Frostbolt 8/14 and Fire Blast 14 lines always say "not confirmed learned" (PR #64, not on test yet); (2) "Enemy has reached me" suggests nothing even though Frost Nova was learned. This pass covers #62 on 70888, not test 6eeb530; the 6eeb530 live check is still open. Source: Conductor's log, relayed Nov 15, 2026.
 
 #### G02 — ApiGuard swapped build/interface labels
 **Owners:** Riley; Glitch + Warden QA; Gilder diagnostic copy. **Priority:** P0 / quick win. **D:** 4 installed label bug (8/10). **P:** 2 fix approach specified; no implementation claimed (4/10).
@@ -297,7 +297,7 @@ G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage 
 **Approach:** REGRESSION to investigate: historical Oct 3/70205 reported 0.0 discarded frames/all 8 tabs versus current 70862 Talents 112/Professions 14; root cause/workload comparability UNKNOWN. Re-review unmerged PR60; reuse holders/buttons/glows and clear stale tooltip/hover/selection ownership. Preserve all Talents art, coordinates, textures and tree identity. **Depends on:** PR60 exact current head/review must be rechecked; live 112 discarded per rerender; trait IDs/condition gates are separate from art.
 - **C 1** `test(talents): cover repeated render and stale ownership` — **DoD:** Fixture counts creations after warm-up and exercises tree switch/hover/empty state.
 - **C 2** `fix(talents): finalize reviewed pooling without art changes` — **DoD:** Bounded frame pool stops per-render growth, handlers/state reset, tests green and art diff accepted by Gilder; adapt existing PR60 rather than duplicate it.
-- **C 3** `docs(talents): record pooling and visual acceptance` — **DoD:** Christopher repeats tab/tree changes; no new churn warnings, stale glow or visual drift in supported cases; exact build recorded.
+- **C 3** `docs(talents): record pooling and visual acceptance` — **DoD:** the owner repeats tab/tree changes; no new churn warnings, stale glow or visual drift in supported cases; exact build recorded.
 **Sirc:** Approve exact PR60 candidate separately; screenshot before/after and repeat renders at normal sizes. No respec required.
 **November 14, 2026:** PR #83 is merged (`87b7e4c`, "Reuse Forever tab frames so Talents, Professions, and Spells stop orphaning widgets"). PR #60 is still open. Live acceptance of the pooled frames is UNVERIFIED. The stage scores above are the November 9 scores.
 
@@ -312,7 +312,7 @@ G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage 
 
 #### G06 — Mage live mechanics, calculator and optional wand DPS
 **Owners:** Chronicler evidence; Riley only for later scoped extension; Glitch + Warden QA; Gilder explanations. **Priority:** P1 / short live checks. **D:** 4 existing readouts/calculator files; 0 optional wand-DPS extension (8/10). **P:** 1 mechanic research/extension proposal; live checks outstanding (2/10).
-**Approach:** Use the existing in-game checklist: usable wand/Shoot movement versus stationary timing (official beta 0.5 s, not a verified live timing number); Heating Up/Fire Blast effects; Accelerant current tooltip/definition; Missile Barrage learned-state/proc conditions; calculator synthetic 10 g/600 g-per-active-hour result and persistence; native Curse 475 requirement 18 vs 20. Study possession already settled; acquisition prerequisites remain separate. Keep a future optional wand-DPS choice separate from unchanged PR62 finish/conserve text. **Depends on:** Christopher’s actual learned talents/equipment; observed 53 nodes do not prove cast/aura behavior. No fabricated timings, spell-damage scaling, thresholds or talent unlock levels. Calculator TOC/tab rendering already observed, controls still unverified.
+**Approach:** Use the existing in-game checklist: usable wand/Shoot movement versus stationary timing (official beta 0.5 s, not a verified live timing number); Heating Up/Fire Blast effects; Accelerant current tooltip/definition; Missile Barrage learned-state/proc conditions; calculator synthetic 10 g/600 g-per-active-hour result and persistence; native Curse 475 requirement 18 vs 20. Study possession already settled; acquisition prerequisites remain separate. Keep a future optional wand-DPS choice separate from unchanged PR62 finish/conserve text. **Depends on:** Sirc’s actual learned talents/equipment; observed 53 nodes do not prove cast/aura behavior. No fabricated timings, spell-damage scaling, thresholds or talent unlock levels. Calculator TOC/tab rendering already observed, controls still unverified.
 - **C 1** `docs(test): define bounded Mage and calculator observations` — **DoD:** Each check has actual available tools, expected research versus unknown live behavior, report fields and safe stopping conditions; missing talent/tool is not tested.
 - **C 2** `docs(data): reconcile captured Mage mechanic fields` — **DoD:** Only observed fields get ledger decisions with source/build; unknown acquisition/timing stays unresolved.
 - **C 3** `feat(spells): add reviewed optional wand DPS choice` — **DoD:** Future-only after design/evidence/scope approval: known Shoot+usable equipped wand gates, optional what/why text, negative tests, no universal superiority or unverified 0.5 s gate; independent review and separate acceptance.
@@ -328,7 +328,7 @@ G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage 
 
 #### G08 — Warrior tank AND melee-DPS capture and guidance
 **Owners:** Chronicler role data; Riley guides; Glitch + Warden QA; Gilder role copy. **Priority:** P1 / next toon. **D:** 0 reliable role guidance (0/10). **P:** 1 original Fury + conditional role research; no Warrior live capture here (2/10).
-**Approach:** Treat tank and melee DPS as separate chosen contexts on the same toon. Capture current level/race, book/ranks, talents/Legacy, stance, shield/weapon and ordinary encounter context; source threat/mitigation/taunt/facing/Rage reserve separately from damage/interrupt/positioning. Nominal roles are not rigid limits: source/observe actual threat/mitigation/support capability; Mage/Hunter tanking are product examples, not certified current roles. **Depends on:** Christopher’s actual Warrior capture; do not infer role from spec label, damage counts or shield alone. Source candidate Fury/Protection packets are not curricula or live certification.
+**Approach:** Treat tank and melee DPS as separate chosen contexts on the same toon. Capture current level/race, book/ranks, talents/Legacy, stance, shield/weapon and ordinary encounter context; source threat/mitigation/taunt/facing/Rage reserve separately from damage/interrupt/positioning. Nominal roles are not rigid limits: source/observe actual threat/mitigation/support capability; Mage/Hunter tanking are product examples, not certified current roles. **Depends on:** Sirc’s actual Warrior capture; do not infer role from spec label, damage counts or shield alone. Source candidate Fury/Protection packets are not curricula or live certification.
 - **C 1** `docs(warrior): capture role and tool evidence` — **DoD:** Two context records clearly separate observed learned tools from unavailable/untested ones; no raw personal save in a public PR.
 - **C 2** `test(warrior): cover tank and DPS learned-state gates` — **DoD:** Fixture checks shield/stance/weapon/talent conditions and role choice, including missing tools.
 - **C 3** `feat(warrior): add one explained role-band slice` — **DoD:** One reviewed band/context only; tank threat/mitigation is not a relabeled damage priority; actual optional advice matches evidence.
@@ -377,15 +377,15 @@ G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage 
 #### G14 — Cast-based + gear-lean playstyle readout
 **Owners:** Riley observation/design; Chronicler verified signatures/weights; Glitch + Warden QA; Gilder advisory copy/art. **Priority:** P2 / product specification. **D:** 0 playstyle inference/gear-lean feature (0/10). **P:** 1 requested, not specified; gear-weight dependency open (2/10).
 **Approach:** Observe actual player casts over time and describe which spec/playstyle the pattern resembles, with reasons and uncertainty, to help the player tune their own style. Separate observed casts from informational equipped-gear lean; they may disagree. Availability/level/encounter/pet/weapon context matters. A suggestion is not a requirement, performance score or automatic spec choice. Selector always wins; none defaults Fire for the test Mage. **Depends on:** Existing Casts log is only an input, not long-term classifier proof. Define observation window, minimum evidence, retention/reset, session/context separation and explanation UX before build. Cast-based design can proceed without weights; weighted gear lean waits for G13. Strong-lean thresholds/signatures/algorithm remain unspecified.
-- **C 1** `docs(playstyle): specify cast and gear evidence channels` — **DoD:** Christopher approves observation scope/window/privacy/reset and examples of reasons/uncertainty; distinguish frequent available spells from intent; requested feature is not silently treated as a finished spec.
+- **C 1** `docs(playstyle): specify cast and gear evidence channels` — **DoD:** the owner approves observation scope/window/privacy/reset and examples of reasons/uncertainty; distinguish frequent available spells from intent; requested feature is not silently treated as a finished spec.
 - **C 2** `test(playstyle): cover sparse mixed and contrary signals` — **DoD:** Synthetic Mage/Warrior/Hunter histories, few/no casts, level changes, mixed school/roles, gear change and explicit-selector disagreement never auto-select/respec or invent confidence numbers.
-- **C 3** `feat(playstyle): add one bounded advisory readout` — **DoD:** Only after spec/data approval: readable reasoned cast-pattern suggestion; separate gear cue only with verified model; optional/collapsible, no overriding selector; regression and Christopher feedback required.
+- **C 3** `feat(playstyle): add one bounded advisory readout` — **DoD:** Only after spec/data approval: readable reasoned cast-pattern suggestion; separate gear cue only with verified model; optional/collapsible, no overriding selector; regression and the owner's feedback required.
 **Sirc:** Choose acceptable history scope and presentation; evaluate whether reasons describe real play and help tune it. No need to pick a spec now; confirm/reject suggestions freely.
 
 #### G15 — EVERY tab as-you-go advisory suggestions
 **Owners:** Riley wiring; Chronicler evidence; Gilder unobtrusive copy/UI; Glitch + Warden QA. **Priority:** P2 / cross-tab product specification. **D:** 0 cross-tab advisory layer; factual tabs 4 (0/10). **P:** 1 requested, not a completed UI specification (2/10).
 **Approach:** Each of ten tabs gets relevant optional suggestions from what the toon actually does/equips/knows and observed progress. Give what/why/alternatives to guide someone who does not know yet and help tune their own playstyle; suggestions, not requirements. Easy to collapse/skip; do not replace factual views or automate play. Harvest-first sensor→facts→advice; every tab ends in a next step. Future Now/Pets/SessionCheck targets are separate from the ten visible tabs. **Depends on:** Per-tab relevance matrix below, learned/equipment/provenance/access gates; G13 only for weighted claims, G14 for inferred style. No one giant ten-tab rewrite; no invented default collapsed state.
-- **C 1** `docs(advice): specify per-tab evidence and advisory copy` — **DoD:** All ten tabs have a purpose, allowed input, missing-data response and optional what/why example; Christopher reviews tone before coding.
+- **C 1** `docs(advice): specify per-tab evidence and advisory copy` — **DoD:** All ten tabs have a purpose, allowed input, missing-data response and optional what/why example; the owner reviews tone before coding.
 - **C 2** `test(advice): cover one tab context and opt-out` — **DoD:** One tab’s known/unknown/stale/nil/secret and switch-toon cases never produce unavailable actions; ignoring/collapsing advice does not hide facts.
 - **C 3** `feat(advice): add one unobtrusive evidence-backed tab slice` — **DoD:** One tab per PR, using shared approved evidence shape; exact-source reasons/opt-out visible; repeat for remaining tabs only after acceptance.
 **Sirc:** Approve first tab and tone/placement; confirm suggestions help without becoming requirements, intrusive prompts or a forced spec. Other tabs remain backlog until individually delivered.
@@ -411,7 +411,7 @@ G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage 
 **Approach:** Preserve PR58 visible-row policy and PR59 distinct roots. Compare native non-Neutral within-standing versus cumulative text, collapsed headers and header-with-rep if present. Verify native versus ToonAge profession duplicates before changing dedup. Do not expand native headers automatically or fabricate rewards/quests-left. **Depends on:** test character single-row dedup observed narrowly; reputation.csv 4 unresolved; native header capability and actual recurrence remain unknown.
 - **C 1** `test(progression): cover observed representation edge cases` — **DoD:** Use synthetic API fixtures for cumulative bounds/headers and distinct profession roots; do not claim a live header-with-rep exists from a fixture.
 - **C 2** `fix(progression): correct only a reproduced semantic mismatch` — **DoD:** If evidence warrants: tiny value/wording fix preserving native panel state and distinct roots; otherwise retain current code and explicit unknown.
-- **C 3** `docs(progression): record native comparison and planning boundary` — **DoD:** Christopher reports pass/fail/not-tested; no automatic reward/profession plan until sourced ownership/goals exist.
+- **C 3** `docs(progression): record native comparison and planning boundary` — **DoD:** the owner reports pass/fail/not-tested; no automatic reward/profession plan until sourced ownership/goals exist.
 **Sirc:** Compare native panels during ordinary use; send actual duplicate/mismatched values if any. Approve a fix only if a new reproducible issue exists.
 
 #### G19 — Health/Mana PR57, API semantics and four lookup-ID warnings
@@ -419,19 +419,19 @@ G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage 
 **Approach:** Separate PR57 access/wording from numeric-vitals goal; never bypass secret/refused values. Retain capability-guarded fallbacks (17 missing names have no unguarded loaded call found), test return semantics and clear unavailable versus zero. Investigate 12 warnings for 4 IDs 1310707/19977/19978/19979 by exact identity/load/cache, not blind replacement. Split PR56 verified probes from G02 labels. **Depends on:** Exact PR57 current review/head; API-GUARD-AUDIT and live probe evidence; missing API/cache result is not a removed-spell proof. No new dependency installation is part of this review.
 - **C 1** `test(api): cover readable zero refused values and identity misses` — **DoD:** Mock present/absent/secret APIs and exact-ID fallback paths, preserving all-client flavor isolation.
 - **C 2** `fix(api): apply only reviewed capability or identity corrections` — **DoD:** Only proven field/guard/shape fixes; no inferred private number or unexplained spell-ID substitutions; numeric fix remains unknown if unavailable.
-- **C 3** `docs(api): record client-specific acceptance limits` — **DoD:** Relevant suites/TOCs pass; Christopher compares accessible native values after separately approved install; not all-client certification.
+- **C 3** `docs(api): record client-specific acceptance limits` — **DoD:** Relevant suites/TOCs pass; the owner compares accessible native values after separately approved install; not all-client certification.
 **Sirc:** Approve PR57/probe changes separately, compare visible values only; report unavailable as unavailable. Supply normal cache/tooltip evidence for missing IDs if accessible.
 
 #### G20 — Offline QA, team evidence archive and reproducibility
-**Owners:** Glitch + Warden QA; Chronicler source bundle; Riley packaging; Gilder art inventory; Christopher transfer approver. **Priority:** P3 / portable reproducible handoff. **D:** 0 research transfer; existing baseline tests/reports retained (0/10). **P:** 2 reproducibility/export approach; no transfer performed (4/10).
-**Approach:** Retain historical 59/61 archive-run result and UTC-sensitive fixture/Git-metadata prerequisites; do not call all-green. Future authorized code work makes timezone fixture deterministic and runs release tests in legitimate full checkout/CI. Keep a Sirc-approved team evidence archive with research, ledgers, sources and hashes; box-local data is not automatically in the repo. No transfer performed. Imported token-regeneration/paste and Courier-Utility purpose remain Christopher-only UNKNOWNs; never collect tokens. Research export needs separate approval. **Depends on:** G07 drift reconciliation; exact branch/head and tool availability. No installs, clone, repo writes or export performed in this review; no secrets/SavedVariables in a public bundle.
+**Owners:** Glitch + Warden QA; Chronicler source bundle; Riley packaging; Gilder art inventory; the owner transfer approver. **Priority:** P3 / portable reproducible handoff. **D:** 0 research transfer; existing baseline tests/reports retained (0/10). **P:** 2 reproducibility/export approach; no transfer performed (4/10).
+**Approach:** Retain historical 59/61 archive-run result and UTC-sensitive fixture/Git-metadata prerequisites; do not call all-green. Future authorized code work makes timezone fixture deterministic and runs release tests in legitimate full checkout/CI. Keep a Sirc-approved team evidence archive with research, ledgers, sources and hashes; box-local data is not automatically in the repo. No transfer performed. Imported token-regeneration/paste and Courier-Utility purpose remain the owner-only UNKNOWNs; never collect tokens. Research export needs separate approval. **Depends on:** G07 drift reconciliation; exact branch/head and tool availability. No installs, clone, repo writes or export performed in this review; no secrets/SavedVariables in a public bundle.
 - **C 1** `test(harvest): make timestamp fixture timezone deterministic` — **DoD:** Future approved test-only commit behaves consistently across normal local timezone and UTC without changing harvest semantics.
 - **C 2** `docs(qa): record full-checkout CI and packaging evidence` — **DoD:** Run actual existing Tools tests and all TOCs on final head; separate missing .git/archive prerequisite from actual regression; do not weaken checks.
 - **C 3** `docs(handover): inventory authorized portable research bundle` — **DoD:** File list/hashes/source licenses/scope reviewed; transfer happens only by explicit approval, with sensitive live files excluded unless separately authorized. Check the four requested policy-document scopes and actual privacy/telemetry behavior; legal changes need Sirc’s decision, not automatic generation.
 **Sirc:** Choose approved export destination/scope and first research/test priorities; accept explicit untested classes. No transfer or installation approval is inferred from asking for this plan.
 
 #### G21 — One-ring analyst targets and outstanding product verdicts
-**Owners:** Christopher decisions; Chronicler audit; Riley scoped feature; Gilder UX; QA. **Priority:** P3 / imported-context audit. **D:** 0 delivered imported-target completion; current status UNKNOWN (0/10). **P:** 1 imported direction, not verified implementation (2/10).
+**Owners:** the owner decisions; Chronicler audit; Riley scoped feature; Gilder UX; QA. **Priority:** P3 / imported-context audit. **D:** 0 delivered imported-target completion; current status UNKNOWN (0/10). **P:** 1 imported direction, not verified implementation (2/10).
 **Approach:** Audit Now readiness/briefing, Pets care, SessionCheck→Now, consumable-readiness Scrolls and each imported target. Every tab ends in a next step, coexist with specialists. Record faction browser, popular-build source, one-ring verdicts, Weekly Dashboard and ship 8 vs 3 TOCs decisions; do not claim these features exist. **Depends on:** Muse export historical targets and current source/client audit; G15/G16 advice/evidence contract; popular builds must not undermine Harvest-first/player choice.
 - **C 1** `docs(direction): reconcile one-ring targets and decisions` — **DoD:** Current feature/state/evidence and build/defer decision listed per target; UNKNOWNs retained, historical paths not invented. Addon verdicts use replaced / partial / not replaced with a reason; phases, not days.
 - **C 2** `docs(advisor): specify one approved analyst slice` — **DoD:** One bounded target from sensor→facts→lines→UI→honesty with next step and meaningful client support; no giant replacement PR.
@@ -556,7 +556,7 @@ November 11, 2026, 8:48 AM PT — Sirc approved the merged HANDOVER as the team 
 Nov 9, 2026 ~8:21 PM PST (recorded Nov 11, 2026): Riley did NOT run `Tools/build_flavors.ps1 -Install` for the PR #62 install. The executor built the runtime from test c9c5308 on Riley's box and copied the 4 changed files (Modules/Forever/MageGuidance.lua added; RotationLists.lua, Rotation.lua, ToonAge_Camelot.toc changed) onto Jarvis by hand, after a fresh backup at `_forever_\Interface\ToonAge-backup-20261109-201958`. SavedVariables unchanged. Whole-install match to c9c5308 via build_flavors.ps1 is UNVERIFIED. Future installs use only `Tools/build_flavors.ps1 -Install` after a SavedVariables backup.
 Nov 11, 2026 8:59 AM PST (relayed by Conductor): Sirc ran a read-only SHA256 check of `_forever_\Interface\AddOns\ToonAge` against the 425 files in ToonAge-test-c9c5308.zip (sha256 ced4d25f...): all 425 match exactly, none missing or different; the only extra file is `.rules.md`. SavedVariables backup: `C:\Users\<you>\ToonAge-backups\SV-20261111-0859`. No reinstall needed for G01. The build_flavors.ps1 Forever install path (`_classic_beta_` instead of `_forever_`, line 156) is a pending card; held until it arrives.
 
-November 14, 2026 — Docs draft on current `test` (`6eeb530`): `AGENTS.md`, `Docs/HISTORY.md`, and this file taken from PR #63 (`grok/docs-source-of-truth` at `eb06f6c`) and this HANDOVER brought forward. Quotes already in the file are unchanged, including Sirc's "Lets make this the workflow I Like this and let everyone know their part even Riley", "I'd rather have everything working off git.", "After each verified test and its working it's pushed up", and "merge to test first, then you test, and your go marks it Done". Merges #65–#73, #76, and #77–#84 are recorded from git. Live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (Christopher's call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. Button line numbers in the guardrails were re-read at `6eeb530`; the November 11 numbers remain in the earlier log lines. No install, no tag, and no merge was performed for this entry.
+November 14, 2026 — Docs draft on current `test` (`6eeb530`): `AGENTS.md`, `Docs/HISTORY.md`, and this file taken from PR #63 (`grok/docs-source-of-truth` at `eb06f6c`) and this HANDOVER brought forward. Quotes already in the file are unchanged, including Sirc's "Lets make this the workflow I Like this and let everyone know their part even Riley", "I'd rather have everything working off git.", "After each verified test and its working it's pushed up", and "merge to test first, then you test, and your go marks it Done". Merges #65–#73, #76, and #77–#84 are recorded from git. Live verification of `6eeb530` is open. Mutilate 1310707 is UNVERIFIED (the owner's call). The Gear stat view decision is pending. The Orgrimmar Study probe is UNKNOWN. Button line numbers in the guardrails were re-read at `6eeb530`; the November 11 numbers remain in the earlier log lines. No install, no tag, and no merge was performed for this entry.
 November 15, 2026 — The same draft also takes PR #63's README additions, `Docs/ARCHITECTURE_OVERVIEW.md`, and the `.pkgmeta` ignore for `AGENTS.md`. The README keeps the opt-in usage wording already on `test` at `6eeb530`. Two README sentences that #63 still had as UNKNOWN are aligned with this file: trunk mapping is `test` (November 11), and the November 9 8:21 PM PST install was a hand copy. PR #63 is fully redundant and was not closed.
 
 ### Pull / push / commit / merge / install / live-check — when each happens (added Nov 11, 2026)
@@ -580,8 +580,8 @@ The addon moves through six phases. Bots do the work inside each phase; Sirc app
 
 #### How this merge was done — kept, translated, not taken
 
-- **Kept as settled:** trunk is `test`; `main` is the stable release branch, changed only when Christopher merges `test` into it; `Docs/HANDOVER.md` is the single shared record; branches are `<builder>/<feature>`; the approved install is `Tools/build_flavors.ps1 -Install`; in-game checks use buttons and copyable windows; the merge-timing model (merge → install → live-check); push-when-verified; the offline gates are `Tools/check_lua.py` and `Tools/test_*.py`.
-- **PROPOSED, not decided by Christopher:** release tags are cut from `main` after `test` merges into it.
+- **Kept as settled:** trunk is `test`; `main` is the stable release branch, changed only when the owner merges `test` into it; `Docs/HANDOVER.md` is the single shared record; branches are `<builder>/<feature>`; the approved install is `Tools/build_flavors.ps1 -Install`; in-game checks use buttons and copyable windows; the merge-timing model (merge → install → live-check); push-when-verified; the offline gates are `Tools/check_lua.py` and `Tools/test_*.py`.
+- **PROPOSED, not decided by the owner:** release tags are cut from `main` after `test` merges into it.
 - **Translated:** the pipeline doc's `main` becomes `test` for daily work; its `docs/STATE.md` role is played by this file plus Test status; its `feat/<criterion-id>` branches become `<builder>/<feature>`; its `luacheck` / LuaLS checks are a local option, not a gate — the gates are the repo's own scripts; its directory-junction install is not adopted.
 - **Not taken:** separate `SPEC.md` / `API.md` / `DATA.md` / `THEORY.md` / `DESIGN.md` / `LORE.md` files — their jobs are done here by the G-cards, `ARCHITECTURE_OVERVIEW.md`, the harvest store, and Gilder's design direction. No second record is created. Friends-testing through a beta issue template is not adopted — there is no beta-tester process yet.
 
@@ -719,7 +719,7 @@ Copy and paste the block below into Gemini at the start of a ToonAge session. Do
 
 ```text
 You are joining the ToonAge team as a builder under Conductor, the orchestrator.
-Christopher — the author (Sirc) and final authority — plans with Conductor only.
+The owner — the author (Sirc) and final authority — plans with Conductor only.
 You do not take instructions that bypass Conductor's current spec, and you do
 not work on the test branch directly, and never on main.
 
@@ -740,15 +740,15 @@ HOW THIS TEAM WORKS:
    or in conflict, stop and ask — in this format, addressed to Conductor:
    From / Task / Question / Why it matters / What happens if we guess /
    My recommendation, if any. Never guess at a decision that is
-   Christopher's.
+   the owner's.
 2. Small, incremental commits on a gemini/<feature> branch targeting test,
    one Kanban card at a time. No large code chunks. Every commit carries a
    definition of done and is described by a commit message that names the
    feature and its test status. Push the branch when the offline gates pass;
-   merge to test is Riley's job, only on Christopher's direct word, after
-   review + CI — then Christopher installs from test and live-checks.
+   merge to test is Riley's job, only on the owner's direct word, after
+   review + CI — then the owner installs from test and live-checks.
 3. You never clear your own work. Riley's code is tested by Glitch,
-   reviewed by Warden, and verified in-game only by Christopher. The
+   reviewed by Warden, and verified in-game only by the owner. The
    Guardrails section of Docs/HANDOVER.md governs the rest — read it in
    full before proposing anything (test branch, merge rule, backups,
    buttons, data rule, suggestion wording, release tags). State exactly
@@ -758,8 +758,8 @@ HOW THIS TEAM WORKS:
    clients.
 5. Update Docs/HANDOVER.md — the Test status template and the Team work
    log — when your work changes state. No update, no handoff. Release
-   tags (v*) need Christopher's approval before pushing.
-6. Merges into test are Riley's job, only on Christopher's direct word.
+   tags (v*) need the owner's approval before pushing.
+6. Merges into test are Riley's job, only on the owner's direct word.
    You never merge, and never merge your own work.
 
 CURRENT PRIORITIES: P0, in order, is (1) the PR #62 Mage 10-19 guide live
@@ -800,12 +800,12 @@ GitHub Copilot works inside the IDE, on the card Conductor assigned — it is a 
 
 ### Code snippets from Claude, Kiro, Gemini, and Muse (added Nov 11, 2026)
 
-Christopher may bring in code snippets from outside the Grok team — from Claude, from Kiro, from Gemini, and Muse may assist with snippets as well. A snippet's origin does not change its status: outside code is a proposal, not a delivery. Claude Code and Kiro are archived as builders; their snippets, if Christopher brings them, go through exactly the same gates below.
+Sirc may bring in code snippets from outside the Grok team — from Claude, from Kiro, from Gemini, and Muse may assist with snippets as well. A snippet's origin does not change its status: outside code is a proposal, not a delivery. Claude Code and Kiro are archived as builders; their snippets, if Sirc brings them, go through exactly the same gates below.
 
 - **In through Conductor.** Every snippet arrives through Conductor, who logs it against a Kanban card — or creates the card, in Questions, if none exists. Snippets are never pasted straight into the working tree, and never straight to `test` or `main`.
 - **Attributed to its source.** The card and the eventual commit note the source — Claude, Kiro, Gemini, or Muse — and what the snippet is meant to do, in one line. Unattributed code does not get integrated.
-- **Same gates, no exceptions.** Warden reviews it against `AGENTS.md`, Glitch runs the offline tests and writes the in-game checklist, Gilder clears it if it touches visuals, and Christopher verifies it in-game. A snippet from a trusted agent skips none of these.
-- **Adapted, not transplanted.** Riley integrates the snippet into the module pattern and the flavor's profile and ApiGuard gates, in the smallest commit that works. If it collides with work already in flight, Conductor flags the collision to Christopher before anyone merges.
+- **Same gates, no exceptions.** Warden reviews it against `AGENTS.md`, Glitch runs the offline tests and writes the in-game checklist, Gilder clears it if it touches visuals, and the owner verifies it in-game. A snippet from a trusted agent skips none of these.
+- **Adapted, not transplanted.** Riley integrates the snippet into the module pattern and the flavor's profile and ApiGuard gates, in the smallest commit that works. If it collides with work already in flight, Conductor flags the collision to the owner before anyone merges.
 - **Rejected snippets stay on record.** If a snippet fails a gate, the card records what failed and why, so the same code is not re-proposed as new.
 
 ### Test status template and prompt for validation — for Sirc (added Nov 11, 2026)
@@ -814,8 +814,8 @@ Conductor keeps this section current. Each bot updates its own work as soon as i
 
 ```markdown
 ## Test status
-- PR #62 / G01 — Experimental Mage 10-19 spell guide (Forever), test @ c9c5308 — offline checks: CI green, 425/425 hashes match, no deletes, SavedVariables identical; Glitch/Warden/Gilder GOs, Chronicler fact confirmation — rules review: clear — visual review: Gilder GO (copy/art) — in-game verified by Christopher: YES for PR #62 on Forever build 70888 (Nov 11, 2026, 7.5/10; see the G01 live test record below). Not yet verified on test 6eeb530.
-- G01 live test (Nov 11, 2026, 9:22 AM PT): Christopher live-tested PR #62's Mage Spells guide on Forever build 70888 with the test Mage L15. His words: "Go for the changes". Score 7.5/10. Self-test: 88 pass, 0 fail, 33 warn. Fixes he asked for: (1) the Frostbolt 8/14 and Fire Blast 14 lines always say "not confirmed learned" (PR #64, not on test yet); (2) "Enemy has reached me" suggests nothing even though Frost Nova was learned. This pass covers #62 on 70888, not test 6eeb530; the 6eeb530 live check is still open. Source: Conductor's log, relayed Nov 15, 2026.
+- PR #62 / G01 — Experimental Mage 10-19 spell guide (Forever), test @ c9c5308 — offline checks: CI green, 425/425 hashes match, no deletes, SavedVariables identical; Glitch/Warden/Gilder GOs, Chronicler fact confirmation — rules review: clear — visual review: Gilder GO (copy/art) — in-game verified by the owner: YES for PR #62 on Forever build 70888 (Nov 11, 2026, 7.5/10; see the G01 live test record below). Not yet verified on test 6eeb530.
+- G01 live test (Nov 11, 2026, 9:22 AM PT): the owner live-tested PR #62's Mage Spells guide on Forever build 70888 with the test Mage L15. His words: "Go for the changes". Score 7.5/10. Self-test: 88 pass, 0 fail, 33 warn. Fixes he asked for: (1) the Frostbolt 8/14 and Fire Blast 14 lines always say "not confirmed learned" (PR #64, not on test yet); (2) "Enemy has reached me" suggests nothing even though Frost Nova was learned. This pass covers #62 on 70888, not test 6eeb530; the 6eeb530 live check is still open. Source: Conductor's log, relayed Nov 15, 2026.
 
 ## Done
 - (none yet — first Done entry is PR #62's go from Sirc)
@@ -826,7 +826,7 @@ Conductor keeps this section current. Each bot updates its own work as soon as i
 - PR #59 — Forever profession dedup — merged to test Nov 8 — in-game verification pending
 - PR #61 — Manual profession batch calculator — merged to test Nov 8 — in-game verification pending
 - PR #63 — fully redundant with the November 14 draft (AGENTS.md, HANDOVER.md, HISTORY.md, README additions, ARCHITECTURE_OVERVIEW.md, .pkgmeta). Left open — since Nov 11, 2026
-- PRs #65–#73, #76, #77–#84 — merged to test — head 6eeb530 — owner: Sirc for the live check — what is left: Christopher's live verification of 6eeb530
+- PRs #65–#73, #76, #77–#84 — merged to test — head 6eeb530 — owner: Sirc for the live check — what is left: the owner's live verification of 6eeb530
 
 ## Waiting on Sirc
 - PR #62 / G01 live check (Spells tab) — waiting since Nov 9, 2026 (installed 8:21 PM)
@@ -835,7 +835,7 @@ Conductor keeps this section current. Each bot updates its own work as soon as i
 - PR #58 / #59 / #61 in-game verification — merged to test Nov 8, waiting since Nov 8, 2026
 - Live verification of test head 6eeb530 (PRs #65–#73, #76, #77–#84) — waiting since Nov 14, 2026
 - Gear stat view decision (PR #70: how a Forever stat-priority conflict is shown; code default is both) — pending since Nov 13, 2026
-- Mutilate 1310707 — UNVERIFIED, Christopher's call; PR #82 left it in place — since Nov 14, 2026
+- Mutilate 1310707 — UNVERIFIED, the owner's call; PR #82 left it in place — since Nov 14, 2026
 - Orgrimmar Study probe — UNKNOWN — no result recorded as of Nov 14, 2026
 
 ## Blocked / waiting on a decision
@@ -850,8 +850,8 @@ Conductor keeps this section current. Each bot updates its own work as soon as i
 
 Three rules keep it trustworthy: **no update here, no handoff**; **done means tested** — built but untested stays in progress; and **never rewrite history to look clean** — a failed test, a reverted change, and a wrong guess stay in the record, with what was learned. Every status line carries a date and who updated it; Conductor owns the Done transition on Sirc's go.
 
-**Prompt for validation — addressed to Sirc.** Before any roadmap item is called finished, Conductor puts this to Christopher and waits for the answer. The team does not mark its own work validated. In-game checks follow the Guardrails.
+**Prompt for validation — addressed to Sirc.** Before any roadmap item is called finished, Conductor puts this to the owner and waits for the answer. The team does not mark its own work validated. In-game checks follow the Guardrails.
 
-> **Christopher — validation check.** For [feature / task] on [branch, targeting `test`]: offline checks [passed / failed — detail], Warden's rules review [clear / returned — detail], Gilder's visual review [clear / n/a], and Glitch's checklist is [attached / not yet written]. What this does not yet prove: [anything only the game can show]. Please reload the UI, open ToonAge on [client — Forever first], and run the check Glitch wrote (buttons and copy window, per the Guardrails — SavedVariables backup first) and confirm: does [expected result] happen? Then copy the diagnostics from the copyable window and paste them back. Reply go, no-go, or go with changes — the card moves to Done only on your go.
+> **The owner — validation check.** For [feature / task] on [branch, targeting `test`]: offline checks [passed / failed — detail], Warden's rules review [clear / returned — detail], Gilder's visual review [clear / n/a], and Glitch's checklist is [attached / not yet written]. What this does not yet prove: [anything only the game can show]. Please reload the UI, open ToonAge on [client — Forever first], and run the check Glitch wrote (buttons and copy window, per the Guardrails — SavedVariables backup first) and confirm: does [expected result] happen? Then copy the diagnostics from the copyable window and paste them back. Reply go, no-go, or go with changes — the card moves to Done only on your go.
 
 **Daily summary (not a freeze).** Once a day, in the evening, Conductor collects status from every bot and updates this record: what shipped, what stayed behind and why, what is waiting on Sirc (with dates), and what is first tomorrow. The summary never freezes building — verified work is pushed when verified. At each release, Conductor also re-reads the workflow sections above and proposes fixes to Sirc — the workflow gets reviewed, not just followed.
