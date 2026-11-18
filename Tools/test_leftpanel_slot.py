@@ -166,15 +166,21 @@ def main():
     body = ui_src[start:end]
     release_at = body.find("ReleaseLeftPanel")
     rebuild_at = body.find("RebuildChild(")
-    render_at = body.find("mod.Render")
-    mount_at = body.find("MountLeftPanel")
+    render_at = body.find("pcall(mod.Render")
+    finish_at = body.find("pcall(TA.FinishTabSlot")
+    defer_at = body.find("_leftPanelDefer = true")
     empty_at = body.find("sideEmpty")
+    board = read("Modules/Character/ProfessionBoard.lua")
     check("SetTab releases a slot before rebuilding panes",
           release_at != -1 and rebuild_at != -1 and release_at < rebuild_at, True)
-    check("SetTab mounts a slot after the tab renders",
-          render_at != -1 and mount_at != -1 and render_at < mount_at, True)
-    check("SetTab mounts a slot before the empty-sidebar check",
-          mount_at != -1 and empty_at != -1 and mount_at < empty_at, True)
+    check("SetTab finishes the slot after the tab renders",
+          render_at != -1 and finish_at != -1 and render_at < finish_at, True)
+    check("SetTab finishes the slot before the empty-sidebar check",
+          finish_at != -1 and empty_at != -1 and finish_at < empty_at, True)
+    check("SetTab raises the defer flag before Render",
+          defer_at != -1 and render_at != -1 and defer_at < render_at, True)
+    check("the professions tab reads the defer flag during Render",
+          "ui._leftPanelDefer" in board, True)
     check("an unregistered tab still uses the old empty-sidebar test",
           "not slotOpen" in body, True)
 
@@ -295,6 +301,23 @@ TA:MountLeftPanel(bare, "notes")
 bareSecond = created - bareAt - bareFirst
 bareReleaseOk = TA:ReleaseLeftPanel(bare)
 ToonAge.Layout = savedLayout
+
+-- A Render that throws must not leave a slot beside the error text.
+failBuilds = 0
+TA:RegisterLeftPanel("boom", {
+    build = function(content)
+        failBuilds = failBuilds + 1
+        content:SetHeight(40)
+    end,
+    release = function() failReleased = (failReleased or 0) + 1 end,
+})
+failUI = MakeUI()
+failUI._leftPanelDefer = true
+skipped = TA:FinishTabSlot(failUI, "boom", false)
+failDeferCleared = failUI._leftPanelDefer == nil
+opened = TA:FinishTabSlot(failUI, "boom", true)
+dropped = TA:FinishTabSlot(failUI, "boom", false)
+failShownAfter = failUI._leftSlot and failUI._leftSlot.scroll:IsShown()
 """)
     # Layout was nilled. Restore by re-reading is unnecessary; assertions use
     # values captured before that. Re-bind so a later execute is safe.
@@ -341,6 +364,13 @@ ToonAge.Layout = savedLayout
     check("without Layout release still runs", g.bareReleaseOk, True)
     check("without Layout release calls the tab", g.bareReleased >= 1, True)
     check("layout loaded before the slot tests", before_layout >= 0, True)
+    check("a failed render does not mount a slot", g.skipped, False)
+    check("a failed render clears the defer flag", g.failDeferCleared, True)
+    check("only the successful finish builds the slot", g.failBuilds, 1)
+    check("a successful render still builds the slot", g.opened, True)
+    check("a later failed render releases the slot", g.dropped, False)
+    check("a released slot stays hidden", g.failShownAfter, False)
+    check("releasing after a failure does not build again", g.failReleased >= 1, True)
 
     passed = sum(_results)
     total = len(_results)

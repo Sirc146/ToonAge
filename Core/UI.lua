@@ -530,13 +530,15 @@ function TA:InitUI()
         if tabDef then
             local mod = TA:GetModule(tabDef.module)
             if mod and mod.Render then
-                -- While this is set, a tab that opted into the slot draws that
-                -- slot from MountLeftPanel instead of onto the sidebar scroll.
-                local deferSlot = type(TA.MountLeftPanel) == "function"
+                -- DrawLearned in ProfessionBoard reads _leftPanelDefer during
+                -- this call and skips the form on the sidebar scroll. The
+                -- slot is mounted after Render returns, and only if it returns.
+                local deferSlot = type(TA.FinishTabSlot) == "function"
                 if deferSlot then self._leftPanelDefer = true end
                 local ok, err = pcall(mod.Render, mod, self.contentChild, self.sideChild)
-                if deferSlot then self._leftPanelDefer = nil end
-                if deferSlot then pcall(TA.MountLeftPanel, TA, self, tabID) end
+                if deferSlot then
+                    pcall(TA.FinishTabSlot, TA, self, tabID, ok)
+                end
                 if not ok then
                     -- Surface errors in the content pane instead of silently failing
                     local errF = self.contentChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
