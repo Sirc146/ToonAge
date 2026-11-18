@@ -10,7 +10,7 @@ ToonAge uses **GitHub Releases** as the update source and **WowUp** as the autom
 
 You need to be added as a **collaborator** on the private GitHub repository:
 - Repository: `https://github.com/Sirc146/ToonAge`
-- Ask Chris to add your GitHub username as a collaborator.
+- Ask the owner to add your GitHub username as a collaborator.
 
 ---
 

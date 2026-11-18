@@ -1,6 +1,6 @@
 # Claude specs — 2026-10-04
 
-These specs await Christopher's review. Nothing in them is implemented yet.
+These specs await the owner's review. Nothing in them is implemented yet.
 Each spec has the same parts: evidence, requirements, design, tasks and how to verify it.
 "Unverified" means no tool or in-game run has confirmed the point this session.
 
@@ -33,7 +33,7 @@ Already shipped to the trunk today, and not part of these specs: the self-test r
 1. **Probe.** Add the two `C_SpecializationInfo` rows to `TestHarness` API_CHECKS as informational.
    - This needs a regenerated `Data/*/ApiManifest.lua`: test_enginegate fails until the manifest lists every C_ name the Forever files reference.
    - That generator and those manifests are inside G3's area, so coordinate with Kiro before regenerating.
-   - Then Christopher runs Self-test on Mists.
+   - Then the owner runs Self-test on Mists.
 2. If the namespaced functions are present, add the fallback to the resolver.
 3. Route the three callers through U.GetPlayerSpec.
 4. Add the "spec unreadable on this client" line to the Character tab.
@@ -88,7 +88,7 @@ Already shipped to the trunk today, and not part of these specs: the self-test r
 
 **Design.**
 - The harvester records `s.harvestedAt` (the date of the most recent scan) and `s.clientBuild = select(2, GetBuildInfo())`.
-- Channel has two options, and **this is Christopher's decision**:
+- Channel has two options, and **this is the owner's decision**:
   - (a) the generator takes it as a third argument: `lua gen_forever_data.lua <sv> <root> beta`. This is explicit and never wrong.
   - (b) the harvester infers it from the realm name containing "Beta". This is automatic but heuristic.
 - The generator writes, for example: `-- Measured on the Forever client (build 70205, interface 16001, beta) on 2026-09-26; N records.`
@@ -119,7 +119,7 @@ Already shipped to the trunk today, and not part of these specs: the self-test r
 **Requirements.** A Guide tab render stays under one frame (16.7 ms) on Retail with every guide loaded.
 
 **Design.**
-1. **Measure first.** Time the gather loop and the card loop separately with `debugprofilestop()`, keep the two numbers on the module, and have the self-test perf line print them. Christopher runs it once.
+1. **Measure first.** Time the gather loop and the card loop separately with `debugprofilestop()`, keep the two numbers on the module, and have the self-test perf line print them. The owner runs it once.
 2. **Cache completion counts per guide.** Invalidate on `QUEST_TURNED_IN` and, throttled, on `QUEST_LOG_UPDATE`. A render then reads counts instead of making thousands of C calls.
 3. **Reuse the cards.** Pool card, follow and mode frames through the `Core/Layout.lua` pools (`RebuildChild` already calls `Layout:ReleasePane`), and reuse the sidebar expansion buttons.
 
@@ -134,7 +134,7 @@ Already shipped to the trunk today, and not part of these specs: the self-test r
 **Evidence.**
 - The drawer is anchored below the main window (`UI.lua` ToggleSettingsDrawer) and clamped to the screen.
 - When there is less room than the drawer's height below the window, the clamp pushes the drawer up over the window: 233 px on Era, 60 px on Forever (stale install).
-- Christopher's lean, which is also mine: anchor above when there's no room below.
+- The owner's lean, which is also mine: anchor above when there's no room below.
 
 **Requirements.** The drawer never overlaps the main window when the screen has room above or below it.
 
@@ -173,7 +173,7 @@ Already shipped to the trunk today, and not part of these specs: the self-test r
 - Recommendation: (a).
 
 **Tasks.**
-1. Confirm against Christopher's Retail screenshot: buttons below the drawer's bottom border.
+1. Confirm against the owner's Retail screenshot: buttons below the drawer's bottom border.
 2. Implement the option chosen.
 3. Add a self-test check: "sidebar fits inside the drawer" (`sidebar:GetBottom() >= drawer:GetBottom()`).
 
@@ -199,7 +199,7 @@ Already shipped to the trunk today, and not part of these specs: the self-test r
 
 ## S8. Tab text laid out at the wrong width after a tab with no sidebar
 
-**Evidence.** This is from Christopher's Forever screenshot on 2026-10-04 (Spells tab, right after a self-test), plus the code.
+**Evidence.** This is from the owner's Forever screenshot on 2026-10-04 (Spells tab, right after a self-test), plus the code.
 - The Spells intro ("Vanilla has no rotation ... Grouped the way the spellbook groups them.") runs as a single line and is clipped mid-word at the pane's right edge.
 - `Core/UI.lua` SetTab renders the module into a content pane whose width is `self.contentWidth`. Only after the render (around line 520, "Dynamic panel resizing") does it decide whether the sidebar is empty. It then sets the pane to the full width (877) or the normal width (667) and stores that width for the next render.
 - So the width a tab renders at is whatever the previous tab's sidebar decision left behind.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Usage reporting is off unless the player opts in.
 
-Christopher's decision (2026-11-12): "Opt in by choice". The shipped default
+The owner's decision (2026-11-12): "Opt in by choice". The shipped default
 used to be analytics = true, and the collector treated every value except
 false as on. These checks pin the opposite:
 

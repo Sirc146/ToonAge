@@ -1,10 +1,10 @@
 # Spec — Harvest as the sensor array on every client
 
-**Status:** APPROVED by Christopher, 2026-10-04 16:43, with D1-D6 decided as recommended (§8). Implementation is T1-T10, one commit each, each with its own in-game check.
-**Load-bearing constraint (Christopher):** Forever must behave exactly as it does now before any other client gets a pack.
-**Author:** Claude (implementer). **Verifies in-game:** Christopher. **Audits:** Pepper.
+**Status:** APPROVED by the owner, 2026-10-04 16:43, with D1-D6 decided as recommended (§8). Implementation is T1-T10, one commit each, each with its own in-game check.
+**Load-bearing constraint (the owner):** Forever must behave exactly as it does now before any other client gets a pack.
+**Author:** Claude (implementer). **Verifies in-game:** the owner. **Audits:** Pepper.
 **Trunk at spec time:** files read on 2026-10-04 at about 15:00: `Modules/Forever/DataHarvester.lua` (1,518 lines, 71,700 bytes), `Modules/Infrastructure/CoordHarvester.lua`, `Core/Profile.lua`, `Core/ApiGuard.lua`, `Docs/G3_API_GATE.md`, `Tools/gen_forever_data.lua`, `Tools/test_harvester.py`, and all eight TOCs.
-**Sequencing:** Christopher, 2026-10-04: build now, without waiting for G3. The G3 tradeoff becomes a design constraint (§4.2).
+**Sequencing:** the owner, 2026-10-04: build now, without waiting for G3. The G3 tradeoff becomes a design constraint (§4.2).
 
 ---
 
@@ -80,7 +80,7 @@ The channel follows the S3 decision: an explicit value or `unknown`, never guess
 
 **R12 — No data loss.** The 106 talent, 93 item, 53 spell, 5 racial and 2 character records in the current Forever store, plus its trainer and catalog tables, survive migration intact. The test proves equal counts per section.
 
-**R13 — Per-feature commits, branch-only pushes, no tags** without Christopher's approval. Each task is verified with `/ta test` on the client it touches, after `build_flavors.ps1 -Check` shows that client is current.
+**R13 — Per-feature commits, branch-only pushes, no tags** without the owner's approval. Each task is verified with `/ta test` on the client it touches, after `build_flavors.ps1 -Check` shows that client is current.
 
 ---
 
@@ -246,7 +246,7 @@ TA.db.harvest = {
   3. Set `version = 3`.
   4. Set `foreverHarvest = nil`.
 
-  Moving rather than copying avoids writing the same table twice into the saved file. The tripwire and all readers switch in the same commit (§3.3). Christopher's 14:16 robocopy backup is the rollback. **D2** asks whether to move or keep the old key.
+  Moving rather than copying avoids writing the same table twice into the saved file. The tripwire and all readers switch in the same commit (§3.3). The owner's 14:16 robocopy backup is the rollback. **D2** asks whether to move or keep the old key.
 - Caps stay as they are (items 20,000; spells 6,000; talents 2,000) and apply per section.
 
 ### 4.4 Domain and pack contract
@@ -353,7 +353,7 @@ Order rule: T1-T4 must leave Forever's behaviour identical before any new client
 
 **How T4 was cut (2026-10-04).** The core (`Modules/Infrastructure/Harvester.lua`) is now the registered `DataHarvester` module: record helpers, `Try` through Caps, the event fan-out, the catalog engine, the shared probe sections, the Full report and the tab. Six domains (`Character`, `Items`, `Racials`, `Spellbook`, `TraitTree`, `Trainer`) and `Packs/Forever.lua` replace `Modules/Forever/DataHarvester.lua`, which is deleted. `Domains/TalentTrees.lua` (the legacy talent scan) exists but no TOC lists it until the Era and TBC packs; `test_harvest_packs.py` loads it.
 - **Parity, measured.** The T3 recorder and the T4 code were run side by side on the same mocked Forever client and store, through the same events (`/tmp` harness, not shipped; its checks live on in `test_harvest_packs.py`). Store, registered events, slash commands, chat, the probe report and every export window came out byte-identical. The intended differences are listed below and nothing else differs.
-- **Approved additions (Christopher, 2026-10-04):**
+- **Approved additions (the owner, 2026-10-04):**
   - *Additive catalog scan.* A scan writes new and changed ranks and never removes a stored one. It builds into a separate table and merges at the end, so the Spells tab reads the full catalog while the walk runs and gets a fresh table afterwards. This is the regression for 2026-10-04 17:23, when a Mage session read 8 Warrior and Priest ranks blank and the old wipe-and-rebuild scan dropped them (85 -> 77). A mutation check confirms the test fails against the old behaviour.
   - *Scan button renamed.* The section is now "Catalog scan" and the button "Run catalog scan", so it can't be mistaken for the Copy row's "Spell catalog" button (which only opens a window).
   - *One-time repair.* `Packs/Forever.lua` adds back the 8 lost ranks, verbatim from the saved file of 17:21:36. Each is added only if missing, only when the client or catalog build is 70205, and only once (`catalogRepair` records how many were added).
@@ -398,7 +398,7 @@ Order rule: T1-T4 must leave Forever's behaviour identical before any new client
 | D5 | Retail item key | **Item ID plus item-level variant** (the item string with bonus IDs, per-character fields stripped). |
 | D6 | Retail harvester | **Reversed** the documented decision in `test_harvester.py:91-102` (no harvester in the Retail TOCs). Retail gets a pack. The pin comments are rewritten in T9 to record the reversal and why. |
 
-The options as they were put to Christopher:
+The options as they were put to the owner:
 
 
 - **D1 — In-game channel.** Should there be a Channel button on the Harvest tab (unknown → beta → live → ptr, default unknown, set only by you)? Or should in-game exports always say `unknown`, with only the saved-file exporter's argument setting the channel? *Recommendation: the button. In-game exports are the ones that get pasted, so they need the stamp too.*
