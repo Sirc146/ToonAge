@@ -33,7 +33,12 @@ function Social:ScanNearbyPlayers()
                 if gameInfo.isOnline and gameInfo.clientProgram == "WoW" then
                     local friendZone = gameInfo.areaName or ""
                     local friendLevel = gameInfo.characterLevel or 0
-                    local friendName = gameInfo.characterName or accountInfo.accountName
+                    -- Live label only. An account name, BattleTag, or account
+                    -- id is never read and never kept, even in this session list.
+                    local friendName = gameInfo.characterName
+                    if type(friendName) ~= "string" or friendName == "" then
+                        friendName = "Friend"
+                    end
 
                     if friendZone == playerZone and math.abs(friendLevel - playerLevel) <= 5 then
                         table.insert(self.nearbyFriends, {
@@ -41,7 +46,6 @@ function Social:ScanNearbyPlayers()
                             level  = friendLevel,
                             zone   = friendZone,
                             source = "BNet",
-                            bnetID = accountInfo.bnetAccountID,
                         })
                     end
                 end
