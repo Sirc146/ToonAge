@@ -468,7 +468,9 @@ function Settings:Render(content, sidebar)
     end
     y = MakeSection(content, y, w, "ABOUT")
     y = MakeInfoRow(content, y, w, "Version", TA.version or "1.0.0-classic")
-    y = MakeInfoRow(content, y, w, "Author", "Chris")
+    local getMeta = TA.Compat and TA.Compat.GetAddOnMetadata
+    local author = getMeta and getMeta("ToonAge", "Author")
+    y = MakeInfoRow(content, y, w, "Author", (author ~= nil and author ~= "") and author or "Sirc")
     y = MakeInfoRow(content, y, w, "Modules", string.format("%d total (%d active)", loaded + disabled + errored, loaded))
     y = MakeInfoRow(content, y, w, "Guides loaded", tostring(U.TableLength and U.TableLength(TA.Guides or {}) or 0))
 
