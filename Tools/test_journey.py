@@ -256,7 +256,7 @@ function C.OnTaxi()
 end
 function C.UnitName(unit)
   if unit == "target" then return KILLER end
-  return "Eramali"
+  return "Examplechar"
 end
 function C.UnitIsPlayer(unit)
   return false
@@ -503,7 +503,7 @@ ZONE_NAME = "Elwynn Forest"
 
     Ls, TAs = boot(r"""
 function ToonAge.Compat.UnitIsPlayer(unit) return true end
-KILLER = "Eramali"
+KILLER = "Examplechar"
 ZONE_ID = 1429
 ZONE_NAME = "Elwynn Forest"
 """)
