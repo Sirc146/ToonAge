@@ -262,9 +262,11 @@ check("spell catalog still has an all-classes button",
 check("muted label names the saved class that is not this character",
       "Paragraph|Trainer ranks: Showing saved Hunter data|dim" in lay_rogue)
 check("the trainer button exports this character's empty capture, not the hunter rows",
-      exported[-1], "No trainer data yet for Eramali (Rogue). Open a trainer to record it.")
-check("that export starts with this character's source line",
-      exported[0], "-- source Eramali · Rogue · level 18 · build 70205 · captured unknown")
+      exported[-1], "No trainer data yet for Player (Rogue). Open a trainer to record it.")
+check("that export starts with a neutral source line",
+      exported[0], "-- source Player · Rogue · level 18 · build 70205 · captured unknown")
+check("an empty capture export omits the character name and realm",
+      "Eramali" not in lst(L, "WINDOWS_LOG")[0].text and "Classic Beta PvE" not in lst(L, "WINDOWS_LOG")[0].text)
 check("the hunter rows are not in this character's export",
       "Serpent Sting" not in lst(L, "WINDOWS_LOG")[0].text)
 
