@@ -9,13 +9,14 @@
 -- Each guide is scored from its own stored order. When the view is both,
 -- both scores are shown and labeled. They are never averaged. The order
 -- used here is the level 60 guide order: no leveling list is stored.
--- ToonAge does not print a percent. When Polestar or Forever Leveling BiS
--- is loaded, and otherwise when Pawn is loaded, one dim line names that
--- scorer and ToonAge adds nothing else. The check is C.IsAddOnLoaded only.
--- Their globals are not called. With neither loaded, or with the defer
--- setting off, the line is the stat trade in neutral text, then the stored
--- Icy Veins order labeled as the level 60 order. Below level 60 that order
--- is marked UNVERIFIED for leveling. No leveling order is stored or invented.
+-- ToonAge does not print a percent. A loaded scorer is named and nothing
+-- else is added: both Polestar and Forever Leveling BiS, either one alone,
+-- or else Pawn. The check is C.IsAddOnLoaded only. Their globals are not
+-- called. Bag arrows stay off while a scorer is in charge or the player is
+-- below level 60. With neither loaded, or with the defer setting off, the
+-- line is the stat trade in neutral text, then the stored Icy Veins order
+-- labeled as the level 60 order. Below level 60 that order is marked
+-- UNVERIFIED for leveling. No leveling order is stored or invented.
 -- Cap text is still only for an item that carries Hit, and it is hidden
 -- below level 60 because those phrases are the level 60 guide.
 --
@@ -55,9 +56,8 @@ local RED   = { 1.00, 0.35, 0.30 }
 -- Neutral is equal channels, never the upgrade green or the downgrade red.
 local NEUTRAL = { 0.93, 0.93, 0.93 }
 
--- IsAddOnLoaded folder names verified above. Polestar wins over Pawn.
--- ForeverLevelingBiS is the gear addon Polestar names in OptionalDeps, and
--- its own title is "Forever Leveling BiS", so that load uses the same line.
+-- IsAddOnLoaded folder names verified above. Polestar and Forever Leveling
+-- BiS outrank Pawn. The combined name is only when both of those are loaded.
 local SCORER_POLESTAR = "Polestar"
 local SCORER_FLBIS = "ForeverLevelingBiS"
 local SCORER_PAWN = "Pawn"
@@ -93,12 +93,15 @@ function M:DeferOn()
     return not (TA.db and TA.db.foreverGearDefer == false)
 end
 
---- "Polestar (Forever Leveling BiS)", "Pawn", or nil when ToonAge speaks.
+--- The loaded scorer, or nil when ToonAge speaks. Polestar and Forever
+--- Leveling BiS outrank Pawn. The parenthetical is used only when both are loaded.
 function M:ScorerInCharge()
     if not self:DeferOn() then return nil end
-    if self:AddonLoaded(SCORER_POLESTAR) or self:AddonLoaded(SCORER_FLBIS) then
-        return "Polestar (Forever Leveling BiS)"
-    end
+    local polestar = self:AddonLoaded(SCORER_POLESTAR)
+    local flbis = self:AddonLoaded(SCORER_FLBIS)
+    if polestar and flbis then return "Polestar (Forever Leveling BiS)" end
+    if polestar then return "Polestar" end
+    if flbis then return "Forever Leveling BiS" end
     if self:AddonLoaded(SCORER_PAWN) then return "Pawn" end
     return nil
 end
@@ -245,32 +248,21 @@ local function CapLine(srcName, phrases)
     return text
 end
 
--- Tooltip Hit check only. This does not change StatPriority weights.
--- ITEM_MOD_HIT_RATING_SHORT is the key that map already uses.
--- Spell hit and the short Hit global count only when the client defines
--- them. The 1.60.1 key is UNVERIFIED pending an in-game
--- /dump C_Item.GetItemStats(link).
-local function HitKeys()
-    local keys = { ITEM_MOD_HIT_RATING_SHORT = true }
-    local function add(globalName)
-        local value = _G[globalName]
-        if type(value) ~= "string" or value == "" then return end
-        keys[globalName] = true
-        keys[value] = true
-    end
-    add("ITEM_MOD_HIT_SPELL_RATING_SHORT")
-    add("ITEM_MOD_HIT_SHORT")
-    local rated = _G.ITEM_MOD_HIT_RATING_SHORT
-    if type(rated) == "string" and rated ~= "" then keys[rated] = true end
-    return keys
-end
+-- Tooltip check only. This does not change StatPriority weights.
+-- GetItemStats keys are these literal names. The 1.60.1 key is UNVERIFIED
+-- pending an in-game /dump C_Item.GetItemStats(link). A global of the same
+-- name, when the client defines it, is only the display label.
+local HIT_ITEM_KEYS = {
+    ITEM_MOD_HIT_RATING_SHORT = true,
+    ITEM_MOD_HIT_SPELL_RATING_SHORT = true,
+    ITEM_MOD_HIT_SHORT = true,
+}
 
---- True when stats from C.GetItemStats include a key that counts as Hit.
+--- True when stats from C.GetItemStats include a Hit key.
 local function ItemCarriesHit(stats)
     if type(stats) ~= "table" then return false end
-    local keys = HitKeys()
     for key, amount in pairs(stats) do
-        if keys[key] and tonumber(amount) ~= nil then
+        if HIT_ITEM_KEYS[key] and tonumber(amount) ~= nil then
             return true
         end
     end
@@ -374,19 +366,47 @@ local function TradeLine(itemStats, equippedStats)
     return "ToonAge: " .. table.concat(parts, ", ")
 end
 
-function M:CompareStats(slots)
+--- Stats of the equipped piece BestRounded would compare against.
+--- For rings, trinkets and weapons that is the slot with the higher percent,
+--- which is the same choice the old per-source percent used.
+function M:CompareStats(slots, weights, itemScore)
     local C = TA.Compat
     if type(slots) ~= "table" then return {}, true end
     if not (C and type(C.GetInventoryItemLink) == "function") then return {}, true end
     if TA.HasAPI and not TA:HasAPI("GetInventoryItemLink") then return {}, true end
+    if type(weights) ~= "table" or type(itemScore) ~= "number" then return {}, true end
+    local best, bestStats, bestEmpty, any = nil, nil, false, false
     for _, slot in ipairs(slots) do
-        local ok, link = pcall(C.GetInventoryItemLink, "player", slot)
-        if ok and type(link) == "string" and link ~= "" then
-            local stats = self:ReadItemStats(link)
-            if type(stats) == "table" then return stats, false end
+        local score, empty = self:SlotScore(slot, weights)
+        if score ~= nil then
+            any = true
+            local pct
+            if score > 0 then
+                pct = (itemScore - score) / score * 100
+            elseif itemScore > 0 then
+                pct = 100
+            else
+                pct = 0
+            end
+            local rounded = math.floor(pct + 0.5)
+            if best == nil or rounded > best then
+                best = rounded
+                bestEmpty = empty and true or false
+                if empty then
+                    bestStats = {}
+                else
+                    local ok, link = pcall(C.GetInventoryItemLink, "player", slot)
+                    if ok and type(link) == "string" and link ~= "" then
+                        bestStats = self:ReadItemStats(link) or {}
+                    else
+                        bestStats = {}
+                    end
+                end
+            end
         end
     end
-    return {}, true
+    if not any then return {}, true end
+    return bestStats or {}, bestEmpty
 end
 
 local GUIDE_WORDS = {
@@ -467,9 +487,8 @@ function M:Suggestions(link)
     if not slots then return out end
     local itemStats = self:ReadItemStats(link)
     if itemStats == nil then return out end
-    local equippedStats = self:CompareStats(slots)
-    local trade = TradeLine(itemStats, equippedStats)
     local showCaps = ItemCarriesHit(itemStats) and not self:BelowLevel60()
+    local trade
     for _, row in ipairs(SP:Rows(entry)) do
         for _, src in ipairs(row.sources or {}) do
             if type(src) == "table" and SP:SourceVisible(src.name) then
@@ -477,6 +496,10 @@ function M:Suggestions(link)
                 local itemScore = SP:ScoreStats(itemStats, weights)
                 local rounded = self:BestRounded(slots, weights, itemScore)
                 if rounded ~= nil then
+                    if not trade then
+                        local equippedStats = self:CompareStats(slots, weights, itemScore)
+                        trade = TradeLine(itemStats, equippedStats)
+                    end
                     local verdict, r, g, b = "same", GREY[1], GREY[2], GREY[3]
                     if rounded > 0 then
                         verdict, r, g, b = "upgrade", GREEN[1], GREEN[2], GREEN[3]
@@ -502,7 +525,9 @@ end
 
 --- True only when every source the current view shows calls this an upgrade.
 --- With both guides visible, one disagreeing source hides the arrow.
+--- A loaded scorer, or a player below 60, draws no ToonAge arrow.
 function M:IsUpgrade(link)
+    if self:ScorerInCharge() or self:BelowLevel60() then return false end
     local rows = self:Suggestions(link)
     if #rows == 0 then return false end
     for _, row in ipairs(rows) do
@@ -523,20 +548,16 @@ function M:DisplayLines(link)
         }
         return lines
     end
-    if not self:Equippable(link) then return lines end
-    local itemStats = self:ReadItemStats(link)
-    if itemStats == nil then return lines end
-    local slots = self:EquipSlots(link)
-    if not slots then return lines end
-    local equippedStats = self:CompareStats(slots)
+    local rows = self:Suggestions(link)
+    if #rows == 0 then return lines end
     lines[#lines + 1] = {
-        text = TradeLine(itemStats, equippedStats),
+        text = rows[1].text,
         r = NEUTRAL[1], g = NEUTRAL[2], b = NEUTRAL[3],
     }
     local below = self:BelowLevel60()
     if not below then
         local seen = {}
-        for _, row in ipairs(self:Suggestions(link)) do
+        for _, row in ipairs(rows) do
             if row.cap and not seen[row.cap] then
                 seen[row.cap] = true
                 lines[#lines + 1] = {

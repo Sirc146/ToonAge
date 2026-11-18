@@ -311,7 +311,7 @@ end
         hit_rows.append(assert_suggestions("item:hit:" + key, True, f"item with {key}"))
     for key in HIT_KEY_CANDIDATES:
         if key not in mapped:
-            assert_suggestions("item:other:" + key, False, f"item with unmapped {key}")
+            assert_suggestions("item:other:" + key, True, f"item with {key} and no global")
 
     if cloak and hit_rows and hit_rows[0]:
         cloak_pct = {row["name"]: row["rounded"] for row in cloak}
@@ -425,7 +425,7 @@ ToonAge.Compat.IsAddOnLoaded = function(name) return name == "Polestar" end
 """)
     polestar = display("item:cloak")
     check("Polestar loaded: in-charge line and no percent",
-          line_texts(polestar), ["ToonAge: Polestar (Forever Leveling BiS) is scoring gear"])
+          line_texts(polestar), ["ToonAge: Polestar is scoring gear"])
     check("Polestar loaded: the line is dim",
           (polestar[0]["r"], polestar[0]["g"], polestar[0]["b"]), (0.62, 0.59, 0.55))
     check("Polestar loaded: addon globals were not read", int(lua.eval("scorerProbes")), 0)
@@ -440,10 +440,22 @@ ToonAge.Compat.IsAddOnLoaded = function(name) return name == "Polestar" end
         return name == "Polestar" or name == "Pawn" end''')
     check("Polestar and Pawn loaded: Polestar wins",
           line_texts(display("item:cloak")),
-          ["ToonAge: Polestar (Forever Leveling BiS) is scoring gear"])
+          ["ToonAge: Polestar is scoring gear"])
 
     lua.execute('ToonAge.Compat.IsAddOnLoaded = function(name) return name == "ForeverLevelingBiS" end')
-    check("Forever Leveling BiS loaded: the Polestar line applies",
+    check("Forever Leveling BiS alone names itself",
+          line_texts(display("item:cloak")),
+          ["ToonAge: Forever Leveling BiS is scoring gear"])
+
+    lua.execute('''ToonAge.Compat.IsAddOnLoaded = function(name)
+        return name == "ForeverLevelingBiS" or name == "Pawn" end''')
+    check("Forever Leveling BiS outranks Pawn",
+          line_texts(display("item:cloak")),
+          ["ToonAge: Forever Leveling BiS is scoring gear"])
+
+    lua.execute('''ToonAge.Compat.IsAddOnLoaded = function(name)
+        return name == "Polestar" or name == "ForeverLevelingBiS" end''')
+    check("Polestar and Forever Leveling BiS use the combined name",
           line_texts(display("item:cloak")),
           ["ToonAge: Polestar (Forever Leveling BiS) is scoring gear"])
 
@@ -482,11 +494,11 @@ _G.ITEM_MOD_HIT_SHORT = nil
     check("no scorer: trade stays neutral",
           (solo[0]["r"], solo[0]["g"], solo[0]["b"]), (0.93, 0.93, 0.93))
 
-    lua.execute('_G.ITEM_MOD_HIT_SPELL_RATING_SHORT = "ITEM_MOD_HIT_SPELL_RATING_SHORT"')
     spell_lines = line_texts(display("item:other:ITEM_MOD_HIT_SPELL_RATING_SHORT"))
-    check("spell-hit item shows a cap line when that global exists",
+    check("spell-hit item shows a cap line when the global is undefined",
           any("names these caps as text only" in text for text in spell_lines), True)
-    lua.execute("_G.ITEM_MOD_HIT_SPELL_RATING_SHORT = nil")
+    check("spell-hit trade keeps the fallback label without the global",
+          "Spell Hit" in spell_lines[0], True)
     check("non-Hit item has no cap line",
           any("names these caps as text only" in text for text in line_texts(display("item:cloak"))),
           False)
@@ -503,6 +515,113 @@ _G.ITEM_MOD_HIT_SHORT = nil
     high = line_texts(display("item:hit:ITEM_MOD_HIT_RATING_SHORT"))
     check("level 60 hit item shows the cap line",
           any("names these caps as text only" in text for text in high), True)
+
+    lua.execute(r"""
+playerLevel = 60
+ToonAge.db.foreverGearDefer = nil
+ToonAge.db.foreverGearArrows = nil
+ToonAge.Compat.IsAddOnLoaded = function() return false end
+arrowVisible = false
+InCombatLockdown = function() return false end
+NUM_CONTAINER_FRAMES = 1
+ContainerFrame1 = {
+    GetName = function() return "ContainerFrame1" end,
+    GetID = function() return 0 end,
+}
+ContainerFrame1Item1 = {
+    CreateTexture = function(self)
+        return {
+            SetSize = function() end,
+            SetPoint = function() end,
+            SetTexture = function() end,
+            SetVertexColor = function() end,
+            Hide = function() arrowVisible = false end,
+            Show = function() arrowVisible = true end,
+        }
+    end,
+    IsProtected = function() return false end,
+}
+ToonAge.Compat.GetContainerNumSlots = function() return 1 end
+ToonAge.Compat.GetContainerItemLink = function() return "item:cloak" end
+ToonAge.GearAdvice:RefreshBags()
+""")
+    check("nothing loaded at 60: the bag arrow still shows an upgrade",
+          bool(lua.eval("arrowVisible")) and bool(lua.eval('ToonAge.GearAdvice:IsUpgrade("item:cloak")')), True)
+    lua.execute("playerLevel = 12; ToonAge.GearAdvice:RefreshBags()")
+    check("level below 60: no bag arrow",
+          bool(lua.eval("arrowVisible")) or bool(lua.eval('ToonAge.GearAdvice:IsUpgrade("item:cloak")')), False)
+    lua.execute("""
+playerLevel = 60
+ToonAge.Compat.IsAddOnLoaded = function(name) return name == "Polestar" end
+ToonAge.GearAdvice:RefreshBags()
+""")
+    check("scorer loaded: no bag arrow",
+          bool(lua.eval("arrowVisible")) or bool(lua.eval('ToonAge.GearAdvice:IsUpgrade("item:cloak")')), False)
+    lua.execute("""
+ToonAge.Compat.IsAddOnLoaded = function() return false end
+playerLevel = 60
+ToonAge.GearAdvice:RefreshBags()
+""")
+    check("scorer cleared at 60: the bag arrow returns", bool(lua.eval("arrowVisible")), True)
+
+    lua.execute(r"""
+savedLink = ToonAge.Compat.GetInventoryItemLink
+items["item:ring"] = { equip = "INVTYPE_FINGER", stats = { ITEM_MOD_INTELLECT_SHORT = 10 } }
+items["item:strong"] = { equip = "INVTYPE_FINGER", stats = { ITEM_MOD_INTELLECT_SHORT = 40 } }
+items["item:weak"] = { equip = "INVTYPE_FINGER", stats = { ITEM_MOD_INTELLECT_SHORT = 1 } }
+items["item:trinket"] = { equip = "INVTYPE_TRINKET", stats = { ITEM_MOD_SPIRIT_SHORT = 8 } }
+items["item:trinketHi"] = { equip = "INVTYPE_TRINKET", stats = { ITEM_MOD_SPIRIT_SHORT = 20 } }
+items["item:trinketLo"] = { equip = "INVTYPE_TRINKET", stats = { ITEM_MOD_SPIRIT_SHORT = 2 } }
+items["item:weapon"] = { equip = "INVTYPE_WEAPON", stats = { ITEM_MOD_INTELLECT_SHORT = 10 } }
+items["item:weaponHi"] = { equip = "INVTYPE_WEAPON", stats = { ITEM_MOD_INTELLECT_SHORT = 30 } }
+items["item:weaponLo"] = { equip = "INVTYPE_WEAPON", stats = { ITEM_MOD_INTELLECT_SHORT = 2 } }
+ToonAge.Compat.IsAddOnLoaded = function() return false end
+playerLevel = 60
+ToonAge.Compat.GetInventoryItemLink = function(unit, slot)
+    if slot == 11 then return "item:strong" end
+    if slot == 12 then return "item:weak" end
+    return nil
+end
+""")
+    check("ring compares with the weaker equipped ring, not the first slot",
+          line_texts(display("item:ring"))[0], "ToonAge: +9 Intellect")
+    lua.execute("""
+ToonAge.Compat.GetInventoryItemLink = function(unit, slot)
+    if slot == 11 then return "item:weak" end
+    if slot == 12 then return "item:strong" end
+    return nil
+end
+""")
+    check("ring still uses the weaker ring when it is in the first slot",
+          line_texts(display("item:ring"))[0], "ToonAge: +9 Intellect")
+    lua.execute("""
+ToonAge.Compat.GetInventoryItemLink = function(unit, slot)
+    if slot == 11 then return nil end
+    if slot == 12 then return "item:weak" end
+    return nil
+end
+""")
+    check("an empty ring slot does not replace the filled weaker ring",
+          line_texts(display("item:ring"))[0], "ToonAge: +9 Intellect")
+    lua.execute("""
+ToonAge.Compat.GetInventoryItemLink = function(unit, slot)
+    if slot == 13 then return "item:trinketHi" end
+    if slot == 14 then return "item:trinketLo" end
+    return nil
+end
+""")
+    check("trinket compares with the weaker equipped trinket",
+          line_texts(display("item:trinket"))[0], "ToonAge: +6 Spirit")
+    lua.execute("""
+ToonAge.Compat.GetInventoryItemLink = function(unit, slot)
+    if slot == 16 then return "item:weaponHi" end
+    if slot == 17 then return "item:weaponLo" end
+    return nil
+end
+""")
+    check("weapon compares with the weaker equipped weapon",
+          line_texts(display("item:weapon"))[0], "ToonAge: +8 Intellect")
+    lua.execute("ToonAge.Compat.GetInventoryItemLink = savedLink")
 
     passed = sum(_results)
     print(f"[{'OK' if passed == len(_results) else 'FAIL'}] {passed}/{len(_results)} assertions passed.")
