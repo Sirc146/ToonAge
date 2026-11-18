@@ -6,13 +6,18 @@
 -- Forever calls the same functions as Retail, each one guarded, and labels
 -- the result unverified until Harvest probes them.
 --
--- The bar is the stat bar with the value drawn inside the track, one line:
+-- On Forever the value is drawn inside the track, one line:
 -- "<Standing> · cur / max". The fill is an existing palette token, mixed
 -- toward the bar track so the white label stays readable. Hated uses the
 -- dim token and Hostile the secondary token, so neither reads as the
 -- warning or error red. A maxed Exalted row and a paragon row with no
 -- positive threshold show the name only. The ratio is the progress inside
 -- the current standing. The tooltip keeps that ratio and the absolute total.
+--
+-- Every other flavor keeps the column that test already ships: the number
+-- on the right, a neutral fill, gold while that faction's route is active,
+-- and green only at max. The gate is the one ProfessionBoard uses for its
+-- Forever-only block: IsForever, or flavor "forever".
 
 local TA = ToonAge
 
@@ -521,10 +526,27 @@ function FT.Tone(rgb)
     return { ch(1), ch(2), ch(3), alpha }
 end
 
+--- Same check as ProfessionBoard's Forever-only block (DrawLearned).
+function FT.InsideBars()
+    return (TA.IsForever or TA.flavor == "forever") and true or false
+end
+
+--- The column test ships today. Neutral, gold for the active route, green
+--- only at max. Paragon stays neutral. The gold fallback is the header
+--- colour from before Theme was guaranteed to be loaded.
+local function ColumnFill(read, active)
+    if type(read) == "table" and read.paragon then return "neutral" end
+    if type(read) == "table" and read.atMax then return "good" end
+    if active then
+        local L = TA.Layout
+        if L and L.C_HEADER then return L.C_HEADER end
+        return { 1.00, 0.82, 0.00 }
+    end
+    return "neutral"
+end
+
 function FT.FillColor(read, active)
-    -- `active` stays in the signature. The standing colour replaces the old
-    -- gold highlight, so an active route no longer recolours the fill.
-    local _ = active
+    if not FT.InsideBars() then return ColumnFill(read, active) end
     local base, token = FT.BaseColor(read)
     if type(base) ~= "table" then return token end
     return FT.Tone(base)
@@ -828,21 +850,32 @@ function FT:Render(content, side)
         local read = observed and ReadObserved(faction) or FT.Read(faction)
         local active = (not observed) and FT.IsActive(faction)
         local left = observed and nil or FT.QuestsLeft(faction, read)
-        local full = read.barText or read.text or "n/a"
-        local short = read.barShort or full
-        local value, scale = FT.BarFill(read)
-        y = L:StatBar(content, y, {
-            label = faction.name or "Faction",
-            value = value,
-            scale = scale,
-            color = FT.FillColor(read, active),
-            text = full,
-            shortText = short,
-            inside = true,
-            status = "neutral",
-            tooltipTitle = faction.name or "Faction",
-            tooltip = FT.BarTooltip(read),
-        })
+        if FT.InsideBars() then
+            local full = read.barText or read.text or "n/a"
+            local short = read.barShort or full
+            local value, scale = FT.BarFill(read)
+            y = L:StatBar(content, y, {
+                label = faction.name or "Faction",
+                value = value,
+                scale = scale,
+                color = FT.FillColor(read, active),
+                text = full,
+                shortText = short,
+                inside = true,
+                status = "neutral",
+                tooltipTitle = faction.name or "Faction",
+                tooltip = FT.BarTooltip(read),
+            })
+        else
+            y = L:StatBar(content, y, {
+                label = faction.name or "Faction",
+                value = read.current,
+                scale = read.cap,
+                color = FT.FillColor(read, active),
+                text = read.text,
+                status = "neutral",
+            })
+        end
         local line = (not observed) and FT.LeftLine(read, left) or nil
         if line then y = L:Paragraph(content, y, line) end
         if not observed then

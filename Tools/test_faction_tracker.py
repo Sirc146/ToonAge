@@ -130,6 +130,10 @@ def main():
         PARA_FLAG = read.paragon
         PARA_MAX = read.atMax
         PARA_COLOR = FT.ColorToken(read)
+        PARA_RETAIL = FT.FillColor(read, true)
+        ToonAge.flavor = "forever"
+        PARA_FOREVER = FT.FillColor(read, true)
+        ToonAge.flavor = "retail"
         PARA_LINE = FT.LeftLine(read, FT.QuestsLeft(faction, read, function() return false end))
     """)
     check("paragon progress drops the reward prefix", lua.eval("PARA_TEXT"), "717/7500")
@@ -139,6 +143,8 @@ def main():
     check("paragon clears the max flag used for green", lua.eval("PARA_MAX"), False)
     check("paragon fill is the accent token, not the error red",
           lua.eval("PARA_COLOR"), "accent")
+    check("retail paragon fill stays the old neutral", lua.eval("PARA_RETAIL"), "neutral")
+    check("forever paragon fill uses the accent token", lua.eval("PARA_FOREVER"), "accent")
     check("paragon does not estimate quests left", lua.eval("PARA_LINE"), "Paragon.")
 
     lua.execute(r"""
@@ -180,7 +186,7 @@ def main():
     check("the bar names the standing and the band, not the route gold",
           lua.eval("STAND_BAR"), "Honored · 3000 / 12000")
     check("an active route keeps the standing token", lua.eval("STAND_TOKEN"), "good")
-    check("an active route does not paint the header gold", lua.eval("GOLD_R") == 1.0, False)
+    check("retail still paints the active route with the header gold", lua.eval("GOLD_R"), 1.0)
 
     lua.execute(r"""
         local FT = ToonAge.FactionTracker
@@ -290,10 +296,10 @@ def main():
         RAN = FT.Run(ToonAge.Reputations.midnight[2770])
     """)
     lines = [lua.eval(f"LAYOUT[{i}]") for i in range(1, int(lua.eval("#LAYOUT")) + 1)]
-    check("classic bar puts the standing and the band inside the track",
-          "BAR|Honored · 3000 / 12000|good|neutral|in=true" in lines)
-    check("classic standing name is the bar text",
-          any("Honored" in row for row in lines), True)
+    check("classic bar keeps the number column and a neutral fill",
+          "BAR|12000/21000|neutral|neutral|in=nil" in lines)
+    check("classic standing name is not the bar text",
+          any("Honored" in row or "Exalted" in row for row in lines), False)
     check("Run this faction is a plain button", "BTN|Run this faction|nil|nil" in lines)
     check("Run this faction does nothing without the tracker", lua.eval("RAN"), False)
 
@@ -809,12 +815,113 @@ def main():
     check("a missing faction API does not claim the character has no reputations",
           "No reputation routes on this client." not in "\n".join(lines), True)
 
+    test_other_flavors_keep_the_column()
     test_rep_edges()
     test_rep_bar_layout()
 
     failed = sum(1 for ok in _results if not ok)
     print(f"  {len(_results) - failed}/{len(_results)} checks passed")
     return failed == 0
+
+
+def test_other_flavors_keep_the_column():
+    """Retail, Mists, TBC, Vanilla, Cata and Wrath keep the number column."""
+    lua = world()
+    lua.execute(read("Core/Compat/API.lua"))
+    lua.execute(r"""
+        local FT = ToonAge.FactionTracker
+        calls = 0
+        C_Reputation = {
+            IsFactionParagon = function() calls = calls + 1; return true end,
+            GetFactionParagonInfo = function() return 120717, 7500 end,
+        }
+        ToonAge.flavor = "retail"
+        ToonAge.IsForever = nil
+        RETAIL_PARA = ToonAge.Compat.GetFactionParagon(72)
+        RETAIL_CALLS = calls
+        ToonAge.flavor = "mists"
+        MISTS_PARA = ToonAge.Compat.GetFactionParagon(72)
+        ToonAge.flavor = "forever"
+        FOREVER_PARA = ToonAge.Compat.GetFactionParagon(72)
+        ToonAge.IsForever = true
+        ToonAge.flavor = "retail"
+        FLAG_PARA = ToonAge.Compat.GetFactionParagon(72)
+        ToonAge.IsForever = false
+        ToonAge.flavor = "retail"
+
+        FT._fn = function(path)
+            if path == "GetFactionInfoByID" then
+                return function() return "Honored", "desc", 6, 9000, 21000, 12000 end
+            end
+            if path == "C_Reputation.GetFactionDataByID" then
+                return function()
+                    return {
+                        reaction = 6, currentStanding = 12000,
+                        currentReactionThreshold = 9000, nextReactionThreshold = 21000,
+                    }
+                end
+            end
+            if path == "C_Reputation.IsFactionParagon" then
+                return function() return false end
+            end
+            return nil
+        end
+        local L = { C_HEADER = { 1.00, 0.82, 0.00 } }
+        function L:SectionHeader() return -20 end
+        function L:Paragraph() return -30 end
+        function L:ButtonRow() return -80 end
+        function L:Finish() end
+        function L:StatBar(_, _, opts)
+            LAST = {
+                text = opts.text, color = opts.color, inside = opts.inside,
+                shortText = opts.shortText, value = opts.value, scale = opts.scale,
+                tip = opts.tooltip,
+            }
+            return -60
+        end
+        ToonAge.Layout = L
+        ToonAge.Reputations = { midnight = {
+            [2770] = { factionID = 2770, name = "Slayer's Duellum", system = "standard" },
+        } }
+        function paint(flavor, forever)
+            ToonAge.flavor = flavor
+            ToonAge.IsForever = forever
+            LAST = nil
+            FT:Render({})
+            return LAST
+        end
+        COLUMN = {}
+        for _, flavor in ipairs({ "retail", "mists", "tbc", "vanilla", "cata", "wrath" }) do
+            local row = paint(flavor, false)
+            COLUMN[flavor] = table.concat({
+                tostring(row.text), tostring(row.color), tostring(row.inside),
+                tostring(row.shortText), tostring(row.tip),
+            }, "|")
+        end
+        local forced = paint("retail", true)
+        FORCED = tostring(forced.text) .. "|" .. tostring(forced.inside)
+        local gold = paint("vanilla", false)
+        ToonAge.modules.QuestTracker = { guideID = "midnight_rep_2770" }
+        function ToonAge:GetModule(name) return self.modules[name] end
+        local active = paint("vanilla", false)
+        ACTIVE_R = type(active.color) == "table" and active.color[1] or nil
+        ACTIVE_TEXT = active.text
+        ACTIVE_IN = active.inside
+    """)
+    check("retail does not call the Forever paragon wrapper", lua.eval("RETAIL_PARA"), None)
+    check("a non-Forever paragon wrapper does not call the API", lua.eval("RETAIL_CALLS"), 0)
+    check("mists does not call the Forever paragon wrapper", lua.eval("MISTS_PARA"), None)
+    check("forever paragon wrapper returns the remainder", lua.eval("FOREVER_PARA.current"), 717)
+    check("IsForever alone still uses the paragon wrapper", lua.eval("FLAG_PARA.current"), 717)
+    old = "12000/21000|neutral|nil|nil|nil"
+    for flavor in ("retail", "mists", "tbc", "vanilla", "cata", "wrath"):
+        check(f"{flavor} keeps the number column and the neutral fill",
+              lua.eval(f"COLUMN['{flavor}']"), old)
+    check("IsForever on retail uses the in-bar label",
+          lua.eval("FORCED"), "Honored · 3000 / 12000|true")
+    check("an active vanilla route stays on the number and the header gold",
+          (lua.eval("ACTIVE_TEXT"), lua.eval("ACTIVE_R"), lua.eval("ACTIVE_IN")),
+          ("12000/21000", 1.0, None))
 
 
 def test_rep_edges():
@@ -1126,6 +1233,7 @@ def test_rep_bar_layout():
     lua.execute(r"""
         local FT = ToonAge.FactionTracker
         local theme = ToonAge.Theme.active
+        ToonAge.IsForever = true
         local hated = FT.FillColor({ reaction = 1, system = "standing" }, false)
         local hostile = FT.FillColor({ reaction = 2, system = "standing" }, false)
         local danger = ToonAge.Layout.C_DANGER

@@ -407,6 +407,9 @@ end
 --- so the caller does not divide by zero. total is the raw value when the
 --- client returned a number.
 function C.GetFactionParagon(factionID)
+    -- The retail read uses its own guarded Invoke. This wrapper feeds the
+    -- Forever in-bar label only, with ProfessionBoard's Forever check.
+    if not (TA and (TA.IsForever or TA.flavor == "forever")) then return nil end
     if type(factionID) ~= "number" then return nil end
     if TA and TA.HasAPI and not TA:HasAPI("C_Reputation.IsFactionParagon") then
         return nil
