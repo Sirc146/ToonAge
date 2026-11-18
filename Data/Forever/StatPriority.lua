@@ -273,10 +273,10 @@ TA.Data.ForeverStatPriority = {
             }),
             -- Checked 2026-11-18.
             -- https://www.wowhead.com/forever/guide/classes/mage/arcane/stat-priority-pve-dps
-            -- Updated 2026/11/17. List item 2 is "Spell Damage". The level-30 caveat is unchanged.
+            -- UNVERIFIED for owner decision — the live Wowhead list (checked 2026-11-18) reads "Spell Damage" without "(+ Arcane Damage)"; kept per data rule (unverified items are flagged, not removed).
             wh("mage/arcane/stat-priority-pve-dps", "2026/11/17", {
-                order("Hit Chance until 17% > Spell Damage > Critical Strike Chance > Spell Piercing > Haste > Intellect > Spirit > Stamina",
-                    { "Hit", "SpellPower", "Crit", "SpellPierce", "Haste", "Intellect", "Spirit", "Stamina" }),
+                order("Hit Chance until 17% > Spell Damage (+ Arcane Damage) > Critical Strike Chance > Spell Piercing > Haste > Intellect > Spirit > Stamina",
+                    { "Hit", { "SpellPower", "ArcaneDamage" }, "Crit", "SpellPierce", "Haste", "Intellect", "Spirit", "Stamina" }),
             }, CAVEAT_ARCANE),
         }),
         Fire = row({

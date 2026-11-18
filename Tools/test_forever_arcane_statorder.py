@@ -4,9 +4,9 @@ ToonAge -- Forever Arcane Mage stat order
 ==========================================
 The Arcane rows in Data/Forever/StatPriority.lua, checked 2026-11-18.
 
-Wowhead (updated 2026/11/17) lists Spell Damage with no Arcane Damage, and
-keeps the level-30 caveat. Icy Veins (updated Nov 4, 2026) keeps its order
-and ranks Arcane Damage with Spell Power.
+Wowhead's stored Arcane Damage step stays, flagged UNVERIFIED, and its date
+is 2026/11/17. Icy Veins (updated Nov 4, 2026) keeps its order and ranks
+Arcane Damage with Spell Power.
 
 Usage:  python3 Tools/test_forever_arcane_statorder.py [-v]
 """
@@ -27,10 +27,15 @@ WH_URL = "https://www.wowhead.com/forever/guide/classes/mage/arcane/stat-priorit
 IV_URL = "https://www.icy-veins.com/wow-forever/arcane-mage-ranged-dps-pve-stat-priority"
 CHECKED = "2026-11-18"
 WH_LINE = (
-    "Hit Chance until 17% > Spell Damage > Critical Strike Chance > "
+    "Hit Chance until 17% > Spell Damage (+ Arcane Damage) > Critical Strike Chance > "
     "Spell Piercing > Haste > Intellect > Spirit > Stamina"
 )
-WH_STEPS = "Hit>SpellPower>Crit>SpellPierce>Haste>Intellect>Spirit>Stamina"
+WH_STEPS = "Hit>SpellPower+ArcaneDamage>Crit>SpellPierce>Haste>Intellect>Spirit>Stamina"
+WH_UNVERIFIED = (
+    'UNVERIFIED for owner decision — the live Wowhead list (checked 2026-11-18) '
+    'reads "Spell Damage" without "(+ Arcane Damage)"; kept per data rule '
+    "(unverified items are flagged, not removed)."
+)
 IV_LINE = "Hit Chance (to 17%) > Spell Power > Critical Strike > Intellect > Spirit > Mp5"
 IV_STEPS = "Hit>SpellPower+ArcaneDamage>Crit>Intellect>Spirit>MP5"
 FIRE_IV_STEPS = "Hit>SpellPower>Crit>Intellect>Spirit>MP5"
@@ -93,6 +98,8 @@ def main():
     check("Wowhead URL is commented on the Arcane row", WH_URL in block, True)
     check("Icy Veins URL is commented on the Arcane row", IV_URL in block, True)
     check("date checked is commented on the Arcane row", CHECKED in block, True)
+    wh_note = block[block.find("wowhead.com/forever/guide/classes/mage/arcane"):]
+    check("Wowhead Arcane Damage step is flagged UNVERIFIED", WH_UNVERIFIED in wh_note, True)
 
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.execute("ToonAge = { Data = {} }\n")
@@ -107,8 +114,8 @@ def main():
     iv_list = lua_list(iv["lists"])[0]
     check("Wowhead Arcane date is the page update", str(wh["updated"]), "2026/11/17")
     check("Wowhead Arcane URL", str(wh["url"]), WH_URL)
-    check("Wowhead Arcane order matches the page list", str(wh_list["line"]), WH_LINE)
-    check("Wowhead Arcane stats drop Arcane Damage", steps(wh_list), WH_STEPS)
+    check("Wowhead Arcane order keeps Arcane Damage", str(wh_list["line"]), WH_LINE)
+    check("Wowhead Arcane Spell Power step keeps ArcaneDamage", steps(wh_list), WH_STEPS)
     check("Wowhead Arcane caveat is unchanged", str(wh["caveat"]), CAVEAT)
 
     check("Icy Veins Arcane date stays the page stamp", str(iv["updated"]), "Nov 4, 2026")
