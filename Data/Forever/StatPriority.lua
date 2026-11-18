@@ -16,8 +16,8 @@ local IV = "https://www.icy-veins.com/wow-forever/"
 local WH = "https://www.wowhead.com/forever/guide/classes/"
 local IVD = "Nov 4, 2026"
 
-local function order(line, stats, label)
-    return { line = line, stats = stats, label = label }
+local function order(line, stats, label, note)
+    return { line = line, stats = stats, label = label, note = note }
 end
 
 local function iv(slug, lists)
@@ -291,8 +291,9 @@ TA.Data.ForeverStatPriority = {
             -- https://www.wowhead.com/forever/guide/classes/mage/arcane/stat-priority-pve-dps
             -- delisted by Wowhead, retained — verified by Icy Veins, Forever Era, and Warcraft Tavern.
             wh("mage/arcane/stat-priority-pve-dps", "2026/11/17", {
-                order("Hit Chance until 17% > Spell Damage (+ Arcane Damage) > Critical Strike Chance > Spell Piercing > Haste > Intellect > Spirit > Stamina",
-                    { "Hit", { "SpellPower", "ArcaneDamage" }, "Crit", "SpellPierce", "Haste", "Intellect", "Spirit", "Stamina" }),
+                order("Hit Chance until 17% > Spell Damage > Critical Strike Chance > Spell Piercing > Haste > Intellect > Spirit > Stamina",
+                    { "Hit", { "SpellPower", "ArcaneDamage" }, "Crit", "SpellPierce", "Haste", "Intellect", "Spirit", "Stamina" },
+                    nil, "Arcane Damage: delisted by Wowhead, retained by ToonAge"),
             }, CAVEAT_ARCANE),
         }),
         Fire = row({

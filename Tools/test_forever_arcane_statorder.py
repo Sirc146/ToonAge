@@ -27,9 +27,10 @@ WH_URL = "https://www.wowhead.com/forever/guide/classes/mage/arcane/stat-priorit
 IV_URL = "https://www.icy-veins.com/wow-forever/arcane-mage-ranged-dps-pve-stat-priority"
 CHECKED = "2026-11-18"
 WH_LINE = (
-    "Hit Chance until 17% > Spell Damage (+ Arcane Damage) > Critical Strike Chance > "
+    "Hit Chance until 17% > Spell Damage > Critical Strike Chance > "
     "Spell Piercing > Haste > Intellect > Spirit > Stamina"
 )
+WH_NOTE = "Arcane Damage: delisted by Wowhead, retained by ToonAge"
 WH_STEPS = "Hit>SpellPower+ArcaneDamage>Crit>SpellPierce>Haste>Intellect>Spirit>Stamina"
 WH_FLAG = (
     "delisted by Wowhead, retained — verified by Icy Veins, Forever Era, "
@@ -130,9 +131,18 @@ def main():
     iv_list = lua_list(iv["lists"])[0]
     check("Wowhead Arcane date is the page update", str(wh["updated"]), "2026/11/17")
     check("Wowhead Arcane URL", str(wh["url"]), WH_URL)
-    check("Wowhead Arcane order keeps Arcane Damage", str(wh_list["line"]), WH_LINE)
+    check("Wowhead Arcane display line matches the live list", str(wh_list["line"]), WH_LINE)
     check("Wowhead Arcane Spell Power step keeps ArcaneDamage", steps(wh_list), WH_STEPS)
+    check("Wowhead Arcane note follows the line", str(wh_list["note"]), WH_NOTE)
     check("Wowhead Arcane caveat is unchanged", str(wh["caveat"]), CAVEAT)
+    gear = (ROOT / "Modules/Forever/Gear.lua").read_text(encoding="utf-8")
+    show = gear.split("local function ShowSource", 1)[1].split("local function RenderStatPriority", 1)[0]
+    line_at = show.find("L:Paragraph(content, y, line)")
+    note_at = show.find("list.note")
+    caveat_at = show.find("src.caveat")
+    check("Gear prints the list note in dim text after the line and before the caveat",
+          line_at >= 0 and note_at > line_at and caveat_at > note_at
+          and "L.C_DIM" in show[note_at:caveat_at], True)
 
     check("Icy Veins Arcane date stays the page stamp", str(iv["updated"]), "Nov 4, 2026")
     check("Icy Veins Arcane URL", str(iv["url"]), IV_URL)
