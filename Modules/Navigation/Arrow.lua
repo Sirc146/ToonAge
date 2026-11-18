@@ -286,6 +286,7 @@ end
 local function GetEffectiveCoord(step)
     -- A scenario or dungeon step is tagged noArrow: show the step, draw nothing.
     if not step or step.noArrow then return 0, 0, 0 end
+    if type(C_QuestLog) == "table" then
     -- PRIORITY 1: Blizzard's live quest waypoint system.
     -- GetNextWaypoint only works for supertracked/watched quests.
     if step.questID and C_QuestLog.GetNextWaypoint then
@@ -381,6 +382,7 @@ local function GetEffectiveCoord(step)
                 end
             end
         end
+    end
     end
 
     -- PRIORITY 3: CoordResolver (pulls from APR RouteQuestStepList + other sources)
