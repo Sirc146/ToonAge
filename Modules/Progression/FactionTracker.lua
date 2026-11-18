@@ -6,9 +6,13 @@
 -- Forever calls the same functions as Retail, each one guarded, and labels
 -- the result unverified until Harvest probes them.
 --
--- The bar is the existing stat bar. Neutral fill, gold while that faction's
--- route is the active guide, green only at max. Paragon past max stays
--- neutral. The number is never a colored standing name.
+-- The bar is the stat bar with the value drawn inside the track, one line:
+-- "<Standing> · cur / max". The fill is an existing palette token, mixed
+-- toward the bar track so the white label stays readable. Hated uses the
+-- dim token and Hostile the secondary token, so neither reads as the
+-- warning or error red. A maxed Exalted row and a paragon row with no
+-- positive threshold show the name only. The ratio is the progress inside
+-- the current standing. The tooltip keeps that ratio and the absolute total.
 
 local TA = ToonAge
 
@@ -83,6 +87,118 @@ local function Hidden(unverified, system)
     return row
 end
 
+-- English names are the fallback when the client global is absent. A present
+-- FACTION_STANDING_LABEL wins, so a localised client keeps its own word.
+local STANDING_FALLBACK = {
+    [1] = "Hated",
+    [2] = "Hostile",
+    [3] = "Unfriendly",
+    [4] = "Neutral",
+    [5] = "Friendly",
+    [6] = "Honored",
+    [7] = "Revered",
+    [8] = "Exalted",
+}
+
+function FT.StandingName(read)
+    if type(read) ~= "table" then return nil end
+    local id = read.reaction
+    if Secret(id) or type(id) ~= "number" then return nil end
+    local C = TA.Compat
+    if C and type(C.FactionStandingName) == "function" then
+        local ok, name = pcall(C.FactionStandingName, id)
+        if ok and type(name) == "string" and name ~= "" then return name end
+    end
+    return STANDING_FALLBACK[math.floor(id)]
+end
+
+--- Full in-bar line, and the standing alone for a bar that is too narrow.
+--- No ratio when the band is missing or not positive, so a maxed or paragon
+--- row never divides by zero.
+function FT.BarLabel(read)
+    if type(read) ~= "table" then return "n/a", "n/a" end
+    local name = read.standingName
+    if type(name) ~= "string" or name == "" then name = nil end
+    local ratio
+    local cur, maxv = read.bandCur, read.bandMax
+    if type(cur) == "number" and type(maxv) == "number" and maxv > 0 then
+        ratio = string.format("%d / %d", math.floor(math.max(0, cur)), math.floor(maxv))
+    end
+    if name and ratio then return name .. " · " .. ratio, name end
+    if name then return name, name end
+    if ratio then return ratio, ratio end
+    return "n/a", "n/a"
+end
+
+function FT.BarTooltip(read)
+    local lines = {}
+    if type(read) ~= "table" then return lines end
+    local name = read.standingName
+    if type(name) ~= "string" or name == "" then name = "Unknown" end
+    lines[#lines + 1] = "Standing: " .. name
+    local cur, maxv = read.bandCur, read.bandMax
+    if type(cur) == "number" and type(maxv) == "number" and maxv > 0 then
+        lines[#lines + 1] = string.format("Progress: %d / %d",
+            math.floor(math.max(0, cur)), math.floor(maxv))
+    elseif read.atMax and not read.paragon then
+        lines[#lines + 1] = "Progress: at max"
+    elseif read.paragon then
+        lines[#lines + 1] = "Progress: unavailable"
+    end
+    if type(read.total) == "number" then
+        lines[#lines + 1] = string.format("Total: %d", math.floor(read.total))
+    end
+    return lines
+end
+
+--- Value and scale for the fill. Nil scale means "do not divide".
+function FT.BarFill(read)
+    if type(read) ~= "table" then return nil, nil end
+    local cur, maxv = read.bandCur, read.bandMax
+    if type(cur) == "number" and type(maxv) == "number" and maxv > 0 then
+        return math.max(0, cur), maxv
+    end
+    if read.atMax and not read.paragon then return 1, 1 end
+    return nil, nil
+end
+
+local function ApplyBar(read)
+    if type(read) ~= "table" then return read end
+    if read.paragon then
+        read.standingName = "Paragon"
+        if type(read.current) == "number" and type(read.cap) == "number" and read.cap > 0 then
+            read.bandCur = read.current
+            read.bandMax = read.cap
+        else
+            read.bandCur, read.bandMax = nil, nil
+        end
+    elseif read.system == "renown" then
+        read.standingName = "Renown"
+        if read.total == nil then read.total = read.current end
+        if type(read.current) == "number" and type(read.cap) == "number" and read.cap > 0 then
+            read.bandCur = read.current
+            read.bandMax = read.cap
+        end
+    elseif read.system == "friendship" then
+        local rank = read.rankName
+        if type(rank) ~= "string" or rank == "" then rank = "Friendship" end
+        read.standingName = rank
+        if read.total == nil then read.total = read.current end
+        if type(read.current) == "number" and type(read.cap) == "number" and read.cap > 0 then
+            read.bandCur = read.current
+            read.bandMax = read.cap
+        else
+            read.bandCur, read.bandMax = nil, nil
+        end
+    else
+        read.standingName = FT.StandingName(read)
+    end
+    local full, short = FT.BarLabel(read)
+    read.barText = full
+    read.barShort = short
+    return read
+end
+
 local function ParagonID(faction)
     local para = faction.paragon
     if type(para) == "table" and type(para.factionID) == "number" then
@@ -121,13 +237,15 @@ local function ReadParagon(faction, unverified)
     end
     local cur = type(currentValue) == "number" and currentValue or nil
     local cap = type(threshold) == "number" and threshold or nil
+    local capOut = (cap and cap > 0) and cap or nil
     local shown = cur
-    if cur and cap and cap > 0 then shown = cur % cap end
+    if cur and capOut then shown = cur % capOut end
     local text = "n/a"
-    if shown and cap then text = string.format("%d/%d", shown, cap) end
+    if shown and capOut then text = string.format("%d/%d", shown, capOut) end
     return {
         current = shown,
-        cap = cap,
+        cap = capOut,
+        total = cur,
         atMax = false,
         paragon = true,
         unverified = unverified and true or false,
@@ -222,7 +340,16 @@ local function ReadStanding(faction, unverified)
     end
     local atMax = ((reaction and reaction >= 8) or (current and exalted and current >= exalted)) and true or false
     local text = "n/a"
-    if current and cap then text = string.format("%d/%d", current, cap) end
+    if current and cap and cap > 0 then text = string.format("%d/%d", current, cap) end
+    local lo, badLo = CleanNum(data.currentReactionThreshold)
+    local hiBand, badHi = CleanNum(data.nextReactionThreshold)
+    local bandCur, bandMax
+    if badLo ~= "secret" and badHi ~= "secret"
+        and type(current) == "number" and type(lo) == "number"
+        and type(hiBand) == "number" and hiBand > lo then
+        bandCur = current - lo
+        bandMax = hiBand - lo
+    end
     local para = ReadParagon(faction, unverified)
     if para then
         para.system = "standing"
@@ -231,6 +358,10 @@ local function ReadStanding(faction, unverified)
     return {
         current = current,
         cap = cap,
+        total = current,
+        bandCur = bandCur,
+        bandMax = bandMax,
+        reaction = reaction,
         atMax = atMax,
         paragon = false,
         unverified = unverified and true or false,
@@ -256,11 +387,15 @@ local function ReadFriendship(faction, unverified)
     local atMax = false
     if standing and maxRep and standing >= maxRep then atMax = true end
     if standing and info.nextThreshold == nil then atMax = true end
+    local rank = info.reaction
+    if Secret(rank) or type(rank) ~= "string" or rank == "" then rank = nil end
     local text = "n/a"
-    if standing and maxRep then text = string.format("%d/%d", standing, maxRep) end
+    if standing and maxRep and maxRep > 0 then text = string.format("%d/%d", standing, maxRep) end
     return {
         current = standing,
-        cap = maxRep,
+        cap = (maxRep and maxRep > 0) and maxRep or nil,
+        total = standing,
+        rankName = rank,
         atMax = atMax,
         paragon = false,
         unverified = unverified and true or false,
@@ -271,8 +406,8 @@ local function ReadFriendship(faction, unverified)
     }
 end
 
---- Classic standings. barValue/barMax are the numbers. The standing name
---- from the client is not shown and is not colored.
+--- Classic standings. barValue/barMax are the numbers. The name comes from
+--- the standing id, and the bar shows the band inside that standing.
 local function ReadClassic(faction)
     local ok, _, _, standingID, barMin, barMax, barValue =
         Invoke("GetFactionInfoByID", faction.factionID)
@@ -285,12 +420,21 @@ local function ReadClassic(faction)
     local hi = type(barMax) == "number" and barMax or nil
     local value = type(barValue) == "number" and barValue or nil
     local span = (lo and hi) and (hi - lo) or nil
-    local into = (value and lo and span and span > 0) and (value - lo) or nil
+    local into = (value and type(lo) == "number" and span and span > 0) and (value - lo) or nil
     local text = "n/a"
-    if value and hi then text = string.format("%d/%d", value, hi) end
+    if value and hi and hi > 0 then text = string.format("%d/%d", value, hi) end
+    local bandCur, bandMax
+    if span and span > 0 and type(value) == "number" and type(lo) == "number" then
+        bandCur = value - lo
+        bandMax = span
+    end
     return {
         current = into or value,
         cap = (span and span > 0) and span or hi,
+        total = value,
+        bandCur = bandCur,
+        bandMax = bandMax,
+        reaction = standing,
         atMax = (standing and standing >= 8) and true or false,
         paragon = false,
         unverified = false,
@@ -308,7 +452,7 @@ function FT.Read(faction, flavor)
     if type(faction) ~= "table" or type(faction.factionID) ~= "number" then
         return Unavailable(unverified, nil)
     end
-    if family == "classic" then return ReadClassic(faction) end
+    if family == "classic" then return ApplyBar(ReadClassic(faction)) end
     local system = FT.System(faction)
     local read
     if system == "renown" then
@@ -319,18 +463,71 @@ function FT.Read(faction, flavor)
         read = ReadStanding(faction, unverified)
     end
     if unverified then read.unverified = true end
-    return read
+    return ApplyBar(read)
+end
+
+--- Palette key for a standing. Hated is dim and Hostile is secondary so the
+--- fill is not the warning orange or the error red. Friendly through Exalted
+--- share the good token, which is then toned down before it is painted.
+function FT.ColorToken(read)
+    if type(read) ~= "table" then return "neutral" end
+    if read.paragon then return "accent" end
+    if read.system == "renown" then return "stat" end
+    if read.system == "friendship" then
+        return read.atMax and "good" or "accent"
+    end
+    local id = tonumber(read.reaction)
+    if id == 1 then return "dim" end
+    if id == 2 then return "secondary" end
+    if id == 3 then return "warn" end
+    if id == 4 then return "header" end
+    if id and id >= 5 and id <= 8 then return "good" end
+    if read.atMax then return "good" end
+    return "neutral"
+end
+
+function FT.BaseColor(read)
+    local L = TA.Layout or {}
+    local token = FT.ColorToken(read)
+    local map = {
+        dim = L.C_DIM,
+        secondary = L.C_SECONDARY,
+        warn = L.C_WARNING,
+        header = L.C_HEADER,
+        good = L.C_SUCCESS,
+        accent = L.C_ACCENT,
+        stat = L.C_STAT_BASE,
+        neutral = (L.STATUS and L.STATUS.neutral) or L.C_PRIMARY,
+    }
+    return map[token], token
+end
+
+--- Mix a palette colour toward the bar track and drop the alpha. Both the
+--- mix and the alpha are theme tokens. No new colour is introduced.
+function FT.Tone(rgb)
+    if type(rgb) ~= "table" then return rgb end
+    local theme = TA.Theme and TA.Theme.active or nil
+    local keep = theme and tonumber(theme.cap_dim) or nil
+    local track = theme and theme.bar_track_bg or nil
+    local alpha = theme and tonumber(theme.slot_current_a) or nil
+    if not keep or type(track) ~= "table" or not alpha then
+        return { rgb[1], rgb[2], rgb[3] }
+    end
+    local function ch(i)
+        local src = tonumber(rgb[i]) or 0
+        local dst = tonumber(track[i]) or 0
+        return src * keep + dst * (1 - keep)
+    end
+    return { ch(1), ch(2), ch(3), alpha }
 end
 
 function FT.FillColor(read, active)
-    if type(read) == "table" and read.paragon then return "neutral" end
-    if type(read) == "table" and read.atMax then return "good" end
-    if active then
-        local L = TA.Layout
-        if L and L.C_HEADER then return L.C_HEADER end
-        return { 1.00, 0.82, 0.00 }
-    end
-    return "neutral"
+    -- `active` stays in the signature. The standing colour replaces the old
+    -- gold highlight, so an active route no longer recolours the fill.
+    local _ = active
+    local base, token = FT.BaseColor(read)
+    if type(base) ~= "table" then return token end
+    return FT.Tone(base)
 end
 
 function FT.QuestDone(questID)
@@ -503,28 +700,68 @@ function FT.WalkClientFactions()
 end
 
 local function ReadObserved(row)
+    local reaction = row.reaction
+    if Secret(reaction) or type(reaction) ~= "number" then reaction = nil end
+    local factionID = row.factionID
+    if Secret(factionID) or type(factionID) ~= "number" then factionID = nil end
+
+    -- Paragon is retail-shaped. Forever only uses it when the guarded Compat
+    -- wrapper can see the call. A missing API is not paragon.
+    local C = TA.Compat
+    if factionID and C and type(C.GetFactionParagon) == "function" then
+        local ok, para = pcall(C.GetFactionParagon, factionID)
+        if ok and type(para) == "table" and para.paragon then
+            local cap = para.cap
+            local shown = para.current
+            local text = "n/a"
+            if type(shown) == "number" and type(cap) == "number" and cap > 0 then
+                text = string.format("%d/%d", shown, cap)
+            end
+            return ApplyBar({
+                current = shown,
+                cap = (type(cap) == "number" and cap > 0) and cap or nil,
+                total = para.total,
+                atMax = false,
+                paragon = true,
+                unverified = true,
+                text = text,
+                system = "paragon",
+                scale = "paragon",
+                secret = para.secret and true or false,
+                reaction = reaction,
+            })
+        end
+    end
+
     local value, badV = CleanNum(row.currentStanding)
     local hi, badH = CleanNum(row.nextReactionThreshold)
     local lo = CleanNum(row.currentReactionThreshold)
     if badV == "secret" or badH == "secret" then
-        return Hidden(true, "standing")
+        return ApplyBar(Hidden(true, "standing"))
     end
     local text = "n/a"
-    if value and hi then text = string.format("%d/%d", value, hi) end
+    if value and hi and hi > 0 then text = string.format("%d/%d", value, hi) end
     local span = (type(lo) == "number" and type(hi) == "number") and (hi - lo) or nil
-    local into = value
-    if value and type(lo) == "number" and span and span > 0 then into = value - lo end
-    return {
-        current = into,
+    local bandCur, bandMax
+    if type(value) == "number" and type(lo) == "number" and span and span > 0 then
+        bandCur = value - lo
+        bandMax = span
+    end
+    return ApplyBar({
+        current = bandCur or value,
         cap = (span and span > 0) and span or hi,
-        atMax = false,
+        total = value,
+        bandCur = bandCur,
+        bandMax = bandMax,
+        reaction = reaction,
+        atMax = (reaction and reaction >= 8) and true or false,
         paragon = false,
         unverified = true,
         text = text,
         system = "standing",
         scale = "rep",
         secret = false,
-    }
+    })
 end
 
 local function SortedFactions()
@@ -591,13 +828,20 @@ function FT:Render(content, side)
         local read = observed and ReadObserved(faction) or FT.Read(faction)
         local active = (not observed) and FT.IsActive(faction)
         local left = observed and nil or FT.QuestsLeft(faction, read)
+        local full = read.barText or read.text or "n/a"
+        local short = read.barShort or full
+        local value, scale = FT.BarFill(read)
         y = L:StatBar(content, y, {
             label = faction.name or "Faction",
-            value = read.current,
-            scale = read.cap,
+            value = value,
+            scale = scale,
             color = FT.FillColor(read, active),
-            text = read.text,
+            text = full,
+            shortText = short,
+            inside = true,
             status = "neutral",
+            tooltipTitle = faction.name or "Faction",
+            tooltip = FT.BarTooltip(read),
         })
         local line = (not observed) and FT.LeftLine(read, left) or nil
         if line then y = L:Paragraph(content, y, line) end
