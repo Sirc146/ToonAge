@@ -51,6 +51,13 @@ def test_gate_lands_before_upload():
               gate_at >= 0 and anchor_at >= 0 and gate_at < anchor_at, True)
         check("the gate runs the zip checker", "check_release_zip.py" in text, True)
         check("a failed check stops the script", "exit 1" in text, True)
+        gh_at = text.find("gh release create")
+        check("GitHub release is created before store uploads",
+              gh_at >= 0 and anchor_at >= 0 and gh_at < anchor_at, True)
+        check("a failed GitHub release stops before the stores",
+              "Store uploads were not started." in text and text.find("Store uploads were not started.") < anchor_at, True)
+        check("the uploaded GitHub zip is checked before the stores",
+              text.find("--require-zip-sha") >= 0 and text.find("--require-zip-sha") < anchor_at, True)
         check("the upload anchor is still there", text.count(ANCHOR.strip()), 1)
 
         again = run_gate(str(script))

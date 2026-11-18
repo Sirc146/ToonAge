@@ -56,6 +56,8 @@ def pkgmeta_ignores(text):
 
 def excluded(rel, patterns):
     parts = rel.split("/")
+    if any(part.startswith(".") for part in parts):
+        return True
     leaf = parts[-1]
     for pat in patterns:
         if any(ch in pat for ch in "*?["):
@@ -113,6 +115,14 @@ def test_ignore_lists_keep_data():
           "insert_release_gate.py" in workflow, True)
     check("the release workflow pins packager v2.7.0",
           "v2.7.0" in workflow and "01e8631a69c69d7654c788d152630d5fed9e3812" in workflow, True)
+    check("the release workflow pins checkout and upload-artifact",
+          "actions/checkout@11d5960a326750d5838078e36cf38b85af677262" in workflow
+          and "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in workflow, True)
+    check("the test workflow pins checkout and setup-python",
+          "actions/checkout@11d5960a326750d5838078e36cf38b85af677262" in read(".github/workflows/ci.yml")
+          and "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in read(".github/workflows/ci.yml"), True)
+    check("the release workflow does not publish GitHub after the stores",
+          "action-gh-release" in workflow, False)
     check("the release workflow does not use a floating packager ref",
           "packager@v2" in workflow, False)
     check("the release workflow can dry-run without a tag",
@@ -213,6 +223,16 @@ def test_release_rules_and_manifest():
             "ToonAge/Tools/check_release_zip.py",
             "ToonAge/tests/test_x.lua",
             "ToonAge/AGENTS.md",
+            "ToonAge/.claude/settings.json",
+            "ToonAge/.github/workflows/release.yml",
+            "ToonAge/Art/icon.tga",
+            "ToonAge/.rules.md",
+            "ToonAge/CLAUDE.md",
+            "ToonAge/.gitignore",
+            "ToonAge/.pkgmeta",
+            "ToonAge/helper.py",
+            "ToonAge/Core/helper.PY",
+            "ToonAge/Core/tool.exe",
         ):
             entries = good_entries()
             entries[rel] = b"dev\n"
@@ -220,7 +240,21 @@ def test_release_rules_and_manifest():
             write_zip(path, entries)
             code, out, err = run_checker(str(path))
             check(f"dev file {rel} fails", code, 1)
-            check(f"dev file {rel} is named", rel.split("/")[1] in (out + err), True)
+            leaf = rel.split("/")[-1]
+            segment = rel.split("/")[1]
+            named = leaf if leaf.startswith(".") or "." in leaf and segment == "ToonAge" else segment
+            if leaf.endswith(".py") or leaf.endswith(".PY"):
+                named = leaf
+            if leaf == "tool.exe":
+                named = leaf
+            check(f"dev file {rel} is named", named in (out + err), True)
+
+        extra = good_entries()
+        extra["ToonAge/Modules/NewSpell.lua"] = b"-- new\n"
+        added = tmp / "added-lua.zip"
+        write_zip(added, extra)
+        code, _out, _err = run_checker(str(added))
+        check("a new lua file is allowed", code, 0)
 
         manifest = tmp / "manifest.json"
         code, _out, _err = run_checker(

@@ -5,12 +5,15 @@ name: Package and Release
 #      stamped in the checkout first, so the file the packager zips already
 #      carries the tag. Nothing here commits that stamp.
 #   2. Tools/check_release_zip.py runs inside that same packager process,
-#      after the zip exists and before any upload. A mismatch exits before
-#      CurseForge, Wago, or GitHub receive a file.
-#   3. The packager then uploads that zip to CurseForge and Wago. A missing
-#      token skips that store. softprops publishes the same zip, the manifest,
-#      and release.json to GitHub. The packager is not given a GitHub token,
-#      so it does not create a second release.
+#      after the zip exists. A mismatch exits with nothing uploaded.
+#   3. On a tag push, that same process creates the GitHub release from
+#      the checked zip, release.json, and the manifest, then downloads the
+#      asset and requires its SHA-256 to match. If GitHub fails, CurseForge
+#      and Wago are not uploaded. Re-running the tag workflow replaces the
+#      GitHub assets and retries the stores. It does not build a second zip.
+#   4. The packager then uploads that same zip to CurseForge and Wago. A
+#      missing token skips that store. The packager is not given a GitHub
+#      token, so it does not create a second release.
 # A second packager run is not used. -o keeps the package directory and -c
 # skips the copy, but release.sh still deletes and recreates the zip, and
 # that new zip is not the one that was checked.
@@ -36,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # The packager reads the tag and changelog from git history.
           fetch-depth: 0
@@ -107,66 +110,13 @@ jobs:
             echo "WAGO_API_TOKEN is not set. Wago upload will be skipped."
           fi
 
-      - name: Build one package
-        id: package
-        env:
-          CF_API_KEY: ${{ secrets.CF_API_KEY }}
-          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-          PACKAGER: ${{ steps.packager.outputs.packager }}
-          TOONAGE_VERSION: ${{ steps.version.outputs.version }}
-          TOONAGE_MANIFEST: ${{ github.workspace }}/release-manifest.json
-          TOONAGE_CHECKER: ${{ github.workspace }}/Tools/check_release_zip.py
-        run: |
-          set -euo pipefail
-          command -v zip >/dev/null
-          command -v jq >/dev/null
-          command -v curl >/dev/null
-          python3 Tools/insert_release_gate.py "${PACKAGER}/release.sh"
-          # A dry run must not publish. Drop the store tokens and pass -d,
-          # which skips every upload in packager v2.7.0.
-          # GH_API_TOKEN, GITHUB_API_TOKEN, and GITHUB_OAUTH are the names
-          # release.sh reads for its own GitHub release. Leave them unset.
-          unset GH_API_TOKEN GITHUB_API_TOKEN GITHUB_OAUTH
-          args=(-n "ToonAge-${VERSION}:")
-          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
-            echo "workflow_dispatch dry run: uploads are skipped."
-            unset CF_API_KEY CF_API_TOKEN WAGO_API_TOKEN
-            args+=(-d)
-          fi
-          bash "${PACKAGER}/release.sh" "${args[@]}"
-          mapfile -t zips < <(find .release -name 'ToonAge-*.zip' -type f | sort)
-          if [ "${#zips[@]}" -ne 1 ]; then
-            echo "Expected one release zip, found ${#zips[@]}." >&2
-            exit 1
-          fi
-          test -s release-manifest.json
-          echo "archive_path=${zips[0]}" >> "$GITHUB_OUTPUT"
-
-      - name: Confirm the zip on disk matches the manifest
-        env:
-          ARCHIVE: ${{ steps.package.outputs.archive_path }}
-        run: |
-          set -euo pipefail
-          python3 Tools/check_release_zip.py --require-zip-sha release-manifest.json "$ARCHIVE"
-
-      - name: Upload the zip and manifest
-        uses: actions/upload-artifact@v4
-        with:
-          name: toonage-${{ steps.version.outputs.version }}
-          path: |
-            release-manifest.json
-            ${{ steps.package.outputs.archive_path }}
-          if-no-files-found: error
-
       - name: Write release.json (flavor map for WowUp / addon managers)
         if: github.event_name == 'push'
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          ARCHIVE: ${{ steps.package.outputs.archive_path }}
         run: |
           set -euo pipefail
-          filename="$(basename "$ARCHIVE")"
+          filename="ToonAge-${VERSION}.zip"
           cat > release.json <<JSON
           {
             "releases": [
@@ -190,37 +140,58 @@ jobs:
           JSON
           cat release.json
 
-      - name: Create GitHub Release
-        if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            ${{ steps.package.outputs.archive_path }}
-            release.json
-            release-manifest.json
-          generate_release_notes: true
-          draft: false
-          prerelease: ${{ contains(github.ref, 'dev') || contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'test') }}
-
-      - name: Verify the published GitHub zip
-        if: github.event_name == 'push'
+      - name: Build one package
+        id: package
         env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PACKAGER: ${{ steps.packager.outputs.packager }}
           GH_TOKEN: ${{ github.token }}
+          TOONAGE_RELEASE_JSON: ${{ github.workspace }}/release.json
+          TOONAGE_VERSION: ${{ steps.version.outputs.version }}
+          TOONAGE_MANIFEST: ${{ github.workspace }}/release-manifest.json
+          TOONAGE_CHECKER: ${{ github.workspace }}/Tools/check_release_zip.py
+        run: |
+          set -euo pipefail
+          command -v zip >/dev/null
+          command -v jq >/dev/null
+          command -v curl >/dev/null
+          command -v gh >/dev/null
+          python3 Tools/insert_release_gate.py "${PACKAGER}/release.sh"
+          # A dry run must not publish. Drop the tokens and pass -d,
+          # which skips every upload in packager v2.7.0.
+          # GH_API_TOKEN, GITHUB_API_TOKEN, and GITHUB_OAUTH are the names
+          # release.sh reads for its own GitHub release. Leave them unset.
+          # gh itself uses GH_TOKEN, and only the tag-push path calls it.
+          unset GH_API_TOKEN GITHUB_API_TOKEN GITHUB_OAUTH
+          args=(-n "ToonAge-${VERSION}:")
+          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
+            echo "workflow_dispatch dry run: uploads are skipped."
+            unset CF_API_KEY CF_API_TOKEN WAGO_API_TOKEN GH_TOKEN GITHUB_TOKEN
+            args+=(-d)
+          fi
+          bash "${PACKAGER}/release.sh" "${args[@]}"
+          mapfile -t zips < <(find .release -name 'ToonAge-*.zip' -type f | sort)
+          if [ "${#zips[@]}" -ne 1 ]; then
+            echo "Expected one release zip, found ${#zips[@]}." >&2
+            exit 1
+          fi
+          test -s release-manifest.json
+          echo "archive_path=${zips[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm the zip on disk matches the manifest
+        env:
           ARCHIVE: ${{ steps.package.outputs.archive_path }}
         run: |
           set -euo pipefail
-          name="$(basename "$ARCHIVE")"
-          mkdir -p downloaded
-          ok=0
-          for _try in 1 2 3 4 5; do
-            if gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern "$name" --dir downloaded --clobber; then
-              ok=1
-              break
-            fi
-            sleep 5
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "The GitHub release zip was not available to verify." >&2
-            exit 1
-          fi
-          python3 Tools/check_release_zip.py --require-zip-sha release-manifest.json "downloaded/$name"
+          python3 Tools/check_release_zip.py --require-zip-sha release-manifest.json "$ARCHIVE"
+
+      - name: Upload the zip and manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: toonage-${{ steps.version.outputs.version }}
+          path: |
+            release-manifest.json
+            ${{ steps.package.outputs.archive_path }}
+          if-no-files-found: error
