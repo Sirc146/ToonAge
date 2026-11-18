@@ -56,7 +56,7 @@ STORE_V2 = r"""
   catalogBuild = "70205",
   items = { [2589] = "Linen Cloth\t5\t1\t0\t7\t5\tTrade Goods\tCloth\t\t0\t",
             [118]  = "Minor Healing Potion\t5\t1\t1\t0\t1\tConsumable\tPotion\t\t0\t" },
-  chars = { ["Player-1-0A"] = "Eramali\tClassic Beta PvE\tMAGE\tScourge\t18\t3\t16001",
+  chars = { ["Player-1-0A"] = "Examplechar\tClassic Beta PvE\tMAGE\tScourge\t18\t3\t16001",
             ["Player-1-0B"] = "Malefice\tClassic Beta PvE\tWARRIOR\tScourge\t1\t3\t16001" },
   trainer = { MAGE = { ["133"] = "Fireball\tRank 1\t1\tused\t1791057815",
                        ["143"] = "Fireball\tRank 2\t6\tavailable\t1791057815" } },
@@ -107,7 +107,7 @@ check("nested trainer flattens to CLASS:key, sorted",
                   "MAGE:143\tFireball\tRank 2\t6\tavailable\t1791057815"])
 check("blank line separates header and records", lines[4], "")
 check("unfiltered export records who is in chars, and has no current character",
-      lines[2], "-- source all trainer · recorded by Eramali, Malefice · current character unknown")
+      lines[2], "-- source all trainer · recorded by Examplechar, Malefice · current character unknown")
 items = lua_list(F.Lines(store, "items", 0, META))
 check("records are verbatim (stored line untouched)",
       items[5], "118\tMinor Healing Potion\t5\t1\t1\t0\t1\tConsumable\tPotion\t\t0\t")
@@ -148,7 +148,7 @@ function scoped(token, display)
 end
 CLASS_STORE = {
   chars = {
-    ["Player-1-0A"] = "Eramali\tClassic Beta PvE\tMAGE\tScourge\t18\t3\t16001",
+    ["Player-1-0A"] = "Examplechar\tClassic Beta PvE\tMAGE\tScourge\t18\t3\t16001",
     ["Player-1-0H"] = "Huntsman\tClassic Beta PvE\tHUNTER\tOrc\t20\t2\t16001",
   },
   trainer = {

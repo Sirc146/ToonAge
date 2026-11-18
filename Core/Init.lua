@@ -272,7 +272,7 @@ end
 -- Default saved variables schema
 local DB_DEFAULTS = {
     minimap = { minimized = false, position = 45 },
-    char    = {},  -- per-character data keyed by "Examplechar-Examplerealm"
+    char    = {},  -- per-character data keyed by "Name-Server"
 
     -- Module enable/disable toggles. Optional modules can be turned off by
     -- the user via /ta toggle <name>. Core modules (Character, Gear, Talents,

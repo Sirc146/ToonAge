@@ -57,7 +57,7 @@ FOREVER_STORE = r"""{
     items   = { [2589] = "Linen Cloth\t5", [118] = "Minor Healing Potion\t5", [6948] = "Hearthstone\t1" },
     spells  = { ["MAGE:133"] = "Fireball\t1\tFire\tRank 1\t\t1", ["MAGE:116"] = "Frostbolt\t4\tFrost\tRank 1\t\t4" },
     talents = { ["MAGE:T:1:1"] = "1\t1\t11\t\tImp FB\t0\t5\t18", ["MAGE:T:1:2"] = "1\t2\t12\t\tX\t1\t3\t18" },
-    chars   = { ["Player-1-A"] = "Eramali\tClassic Beta PvE\tMAGE\tScourge\t18\t3\t16001",
+    chars   = { ["Player-1-A"] = "Examplechar\tClassic Beta PvE\tMAGE\tScourge\t18\t3\t16001",
                 ["Player-1-B"] = "Malefice\tClassic Beta PvE\tWARRIOR\tScourge\t1\t3\t16001" },
     racials = { ["Scourge:Horde:7744"] = "Will of the Forsaken\tRacial\t\tMAGE\tRemoves fear" },
     trainer = { MAGE = { ["10097"] = "Mithril Bar\t\t0\tunavailable\t1", ["2657"] = "Smelt Copper\t\t1\tavailable\t1",
@@ -176,7 +176,7 @@ lst = [lines[i] for i in range(1, len(lines) + 1)]
 check("trainer export is stamped",
       lst[1], "-- client forever · 1.60.1 · build 70205 · interface 16001 · project 18 · channel unknown")
 check("unfiltered export names every recorded character and no current class",
-      lst[2], "-- source all trainer · recorded by Eramali, Malefice · current character unknown")
+      lst[2], "-- source all trainer · recorded by Examplechar, Malefice · current character unknown")
 check("moved store export says the start is unknown, never today",
       re.match(r"-- harvested unknown \.\. \d{4}-\d\d-\d\d · exported ", lst[3]) is not None)
 check("trainer export flattens CLASS:spellID", [l.split("\t")[0] for l in lst[5:]],

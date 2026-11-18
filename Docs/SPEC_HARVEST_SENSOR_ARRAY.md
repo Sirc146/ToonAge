@@ -278,7 +278,7 @@ The shared header comes from `HarvestFormat.Header(meta, section, page, pages, f
 ```
 -- ToonAge harvest · trainer · page 1/1 · records 1-39 of 39
 -- client forever · 1.60.1 · build 70205 · interface 16001 · project 18 · channel beta
--- source MAGE trainer · recorded by Eramali · current character Mage
+-- source MAGE trainer · recorded by Examplechar · current character Mage
 -- harvested 2026-09-26 .. 2026-10-04 · exported 2026-10-04 15:10 · store v3 · ToonAge 2.0.0-dev.1
 ```
 
