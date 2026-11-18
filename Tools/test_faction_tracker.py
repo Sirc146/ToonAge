@@ -1046,7 +1046,9 @@ def test_rep_bar_layout():
         })
         NARROW_TEXT = narrow.text._text
         NARROW_WRAP = narrow.text._wordWrap
-        NARROW_NOCLIP = narrow.text._width >= narrow.text:GetStringWidth()
+        NARROW_W = narrow.text._width
+        NARROW_LIMIT = math.max(narrow.track._width - 8, 8)
+        NARROW_INSIDE = narrow.text._width <= narrow.track._width
         NARROW_HAS_RATIO = NARROW_TEXT:find("/", 1, true) ~= nil
 
         local _, plain = L:StatBar(content, -40, {
@@ -1097,7 +1099,9 @@ def test_rep_bar_layout():
     check("a narrow bar drops the ratio and keeps the standing",
           lua.eval("NARROW_TEXT"), "Friendly")
     check("a narrow bar still does not wrap", lua.eval("NARROW_WRAP"), False)
-    check("a narrow standing name is not clipped", lua.eval("NARROW_NOCLIP"), True)
+    check("a narrow standing name stays inside the bar",
+          (lua.eval("NARROW_W"), lua.eval("NARROW_INSIDE")),
+          (lua.eval("NARROW_LIMIT"), True))
     check("a narrow bar does not keep a slash", lua.eval("NARROW_HAS_RATIO"), False)
     check("a plain stat bar still uses the right-hand column",
           lua.eval("PLAIN_POINT"), "TOPLEFT")
@@ -1133,6 +1137,15 @@ def test_rep_bar_layout():
         DIM_R, DANGER_R, WARN_R, TRACK_R = dim[1], danger[1], warn[1], track[1]
         HATED_MOVED = math.abs(hated[1] - dim[1]) > 0.01 and hated[1] < dim[1]
         ALPHA_OK = hated[4] == theme.slot_current_a and hostile[4] == theme.slot_current_a
+        local base, token = FT.BaseColor({ reaction = 4, system = "standing" })
+        local toned = FT.FillColor({ reaction = 4, system = "standing" }, false)
+        local gold = ToonAge.Layout.C_HEADER
+        NEUTRAL_TOKEN = token
+        NEUTRAL_IS_STATUS = base == ToonAge.Layout.STATUS.neutral
+        NEUTRAL_IS_PRIMARY = base == ToonAge.Layout.C_PRIMARY
+        NEUTRAL_NOT_GOLD = base ~= gold
+        NEUTRAL_TONED = toned[4] == theme.slot_current_a
+            and math.abs((toned[1] or 0) - gold[1]) > 0.2
     """)
     check("hated fill is not the error red",
           float(lua.eval("HATED_R")) < float(lua.eval("DANGER_R")) - 0.4, True)
@@ -1141,6 +1154,11 @@ def test_rep_bar_layout():
     check("hated fill is the dim token moved toward the track",
           lua.eval("HATED_MOVED"), True)
     check("toned fills use the slot alpha token", lua.eval("ALPHA_OK"), True)
+    check("neutral uses the neutral status token", lua.eval("NEUTRAL_TOKEN"), "neutral")
+    check("neutral fill is the status neutral colour", lua.eval("NEUTRAL_IS_STATUS"), True)
+    check("neutral status colour is the primary text token", lua.eval("NEUTRAL_IS_PRIMARY"), True)
+    check("neutral fill is not the header gold", lua.eval("NEUTRAL_NOT_GOLD"), True)
+    check("neutral fill is toned like the other standings", lua.eval("NEUTRAL_TONED"), True)
 
 
 if __name__ == "__main__":

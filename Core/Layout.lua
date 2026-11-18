@@ -639,18 +639,13 @@ function L:StatBar(parent, y, opts)
             row.text:SetShadowColor(shadow[1], shadow[2], shadow[3], shadow[4] or 1)
         end
         if row.text.SetShadowOffset then row.text:SetShadowOffset(1, -1) end
-        local sw = 0
-        if row.text.GetStringWidth then
-            local measured = row.text:GetStringWidth()
-            if type(measured) == "number" then sw = measured end
-        end
-        local textW = innerText
-        if sw > innerText then textW = sw end
         row.text:ClearAllPoints()
         local cx = LABEL_W + GAP + math.floor(barW / 2)
         local cy = -(3 + math.floor(BAR_H / 2))
         row.text:SetPoint("CENTER", row, "TOPLEFT", cx, cy)
-        row.text:SetWidth(math.max(textW, 1))
+        -- Stay on the track. A standing name wider than the bar is clipped
+        -- by this width rather than drawn past the fill.
+        row.text:SetWidth(math.max(innerText, 1))
         row.text:SetHeight(0)
     else
         -- The real number, right-justified inside a fixed-width box whose LEFT

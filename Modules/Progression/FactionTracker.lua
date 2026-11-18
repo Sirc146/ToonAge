@@ -467,8 +467,9 @@ function FT.Read(faction, flavor)
 end
 
 --- Palette key for a standing. Hated is dim and Hostile is secondary so the
---- fill is not the warning orange or the error red. Friendly through Exalted
---- share the good token, which is then toned down before it is painted.
+--- fill is not the warning orange or the error red. Neutral is the neutral
+--- status token, not the header gold. Friendly through Exalted share the
+--- good token. Every fill is toned before it is painted.
 function FT.ColorToken(read)
     if type(read) ~= "table" then return "neutral" end
     if read.paragon then return "accent" end
@@ -480,7 +481,7 @@ function FT.ColorToken(read)
     if id == 1 then return "dim" end
     if id == 2 then return "secondary" end
     if id == 3 then return "warn" end
-    if id == 4 then return "header" end
+    if id == 4 then return "neutral" end
     if id and id >= 5 and id <= 8 then return "good" end
     if read.atMax then return "good" end
     return "neutral"
@@ -493,7 +494,6 @@ function FT.BaseColor(read)
         dim = L.C_DIM,
         secondary = L.C_SECONDARY,
         warn = L.C_WARNING,
-        header = L.C_HEADER,
         good = L.C_SUCCESS,
         accent = L.C_ACCENT,
         stat = L.C_STAT_BASE,
