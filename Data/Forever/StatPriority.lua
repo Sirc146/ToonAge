@@ -16,8 +16,8 @@ local IV = "https://www.icy-veins.com/wow-forever/"
 local WH = "https://www.wowhead.com/forever/guide/classes/"
 local IVD = "Nov 4, 2026"
 
-local function order(line, stats, label)
-    return { line = line, stats = stats, label = label }
+local function order(line, stats, label, note)
+    return { line = line, stats = stats, label = label, note = note }
 end
 
 local function iv(slug, lists)
@@ -263,13 +263,37 @@ TA.Data.ForeverStatPriority = {
         }),
     },
     MAGE = {
+        -- Source notes (Arcane), checked 2026-11-18. Recorded only.
+        -- Not scoring sources. Values stay on their own pages and are not merged
+        -- into the Icy Veins or Wowhead steps below.
+        -- Icy Veins https://www.icy-veins.com/wow-forever/arcane-mage-ranged-dps-pve-stat-priority
+        -- (page updated Nov 4, 2026). ArcaneDamage equals Spell Damage, same step.
+        -- "Value these equally to Spell Damage, as it applies to almost all of our damage"
+        -- "the equivalent level item might be 10 Spell Damage vs 16 Arcane Damage"
+        -- The Forever Era https://theforeverera.com/en/guides/classes/mage/
+        -- (page updated October 25, 2026). Arcane DPS: "Spell Power 1 Arcane damage 0.9"
+        -- The Forever Era https://theforeverera.com/en/bis/mage/
+        -- (page updated November 17, 2026). Per point: "Spell Power 1 Arcane Damage 0.9"
+        -- Mobalytics https://mobalytics.gg/wow-forever/classes/arcane-mage-guide
+        -- (page updated Nov 18, 2026). "Spell Power or the spell damage of your spec (fire / frost / arcane)"
+        -- Warcraft Tavern https://www.warcrafttavern.com/wow-classic/guides/pve-arcane-mage-stat-priority/
+        -- "Raw Spell Power (Frost Damage Spell Power/Arcane Damage Spell Power)"
         Arcane = row({
+            -- Checked 2026-11-18.
+            -- https://www.icy-veins.com/wow-forever/arcane-mage-ranged-dps-pve-stat-priority
+            -- "Value these equally to Spell Damage, as it applies to almost all of our damage"
+            -- "the equivalent level item might be 10 Spell Damage vs 16 Arcane Damage"
             iv("arcane-mage-ranged-dps-pve-stat-priority", {
-                order(MAGE_IV_LINE, MAGE_IV_STATS),
+                order(MAGE_IV_LINE,
+                    { "Hit", { "SpellPower", "ArcaneDamage" }, "Crit", "Intellect", "Spirit", "MP5" }),
             }),
-            wh("mage/arcane/stat-priority-pve-dps", "2026/10/28", {
-                order("Hit Chance until 17% > Spell Damage (+ Arcane Damage) > Critical Strike Chance > Spell Piercing > Haste > Intellect > Spirit > Stamina",
-                    { "Hit", { "SpellPower", "ArcaneDamage" }, "Crit", "SpellPierce", "Haste", "Intellect", "Spirit", "Stamina" }),
+            -- Checked 2026-11-18.
+            -- https://www.wowhead.com/forever/guide/classes/mage/arcane/stat-priority-pve-dps
+            -- delisted by Wowhead, retained — verified by Icy Veins, Forever Era, and Warcraft Tavern.
+            wh("mage/arcane/stat-priority-pve-dps", "2026/11/17", {
+                order("Hit Chance until 17% > Spell Damage > Critical Strike Chance > Spell Piercing > Haste > Intellect > Spirit > Stamina",
+                    { "Hit", { "SpellPower", "ArcaneDamage" }, "Crit", "SpellPierce", "Haste", "Intellect", "Spirit", "Stamina" },
+                    nil, "Arcane Damage: delisted by Wowhead, retained by ToonAge"),
             }, CAVEAT_ARCANE),
         }),
         Fire = row({
