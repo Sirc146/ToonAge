@@ -5,12 +5,13 @@ Core/UI.lua RebuildChild hides every child of the scroll pane and sets its
 parent to nil before the tab draws again. A bare EditBox has no font, so
 typed text is invisible, and its default auto-focus steals the keyboard.
 
-The default form is 14 boxes. The measured broken draw had all 14 parented,
-none with a font, and no Escape or Enter handler. Hide plus SetParent(nil)
-then left parented 0, visible 0, one box still focused, and the typed text
-still on that box. This mock does not clear focus or text inside Hide or
-SetParent, so that snapshot stays observable. The next draw has to put all
-14 back, with a font, both keys, auto-focus off, and the text kept.
+The default form is 14 boxes on the left panel. The right pane has the
+result, not the inputs. Hide plus SetParent(nil) on the left panel leaves
+parented 0, visible 0, one box still focused, and the typed text still on
+that box. This mock does not clear focus or text inside Hide or SetParent,
+so that snapshot stays observable. The next draw has to put all 14 back,
+with a font, both keys, auto-focus off, and the text kept. Typing
+recalculates the result line and does not rebuild the boxes.
 Label rectangles come from Core/Layout.lua. This does not open the game client.
 """
 import sys
@@ -190,7 +191,15 @@ function CreateFrame(kind, _, parent, template)
     return f
 end
 
-GameTooltip = setmetatable({}, { __index = function() return function() end end })
+GameTooltip = {
+    lines = {},
+    SetOwner = function() end,
+    SetText = function(_, text) GameTooltip.lines = { text } end,
+    AddLine = function(_, text) GameTooltip.lines[#GameTooltip.lines + 1] = text end,
+    AddDoubleLine = function() end,
+    Show = function() end,
+    Hide = function() GameTooltip.lines = {} end,
+}
 
 -- Core/UI.lua RebuildChild, the child loop: Hide() then SetParent(nil).
 function RebuildChildLike(pane)
@@ -231,6 +240,16 @@ function Collect(pane)
         if child._kind == "EditBox" and child._shown and child._point then
             boxes[#boxes + 1] = child
         end
+        if child.fieldKey and child.label and child._point and child.label._shown ~= false
+            and type(child.label._text) == "string" and child.label._text ~= "" then
+            local h = child.label:GetStringHeight()
+            local w = child.label._width or child.label:GetWidth() or 0
+            labels[#labels + 1] = {
+                top = child._point.y, bottom = child._point.y - (child._height or h),
+                x = child._point.x, w = w, h = h, text = child.label._text, key = child.fieldKey,
+                measured = child.label:GetStringWidth() or 0,
+            }
+        end
     end
     return labels, boxes
 end
@@ -263,6 +282,7 @@ content._laPane = true
 side = CreateFrame("Frame")
 side:SetSize(184, 400)
 side:SetFrameLevel(4)
+side._laPane = true
 ToonAge.ProfessionSkills = { Collect = function()
     return { reader = "skillinfo", cards = { { id = 197, name = "Schneiderei", rank = 23, max = 75 } } }
 end }
@@ -308,15 +328,19 @@ local function Tally(pane)
     return row
 end
 
-first = Tally(content)
+first = Tally(side)
+contentBoxes = 0
+for _, child in ipairs({ content:GetChildren() }) do
+    if child._kind == "EditBox" and child._shown then contentBoxes = contentBoxes + 1 end
+end
 local probe = PB.boxes.n
 probe:SetText("7")
 probe:SetFocus()
-RebuildChildLike(content)
+RebuildChildLike(side)
 local parented, visible, focused = 0, 0, 0
 for _, box in pairs(PB.boxes) do
     local onPane = false
-    for _, child in ipairs({ content:GetChildren() }) do
+    for _, child in ipairs({ side:GetChildren() }) do
         if child == box then onPane = true end
     end
     if onPane then parented = parented + 1 end
@@ -328,7 +352,7 @@ afterRebuild = {
     textKept = (probe:GetText() == "7") and 1 or 0,
 }
 B:Render(content, side)
-second = Tally(content)
+second = Tally(side)
 textAfter = PB.boxes.n:GetText()
 focusAfter = 0
 for _, box in pairs(PB.boxes) do if box.focused then focusAfter = focusAfter + 1 end end
@@ -341,12 +365,12 @@ sample.scripts.OnEnterPressed(sample)
 enterClears = sample.focused == false and sample:GetText() == "7"
 tabMoves = sample.scripts.OnTabPressed ~= nil
 
-RebuildChildLike(content)
+RebuildChildLike(side)
 PB.form.reagents = 8
 PB.form.outputs = 4
-content:SetSize(667, 400)
+side:SetSize(184, 400)
 B:Render(content, side)
-local labels, boxes = Collect(content)
+local labels, boxes = Collect(side)
 local lowest = 0
 overlap = false
 for _, box in ipairs(boxes) do
@@ -363,27 +387,44 @@ for _, label in ipairs(labels) do
         end
     end
 end
-scrollOk = #boxes >= 55 and content:GetHeight() >= math.abs(lowest)
+scrollOk = #boxes >= 55 and side:GetHeight() >= math.abs(lowest)
 manyCount = #boxes
 
-RebuildChildLike(content)
-content:SetSize(280, 400)
+RebuildChildLike(side)
+side:SetSize(184, 400)
 B:Render(content, side)
-labels, boxes = Collect(content)
-local vendorLabel, vendorBox
+labels, boxes = Collect(side)
+local vendorLabel, vendorBox, vendorRow
 for _, label in ipairs(labels) do
-    if string.find(label.text, "Vendor buy for the whole batch", 1, true) then vendorLabel = label end
+    if label.key == "vendor" then vendorLabel = label end
+end
+for _, child in ipairs({ side:GetChildren() }) do
+    if child.fieldKey == "vendor" and child.scripts and child.scripts.OnEnter then vendorRow = child end
 end
 for _, box in ipairs(boxes) do
     if box.fieldKey == "vendor" then vendorBox = box end
 end
-narrowWrap = vendorLabel ~= nil and vendorLabel.h > 24
-narrowClear = vendorLabel ~= nil and vendorBox ~= nil and (vendorLabel.bottom - vendorBox._point.y) >= 2
+if vendorRow and vendorRow.scripts.OnEnter then vendorRow.scripts.OnEnter(vendorRow) end
+vendorTip = table.concat(GameTooltip.lines or {}, "\n")
+narrowWrap = vendorLabel ~= nil and vendorLabel.h <= 24
+    and string.find(vendorTip, "Vendor buy for the whole batch, in gold. Enter 0 when there is no vendor material.", 1, true) ~= nil
+narrowClear = vendorLabel ~= nil and vendorBox ~= nil and math.abs(vendorLabel.top - (vendorBox._point.y + 1)) <= 2
 narrowOverlap = false
 narrowFit = true
+local sameX = true
+local labelW
 for _, box in ipairs(boxes) do
-    if not box._point or box._point.x + box._width > content:GetWidth() then narrowFit = false end
+    if not box._point or box._point.x + box._width > side:GetWidth() then narrowFit = false end
+    if vendorBox and box._point and vendorBox._point and box._point.x ~= vendorBox._point.x then sameX = false end
 end
+for _, label in ipairs(labels) do
+    if label.key then
+        if not labelW then labelW = label.w end
+        if label.w ~= labelW then sameX = false end
+        if label.w > 0 and (label.measured or 0) + 4 > label.w then narrowFit = false end
+    end
+end
+inputsAligned = sameX
 for _, label in ipairs(labels) do
     for _, box in ipairs(boxes) do
         local bTop = box._point.y
@@ -420,11 +461,18 @@ Put("out1count", "1")
 Put("out1price", "100")
 Put("out2count", "1")
 Put("out2price", "40")
-for _, button in ipairs({ content:GetChildren() }) do
+local function EachButton(fn)
+    for _, pane in ipairs({ content, side }) do
+        for _, button in ipairs({ pane:GetChildren() }) do
+            fn(button)
+        end
+    end
+end
+EachButton(function(button)
     if button._kind == "Button" and button.lbl and button.lbl._text == "Calculate batch" and button.scripts.OnClick then
         button.scripts.OnClick()
     end
-end
+end)
 calcNet = PB.lastResult and PB.lastResult.net
 local function PaneText()
     local parts = {}
@@ -436,11 +484,15 @@ local function PaneText()
     return table.concat(parts, "\n")
 end
 local function Click(label)
-    for _, button in ipairs({ content:GetChildren() }) do
+    -- Capture handlers first. A redraw pools button frames and rewrites
+    -- their labels, so walking children during the click would fire twice.
+    local found = {}
+    EachButton(function(button)
         if button._kind == "Button" and button.lbl and button.lbl._text == label and button.scripts.OnClick then
-            button.scripts.OnClick()
+            found[#found + 1] = button.scripts.OnClick
         end
-    end
+    end)
+    for _, fn in ipairs(found) do fn() end
 end
 estimateShown = string.find(PaneText(), "63.0000", 1, true) ~= nil
 local draws = 0
@@ -461,7 +513,7 @@ firstCursor = box:GetCursorPosition()
 firstFocused = box.focused == true
 firstText = box:GetText()
 afterType = PaneText()
-typeClears = changed ~= nil and string.find(afterType, "63.0000", 1, true) == nil and string.find(afterType, "outdated", 1, true) ~= nil
+typeClears = changed ~= nil and string.find(afterType, "63.0000", 1, true) ~= nil and string.find(afterType, "118.1250", 1, true) ~= nil and string.find(afterType, "outdated", 1, true) == nil
 box:SetText("19320")
 box:SetCursorPosition(3)
 local atSecond = draws
@@ -470,7 +522,7 @@ secondDraws = draws - atSecond
 secondCursor = box:GetCursorPosition()
 secondFocused = box.focused == true
 secondText = box:GetText()
-secondOutdated = string.find(PaneText(), "outdated", 1, true) ~= nil and string.find(PaneText(), "63.0000", 1, true) == nil
+secondOutdated = string.find(PaneText(), "outdated", 1, true) == nil and string.find(PaneText(), "63.0000", 1, true) ~= nil and string.find(PaneText(), "11.7391", 1, true) ~= nil
 typeKeepsValue = PB.boxes.n:GetText() == "1"
 Click("Calculate batch")
 if changed then changed(PB.boxes.n, false) end
@@ -506,7 +558,8 @@ PB.boxes.n.scripts.OnEscapePressed(PB.boxes.n)
 escapeStill = PB.boxes.n.focused == false
 """)
     g = lua.globals()
-    check("first draw parents 14 boxes", g.first.parented, 14)
+    check("first draw parents 14 boxes on the left panel", g.first.parented, 14)
+    check("the right pane has no calculator inputs", g.contentBoxes, 0)
     check("first draw shows 14 boxes", g.first.visible, 14)
     check("first draw gives all 14 a font", g.first.font, 14)
     check("first draw gives all 14 an escape handler", g.first.escape, 14)
@@ -533,13 +586,14 @@ escapeStill = PB.boxes.n.focused == false
     check("many rows stay inside the scroll height", g.scrollOk, True)
     check("many rows actually draw", g.manyCount >= 55, True)
     check("labels do not cover inputs", g.overlap, False)
-    check("a long label wraps on a narrow pane", g.narrowWrap, True)
-    check("the wrapped label stays above its input", g.narrowClear, True)
+    check("the short label stays one line and the long sentence is the tooltip", g.narrowWrap, True)
+    check("the label and its input share a row", g.narrowClear, True)
+    check("inputs share one column and one label width", g.inputsAligned, True)
     check("wrapped labels do not cover inputs", g.narrowOverlap, False)
     check("narrow inputs stay inside the pane", g.narrowFit, True)
     check("the button still submits the typed linen batch", g.calcNet, 63)
     check("the successful estimate is on the pane", g.estimateShown, True)
-    check("typing dispatches OnTextChanged and drops the old estimate", g.typeClears, True)
+    check("typing updates the estimate in place", g.typeClears, True)
     check("the first mid-string edit does not rebuild the pane", g.firstDraws, 0)
     check("the first mid-string edit keeps the caret", g.firstCursor, 2)
     check("the first mid-string edit keeps focus", g.firstFocused, True)
@@ -548,7 +602,7 @@ escapeStill = PB.boxes.n.focused == false
     check("a later keystroke keeps the caret", g.secondCursor, 3)
     check("a later keystroke keeps focus", g.secondFocused, True)
     check("a later keystroke keeps the typed text", g.secondText, "19320")
-    check("the estimate stays visibly outdated", g.secondOutdated, True)
+    check("a later keystroke keeps the net and updates the hour", g.secondOutdated, True)
     check("typing keeps the other field value", g.typeKeepsValue, True)
     check("a programmatic text change does not drop the estimate", g.falseKeeps, True)
     check("rebuilding with SetText does not loop", g.rebuildOnce, True)
