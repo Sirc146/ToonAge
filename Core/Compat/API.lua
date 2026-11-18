@@ -1124,6 +1124,16 @@ function C.UnitName(unit)
     return Shown(name)
 end
 
+--- True when the unit is another player character. Nil when the client will
+--- not say. A missing answer is not treated as a creature.
+function C.UnitIsPlayer(unit)
+    if TA.HasAPI and not TA:HasAPI("UnitIsPlayer") then return nil end
+    if type(UnitIsPlayer) ~= "function" then return nil end
+    local ok, isPlayer = pcall(UnitIsPlayer, unit or "player")
+    if not ok or type(isPlayer) ~= "boolean" then return nil end
+    return isPlayer
+end
+
 --- Game order: localized name, then English token (for example "Mage", "MAGE").
 --- @return string localized, string token
 function C.UnitClass(unit)
