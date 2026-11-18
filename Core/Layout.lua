@@ -490,6 +490,23 @@ function L:StatScale(values, previous)
     return scale
 end
 
+--- Pick the in-bar line that fits. A width we cannot measure keeps the full
+--- line. A line that does not fit drops to the standing name. The name is
+--- never sliced, so a narrow bar does not clip a word in half.
+function L:ChooseBarText(full, short, inner, widthOf)
+    if type(full) ~= "string" or full == "" then
+        if type(short) == "string" and short ~= "" then return short end
+        return full or ""
+    end
+    if type(widthOf) ~= "function" or type(inner) ~= "number" or inner <= 0 then
+        return full
+    end
+    local w = widthOf(full)
+    if type(w) ~= "number" or w <= 0 or w <= inner then return full end
+    if type(short) == "string" and short ~= "" then return short end
+    return full
+end
+
 --- A stat as a bar against a shared, rounded scale.
 ---
 --- The FILL is the real value. The faded remainder is headroom to the group's
@@ -504,15 +521,20 @@ end
 --- tab, and a new component is the wrong place to inherit that.
 --- @return number nextY, table row
 function L:StatBar(parent, y, opts)
+    opts = opts or {}
     y = math.floor(y)
     local w = self:Width(parent)
 
+    -- inside: the value sits in the track, so the right-hand column is gone
+    -- and the bar uses that width. Other callers keep the 64px column.
+    local inside  = opts.inside == true
     local ROW_H   = 22
-    local BAR_H   = 12
+    local BAR_H   = inside and 16 or 12
     local LABEL_W = math.min(110, math.floor(w * 0.28))
-    local VALUE_W = 64
+    local VALUE_W = inside and 0 or 64
     local GAP     = 8
-    local barW    = math.max(w - LABEL_W - VALUE_W - GAP * 2, 40)
+    local barW    = inside and math.max(w - LABEL_W - GAP, 40)
+        or math.max(w - LABEL_W - VALUE_W - GAP * 2, 40)
 
     local row = AcquireFrame("StatBar", parent, function()
         local f = CreateFrame("Frame", nil, HOLDER)
@@ -535,7 +557,7 @@ function L:StatBar(parent, y, opts)
     local track = row.track
     track:ClearAllPoints()
     track:SetSize(barW, BAR_H)
-    track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, -2)
+    track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, inside and -3 or -2)
     if TA._ApplyBackdrop then
         TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
     end
@@ -552,13 +574,31 @@ function L:StatBar(parent, y, opts)
         local basePct = (base and base >= 0 and base <= value) and (base / scale) or total
 
         local cBase = Colour(opts.color or "stat")
+        local alpha = 0.90
+        if inside then
+            if type(cBase[4]) == "number" then
+                alpha = cBase[4]
+            else
+                local theme = TA.Theme and TA.Theme.active
+                local toned = theme and tonumber(theme.slot_current_a)
+                if toned then alpha = toned end
+            end
+        end
+        local px = math.floor(inner * basePct)
+        if inside and basePct <= 0 then
+            px = 0
+        elseif px < 1 then
+            px = 1
+        end
         local fill = row.fill
         fill:ClearAllPoints()
         fill:SetPoint("TOPLEFT",    track, "TOPLEFT",    1, -1)
         fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1,  1)
-        fill:SetWidth(math.max(math.floor(inner * basePct), 1))
-        fill:SetColorTexture(cBase[1], cBase[2], cBase[3], 0.90)
-        fill:Show()
+        if px > 0 then
+            fill:SetWidth(px)
+            fill:SetColorTexture(cBase[1], cBase[2], cBase[3], alpha)
+            fill:Show()
+        end
 
         if base and value > base and total > basePct then
             local g = L.C_STAT_GEAR
@@ -572,17 +612,56 @@ function L:StatBar(parent, y, opts)
         end
     end
 
-    -- The real number, right-justified inside a fixed-width box whose LEFT edge
-    -- is computed -- same look as a right anchor, without depending on the
-    -- parent's right edge being where we think it is.
-    StyleText(row.text, {
-        text = opts.text or (value and tostring(value)) or "|cFF6E6A62n/a|r",
-        size = 11, flags = "OUTLINE", color = opts.status, justify = "RIGHT",
-    })
-    row.text:ClearAllPoints()
-    row.text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
-    row.text:SetWidth(VALUE_W)
-    row.text:SetHeight(0)
+    if inside then
+        -- White token, 1px dark shadow, one line. Outline would fight the
+        -- shadow, so the flags stay empty. The standing name is not sliced.
+        local theme = TA.Theme and TA.Theme.active
+        local white = theme and theme.white
+        local shadow = theme and theme.glass_shadow
+        local innerText = math.max(barW - 8, 8)
+        local fullText = opts.text or ""
+        local function widthOf(sample)
+            row.text:SetFont(FONT, 10, "")
+            row.text:SetText(sample)
+            if not row.text.GetStringWidth then return 0 end
+            local sw = row.text:GetStringWidth()
+            if type(sw) ~= "number" then return 0 end
+            return sw
+        end
+        local chosen = self:ChooseBarText(fullText, opts.shortText, innerText, widthOf)
+        StyleText(row.text, {
+            text = chosen, size = 10, flags = "", color = white or L.C_PRIMARY,
+            justify = "CENTER",
+        })
+        if row.text.SetWordWrap then row.text:SetWordWrap(false) end
+        if row.text.SetJustifyV then row.text:SetJustifyV("MIDDLE") end
+        if shadow and row.text.SetShadowColor then
+            row.text:SetShadowColor(shadow[1], shadow[2], shadow[3], shadow[4] or 1)
+        end
+        if row.text.SetShadowOffset then row.text:SetShadowOffset(1, -1) end
+        row.text:ClearAllPoints()
+        local cx = LABEL_W + GAP + math.floor(barW / 2)
+        local cy = -(3 + math.floor(BAR_H / 2))
+        row.text:SetPoint("CENTER", row, "TOPLEFT", cx, cy)
+        -- Stay on the track. A standing name wider than the bar is clipped
+        -- by this width rather than drawn past the fill.
+        row.text:SetWidth(math.max(innerText, 1))
+        row.text:SetHeight(0)
+    else
+        -- The real number, right-justified inside a fixed-width box whose LEFT
+        -- edge is computed -- same look as a right anchor, without depending
+        -- on the parent's right edge being where we think it is.
+        if row.text.SetWordWrap then row.text:SetWordWrap(true) end
+        if row.text.SetShadowOffset then row.text:SetShadowOffset(0, 0) end
+        StyleText(row.text, {
+            text = opts.text or (value and tostring(value)) or "|cFF6E6A62n/a|r",
+            size = 11, flags = "OUTLINE", color = opts.status, justify = "RIGHT",
+        })
+        row.text:ClearAllPoints()
+        row.text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
+        row.text:SetWidth(VALUE_W)
+        row.text:SetHeight(0)
+    end
 
     RowTooltip(row, opts.tooltipTitle or opts.label, opts.tooltip)
     return y - ROW_H - 2, row
