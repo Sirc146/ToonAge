@@ -35,7 +35,7 @@ Installed in `_ptr_` and `_retail_`, not in git. The live addon with
 never alongside — both declare `ToonAgeDB` and the same compartment globals.
 
 **Boot is proven on PTR** (2026-08-02). Its SavedVariables holds a fully
-populated `ToonAgeDB` (Ellacait-Vargoth, 90 HUNTER) with an **empty
+populated `ToonAgeDB` (Examplechar-Examplerealm, 90 HUNTER) with an **empty
 `errorLog`**, and error capture is verified still wired: `seterrorhandler` is
 installed by `Modules/ErrorLog.lua:214`, which the harness does not swap. So the
 empty log is a measurement, not a silent no-op — the F-1 boot split, the
@@ -143,7 +143,7 @@ substitution (`GetSpellInfo` for `C_Spell`, `GetContainerItemLink` for
 running client.
 
 **It ran for the first time on 2026-08-02 and mostly works.** Real character
-`Asirc-Myzrael` (41 HUNTER) persisted `xpHistory`, professions, `gatherHistory`
+`Exampletoon-Examplerealm` (41 HUNTER) persisted `xpHistory`, professions, `gatherHistory`
 and six enabled modules. First-login crash in `InitUI`, dead `MapPins`, and a
 stale TOC entry are **fixed and committed at `8e871b2`** — captured from the
 unversioned `_classic_` folder, where they had been the only copy.

@@ -252,7 +252,7 @@ function C.OnTaxi()
 end
 function C.UnitName(unit)
   if unit == "target" then return KILLER end
-  return "Eramali"
+  return "Examplechar"
 end
 function C.ZoneText() return ZONE_NAME end
 function C.RealZoneText() return ZONE_NAME end

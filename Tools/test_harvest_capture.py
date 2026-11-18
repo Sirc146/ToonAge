@@ -75,7 +75,7 @@ KEY = ToonAge.Harvester:CharacterKey()
 """)
 key = L.eval("KEY")
 check("capture key is realm, name and class",
-      key, "Classic Beta PvE\tEramali\tMAGE")
+      key, "Classic Beta PvE\tExamplechar\tMAGE")
 
 cap = L.eval("ToonAge.db.harvest.captures[KEY]")
 check("spellbook capture stored the current book",
@@ -178,7 +178,7 @@ check("mage self-test is the newest value",
 L.execute("WINDOWS_LOG = {}; ToonAge.modules.DataHarvester:Export('trainer', 1)")
 body = lines_of(L)
 check("trainer export starts with this character",
-      body[0].startswith("-- source Eramali · Mage · level 18 · build 70205 · captured "))
+      body[0].startswith("-- source Examplechar · Mage · level 18 · build 70205 · captured "))
 check("trainer export names the NPC",
       body[1], "-- trainer Aelthalyste · id 5490 · class MAGE")
 check("trainer export is this character's updated row",
@@ -189,14 +189,14 @@ check("trainer export does not include the hunter",
 L.execute("WINDOWS_LOG = {}; ToonAge.modules.DataHarvester:Export('spells', 1, 'all')")
 all_body = "\n".join(lines_of(L))
 check("all-characters export includes the mage source line",
-      "-- source Eramali · Mage · level 18 · build 70205 · captured " in all_body)
+      "-- source Examplechar · Mage · level 18 · build 70205 · captured " in all_body)
 # Hunter has no spellbook capture, only a probe, so the spell export is mage-only.
 check("all-characters spell export has the updated spell", "Fireball Plus" in all_body)
 
 L.execute("WINDOWS_LOG = {}; ToonAge.modules.DataHarvester:RunProbes()")
 probe = "\n".join(lines_of(L))
 check("probe export starts with the source line",
-      probe.startswith("-- source Eramali · Mage · level 18 · build 70205 · captured "))
+      probe.startswith("-- source Examplechar · Mage · level 18 · build 70205 · captured "))
 check("probe capture replaced the scratch marker slot's sibling and stored text",
       type(L.eval("ToonAge.db.harvest.captures[KEY].probe.text")) is str
       and "Client" in L.eval("ToonAge.db.harvest.captures[KEY].probe.text"))
@@ -204,13 +204,13 @@ check("probe capture replaced the scratch marker slot's sibling and stored text"
 L.execute("WINDOWS_LOG = {}; ToonAge.Harvester:ExportCapture('probe', 'all', 0)")
 both = "\n".join(lines_of(L))
 check("all probe exports include both characters",
-      ("-- source Eramali · Mage · " in both) and ("-- source Huntsman · Hunter · " in both))
+      ("-- source Examplechar · Mage · " in both) and ("-- source Huntsman · Hunter · " in both))
 check("hunter probe text is in the all-characters export", "hunt-probe" in both)
 
 chat = "\n".join(L.eval("CHAT_LOG")[i] for i in range(1, len(L.eval("CHAT_LOG")) + 1))
 check("trainer capture toasts the NPC and the spell count",
       "Harvest: trainer saved (Aelthalyste, 4 spells)" in chat)
-check("login full scan toasts once", "Harvest: scan saved (Eramali)" in chat)
+check("login full scan toasts once", "Harvest: scan saved (Examplechar)" in chat)
 check("skills capture replaced this character's entry",
       L.eval("ToonAge.db.harvest.captures[KEY].skills.rows['1']").split("\t")[0], "Skill1")
 check("professions capture stored the client rows",
@@ -314,14 +314,14 @@ ToonAge.modules.DataHarvester:Render({}, nil)
 """)
 armed = [L.eval("LAYOUT_LOG")[i] for i in range(1, len(L.eval("LAYOUT_LOG")) + 1)]
 check("confirmation names this character and class",
-      "ButtonDanger|Clear saved data for Eramali (Mage)?" in armed)
+      "ButtonDanger|Clear saved data for Examplechar (Mage)?" in armed)
 check("the confirmation has not removed anyone yet",
       (L.eval("ToonAge.db.harvest.captures[KEY].name"),
        L.eval("ToonAge.db.harvest.captures[HUNT].probe.text")),
-      ("Eramali", "hunt-probe"))
+      ("Examplechar", "hunt-probe"))
 L.execute("""
 for _, b in ipairs(LAST_BUTTONS) do
-    if b.label == "Clear saved data for Eramali (Mage)?" then b.onClick() end
+    if b.label == "Clear saved data for Examplechar (Mage)?" then b.onClick() end
 end
 """)
 check("confirming removes only that character",

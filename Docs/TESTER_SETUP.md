@@ -57,10 +57,6 @@ You can also manually check by clicking **Refresh** in WowUp.
 
 - Stable releases: `v2.0.0`, `v2.0.1`, `v2.1.0`
 - Dev/test builds: `v2.1.0-dev.1`, `v2.0.0-beta.1`
-- Dev builds activate the **tester lock** — only authorized characters can use the addon
-
-If you see: `[ToonAge] Dev build — not authorized`
-→ Your character isn't in the testers list. Ask Chris to add `YourName-YourServer`.
 
 ---
 
@@ -77,6 +73,5 @@ https://api.github.com/repos/Sirc146/ToonAge/releases/latest
 | Problem | Solution |
 |---|---|
 | WowUp says "not found" | Token may be expired or repo URL is wrong |
-| Addon loads but says "not authorized" | Your character isn't in the tester list in `Core/Init.lua` |
 | Addon doesn't update | Check WowUp → My Addons → ToonAge → click Refresh |
 | Old version still loaded after update | `/reload` in-game |
