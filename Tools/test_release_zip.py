@@ -54,11 +54,6 @@ def pkgmeta_ignores(text):
     return names
 
 
-def rsync_excludes(text):
-    return [ln.split("--exclude='", 1)[1].split("'", 1)[0]
-            for ln in text.splitlines() if "--exclude='" in ln]
-
-
 def excluded(rel, patterns):
     parts = rel.split("/")
     leaf = parts[-1]
@@ -101,24 +96,39 @@ def run_checker(*args):
 
 def test_ignore_lists_keep_data():
     meta = pkgmeta_ignores(read(".pkgmeta"))
-    excludes = rsync_excludes(read(".github/workflows/release.yml"))
-    layout = next(ln for ln in read("Tools/build_release_layout.ps1").splitlines()
+    workflow = read(".github/workflows/release.yml")
+    layout_text = read("Tools/build_release_layout.ps1")
+    layout = next(ln for ln in layout_text.splitlines()
                   if ln.strip().startswith("$ExcludeDirs"))
-    for label, names in ((".pkgmeta", meta), ("release.yml", excludes)):
-        check(f"{label} ships Data", "Data" in names, False)
-        for kept in ("Art", "docs", "Tools"):
-            check(f"{label} skips {kept}", kept in names, True)
+    check(".pkgmeta ships Data", "Data" in meta, False)
+    for kept in ("Art", "docs", "Docs", "Tools", "tests", "AGENTS.md"):
+        check(f".pkgmeta skips {kept}", kept in meta, True)
     check("layout script ships Data", "'Data'" in layout, False)
-    for kept in ("Art", "docs", "Tools"):
+    for kept in ("Art", "docs", "Tools", "tests"):
         check(f"layout script skips {kept}", f"'{kept}'" in layout, True)
+    check("layout script skips AGENTS.md", "'AGENTS.md'" in layout_text, True)
     check("the release workflow runs the zip check",
-          "check_release_zip.py" in read(".github/workflows/release.yml"), True)
+          "check_release_zip.py" in workflow, True)
+    check("the release workflow inserts the pre-upload gate",
+          "insert_release_gate.py" in workflow, True)
+    check("the release workflow pins packager v2.7.0",
+          "v2.7.0" in workflow and "01e8631a69c69d7654c788d152630d5fed9e3812" in workflow, True)
+    check("the release workflow does not use a floating packager ref",
+          "packager@v2" in workflow, False)
+    check("the release workflow can dry-run without a tag",
+          "workflow_dispatch:" in workflow, True)
+    check("the release workflow does not build a second zip with rsync",
+          "rsync " in workflow, False)
+    for ln in workflow.splitlines():
+        if "${{ secrets." in ln:
+            check("a secret is passed through env",
+                  ln.strip().startswith(("CF_API_KEY:", "WAGO_API_TOKEN:")), True)
     check("the layout script runs the zip check",
-          "check_release_zip.py" in read("Tools/build_release_layout.ps1"), True)
+          "check_release_zip.py" in layout_text, True)
 
 
 def test_packaged_zip_has_every_toc_file():
-    patterns = rsync_excludes(read(".github/workflows/release.yml"))
+    patterns = pkgmeta_ignores(read(".pkgmeta"))
     buf = build_zip(patterns)
     good_bytes = buf.getvalue()
     with zipfile.ZipFile(io.BytesIO(good_bytes)) as zf:

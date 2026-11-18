@@ -63,10 +63,10 @@ $Git  = Get-GitExe
 if (-not $OutDir) { $OutDir = Join-Path ([System.IO.Path]::GetTempPath()) 'ToonAge-release-layout' }
 $pkg = Join-Path $OutDir 'ToonAge'
 
-# Same exclusions as release.yml's rsync. rsync --exclude='Tools' drops any path
-# component named Tools, anywhere -- so this matches on every segment.
-$ExcludeDirs  = @('.git', '.github', 'Art', 'Tools', 'Docs', 'docs', '.claude', '__pycache__')
-$ExcludeNames = @('CLAUDE.md', '.rules.md', '.gitignore')
+# Dev-only paths stay out of a layout a player would install. A directory
+# name matches any path segment, the same way the release checker does.
+$ExcludeDirs  = @('.git', '.github', 'Art', 'Tools', 'tests', 'Docs', 'docs', '.claude', '__pycache__')
+$ExcludeNames = @('CLAUDE.md', '.rules.md', '.gitignore', 'AGENTS.md')
 function Test-Excluded([string] $rel) {
     $parts = $rel -split '[\\/]'
     foreach ($p in $parts[0..($parts.Count - 2)]) { if ($ExcludeDirs -contains $p) { return $true } }
