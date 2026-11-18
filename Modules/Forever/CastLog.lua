@@ -490,7 +490,12 @@ end
 local function DrawSpecButtons(parent, y, token)
     local _, order, chosen = ChosenSpec(token)
     if not order or #order == 0 then return y end
-    return L:ButtonRow(parent, y, SpecButtonDefs(token, order, chosen), { label = "Your spec:" })
+    -- The slot is 184 wide. An inline label indents only the first button
+    -- row, and the wrapped row starts at the inset. The caption sits on its
+    -- own line so every button row shares that inset. The wide pane still
+    -- passes the caption into ButtonRow.
+    y = L:Paragraph(parent, y, "Your spec:", { size = 9, color = L.C_DIM })
+    return L:ButtonRow(parent, y, SpecButtonDefs(token, order, chosen))
 end
 
 local function DrawBuffLines(parent, y, s, token)

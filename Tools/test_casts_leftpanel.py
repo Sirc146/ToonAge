@@ -275,6 +275,59 @@ function FindRow(root, label)
     return found
 end
 
+function PointOf(frame)
+    if not frame or not frame._points then return nil, nil end
+    for i = #frame._points, 1, -1 do
+        if frame._points[i].a == "TOPLEFT" then
+            return frame._points[i].d, frame._points[i].e
+        end
+    end
+    return nil, nil
+end
+
+function FindText(root, text)
+    local found
+    local function walk(frame)
+        if found or type(frame) ~= "table" then return end
+        if frame._kind == "FontString" and frame.GetText and frame:GetText() == text then
+            found = frame
+            return
+        end
+        if frame.GetRegions then
+            for _, region in ipairs({ frame:GetRegions() }) do walk(region) end
+        end
+        if frame.GetChildren then
+            for _, child in ipairs({ frame:GetChildren() }) do walk(child) end
+        end
+    end
+    walk(root)
+    return found
+end
+
+-- Left edge of each button row. Two rows that do not share an x are the
+-- ragged wrap: the label ate the first row, and the next row started at 0.
+function RowStart(buttons)
+    local rows, order = {}, {}
+    for _, b in ipairs(buttons) do
+        local x, y = PointOf(b)
+        if x and y then
+            local key = tostring(y)
+            if rows[key] == nil then
+                rows[key] = x
+                order[#order + 1] = key
+            elseif x < rows[key] then
+                rows[key] = x
+            end
+        end
+    end
+    if #order < 2 then return false, nil, #order end
+    local first = rows[order[1]]
+    for _, key in ipairs(order) do
+        if rows[key] ~= first then return false, first, #order end
+    end
+    return true, first, #order
+end
+
 function FindButton(root, label)
     local found
     local function walk(frame)
@@ -329,6 +382,12 @@ ui._leftPanelDefer = false
 M:Render(retail, ui.sideChild)
 retailBlob = Blob(retail)
 retailReg = TA:LeftPanelSpec("casts")
+retailArcane = FindButton(retail, "Arcane")
+retailSpec = FindText(retail, "Your spec:")
+retailArcaneX, retailArcaneY = PointOf(retailArcane)
+retailSpecX, retailSpecY = PointOf(retailSpec)
+retailInline = retailArcaneX ~= nil and retailSpecY ~= nil and retailArcaneY ~= nil
+    and retailArcaneX > 14 and retailSpecY < retailArcaneY
 
 TA.IsForever = true
 TA.flavor = "forever"
@@ -370,6 +429,14 @@ if btnWide then
         if (b:GetWidth() or 0) < (b.lbl:GetStringWidth() or 0) then btnWide = false end
     end
 end
+slotSpec = FindText(slotContent, "Your spec:")
+specX, specY = PointOf(slotSpec)
+_, arcaneY = PointOf(arcaneBtn)
+_, fireY = PointOf(fireBtn)
+_, frostY = PointOf(frostBtn)
+specAbove = specY ~= nil and arcaneY ~= nil and fireY ~= nil and frostY ~= nil
+    and specY > arcaneY and specY > fireY and specY > frostY
+slotRowsAligned, slotRowX, slotRowCount = RowStart({ arcaneBtn, fireBtn, frostBtn })
 activeDanger = activeRow and activeRow.value and activeRow.value._r == 1
     and activeRow.value._g == 0.35 and activeRow.value._b == 0.30
 slotScrollShown = slot and slot.scroll:IsShown()
@@ -447,6 +514,7 @@ emptyBlob = Blob(emptyRight)
     check("another flavor still draws the summary on the right", has(g.retailBlob, "Active time"), True)
     check("another flavor still draws the spec buttons on the right", has(g.retailBlob, "Arcane"), True)
     check("another flavor still draws the guide on the right", has(g.retailBlob, "Compared with the guide"), True)
+    check("the wide layout keeps the spec label on the button row", bool(g.retailInline), True)
 
     check("forever casts registers a slot", g.spec is not None, True)
     check("the slot build is a function", bool(g.hasBuild), True)
@@ -461,6 +529,11 @@ emptyBlob = Blob(emptyRight)
 
     check("build draws the spec buttons", has(g.slotBlob, "Arcane") and has(g.slotBlob, "Fire") and has(g.slotBlob, "Frost"), True)
     check("build draws the spec label", has(g.slotBlob, "Your spec:"), True)
+    check("the slot puts the spec label above the buttons", bool(g.specAbove), True)
+    check("every slot button row starts at the same x", bool(g.slotRowsAligned), True)
+    check("the slot button rows start at the pane inset", g.slotRowX, 14)
+    check("the slot spec label shares that inset", g.specX, 14)
+    check("the slot wraps the spec buttons onto a second row", (g.slotRowCount or 0) >= 2, True)
     check("build draws active time", has(g.slotBlob, "Active time"), True)
     check("build draws the active-time percent", has(g.slotBlob, "90%"), True)
     check("build draws the active-time note", has(g.slotBlob, "Target is 90%."), True)
