@@ -163,7 +163,7 @@ end
 --- @return table { judged, lines = { {text, status} }, extra = { name = count } }
 function M.Analyse(fights, ref, known, buffs, buffsReadable)
     local out = { judged = 0, lines = {}, extra = {} }
-    local function add(text, status) out.lines[#out.lines + 1] = { text, status } end
+    local function add(text, status, kind) out.lines[#out.lines + 1] = { text, status, kind } end
 
     local named = {}
     for _, role in ipairs({ "buff", "opener", "core" }) do
@@ -200,11 +200,11 @@ function M.Analyse(fights, ref, known, buffs, buffsReadable)
             local up = false
             for _, n in ipairs(SplitAlts(e)) do if buffs[n] then up = true end end
             if not buffsReadable then
-                add(have .. ": can't read your buffs right now.", "dim")
+                add(have .. ": can't read your buffs right now.", "dim", "buff")
             elseif up then
-                add(have .. " is up.", "good")
+                add(have .. " is up.", "good", "buff")
             else
-                add(have .. " is not up. The guide keeps it active at all times.", "bad")
+                add(have .. " is not up. The guide keeps it active at all times.", "bad", "buff")
             end
         end
     end
@@ -308,28 +308,269 @@ end
 
 local VERDICT_COLOUR = { good = U.GREEN, warn = U.ORANGE, bad = U.RED, dim = U.GREY }
 
-local function RenderCoach(content, y, s)
-    local _, token = UnitClass("player")
+local CASTERS = {
+    MAGE = true, WARLOCK = true, PRIEST = true,
+    SHAMAN = true, DRUID = true, EVOKER = true,
+}
+
+local function InCombat()
+    local compat = TA.Compat
+    if compat and type(compat.InCombat) == "function" then
+        local ok, locked = pcall(compat.InCombat)
+        if ok then return locked and true or false end
+    end
+    if type(InCombatLockdown) ~= "function" then return false end
+    local ok, locked = pcall(InCombatLockdown)
+    return ok and locked and true or false
+end
+
+local function PlayerClass()
+    local compat = TA.Compat
+    if compat and type(compat.UnitClass) == "function" then
+        local ok, localized, token = pcall(compat.UnitClass, "player")
+        if ok then return localized, token end
+    end
+    if type(UnitClass) ~= "function" then return nil, nil end
+    local ok, localized, token = pcall(UnitClass, "player")
+    if not ok then return nil, nil end
+    return localized, token
+end
+
+local function ForeverCasts()
+    return (TA.IsForever or TA.flavor == "forever") and true or false
+end
+
+local function FightStats(f, classToken)
+    local total = #f.casts
+    local dur = tonumber(f.dur) or 0
+    local mins = dur / 60
+    local maxCasts = math.floor(dur / GCD_SECONDS)
+    local active = tonumber(f.active) or 0
+    local activePct = (dur > 0) and math.min(100, (active / dur) * 100) or 0
+    local gcdText = "n/a"
+    if maxCasts > 0 then
+        gcdText = string.format("%d%%", math.min(100, math.floor(100 * total / maxCasts)))
+    end
+    return {
+        total = total, mins = mins, maxCasts = maxCasts,
+        active = active, activePct = activePct, gcdText = gcdText,
+        gcdNote = string.format("%d casts out of at most %d at a %.1f s global cooldown.",
+            total, maxCasts, GCD_SECONDS),
+        caster = CASTERS[classToken] and true or false,
+    }
+end
+
+local function SummaryColumn(parent, labels)
+    local rowW = L:Width(parent)
+    local gap, slack = 6, 8
+    local valueW = 52
+    if rowW < valueW + gap + 48 then
+        valueW = math.max(36, math.floor(rowW * 0.28))
+    end
+    local room = rowW - valueW - gap
+    local size, widest, fit = 10, 0, false
+    while size >= 8 do
+        widest = 0
+        for _, text in ipairs(labels) do
+            local w = L:TextWidth(text, size)
+            if w > widest then widest = w end
+        end
+        if widest + slack <= room then
+            fit = true
+            break
+        end
+        if size == 8 then break end
+        size = size - 1
+    end
+    local labelW = math.floor(widest + slack)
+    if not fit or labelW > room then
+        labelW = math.max(40, math.floor(room))
+    end
+    if labelW + gap + valueW > rowW - 8 then
+        valueW = math.max(36, math.floor(rowW - 8 - labelW - gap))
+    end
+    return { labelWidth = labelW, valueWidth = valueW, labelSize = size }
+end
+
+local function ActiveValue(stats)
+    return string.format("%d%%", math.floor(stats.activePct + 0.5))
+end
+
+local function ChosenSpec(token)
     local specs, order = SpecsFor(token)
+    if not specs or not TA.charDB then return specs, order, nil end
+    TA.charDB.coachSpec = TA.charDB.coachSpec or {}
+    TA.charDB.coachSpecManual = TA.charDB.coachSpecManual or {}
+    local detected = DetectSpec(token)
+    local chosen = TA.charDB.coachSpecManual[token] and TA.charDB.coachSpec[token] or detected
+    return specs, order, chosen
+end
+
+local function SpecButtonDefs(token, order, chosen)
+    local buttons = {}
+    for _, spec in ipairs(order or {}) do
+        buttons[#buttons + 1] = {
+            label = spec,
+            active = (spec == chosen),
+            onClick = function()
+                if not TA.charDB then return end
+                TA.charDB.coachSpec = TA.charDB.coachSpec or {}
+                TA.charDB.coachSpecManual = TA.charDB.coachSpecManual or {}
+                TA.charDB.coachSpec[token] = spec
+                TA.charDB.coachSpecManual[token] = true
+                if L and L.RefreshUI then L:RefreshUI() end
+            end,
+        }
+    end
+    return buttons
+end
+
+local function PreparedFights(s)
+    local fights = {}
+    for i, fight in ipairs(s.fights or {}) do
+        local copy = { casts = {} }
+        for j, c in ipairs(fight.casts) do copy.casts[j] = { name = SpellName(c[2]) } end
+        fights[i] = copy
+    end
+    return fights
+end
+
+local function DrawSummaryWide(parent, y, f, token, s)
+    local stats = FightStats(f, token)
+    y = L:SectionHeader(parent, y, "Last fight",
+        date("%H:%M", f.stamp) .. string.format("  ·  %d fights kept", #s.fights))
+    y = L:DataRow(parent, y, { label = "Length", value = string.format("%.0f sec", f.dur) })
+    y = L:DataRow(parent, y, { label = "Casts", value = tostring(stats.total),
+        note = string.format("%.1f per minute", stats.mins > 0 and stats.total / stats.mins or 0) })
+    if stats.caster then
+        local past = stats.activePct >= 90
+        y = L:CapBar(parent, y, {
+            label = "Active time",
+            value = ActiveValue(stats),
+            current = stats.active,
+            cap = f.dur,
+            capped = past,
+            fillRGB = past and { 0.275, 0.784, 0.416 } or { 0.45, 0.52, 0.58 },
+            tickAt = 0.90,
+            note = "Cast and channel time over the fight. Target is 90%.",
+        })
+    end
+    y = L:DataRow(parent, y, {
+        label = "Global cooldowns used", value = stats.gcdText, note = stats.gcdNote,
+    })
+    return y
+end
+
+local function DrawSummarySlot(parent, y, f, token, s)
+    local stats = FightStats(f, token)
+    local labels = { "Length", "Casts", "Global cooldowns used" }
+    if stats.caster then table.insert(labels, 3, "Active time") end
+    local col = SummaryColumn(parent, labels)
+    local function row(label, value, note, status)
+        y = L:DataRow(parent, y, {
+            label = label, value = value, note = note, status = status,
+            labelWidth = col.labelWidth, valueWidth = col.valueWidth, labelSize = col.labelSize,
+        })
+    end
+    y = L:Paragraph(parent, y, date("%H:%M", f.stamp)
+        .. string.format("  ·  %d fights kept", #s.fights), { color = "dim" })
+    row("Length", string.format("%.0f sec", f.dur))
+    row("Casts", tostring(stats.total),
+        string.format("%.1f per minute", stats.mins > 0 and stats.total / stats.mins or 0))
+    if stats.caster then
+        local past = stats.activePct >= 90
+        row("Active time", ActiveValue(stats),
+            "Cast and channel time over the fight. Target is 90%.",
+            past and "good" or "warn")
+    end
+    row("Global cooldowns used", stats.gcdText, stats.gcdNote)
+    return y
+end
+
+local function DrawSpecButtons(parent, y, token)
+    local _, order, chosen = ChosenSpec(token)
+    if not order or #order == 0 then return y end
+    -- The slot is 184 wide. An inline label indents only the first button
+    -- row, and the wrapped row starts at the inset. The caption sits on its
+    -- own line so every button row shares that inset. The wide pane still
+    -- passes the caption into ButtonRow.
+    y = L:Paragraph(parent, y, "Your spec:", { size = 9, color = L.C_DIM })
+    return L:ButtonRow(parent, y, SpecButtonDefs(token, order, chosen))
+end
+
+local function DrawBuffLines(parent, y, s, token)
+    local specs, _, chosen = ChosenSpec(token)
+    if not (specs and chosen and specs[chosen]) then return y end
+    local known = KnownClassSpells()
+    local buffs, readable = CurrentBuffs()
+    local report = M.Analyse(PreparedFights(s), specs[chosen], known, buffs, readable)
+    for _, ln in ipairs(report.lines) do
+        if ln[3] == "buff" then
+            y = L:Paragraph(parent, y, (VERDICT_COLOUR[ln[2]] or "") .. ln[1] .. "|r")
+        end
+    end
+    return y
+end
+
+local function SlotOwnsSummary()
+    if not (ForeverCasts() and type(TA.RegisterLeftPanel) == "function") then return false end
+    local ui = TA.UI
+    if ui and ui._leftPanelDefer then return true end
+    local scroll = ui and ui._leftSlot and ui._leftSlot.scroll
+    if ui and ui._leftPanelTab == "casts" and scroll and scroll.IsShown and scroll:IsShown() then
+        return true
+    end
+    return false
+end
+
+function M:ReleaseLeft(content)
+    local layout = L or TA.Layout
+    if layout and type(layout.ReleasePane) == "function" and content then
+        layout:ReleasePane(content)
+    end
+    if content and content.GetRegions then
+        for _, region in ipairs({ content:GetRegions() }) do
+            if region.SetText then region:SetText("") end
+            if region.Hide then region:Hide() end
+        end
+    end
+    if content and content.GetChildren then
+        for _, child in ipairs({ content:GetChildren() }) do
+            if child.Hide then child:Hide() end
+        end
+    end
+end
+
+function M:DrawLeft(content)
+    L = L or TA.Layout
+    if not (L and content) then return end
+    if type(L.ReleasePane) == "function" then L:ReleasePane(content) end
+    local y = -8
+    local s = Store()
+    local f = s and s.fights and s.fights[1]
+    if not f then
+        L:Finish(content, y)
+        return
+    end
+    local _, token = PlayerClass()
+    if not InCombat() then y = DrawSpecButtons(content, y, token) end
+    y = DrawSummarySlot(content, y, f, token, s)
+    if not InCombat() then y = DrawBuffLines(content, y, s, token) end
+    L:Finish(content, y)
+end
+
+local function RenderCoach(content, y, s, moved)
+    local _, token = PlayerClass()
+    local specs, order, chosen = ChosenSpec(token)
     y = L:Divider(content, y)
     y = L:SectionHeader(content, y, "Compared with the guide")
     if not specs then
         return L:Paragraph(content, y, "No checked reference for your class yet.", { color = L.C_DIM })
     end
 
-    TA.charDB.coachSpec = TA.charDB.coachSpec or {}
-    TA.charDB.coachSpecManual = TA.charDB.coachSpecManual or {}
-    local detected = DetectSpec(token)
-    local chosen = TA.charDB.coachSpecManual[token] and TA.charDB.coachSpec[token] or detected
-    local buttons = {}
-    for _, spec in ipairs(order) do
-        buttons[#buttons + 1] = { label = spec, active = (spec == chosen), onClick = function()
-            TA.charDB.coachSpec[token] = spec
-            TA.charDB.coachSpecManual[token] = true
-            if L.RefreshUI then L:RefreshUI() end
-        end }
+    if not moved then
+        y = L:ButtonRow(content, y, SpecButtonDefs(token, order, chosen), { label = "Your spec:" })
     end
-    y = L:ButtonRow(content, y, buttons, { label = "Your spec:" })
     if not chosen or not specs[chosen] then
         return L:Paragraph(content, y, "Pick your spec to compare your casts with its guide.",
             { color = L.C_DIM })
@@ -338,19 +579,14 @@ local function RenderCoach(content, y, s)
     local ref = specs[chosen]
     local known = KnownClassSpells()
     local buffs, readable = CurrentBuffs()
-    local fights = {}
-    for i, f in ipairs(s.fights) do
-        local copy = { casts = {} }
-        for j, c in ipairs(f.casts) do copy.casts[j] = { name = SpellName(c[2]) } end
-        fights[i] = copy
-    end
-
-    local a = M.Analyse(fights, ref, known, buffs, readable)
-    for _, ln in ipairs(a.lines) do
-        y = L:Bullet(content, y, (VERDICT_COLOUR[ln[2]] or "") .. ln[1] .. "|r")
+    local report = M.Analyse(PreparedFights(s), ref, known, buffs, readable)
+    for _, ln in ipairs(report.lines) do
+        if not (moved and ln[3] == "buff") then
+            y = L:Bullet(content, y, (VERDICT_COLOUR[ln[2]] or "") .. ln[1] .. "|r")
+        end
     end
     local extras = {}
-    for n, c in pairs(a.extra) do extras[#extras + 1] = string.format("%s (%d fights)", n, c) end
+    for n, c in pairs(report.extra) do extras[#extras + 1] = string.format("%s (%d fights)", n, c) end
     table.sort(extras)
     if #extras > 0 then
         y = L:Paragraph(content, y, "Not in the guide's priority -- worth checking if it earns its "
@@ -383,8 +619,13 @@ end
 
 function SpellName(id)
     local n
-    if C_Spell and C_Spell.GetSpellName then
-        local ok, v = pcall(C_Spell.GetSpellName, id); if ok then n = v end
+    local compat = TA.Compat
+    if compat and type(compat.GetSpellName) == "function" then
+        local ok, v = pcall(compat.GetSpellName, id)
+        if ok then n = v end
+    elseif C_Spell and C_Spell.GetSpellName then
+        local ok, v = pcall(C_Spell.GetSpellName, id)
+        if ok then n = v end
     end
     if n == nil or isSecret(n) then return "spell " .. tostring(id) end
     return n
@@ -409,8 +650,23 @@ function M:Render(content, side)
     if FC and FC.RenderSidebarPublic then pcall(FC.RenderSidebarPublic, FC, side) end
 
     local s = Store()
+    local f = s and s.fights and s.fights[1]
+    local useSlot = ForeverCasts() and type(TA.RegisterLeftPanel) == "function"
+    if useSlot and f then
+        TA:RegisterLeftPanel("casts", {
+            place = "below",
+            build = function(slotContent) M:DrawLeft(slotContent) end,
+            refresh = function(slotContent) M:DrawLeft(slotContent) end,
+            release = function(slotContent) M:ReleaseLeft(slotContent) end,
+        })
+    elseif useSlot then
+        if TA.UI and TA.UI._leftPanelTab == "casts" and type(TA.ReleaseLeftPanel) == "function" then
+            TA:ReleaseLeftPanel(TA.UI)
+        end
+        TA:ClearLeftPanel("casts")
+    end
+
     local y = -8
-    local f = s and s.fights[1]
     if not f then
         y = L:SectionHeader(content, y, "Casts")
         y = L:Paragraph(content, y,
@@ -420,41 +676,13 @@ function M:Render(content, side)
         return
     end
 
-    local mins = f.dur / 60
-    local total = #f.casts
-    local maxCasts = math.floor(f.dur / GCD_SECONDS)
-    local _, classToken = UnitClass("player")
-    local CASTERS = { MAGE = true, WARLOCK = true, PRIEST = true, SHAMAN = true, DRUID = true, EVOKER = true }
-    local active = tonumber(f.active) or 0
-    local activePct = (f.dur and f.dur > 0) and math.min(100, (active / f.dur) * 100) or 0
-    y = L:SectionHeader(content, y, "Last fight",
-        date("%H:%M", f.stamp) .. string.format("  ·  %d fights kept", #s.fights))
-    y = L:DataRow(content, y, { label = "Length", value = string.format("%.0f sec", f.dur) })
-    y = L:DataRow(content, y, { label = "Casts", value = tostring(total),
-        note = string.format("%.1f per minute", mins > 0 and total / mins or 0) })
-    if CASTERS[classToken] then
-        local past = activePct >= 90
-        y = L:CapBar(content, y, {
-            label = "Active time",
-            value = string.format("%d%%", math.floor(activePct + 0.5)),
-            current = active,
-            cap = f.dur,
-            capped = past,
-            fillRGB = past and { 0.275, 0.784, 0.416 } or { 0.45, 0.52, 0.58 },
-            tickAt = 0.90,
-            note = "Cast and channel time over the fight. Target is 90%.",
-        })
-        y = L:DataRow(content, y, { label = "Global cooldowns used",
-            value = maxCasts > 0 and string.format("%d%%", math.min(100, math.floor(100 * total / maxCasts))) or "n/a",
-            note = string.format("%d casts out of at most %d at a %.1f s global cooldown.",
-                total, maxCasts, GCD_SECONDS) })
-    else
-        y = L:DataRow(content, y, { label = "Global cooldowns used",
-            value = maxCasts > 0 and string.format("%d%%", math.min(100, math.floor(100 * total / maxCasts))) or "n/a",
-            note = string.format("%d casts out of at most %d at a %.1f s global cooldown.",
-                total, maxCasts, GCD_SECONDS) })
+    local _, classToken = PlayerClass()
+    local moved = SlotOwnsSummary()
+    if not moved then
+        y = DrawSummaryWide(content, y, f, classToken, s)
     end
 
+    local total = #f.casts
     y = L:Divider(content, y)
     y = L:SectionHeader(content, y, "What you cast")
     local counts, order = Summarise(f)
@@ -472,14 +700,20 @@ function M:Render(content, side)
     local chev = "|TInterface\\AddOns\\ToonAge\\Media\\icons\\util_chevron_16.tga:10:10:0:0|t"
     y = L:Paragraph(content, y, table.concat(open, "  " .. chev .. "  "), { color = L.C_PRIMARY })
 
-    if InCombatLockdown and InCombatLockdown() then
+    if InCombat() then
         y = L:Divider(content, y)
         y = L:Paragraph(content, y, "The comparison with the guide appears after combat.",
             { color = L.C_DIM })
     else
-        y = RenderCoach(content, y, s)
+        y = RenderCoach(content, y, s, moved)
     end
     L:Finish(content, y)
+    if moved and not (TA.UI and TA.UI._leftPanelDefer) then
+        local slot = TA.UI and TA.UI._leftSlot
+        if slot and slot.content and TA.UI._leftPanelTab == "casts" then
+            M:DrawLeft(slot.content)
+        end
+    end
 end
 
 -- ── Lifecycle ─────────────────────────────────────────────────────────────
