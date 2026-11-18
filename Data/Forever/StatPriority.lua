@@ -264,12 +264,19 @@ TA.Data.ForeverStatPriority = {
     },
     MAGE = {
         Arcane = row({
+            -- Checked 2026-11-18.
+            -- https://www.icy-veins.com/wow-forever/arcane-mage-ranged-dps-pve-stat-priority
+            -- "You may also come across items with Arcane Damage on them. Value these equally to Spell Damage".
             iv("arcane-mage-ranged-dps-pve-stat-priority", {
-                order(MAGE_IV_LINE, MAGE_IV_STATS),
+                order(MAGE_IV_LINE,
+                    { "Hit", { "SpellPower", "ArcaneDamage" }, "Crit", "Intellect", "Spirit", "MP5" }),
             }),
-            wh("mage/arcane/stat-priority-pve-dps", "2026/10/28", {
-                order("Hit Chance until 17% > Spell Damage (+ Arcane Damage) > Critical Strike Chance > Spell Piercing > Haste > Intellect > Spirit > Stamina",
-                    { "Hit", { "SpellPower", "ArcaneDamage" }, "Crit", "SpellPierce", "Haste", "Intellect", "Spirit", "Stamina" }),
+            -- Checked 2026-11-18.
+            -- https://www.wowhead.com/forever/guide/classes/mage/arcane/stat-priority-pve-dps
+            -- Updated 2026/11/17. List item 2 is "Spell Damage". The level-30 caveat is unchanged.
+            wh("mage/arcane/stat-priority-pve-dps", "2026/11/17", {
+                order("Hit Chance until 17% > Spell Damage > Critical Strike Chance > Spell Piercing > Haste > Intellect > Spirit > Stamina",
+                    { "Hit", "SpellPower", "Crit", "SpellPierce", "Haste", "Intellect", "Spirit", "Stamina" }),
             }, CAVEAT_ARCANE),
         }),
         Fire = row({
