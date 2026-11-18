@@ -1,5 +1,5 @@
 # BigWigs packager manifest — controls what ends up in the published zip.
-# Used by the Wago upload workflow (.github/workflows/wago.yml).
+# Used by the release workflow (.github/workflows/release.yml).
 package-as: ToonAge
 
 # The Wago Analytics shim is vendored in Libs/ rather than pulled as an
@@ -17,3 +17,5 @@ ignore:
     - docs
     - Releases
     - Tools
+    - tests
+    - AGENTS.md
