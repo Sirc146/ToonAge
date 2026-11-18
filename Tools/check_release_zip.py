@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Fail a release package that is not the zip we intend to publish.
 
-The package must contain every file a TOC lists, all eight flavor TOCs,
-and none of the dev paths (docs/, Docs/, AGENTS.md, Tools/, tests).
+The package must contain every file a TOC lists and all eight flavor TOCs.
+Dev paths are refused (docs/, Docs/, AGENTS.md, Tools/, tests, .claude/,
+.github/, Art/, .rules.md, CLAUDE.md, .gitignore, and any .py file).
+Anything else must use an extension the addon ships: lua, xml, toc, tga, md.
+That set is the extensions in the packager zip (tracked addon files plus
+the generated changelog), not a frozen list of paths.
 Pass --version to require that stamped version in every flavor TOC.
 Pass --manifest to write a SHA-256 manifest after the checks pass.
 Pass --require-zip-sha to fail when a file is not the manifest's zip.
@@ -29,8 +33,12 @@ REQUIRED_TOCS = (
     "ToonAge_Vanilla.toc",
     "ToonAge_Wrath.toc",
 )
-FORBIDDEN_SEGMENTS = ("docs", "Docs", "Tools", "tests")
-FORBIDDEN_NAMES = ("AGENTS.md",)
+FORBIDDEN_SEGMENTS = (
+    "docs", "Docs", "Tools", "tests", ".claude", ".github", "Art",
+)
+FORBIDDEN_NAMES = ("AGENTS.md", ".rules.md", "CLAUDE.md", ".gitignore")
+# Extensions in the packager zip: tracked addon files plus CHANGELOG.md.
+ALLOWED_EXTENSIONS = frozenset({"lua", "xml", "toc", "tga", "md"})
 
 
 def listed_files(text):
@@ -58,15 +66,29 @@ def _missing(toc_name, text, present, prefix):
     return missing, checked
 
 
+def file_extension(name):
+    base = name.replace("\\", "/").rsplit("/", 1)[-1]
+    if "." not in base:
+        return ""
+    if base.startswith(".") and base.count(".") == 1:
+        return ""
+    return base.rsplit(".", 1)[-1].lower()
+
+
 def forbidden_reason(name):
     parts = [part for part in name.replace("\\", "/").split("/") if part]
     if not parts:
         return None
     if parts[-1] in FORBIDDEN_NAMES:
-        return name
+        return f"dev file: {name}"
     for part in parts:
-        if part in FORBIDDEN_SEGMENTS:
-            return name
+        if part in FORBIDDEN_SEGMENTS or part.startswith("."):
+            return f"dev file: {name}"
+    ext = file_extension(name)
+    if ext == "py":
+        return f"python file: {name}"
+    if ext not in ALLOWED_EXTENSIONS:
+        return f"disallowed type: {name}"
     return None
 
 
@@ -106,7 +128,7 @@ def check_names(entries, read_text, version):
     for name, _payload in entries:
         reason = forbidden_reason(name)
         if reason:
-            problems.append(f"dev file: {reason}")
+            problems.append(reason)
 
     found = root_tocs(present)
     for toc in REQUIRED_TOCS:
