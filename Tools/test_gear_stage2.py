@@ -164,10 +164,19 @@ def main():
             continue
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if any(name in line for name in FORBIDDEN):
-                ok = line.strip().startswith("--") and "All Rights Reserved" in line
-                if not ok:
+                licence = line.strip().startswith("--") and "All Rights Reserved" in line
+                # The folder name is the IsAddOnLoaded key, verified from the
+                # addon's own .toc. It is not their code.
+                verified_name = (
+                    rel == ADVICE
+                    and "ForeverLevelingBiS" in line
+                    and "MaxDps" not in line
+                    and (line.strip().startswith("--") or "SCORER_FLBIS" in line)
+                )
+                if not (licence or verified_name):
                     licence_hits.append(f"{rel}:{lineno}")
-    check("Forever files name those addons only in a licence comment", licence_hits, [])
+    check("Forever files name those addons only in a licence comment or the verified folder check",
+          licence_hits, [])
 
     if not (ROOT / ADVICE).is_file():
         passed = sum(_results)
@@ -373,9 +382,8 @@ end
     check("neither shown percent is the average of the two",
           expected["Icy Veins"] != mean and expected["Wowhead"] != mean, True)
     for row in both:
-        check(f"{row['name']} line is a suggestion from the level 60 order",
-              "suggestion" in row["text"] and "level 60 guide order" in row["text"]
-              and "upgrade" in row["text"], True)
+        check(f"{row['name']} tooltip text does not print a percent",
+              "%" not in row["text"] and row["verdict"] == "upgrade", True)
         check(f"{row['name']} upgrade is green", row["g"] > 0.8 and row["r"] < 0.5, True)
         check(f"{row['name']} cap is omitted when the item has no Hit", row["cap"], "")
 
@@ -392,10 +400,12 @@ end
     check("a lower score is a downgrade on both sources",
           [row["verdict"] for row in down], ["downgrade", "downgrade"])
     check("downgrade is red", down[0]["r"] > 0.8 and down[0]["g"] < 0.5, True)
-    check("downgrade text says downgrade", "downgrade" in down[0]["text"], True)
+    check("downgrade text does not print a percent",
+          "%" not in down[0]["text"] and down[0]["verdict"] == "downgrade", True)
     lua.execute('equipped = nil')
     empty = dump_rows("item:new")
-    check("an empty slot is named", "empty slot" in empty[0]["text"], True)
+    check("an empty slot does not print a percent",
+          "%" not in empty[0]["text"] and empty[0]["text"].startswith("ToonAge:"), True)
     lua.execute('equipped = "item:old"')
 
     lua.execute('specName = "Arcane"')

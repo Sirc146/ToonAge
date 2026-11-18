@@ -1124,6 +1124,16 @@ function C.UnitName(unit)
     return Shown(name)
 end
 
+--- Player level. Nil when the client has no number. Gear advice uses this
+--- to hide level-60 lines below 60.
+function C.UnitLevel(unit)
+    if TA.HasAPI and not TA:HasAPI("UnitLevel") then return nil end
+    if type(UnitLevel) ~= "function" then return nil end
+    local ok, level = pcall(UnitLevel, unit or "player")
+    if not ok or type(level) ~= "number" then return nil end
+    return level
+end
+
 --- Game order: localized name, then English token (for example "Mage", "MAGE").
 --- @return string localized, string token
 function C.UnitClass(unit)

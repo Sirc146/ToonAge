@@ -418,6 +418,14 @@ function Settings:Render(content, sidebar)
             TA.db.foreverGearTooltip = not on
         end)
 
+        y = MakeToggleRow(content, y, w, "Defer gear scoring to Polestar/Pawn", function()
+            return not (TA.db and TA.db.foreverGearDefer == false)
+        end, function()
+            if not TA.db then return end
+            local on = not (TA.db.foreverGearDefer == false)
+            TA.db.foreverGearDefer = not on
+        end)
+
         y = MakeToggleRow(content, y, w, "Suggest gear upgrades with arrows on bags, loot and quest rewards", function()
             return not (TA.db and TA.db.foreverGearArrows == false)
         end, function()

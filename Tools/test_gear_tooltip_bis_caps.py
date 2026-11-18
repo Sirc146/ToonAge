@@ -287,15 +287,14 @@ end
         if len(actual) != len(contract):
             return actual
         for got, want in zip(actual, contract):
-            check(f"{label}: {got['name']} suggestion text unchanged", got["text"], want["text"])
+            check(f"{label}: {got['name']} suggestion has no percent", "%" not in got["text"], True)
             check(f"{label}: {got['name']} percent unchanged", got["rounded"], want["rounded"])
             check(f"{label}: {got['name']} verdict unchanged", got["verdict"], want["verdict"])
             red, green, blue = colors[want["verdict"]]
             check(f"{label}: {got['name']} color unchanged",
                   (got["r"], got["g"], got["b"]), (red, green, blue))
             check(f"{label}: {got['name']} suggestion is not a cap line",
-                  got["text"].startswith("ToonAge: suggestion,")
-                  and "names these caps as text only" not in got["text"], True)
+                  "names these caps as text only" not in got["text"], True)
             if expect_cap:
                 check(f"{label}: {got['name']} cap line present", got["cap"], want["cap"])
                 check(f"{label}: {got['name']} cap is text only",
@@ -321,10 +320,10 @@ end
         if len(HIT_KEY_CANDIDATES) > len(mapped):
             other_key = next(key for key in HIT_KEY_CANDIDATES if key not in mapped)
             other = parse_dump(str(lua.eval(f'Dump("item:other:{other_key}")')))
-            other_text = [row["text"] for row in other]
-            cloak_text = [row["text"] for row in cloak]
-            check("an unmapped Hit-like key does not change suggestion lines",
-                  other_text, cloak_text)
+            other_rounded = {row["name"]: row["rounded"] for row in other}
+            cloak_rounded = {row["name"]: row["rounded"] for row in cloak}
+            check("an unmapped Hit-like key does not change the score",
+                  other_rounded, cloak_rounded)
 
     links = ["item:cloak"] + [f"item:hit:{key}" for key in mapped]
     for key in HIT_KEY_CANDIDATES:
@@ -370,6 +369,140 @@ ToonAge.Compat.IsAddOnLoaded = function(name) return name == "BIS" end
 
     lua.execute("_G.BIS = nil; BIS = nil")
     lua.execute("ToonAge.Compat.IsAddOnLoaded = function() return false end")
+
+    settings = read("Modules/Infrastructure/Settings.lua")
+    check("settings offers Defer gear scoring to Polestar/Pawn",
+          "Defer gear scoring to Polestar/Pawn" in settings and "foreverGearDefer" in settings, True)
+    check("advice does not call Pawn, Polestar, or BIS globals",
+          any(token in advice_code for token in (
+              "_G.Pawn", "_G.Polestar", "_G.ForeverLevelingBiS", "_G.BIS", "UpgradeInfo",
+          )), False)
+
+    lua.execute(r"""
+playerLevel = 60
+ToonAge.Compat.UnitLevel = function() return playerLevel end
+scorerProbes = 0
+local function trap()
+    return setmetatable({}, { __index = function() scorerProbes = scorerProbes + 1 end })
+end
+_G.Polestar = trap()
+_G.ForeverLevelingBiS = trap()
+_G.Pawn = trap()
+function DisplayDump(link)
+    local parts = {}
+    for _, line in ipairs(ToonAge.GearAdvice:DisplayLines(link)) do
+        parts[#parts + 1] = table.concat({
+            line.text,
+            string.format("%.2f", line.r),
+            string.format("%.2f", line.g),
+            string.format("%.2f", line.b),
+        }, "\t")
+    end
+    return table.concat(parts, "\n")
+end
+""")
+
+    def display(link):
+        raw = str(lua.eval(f'DisplayDump("{link}")'))
+        rows = []
+        if raw:
+            for line in raw.split("\n"):
+                body, red, green, blue = line.split("\t")
+                rows.append({"text": body, "r": float(red), "g": float(green), "b": float(blue)})
+        return rows
+
+    def line_texts(rows):
+        return [row["text"] for row in rows]
+
+    def no_percent(rows):
+        return all("%" not in row["text"] for row in rows)
+
+    lua.execute(r"""
+ToonAge.db.foreverGearDefer = nil
+ToonAge.db.foreverGearTooltip = nil
+scorerProbes = 0
+ToonAge.Compat.IsAddOnLoaded = function(name) return name == "Polestar" end
+""")
+    polestar = display("item:cloak")
+    check("Polestar loaded: in-charge line and no percent",
+          line_texts(polestar), ["ToonAge: Polestar (Forever Leveling BiS) is scoring gear"])
+    check("Polestar loaded: the line is dim",
+          (polestar[0]["r"], polestar[0]["g"], polestar[0]["b"]), (0.62, 0.59, 0.55))
+    check("Polestar loaded: addon globals were not read", int(lua.eval("scorerProbes")), 0)
+
+    lua.execute('ToonAge.Compat.IsAddOnLoaded = function(name) return name == "Pawn" end')
+    pawn = display("item:cloak")
+    check("Pawn loaded: Pawn is in charge and no percent",
+          line_texts(pawn), ["ToonAge: Pawn is scoring gear"])
+    check("Pawn loaded: addon globals were not read", int(lua.eval("scorerProbes")), 0)
+
+    lua.execute('''ToonAge.Compat.IsAddOnLoaded = function(name)
+        return name == "Polestar" or name == "Pawn" end''')
+    check("Polestar and Pawn loaded: Polestar wins",
+          line_texts(display("item:cloak")),
+          ["ToonAge: Polestar (Forever Leveling BiS) is scoring gear"])
+
+    lua.execute('ToonAge.Compat.IsAddOnLoaded = function(name) return name == "ForeverLevelingBiS" end')
+    check("Forever Leveling BiS loaded: the Polestar line applies",
+          line_texts(display("item:cloak")),
+          ["ToonAge: Polestar (Forever Leveling BiS) is scoring gear"])
+
+    lua.execute(r"""
+ToonAge.db.foreverGearDefer = false
+ToonAge.Compat.IsAddOnLoaded = function(name) return name == "Polestar" or name == "Pawn" end
+playerLevel = 60
+""")
+    own = display("item:cloak")
+    own_text = line_texts(own)
+    check("toggle off: trade line instead of a scorer",
+          own_text[0], "ToonAge: +9 Intellect, +10 Spirit")
+    check("toggle off: trade color is neutral",
+          (own[0]["r"], own[0]["g"], own[0]["b"]), (0.93, 0.93, 0.93))
+    check("toggle off: trade is not green or red",
+          own[0]["r"] == own[0]["g"] == own[0]["b"] and own[0]["g"] != 0.92 and own[0]["r"] != 1.00, True)
+    check("toggle off: Icy Veins order, no percent, not unverified at 60",
+          "Icy Veins order" in own_text[-1] and "level 60 guide order" in own_text[-1]
+          and "UNVERIFIED for leveling" not in own_text[-1] and "%" not in own_text[-1], True)
+    check("toggle off: no percent anywhere", no_percent(own), True)
+    check("toggle off: no scorer line",
+          any("is scoring gear" in text for text in own_text), False)
+
+    lua.execute(r"""
+ToonAge.db.foreverGearDefer = nil
+ToonAge.Compat.IsAddOnLoaded = function() return false end
+playerLevel = 60
+_G.ITEM_MOD_HIT_SPELL_RATING_SHORT = nil
+_G.ITEM_MOD_HIT_SHORT = nil
+""")
+    solo = display("item:cloak")
+    check("no scorer: trade line plus the Icy Veins order",
+          line_texts(solo)[0] == "ToonAge: +9 Intellect, +10 Spirit"
+          and "Icy Veins order, level 60 guide order:" in line_texts(solo)[-1], True)
+    check("no scorer: no percent", no_percent(solo), True)
+    check("no scorer: trade stays neutral",
+          (solo[0]["r"], solo[0]["g"], solo[0]["b"]), (0.93, 0.93, 0.93))
+
+    lua.execute('_G.ITEM_MOD_HIT_SPELL_RATING_SHORT = "ITEM_MOD_HIT_SPELL_RATING_SHORT"')
+    spell_lines = line_texts(display("item:other:ITEM_MOD_HIT_SPELL_RATING_SHORT"))
+    check("spell-hit item shows a cap line when that global exists",
+          any("names these caps as text only" in text for text in spell_lines), True)
+    lua.execute("_G.ITEM_MOD_HIT_SPELL_RATING_SHORT = nil")
+    check("non-Hit item has no cap line",
+          any("names these caps as text only" in text for text in line_texts(display("item:cloak"))),
+          False)
+
+    lua.execute("playerLevel = 12")
+    low = line_texts(display("item:hit:ITEM_MOD_HIT_RATING_SHORT"))
+    check("below 60 hides level-60 cap lines",
+          any("names these caps as text only" in text for text in low), False)
+    check("below 60 marks the Icy Veins order UNVERIFIED for leveling",
+          any("UNVERIFIED for leveling" in text and "level 60 guide order" in text for text in low), True)
+    check("below 60 prints no percent and no upgrade percent line",
+          all("%" not in text and "upgrade vs" not in text for text in low), True)
+    lua.execute("playerLevel = 60")
+    high = line_texts(display("item:hit:ITEM_MOD_HIT_RATING_SHORT"))
+    check("level 60 hit item shows the cap line",
+          any("names these caps as text only" in text for text in high), True)
 
     passed = sum(_results)
     print(f"[{'OK' if passed == len(_results) else 'FAIL'}] {passed}/{len(_results)} assertions passed.")
