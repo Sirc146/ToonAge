@@ -266,7 +266,7 @@ check("the trainer button exports this character's empty capture, not the hunter
 check("that export starts with a neutral source line",
       exported[0], "-- source Player · Rogue · level 18 · build 70205 · captured unknown")
 check("an empty capture export omits the character name and realm",
-      "Eramali" not in lst(L, "WINDOWS_LOG")[0].text and "Classic Beta PvE" not in lst(L, "WINDOWS_LOG")[0].text)
+      "Examplechar" not in lst(L, "WINDOWS_LOG")[0].text and "Classic Beta PvE" not in lst(L, "WINDOWS_LOG")[0].text)
 check("the hunter rows are not in this character's export",
       "Serpent Sting" not in lst(L, "WINDOWS_LOG")[0].text)
 

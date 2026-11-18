@@ -179,7 +179,7 @@ L.execute("WINDOWS_LOG = {}; ToonAge.modules.DataHarvester:Export('trainer', 1)"
 body = lines_of(L)
 check("trainer export labels the character without a name or realm",
       body[0].startswith("-- source Player · Mage · level 18 · build 70205 · captured "))
-check("trainer export omits the character name", all("Eramali" not in x for x in body))
+check("trainer export omits the character name", all("Examplechar" not in x for x in body))
 check("trainer export omits the realm", all("Classic Beta PvE" not in x for x in body))
 check("trainer export names the NPC",
       body[1], "-- trainer Aelthalyste · id 5490 · class MAGE")
@@ -193,7 +193,7 @@ all_body = "\n".join(lines_of(L))
 check("all-characters export includes the mage source line",
       "-- source Player · Mage · level 18 · build 70205 · captured " in all_body)
 check("all-characters spell export omits character name and realm",
-      "Eramali" not in all_body and "Classic Beta PvE" not in all_body)
+      "Examplechar" not in all_body and "Classic Beta PvE" not in all_body)
 # Hunter has no spellbook capture, only a probe, so the spell export is mage-only.
 check("all-characters spell export has the updated spell", "Fireball Plus" in all_body)
 
@@ -202,7 +202,7 @@ probe = "\n".join(lines_of(L))
 check("probe export starts with the source line",
       probe.startswith("-- source Player · Mage · level 18 · build 70205 · captured "))
 check("probe export omits the character name and realm",
-      "Eramali" not in probe and "Classic Beta PvE" not in probe)
+      "Examplechar" not in probe and "Classic Beta PvE" not in probe)
 check("probe capture replaced the scratch marker slot's sibling and stored text",
       type(L.eval("ToonAge.db.harvest.captures[KEY].probe.text")) is str
       and "Client" in L.eval("ToonAge.db.harvest.captures[KEY].probe.text"))
@@ -212,7 +212,7 @@ both = "\n".join(lines_of(L))
 check("all probe exports include both characters",
       ("-- source Player · Mage · " in both) and ("-- source Player · Hunter · " in both))
 check("all probe exports omit stored character names and the realm",
-      "Eramali" not in both and "Huntsman" not in both and "Classic Beta PvE" not in both)
+      "Examplechar" not in both and "Huntsman" not in both and "Classic Beta PvE" not in both)
 check("hunter probe text is in the all-characters export", "hunt-probe" in both)
 
 chat = "\n".join(L.eval("CHAT_LOG")[i] for i in range(1, len(L.eval("CHAT_LOG")) + 1))
