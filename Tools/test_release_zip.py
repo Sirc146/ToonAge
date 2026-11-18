@@ -8,7 +8,9 @@ The release zip is rejected when a TOC lists a file the zip does not have.
 Usage:  python3 Tools/test_release_zip.py [-v]
 """
 import fnmatch
+import hashlib
 import io
+import json
 import subprocess
 import sys
 import tempfile
@@ -144,9 +146,122 @@ def test_packaged_zip_has_every_toc_file():
               "Data/Retail/ApiManifest.lua" in err, True)
 
 
+REQUIRED_TOCS = (
+    "ToonAge.toc",
+    "ToonAge_Camelot.toc",
+    "ToonAge_Cata.toc",
+    "ToonAge_Mainline.toc",
+    "ToonAge_Mists.toc",
+    "ToonAge_TBC.toc",
+    "ToonAge_Vanilla.toc",
+    "ToonAge_Wrath.toc",
+)
+
+
+def toc_bytes(version):
+    return f"## Version: {version}\nCore/Init.lua\n".encode()
+
+
+def good_entries(version="2.0.0-dev.1"):
+    entries = {f"ToonAge/{name}": toc_bytes(version) for name in REQUIRED_TOCS}
+    entries["ToonAge/Core/Init.lua"] = b"-- init\n"
+    return entries
+
+
+def write_zip(path, entries):
+    with zipfile.ZipFile(path, "w") as zf:
+        for name, data in entries.items():
+            zf.writestr(name, data)
+
+
+def test_release_rules_and_manifest():
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        good = tmp / "good.zip"
+        write_zip(good, good_entries())
+        code, _out, _err = run_checker(str(good))
+        check("a zip with the eight TOCs passes", code, 0)
+
+        code, _out, _err = run_checker("--version", "2.0.0-dev.1", str(good))
+        check("the stamped version passes", code, 0)
+
+        code, out, err = run_checker("--version", "v9.9.9-test", str(good))
+        check("a different version fails", code, 1)
+        check("the failure says version", "version" in (out + err).lower(), True)
+
+        missing = good_entries()
+        del missing["ToonAge/ToonAge_Camelot.toc"]
+        bad = tmp / "missing-toc.zip"
+        write_zip(bad, missing)
+        code, out, err = run_checker(str(bad))
+        check("a missing TOC fails", code, 1)
+        check("the failure names the TOC", "ToonAge_Camelot.toc" in (out + err), True)
+
+        for rel in (
+            "ToonAge/docs/notes.md",
+            "ToonAge/Docs/notes.md",
+            "ToonAge/Tools/check_release_zip.py",
+            "ToonAge/tests/test_x.lua",
+            "ToonAge/AGENTS.md",
+        ):
+            entries = good_entries()
+            entries[rel] = b"dev\n"
+            path = tmp / (rel.replace("/", "_") + ".zip")
+            write_zip(path, entries)
+            code, out, err = run_checker(str(path))
+            check(f"dev file {rel} fails", code, 1)
+            check(f"dev file {rel} is named", rel.split("/")[1] in (out + err), True)
+
+        manifest = tmp / "manifest.json"
+        code, _out, _err = run_checker(
+            "--version", "2.0.0-dev.1", "--manifest", str(manifest), str(good))
+        check("manifest write passes", code, 0)
+        check("manifest file exists", manifest.is_file(), True)
+        data = {}
+        if manifest.is_file():
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        digest = hashlib.sha256(good.read_bytes()).hexdigest()
+        check("manifest records the zip sha256", data.get("zip_sha256"), digest)
+        files = data.get("files") or []
+        check("manifest lists every file", len(files), 9)
+        init = next((item for item in files if item["path"].endswith("Core/Init.lua")), {})
+        check("manifest records a file sha256",
+              init.get("sha256"), hashlib.sha256(b"-- init\n").hexdigest())
+
+        code, _out, _err = run_checker("--require-zip-sha", str(manifest), str(good))
+        check("the same zip matches the manifest", code, 0)
+
+        altered = tmp / "altered.zip"
+        raw = bytearray(good.read_bytes())
+        raw[-2] ^= 0xFF
+        altered.write_bytes(raw)
+        code, out, err = run_checker("--require-zip-sha", str(manifest), str(altered))
+        check("an altered zip fails the manifest", code, 1)
+        check("the mismatch names sha256", "sha256" in (out + err).lower(), True)
+
+
+def test_dir_rejects_dev_files():
+    with tempfile.TemporaryDirectory() as tmp:
+        pkg = Path(tmp) / "ToonAge"
+        (pkg / "Core").mkdir(parents=True)
+        (pkg / "Core" / "Init.lua").write_text("-- init\n", encoding="utf-8")
+        body = "## Version: 2.0.0-dev.1\nCore/Init.lua\n"
+        for name in REQUIRED_TOCS:
+            (pkg / name).write_text(body, encoding="utf-8")
+        code, _out, _err = run_checker("--dir", str(pkg))
+        check("a complete folder passes", code, 0)
+        (pkg / "Tools").mkdir()
+        (pkg / "Tools" / "x.py").write_text("x\n", encoding="utf-8")
+        code, out, err = run_checker("--dir", str(pkg))
+        check("a folder with Tools fails", code, 1)
+        check("the folder failure names Tools", "Tools" in (out + err), True)
+
+
 def main():
     test_ignore_lists_keep_data()
     test_packaged_zip_has_every_toc_file()
+    test_release_rules_and_manifest()
+    test_dir_rejects_dev_files()
     passed = sum(1 for ok in _results if ok)
     total = len(_results)
     print()
