@@ -881,7 +881,7 @@ function Settings:Render(content, sidebar)
     y = MakeInfoRow(content, y, w, "Version", TA.version or "1.0.0")
     -- From the TOC, which is the one place the author is actually declared
     -- (## Author: Sirc). A second copy in here is a second thing to get wrong,
-    -- and it was wrong -- it said "the owner".
+    -- and it was wrong -- the old value named a person instead of the TOC handle.
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     local author = getMeta and getMeta("ToonAge", "Author")
     y = MakeInfoRow(content, y, w, "Author", (author ~= nil and author ~= "") and author or "Sirc")
