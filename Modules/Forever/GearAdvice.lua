@@ -9,9 +9,9 @@
 -- Each guide is scored from its own stored order. When the view is both,
 -- both scores are shown and labeled. They are never averaged. The order
 -- used here is the level 60 guide order: no leveling list is stored.
--- Hit, expertise and similar percents are printed as text. They are not
--- applied as caps, because the stored rows do not carry a number that can
--- be applied safely.
+-- Hit, expertise and similar percents are printed as text, and only when
+-- the hovered item itself carries Hit. They are not applied as caps,
+-- because the stored rows do not carry a number that can be applied safely.
 --
 -- Tooltip lines are append-only. This file never clears the host tooltip
 -- and never rewrites a host line. The hook matches Modules/Forever/Scrolls.lua:
@@ -22,9 +22,6 @@
 -- Secure attributes are not touched. In combat a protected frame is skipped.
 -- A Blizzard frame or global that is missing on Forever is skipped.
 -- Button names below are UNVERIFIED on client 1.60.1.
---
--- BIS (other addon): UpgradeInfo is read only when that addon is loaded.
--- The global's shape is UNVERIFIED. Nothing is written back.
 
 local TA = ToonAge
 
@@ -195,6 +192,24 @@ local function CapLine(srcName, phrases)
     return text
 end
 
+-- Item stat keys Modules/Forever/StatPriority.lua ITEM_KEY maps to "Hit".
+-- ITEM_MOD_HIT_SPELL_RATING_SHORT and ITEM_MOD_HIT_SHORT are not in that map,
+-- so an item that only has one of those does not carry Hit here.
+local HIT_ITEM_KEYS = {
+    ITEM_MOD_HIT_RATING_SHORT = true,
+}
+
+--- True when stats from C.GetItemStats include a key mapped to Hit.
+local function ItemCarriesHit(stats)
+    if type(stats) ~= "table" then return false end
+    for key, amount in pairs(stats) do
+        if HIT_ITEM_KEYS[key] and tonumber(amount) ~= nil then
+            return true
+        end
+    end
+    return false
+end
+
 --- One result per visible source. No combined score.
 function M:Suggestions(link)
     local out = {}
@@ -211,6 +226,7 @@ function M:Suggestions(link)
     if not slots then return out end
     local itemStats = self:ReadItemStats(link)
     if itemStats == nil then return out end
+    local carriesHit = ItemCarriesHit(itemStats)
     for _, row in ipairs(SP:Rows(entry)) do
         for _, src in ipairs(row.sources or {}) do
             if type(src) == "table" and SP:SourceVisible(src.name) then
@@ -231,7 +247,7 @@ function M:Suggestions(link)
                         rounded = rounded,
                         verdict = verdict,
                         text = LineText(src.name, row.label, rounded, emptySlot, SP:OrderLabel()),
-                        cap = CapLine(src.name, phrases),
+                        cap = carriesHit and CapLine(src.name, phrases) or nil,
                         r = r, g = g, b = b,
                     }
                 end
@@ -252,44 +268,6 @@ function M:IsUpgrade(link)
     return true
 end
 
-function M:AddonLoaded(name)
-    local C = TA.Compat
-    if type(name) ~= "string" or name == "" then return false end
-    if not (C and type(C.IsAddOnLoaded) == "function") then return false end
-    if not BothApis("C_AddOns.IsAddOnLoaded", "IsAddOnLoaded") then return false end
-    local ok, loaded = pcall(C.IsAddOnLoaded, name)
-    return ok and loaded and true or false
-end
-
-local function BisText(value)
-    local kind = type(value)
-    if kind == "string" and value ~= "" then return value end
-    if kind == "number" then return tostring(value) end
-    if kind ~= "table" then return nil end
-    if type(value.text) == "string" and value.text ~= "" then return value.text end
-    if type(value.label) == "string" and value.label ~= "" then return value.label end
-    if type(value[1]) == "string" and value[1] ~= "" then return value[1] end
-    return nil
-end
-
---- Extra tooltip line from another addon, or nil. Read-only.
---- The addon name "BIS" and the call shape of UpgradeInfo are UNVERIFIED.
-function M:BisLine(link)
-    if not self:AddonLoaded("BIS") then return nil end
-    local bis = _G.BIS
-    if type(bis) ~= "table" then return nil end
-    local info = bis.UpgradeInfo
-    if type(info) ~= "function" then return nil end
-    local ok, value = pcall(info, link)
-    if not ok then
-        ok, value = pcall(info, bis, link)
-    end
-    if not ok or value == nil then return nil end
-    local text = BisText(value)
-    if not text then return nil end
-    return "BIS (other addon): " .. text
-end
-
 --- Adds lines after the host tooltip. Does not clear or rewrite host lines.
 function M:AppendSuggestions(tooltip, link)
     if not self:TooltipsOn() then return end
@@ -301,10 +279,6 @@ function M:AppendSuggestions(tooltip, link)
         if row.cap then
             tooltip:AddLine(row.cap, GREY[1], GREY[2], GREY[3], true)
         end
-    end
-    local bis = self:BisLine(link)
-    if bis then
-        tooltip:AddLine(bis, 0.90, 0.90, 0.90, true)
     end
 end
 

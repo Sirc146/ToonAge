@@ -7,8 +7,8 @@ ranks, rank r weighs (N - r + 1) / N. A repeated stat does not take a second
 rank. Names in one step share a rank. Several lists on one source keep the
 highest weight, not an average. Two sources are never averaged.
 
-The tooltip only appends lines. Arrows are non-secure and guarded. BIS is
-read only after a loaded check. The new file is Forever's TOC only.
+The tooltip only appends lines. Arrows are non-secure and guarded. Another
+addon's BIS number is not echoed. The new file is Forever's TOC only.
 
 Usage:  python3 Tools/test_gear_stage2.py [-v]
 """
@@ -145,10 +145,8 @@ def main():
           "type(_G[name]) ~= \"function\"" in advice_code, True)
     check("advice does not average scores", "average" in advice_code.lower(), False)
 
-    loaded_at = advice.find('self:AddonLoaded("BIS")')
-    info_at = advice.find("bis.UpgradeInfo")
-    check("BIS UpgradeInfo is behind the loaded check",
-          loaded_at >= 0 and info_at > loaded_at, True)
+    check("advice does not echo a BIS line from another addon",
+          "BIS (other addon)" in advice or "UpgradeInfo" in advice_code, False)
     writes = []
     for line in advice_code.splitlines():
         if re.search(r"\bBIS\s*=", line) or re.search(r"\bBIS\s*\[", line):
@@ -379,7 +377,7 @@ end
               "suggestion" in row["text"] and "level 60 guide order" in row["text"]
               and "upgrade" in row["text"], True)
         check(f"{row['name']} upgrade is green", row["g"] > 0.8 and row["r"] < 0.5, True)
-        check(f"{row['name']} cap stays text", "text only" in row["cap"] and "%" in row["cap"], True)
+        check(f"{row['name']} cap is omitted when the item has no Hit", row["cap"], "")
 
     lua.execute('ToonAge.StatPriority:SetView("iv")')
     iv_only = [row["name"] for row in dump_rows("item:new")]
@@ -452,29 +450,19 @@ ToonAge.GearAdvice:AppendSuggestions(tip, "item:new")
 
     lua.execute(r"""
 bisCalls = 0
-BIS = { UpgradeInfo = function() bisCalls = bisCalls + 1; return "hidden" end }
-""")
-    check("BIS is not read while the addon is unloaded",
-          lua.eval('ToonAge.GearAdvice:BisLine("item:new")'), None)
-    check("unloaded BIS function was not called", int(lua.eval("bisCalls")), 0)
-    lua.execute(r"""
+_G.BIS = { UpgradeInfo = function() bisCalls = bisCalls + 1; return "plus 4" end }
 ToonAge.Compat.IsAddOnLoaded = function(name) return name == "BIS" end
-BIS = { UpgradeInfo = function(link) return "plus 4" end }
+local lines = {}
+local tip = { AddLine = function(self, text) lines[#lines + 1] = text end }
+ToonAge.GearAdvice:AppendSuggestions(tip, "item:new")
+bisJoined = table.concat(lines, "\n")
 """)
-    check("loaded BIS string is labeled",
-          str(lua.eval('ToonAge.GearAdvice:BisLine("item:new")')),
-          "BIS (other addon): plus 4")
-    lua.execute('BIS = { UpgradeInfo = function() return { text = "ring" } end }')
-    check("loaded BIS table text is labeled",
-          str(lua.eval('ToonAge.GearAdvice:BisLine("item:new")')),
-          "BIS (other addon): ring")
-    lua.execute("BIS = { UpgradeInfo = nil }")
-    check("loaded BIS without UpgradeInfo adds nothing",
-          lua.eval('ToonAge.GearAdvice:BisLine("item:new")'), None)
-    lua.execute('BIS = "not a table"')
-    check("a BIS global that is not a table adds nothing",
-          lua.eval('ToonAge.GearAdvice:BisLine("item:new")'), None)
+    joined = str(lua.eval("bisJoined"))
+    check("a loaded BIS addon adds no BIS tooltip line",
+          [ln for ln in joined.split("\n") if ln.startswith("BIS (other addon)")], [])
+    check("UpgradeInfo is not called from the tooltip", int(lua.eval("bisCalls")), 0)
     lua.execute("ToonAge.Compat.IsAddOnLoaded = function() return false end")
+    lua.execute("_G.BIS = nil")
 
     lua.execute(r"""
 statCalls = 0
