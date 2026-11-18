@@ -4,9 +4,9 @@ ToonAge -- Forever Arcane Mage stat order
 ==========================================
 The Arcane rows in Data/Forever/StatPriority.lua, checked 2026-11-18.
 
-Wowhead's stored Arcane Damage step stays, flagged UNVERIFIED, and its date
-is 2026/11/17. Icy Veins (updated Nov 4, 2026) keeps its order and ranks
-Arcane Damage with Spell Power.
+Wowhead keeps Arcane Damage on the Spell Power step. The live list drops
+the parenthetical; the owner retained it. Icy Veins ranks Arcane Damage
+with Spell Power. Forever Era, Mobalytics, and Warcraft Tavern are notes.
 
 Usage:  python3 Tools/test_forever_arcane_statorder.py [-v]
 """
@@ -31,11 +31,15 @@ WH_LINE = (
     "Spell Piercing > Haste > Intellect > Spirit > Stamina"
 )
 WH_STEPS = "Hit>SpellPower+ArcaneDamage>Crit>SpellPierce>Haste>Intellect>Spirit>Stamina"
-WH_UNVERIFIED = (
-    'UNVERIFIED for owner decision — the live Wowhead list (checked 2026-11-18) '
-    'reads "Spell Damage" without "(+ Arcane Damage)"; kept per data rule '
-    "(unverified items are flagged, not removed)."
+WH_FLAG = (
+    "delisted by Wowhead, retained — verified by Icy Veins, Forever Era, "
+    "and Warcraft Tavern."
 )
+TFE_QUOTE = "Spell Power 1 Arcane damage 0.9"
+MOBA_QUOTE = "Spell Power or the spell damage of your spec (fire / frost / arcane)"
+TAVERN_QUOTE = "Raw Spell Power (Frost Damage Spell Power/Arcane Damage Spell Power)"
+IV_EQUAL = "Value these equally to Spell Damage, as it applies to almost all of our damage"
+IV_BUDGET = "the equivalent level item might be 10 Spell Damage vs 16 Arcane Damage"
 IV_LINE = "Hit Chance (to 17%) > Spell Power > Critical Strike > Intellect > Spirit > Mp5"
 IV_STEPS = "Hit>SpellPower+ArcaneDamage>Crit>Intellect>Spirit>MP5"
 FIRE_IV_STEPS = "Hit>SpellPower>Crit>Intellect>Spirit>MP5"
@@ -86,7 +90,7 @@ def source_named(row, name):
 
 
 def arcane_block(text):
-    start = text.find("        Arcane = row({")
+    start = text.find("        -- Source notes (Arcane)")
     end = text.find("        Fire = row({", start)
     return text[start:end]
 
@@ -99,7 +103,19 @@ def main():
     check("Icy Veins URL is commented on the Arcane row", IV_URL in block, True)
     check("date checked is commented on the Arcane row", CHECKED in block, True)
     wh_note = block[block.find("wowhead.com/forever/guide/classes/mage/arcane"):]
-    check("Wowhead Arcane Damage step is flagged UNVERIFIED", WH_UNVERIFIED in wh_note, True)
+    check("Wowhead Arcane Damage step uses the owner flag", WH_FLAG in wh_note, True)
+    check("the old UNVERIFIED removal note is gone", "UNVERIFIED for owner decision" in block, False)
+    check("Forever Era quote is recorded", TFE_QUOTE in block, True)
+    check("Forever Era guide URL is recorded",
+          "https://theforeverera.com/en/guides/classes/mage/" in block, True)
+    check("Mobalytics quote is recorded", MOBA_QUOTE in block, True)
+    check("Mobalytics URL is recorded",
+          "https://mobalytics.gg/wow-forever/classes/arcane-mage-guide" in block, True)
+    check("Warcraft Tavern quote is recorded", TAVERN_QUOTE in block, True)
+    check("Warcraft Tavern URL is recorded",
+          "https://www.warcrafttavern.com/wow-classic/guides/pve-arcane-mage-stat-priority/" in block, True)
+    check("Icy Veins equal-value quote is recorded", IV_EQUAL in block, True)
+    check("Icy Veins item-budget quote is recorded", IV_BUDGET in block, True)
 
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.execute("ToonAge = { Data = {} }\n")
@@ -122,6 +138,9 @@ def main():
     check("Icy Veins Arcane URL", str(iv["url"]), IV_URL)
     check("Icy Veins Arcane order is otherwise unchanged", str(iv_list["line"]), IV_LINE)
     check("Icy Veins Arcane ranks Arcane Damage with Spell Power", steps(iv_list), IV_STEPS)
+    names = [str(src["name"]) for src in lua_list(arcane["sources"])]
+    check("Arcane scoring sources stay Icy Veins and Wowhead",
+          names, ["Icy Veins", "Wowhead"])
 
     fire_iv = source_named(fire, "Icy Veins")
     fire_list = lua_list(fire_iv["lists"])[0]
@@ -134,7 +153,7 @@ def main():
 
 
 def start_ok(block):
-    return block.startswith("        Arcane = row({") and "Fire = row({" not in block
+    return block.startswith("        -- Source notes (Arcane)") and "Fire = row({" not in block
 
 
 if __name__ == "__main__":
