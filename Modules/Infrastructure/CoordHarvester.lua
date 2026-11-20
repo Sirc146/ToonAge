@@ -133,7 +133,6 @@ function CH:Store(stepType, questID, title, mapID, x, y)
         x         = math.floor(x * 10000) / 10000,  -- 4 decimal precision
         y         = math.floor(y * 10000) / 10000,
         timestamp = time(),
-        charName  = UnitName("player") or "?",
     }
 
     -- Cap total entries
