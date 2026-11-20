@@ -236,6 +236,26 @@ function L:Width(parent)
     return math.floor(math.max(w - L.PAD * 2, 40))
 end
 
+-- Width of one line of text in the row font. A missing measurer falls back to
+-- a character estimate so a narrow column can still shrink instead of clipping.
+local measureFS
+
+function L:TextWidth(text, size)
+    local sample = tostring(text or "")
+    local fontSize = size or 10
+    if not measureFS and HOLDER and HOLDER.CreateFontString then
+        measureFS = HOLDER:CreateFontString(nil, "OVERLAY")
+        if measureFS and measureFS.SetFont then measureFS:SetFont(FONT, 10, "") end
+    end
+    if measureFS and measureFS.SetFont then measureFS:SetFont(FONT, fontSize, "") end
+    if measureFS and measureFS.SetText then measureFS:SetText(sample) end
+    if measureFS and measureFS.GetStringWidth then
+        local ok, w = pcall(measureFS.GetStringWidth, measureFS)
+        if ok and type(w) == "number" and w > 0 then return w end
+    end
+    return #sample * fontSize * 0.5
+end
+
 -- Settings-drawer rows. The drawer is ~230px wide and the state text (OFF,
 -- ON, or a choice) is anchored to the row's right edge. A label with no
 -- width draws through that text. These insets match MakeToggleRow: the label
@@ -338,15 +358,43 @@ function L:DataRow(parent, y, opts)
     -- box). The bag count on the Scrolls tab was that value, so the row showed
     -- only the note ("need 20  bank 0"). The box ends short of the row edge so
     -- the scroll bar does not cover it.
+    --
+    -- labelWidth, when passed, is one shared column. The default (no
+    -- labelWidth) keeps the 96-wide value box and the same anchors.
     local VALUE_W = 96
     local EDGE = 16
     local labelW = math.max(w - VALUE_W - EDGE - 8, 40)
-    StyleText(row.label, { text = opts.label, size = 10, color = opts.labelStatus or L.C_SECONDARY })
+    local valueX = w - VALUE_W - EDGE
+    local labelSize = 10
+    local fixed = type(opts.labelWidth) == "number" and opts.labelWidth > 0
+    if fixed then
+        labelW = math.floor(opts.labelWidth)
+        local gap = 6
+        local room = math.max(w - labelW - gap, 24)
+        VALUE_W = math.floor(opts.valueWidth or room)
+        if VALUE_W > room then VALUE_W = math.floor(room) end
+        if labelW + gap + VALUE_W > w - 8 then
+            VALUE_W = math.max(24, math.floor(w - 8 - labelW - gap))
+        end
+        valueX = labelW + gap
+        if type(opts.labelSize) == "number" and opts.labelSize > 0 then
+            labelSize = opts.labelSize
+        end
+    end
+    StyleText(row.label, { text = opts.label, size = labelSize, color = opts.labelStatus or L.C_SECONDARY })
     row.label:ClearAllPoints()
     row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2)
     row.label:SetWidth(labelW)
     if row.label.SetWordWrap then row.label:SetWordWrap(true) end
     row.label:SetJustifyH("LEFT")
+
+    local noteTop = 16
+    if fixed and row.label.SetHeight and row.label.GetStringHeight then
+        row.label:SetHeight(200)
+        local labelH = math.max(12, math.floor((row.label:GetStringHeight() or 12) + 2))
+        row.label:SetHeight(labelH)
+        noteTop = 4 + labelH
+    end
 
     StyleText(row.value, {
         text = opts.value, size = opts.valueSize or 11,
@@ -354,26 +402,30 @@ function L:DataRow(parent, y, opts)
         color = opts.status, justify = "RIGHT",
     })
     row.value:ClearAllPoints()
-    row.value:SetPoint("TOPLEFT", row, "TOPLEFT", w - VALUE_W - EDGE, -2)
+    row.value:SetPoint("TOPLEFT", row, "TOPLEFT", valueX, -2)
     row.value:SetWidth(VALUE_W)
     if row.value.SetWordWrap then row.value:SetWordWrap(false) end
 
     if hasNote then
         StyleText(row.note, { text = opts.note, size = 9, color = opts.noteColor or L.C_DIM })
         row.note:ClearAllPoints()
-        row.note:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -16)
+        row.note:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -noteTop)
         row.note:SetWidth(w)
         if row.note.SetWordWrap then row.note:SetWordWrap(true) end
         row.note:SetJustifyH("LEFT")
         row.note:SetHeight(200)
         local noteH = math.max(12, math.floor((row.note:GetStringHeight() or 12) + 2))
         row.note:SetHeight(noteH)
-        height = math.max(height, 18 + noteH)
+        height = math.max(height, noteTop + noteH + 2)
         row:SetHeight(height)
         row.note:Show()
     else
         row.note:SetText("")
         row.note:Hide()
+        if fixed then
+            height = math.max(height, noteTop + 2)
+            row:SetHeight(height)
+        end
     end
 
     RowTooltip(row, opts.tooltipTitle or opts.label, opts.tooltip)
