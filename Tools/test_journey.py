@@ -83,6 +83,7 @@ for fn, probe in (
     ("function C.OnTaxi()", "UnitOnTaxi"),
     ("function C.ZoneText()", "GetZoneText"),
     ("function C.RealZoneText()", "GetRealZoneText"),
+    ("function C.UnitIsPlayer(", "UnitIsPlayer"),
 ):
     check(f"Compat defines {fn}", fn in api)
     start = api.find(fn)
@@ -97,6 +98,9 @@ block = settings[has_at:has_at + 1800] if has_at > 0 else ""
 check("Settings offers Clear journal", "Clear journal" in block and "RequestClear" in block)
 check("Settings offers Copy recent sessions",
       "Copy recent sessions" in block and "ShowSummary" in block)
+check("Journey classifies a killer through Compat", "C.UnitIsPlayer" in code)
+check("Journey does not call UnitIsPlayer directly",
+      re.search(r"(?<![\w.])UnitIsPlayer\s*\(", code) is None)
 
 cam = read("ToonAge_Camelot.toc")
 check("Camelot TOC lists Journey.lua", "Modules\\Forever\\Journey.lua" in cam)
@@ -252,7 +256,10 @@ function C.OnTaxi()
 end
 function C.UnitName(unit)
   if unit == "target" then return KILLER end
-  return "Eramali"
+  return "Examplechar"
+end
+function C.UnitIsPlayer(unit)
+  return false
 end
 function C.ZoneText() return ZONE_NAME end
 function C.RealZoneText() return ZONE_NAME end
@@ -344,7 +351,10 @@ if journey:
 
     J.ShowSummary(J)
     text = str(TA._copy.text)
+    check("a creature death names the creature", "by Kobold Vermin" in text)
     check("summary opens in the copy window", "session journal" in text.lower())
+    check("summary does not promise every target name", "readable target name only" not in text)
+    check("summary says another character is recorded as Player", "Player for another character" in text)
     check("summary says it stays on this computer", "not uploaded" in text.lower())
     check("summary names the kill total", "kill 45" in text)
     check("summary marks flights UNVERIFIED", "UNVERIFIED" in text)
@@ -458,6 +468,50 @@ if journey:
     end = strings[int(flight[4]) - 1] if flight is not None else None
     check("flight starts where the taxi map opened", start, "Elwynn Forest")
     check("flight ends at the arrival zone", end, "Ironforge")
+
+    # Another character's name is not stored. A creature name still is.
+    # A target the client will not classify is stored as Player.
+    Lp, TAp = boot(r"""
+function ToonAge.Compat.UnitIsPlayer(unit) return true end
+KILLER = "FixtureFoe"
+ZONE_ID = 1429
+ZONE_NAME = "Elwynn Forest"
+""")
+    Jp = TAp.Journey
+    Jp.Init(Jp)
+    Jp.OnEvent(Jp, "PLAYER_DEAD")
+    textp = str(Jp.SummaryText(Jp))
+    storedp = [str(s) for s in seq(TAp.db.journey.s)]
+    check("another character is recorded as Player", "by Player" in textp)
+    check("another character's name is not stored",
+          "FixtureFoe" not in storedp and "FixtureFoe" not in textp)
+
+    Lu, TAu = boot(r"""
+ToonAge.Compat.UnitIsPlayer = nil
+KILLER = "FixtureFoe"
+ZONE_ID = 1429
+ZONE_NAME = "Elwynn Forest"
+""")
+    Ju = TAu.Journey
+    Ju.Init(Ju)
+    Ju.OnEvent(Ju, "PLAYER_DEAD")
+    textu = str(Ju.SummaryText(Ju))
+    storedu = [str(s) for s in seq(TAu.db.journey.s)]
+    check("an unclassified target is recorded as Player", "by Player" in textu)
+    check("an unclassified target name is not stored",
+          "FixtureFoe" not in storedu and "FixtureFoe" not in textu)
+
+    Ls, TAs = boot(r"""
+function ToonAge.Compat.UnitIsPlayer(unit) return true end
+KILLER = "Examplechar"
+ZONE_ID = 1429
+ZONE_NAME = "Elwynn Forest"
+""")
+    Js = TAs.Journey
+    Js.Init(Js)
+    Js.OnEvent(Js, "PLAYER_DEAD")
+    texts = str(Js.SummaryText(Js))
+    check("dying with yourself targeted stores no killer", "by " not in texts)
 
     # Retail flavor stands down and does not register.
     L5, TA5 = boot('ToonAge.flavor = "retail"')

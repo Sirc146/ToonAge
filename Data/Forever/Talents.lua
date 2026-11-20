@@ -282,7 +282,8 @@ TA.Data.ForeverTalents = {
     },
     ["ROGUE"] = {
         { tree = 1111, node = 105708, entry = 130437, spell = 14162, name = "Improved Eviscerate", maxRanks = 3 },
-        { tree = 1111, node = 105709, entry = 130438, spell = 1310707, name = "Mutilate", maxRanks = 1 },
+        -- UNVERIFIED: Icy Veins (only source) lists 1310707 removed in 70755, with 399956 as current Rank 1. Keep 1310707 until an in-game probe confirms.
+        { tree = 1111, node = 105709, entry = 130438, spell = 1310707, name = "Mutilate", maxRanks = 1, level = 40 },
         { tree = 1111, node = 105710, entry = 130439, spell = 14186, name = "Seal Fate", maxRanks = 5 },
         { tree = 1111, node = 105711, entry = 130440, spell = 14174, name = "Improved Kidney Shot", maxRanks = 2 },
         { tree = 1111, node = 105712, entry = 130441, spell = 1310703, name = "Venom", maxRanks = 1 },

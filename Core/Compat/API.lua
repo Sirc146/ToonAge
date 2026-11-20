@@ -389,6 +389,58 @@ function C.CollapseFactionHeader(index)
     return ok and true or false
 end
 
+--- Localised standing name, or nil when this client has no label for it.
+--- The global is a string, not a call. A secret or a throw is nil.
+function C.FactionStandingName(reaction)
+    if type(reaction) ~= "number" then return nil end
+    local id = math.floor(reaction)
+    if id < 1 or id > 8 then return nil end
+    local value = _G["FACTION_STANDING_LABEL" .. tostring(id)]
+    if SecretValue(value) then return nil end
+    if type(value) ~= "string" or value == "" then return nil end
+    return value
+end
+
+--- Paragon progress for one faction, or nil when this client has no paragon
+--- API or the faction is not paragon. current/cap are the remainder inside
+--- one reward. They are nil when the threshold is missing or not positive,
+--- so the caller does not divide by zero. total is the raw value when the
+--- client returned a number.
+function C.GetFactionParagon(factionID)
+    if type(factionID) ~= "number" then return nil end
+    if TA and TA.HasAPI and not TA:HasAPI("C_Reputation.IsFactionParagon") then
+        return nil
+    end
+    local rep = C_Reputation
+    if type(rep) ~= "table" or type(rep.IsFactionParagon) ~= "function" then
+        return nil
+    end
+    local ok, flag = pcall(rep.IsFactionParagon, factionID)
+    if not ok or SecretValue(flag) or flag ~= true then return nil end
+    if TA and TA.HasAPI and not TA:HasAPI("C_Reputation.GetFactionParagonInfo") then
+        return { paragon = true }
+    end
+    if type(rep.GetFactionParagonInfo) ~= "function" then
+        return { paragon = true }
+    end
+    local okInfo, cur, thresh = pcall(rep.GetFactionParagonInfo, factionID)
+    if not okInfo or SecretValue(cur) or SecretValue(thresh) then
+        return { paragon = true, secret = true }
+    end
+    local total = type(cur) == "number" and cur or nil
+    local cap = type(thresh) == "number" and thresh or nil
+    local shown = total
+    if total and cap and cap > 0 then shown = total % cap end
+    if not (cap and cap > 0) then shown = nil end
+    return {
+        paragon = true,
+        current = shown,
+        cap = (cap and cap > 0) and cap or nil,
+        total = total,
+        secret = false,
+    }
+end
+
 local function ApiAllowed(path)
     if not (TA and TA.HasAPI) then return true end
     return TA:HasAPI(path) and true or false
@@ -1122,6 +1174,26 @@ function C.UnitName(unit)
     local ok, name = pcall(UnitName, unit or "player")
     if not ok then return "" end
     return Shown(name)
+end
+
+--- True when the unit is another player character. Nil when the client will
+--- not say. A missing answer is not treated as a creature.
+function C.UnitIsPlayer(unit)
+    if TA.HasAPI and not TA:HasAPI("UnitIsPlayer") then return nil end
+    if type(UnitIsPlayer) ~= "function" then return nil end
+    local ok, isPlayer = pcall(UnitIsPlayer, unit or "player")
+    if not ok or type(isPlayer) ~= "boolean" then return nil end
+    return isPlayer
+end
+
+--- Player level. Nil when the client has no number. Gear advice uses this
+--- to hide level-60 lines below 60.
+function C.UnitLevel(unit)
+    if TA.HasAPI and not TA:HasAPI("UnitLevel") then return nil end
+    if type(UnitLevel) ~= "function" then return nil end
+    local ok, level = pcall(UnitLevel, unit or "player")
+    if not ok or type(level) ~= "number" then return nil end
+    return level
 end
 
 --- Game order: localized name, then English token (for example "Mage", "MAGE").

@@ -82,6 +82,8 @@ Core\Theme.lua
 Core\Caps.lua
 Core\Utils.lua
 Core\State.lua
+# Slot under the character block. No tab opts in. Safe without Layout.
+Core\LeftPanel.lua
 Core\UI.lua
 Core\UIModern.lua
 Core\Layout.lua

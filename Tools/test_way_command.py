@@ -679,8 +679,70 @@ def check_talents():
           "/ta talentsync" in read("Data/Retail/Talents.lua"))
 
 
+def check_retail_way_clear():
+    """Retail /way clear is the pre-pin clear: manual waypoint only."""
+    lua = load_arrow("Modules/Navigation/Arrow.lua")
+    lua.execute(r"""
+        ToonAge.IsForever = false
+        ToonAge.flavor = "retail"
+        ToonAge.LOG = { OUTPUT = 0 }
+        CLEARED_UW = false
+        ToonAge.Compat = { ClearUserWaypoint = function() CLEARED_UW = true return true end }
+        TomTom = { RemoveWaypoint = function(_, uid) REMOVED = uid end }
+        REMOVED = nil
+        local A = ToonAge.modules.Arrow
+        ToonAge.charDB = {
+            arrow = { waypoint = { map = 84 }, visible = true, manualWaypoint = { x = 1 } },
+            activeWaypoint = { map = 84 },
+        }
+        ToonAge.db = { waypoint = { map = 84 } }
+        A.manualWaypoint = { map = 84, x = 0.1, y = 0.2, title = "Bank" }
+        A._arrived = true
+        A._arrivedTime = 4
+        A._tomtomUid = "retail-pin"
+        A._userWaypointSet = true
+        A.frame = {
+            hidden = false,
+            Hide = function(self) self.hidden = true end,
+        }
+        _lines = {}
+        A:ParseWayCommand("clear")
+        R_GONE = A.manualWaypoint
+        R_FRAME = A.frame.hidden
+        R_SAVED = ToonAge.charDB.arrow.waypoint and ToonAge.charDB.arrow.waypoint.map
+        R_VIS = ToonAge.charDB.arrow.visible
+        R_DB = ToonAge.db.waypoint and ToonAge.db.waypoint.map
+        R_UW = CLEARED_UW
+        R_TOM = REMOVED
+        R_MSG = table.concat(_lines, "\n")
+        A.manualWaypoint = { map = 84, x = 0.5, y = 0.5 }
+        _lines = {}
+        A:ParseWayCommand("remove")
+        R2_MSG = table.concat(_lines, "\n")
+        R2_FRAME = A.frame.hidden
+    """)
+    check("retail /way clear drops the manual waypoint", g(lua, "R_GONE") is None)
+    check("retail /way clear leaves the arrow up", g(lua, "R_FRAME"), False)
+    check("retail /way clear keeps the saved waypoint", g(lua, "R_SAVED"), 84)
+    check("retail /way clear leaves the arrow visible", g(lua, "R_VIS"), True)
+    check("retail /way clear keeps db.waypoint", g(lua, "R_DB"), 84)
+    check("retail /way clear does not call ClearUserWaypoint", g(lua, "R_UW"), False)
+    check("retail /way clear does not remove TomTom", g(lua, "R_TOM") is None)
+    check("retail /way clear says Manual waypoint cleared",
+          g(lua, "R_MSG"), "|cFFFFD100[TA Arrow]|r Manual waypoint cleared.")
+    check("retail /way remove uses the same sentence",
+          g(lua, "R2_MSG"), "|cFFFFD100[TA Arrow]|r Manual waypoint cleared.")
+    check("retail /way remove leaves the arrow up", g(lua, "R2_FRAME"), False)
+    src = read("Modules/Navigation/Arrow.lua")
+    check("shared arrow tooltip is Right-click: Lock / Clear menu",
+          "Right-click: Lock / Clear menu" in src)
+    check("shared arrow has no raw C_Map.ClearUserWaypoint call",
+          "C_Map.ClearUserWaypoint" not in src)
+
+
 def main():
     check_arrow("Modules/Navigation/Arrow.lua", "retail")
+    check_retail_way_clear()
     check_arrow("Modules/Mists/Arrow.lua", "mists")
     check_label_case()
     check_bare_dispatch()

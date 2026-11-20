@@ -9,9 +9,31 @@
 -- Each guide is scored from its own stored order. When the view is both,
 -- both scores are shown and labeled. They are never averaged. The order
 -- used here is the level 60 guide order: no leveling list is stored.
--- Hit, expertise and similar percents are printed as text. They are not
--- applied as caps, because the stored rows do not carry a number that can
--- be applied safely.
+-- ToonAge does not print a percent. A loaded scorer is named and nothing
+-- else is added: both Polestar and Forever Leveling BiS, either one alone,
+-- or else Pawn. The check is C.IsAddOnLoaded only. Their globals are not
+-- called. Bag arrows stay off while a scorer is in charge or the player is
+-- below level 60. With neither loaded, or with the defer setting off, the
+-- line is the stat trade in neutral text, then the stored Icy Veins order
+-- labeled as the level 60 order. Below level 60 that order is marked
+-- UNVERIFIED for leveling. No leveling order is stored or invented.
+-- Cap text is still only for an item that carries Hit, and it is hidden
+-- below level 60 because those phrases are the level 60 guide.
+--
+-- Addon folder names, read 18 Nov 2026 from the public release zips.
+-- Only the top-level folder, the .toc name, and ## Title / dependency lines.
+-- No code from those addons is copied here.
+--   Pawn: folder Pawn, file Pawn.toc, ## Title: Pawn.
+--     https://github.com/VgerMods/Pawn/releases/download/Pawn-2.14.4/Pawn-2.14.4-Forever.zip
+--     (CurseForge project 4646, Forever file 2.14.4, 17 Nov 2026).
+--   Polestar: folder Polestar, file Polestar.toc, ## Title: Polestar,
+--     ## OptionalDeps includes ForeverLevelingBiS.
+--     https://github.com/fitzforge/polestar/releases/download/v0.4.1.1/Polestar-0.4.1.1.zip
+--     (18 Nov 2026).
+--   Forever Leveling BiS: folder ForeverLevelingBiS,
+--     file ForeverLevelingBiS.toc, ## Title: Forever Leveling BiS.
+--     https://www.curseforge.com/wow/addons/forever-leveling-bis/files/9671768
+--     zip ForeverLevelingBiS-v1.3.3-forever.zip (17 Nov 2026).
 --
 -- Tooltip lines are append-only. This file never clears the host tooltip
 -- and never rewrites a host line. The hook matches Modules/Forever/Scrolls.lua:
@@ -22,9 +44,6 @@
 -- Secure attributes are not touched. In combat a protected frame is skipped.
 -- A Blizzard frame or global that is missing on Forever is skipped.
 -- Button names below are UNVERIFIED on client 1.60.1.
---
--- BIS (other addon): UpgradeInfo is read only when that addon is loaded.
--- The global's shape is UNVERIFIED. Nothing is written back.
 
 local TA = ToonAge
 
@@ -34,6 +53,14 @@ TA.GearAdvice = M
 local GREEN = { 0.30, 0.92, 0.40 }
 local GREY  = { 0.62, 0.59, 0.55 }
 local RED   = { 1.00, 0.35, 0.30 }
+-- Neutral is equal channels, never the upgrade green or the downgrade red.
+local NEUTRAL = { 0.93, 0.93, 0.93 }
+
+-- IsAddOnLoaded folder names verified above. Polestar and Forever Leveling
+-- BiS outrank Pawn. The combined name is only when both of those are loaded.
+local SCORER_POLESTAR = "Polestar"
+local SCORER_FLBIS = "ForeverLevelingBiS"
+local SCORER_PAWN = "Pawn"
 
 -- Inventory slots for an equip location. Same ids as Modules/Forever/Gear.lua.
 -- Shirt, tabard and bag slots are absent on purpose: they are not scored.
@@ -60,6 +87,38 @@ function M:ArrowsOn()
     return not (TA.db and TA.db.foreverGearArrows == false)
 end
 
+-- Nil or true means defer. Settings stores an explicit false only after
+-- the player turns "Defer gear scoring to Polestar/Pawn" off.
+function M:DeferOn()
+    return not (TA.db and TA.db.foreverGearDefer == false)
+end
+
+--- The loaded scorer, or nil when ToonAge speaks. Polestar and Forever
+--- Leveling BiS outrank Pawn. The parenthetical is used only when both are loaded.
+function M:ScorerInCharge()
+    if not self:DeferOn() then return nil end
+    local polestar = self:AddonLoaded(SCORER_POLESTAR)
+    local flbis = self:AddonLoaded(SCORER_FLBIS)
+    if polestar and flbis then return "Polestar (Forever Leveling BiS)" end
+    if polestar then return "Polestar" end
+    if flbis then return "Forever Leveling BiS" end
+    if self:AddonLoaded(SCORER_PAWN) then return "Pawn" end
+    return nil
+end
+
+function M:PlayerLevel()
+    local C = TA.Compat
+    if not (C and type(C.UnitLevel) == "function") then return nil end
+    local ok, level = pcall(C.UnitLevel, "player")
+    if not ok or type(level) ~= "number" then return nil end
+    return level
+end
+
+function M:BelowLevel60()
+    local level = self:PlayerLevel()
+    return type(level) == "number" and level < 60
+end
+
 function M:InCombat()
     if type(InCombatLockdown) ~= "function" then return false end
     local ok, locked = pcall(InCombatLockdown)
@@ -80,6 +139,15 @@ end
 local function BothApis(nsPath, globalPath)
     if not (TA.HasAPI) then return true end
     return TA:HasAPI(nsPath) or TA:HasAPI(globalPath)
+end
+
+function M:AddonLoaded(name)
+    local C = TA.Compat
+    if type(name) ~= "string" or name == "" then return false end
+    if not (C and type(C.IsAddOnLoaded) == "function") then return false end
+    if not BothApis("C_AddOns.IsAddOnLoaded", "IsAddOnLoaded") then return false end
+    local ok, loaded = pcall(C.IsAddOnLoaded, name)
+    return ok and loaded and true or false
 end
 
 function M:ReadItemStats(link)
@@ -171,21 +239,6 @@ function M:BestRounded(slots, weights, itemScore)
     return best, bestEmpty
 end
 
-local function LineText(srcName, rowLabel, rounded, emptySlot, orderLabel)
-    local where = emptySlot and "empty slot" or "equipped"
-    local who = tostring(srcName or "Guide") .. " order"
-    if type(rowLabel) == "string" and rowLabel ~= "" then
-        who = who .. ", " .. rowLabel
-    end
-    who = who .. ", " .. orderLabel
-    if rounded > 0 then
-        return string.format("ToonAge: suggestion, upgrade vs %s (%s) +%d%%", where, who, rounded)
-    elseif rounded < 0 then
-        return string.format("ToonAge: suggestion, downgrade vs %s (%s) %d%%", where, who, rounded)
-    end
-    return string.format("ToonAge: suggestion, same as %s (%s)", where, who)
-end
-
 local function CapLine(srcName, phrases)
     if type(phrases) ~= "table" or #phrases == 0 then return nil end
     local text = "ToonAge: suggestion, " .. tostring(srcName or "Guide")
@@ -193,6 +246,229 @@ local function CapLine(srcName, phrases)
         .. table.concat(phrases, "; ")
     if #text > 220 then text = text:sub(1, 217) .. "..." end
     return text
+end
+
+-- Tooltip check only. This does not change StatPriority weights.
+-- GetItemStats keys are these literal names. The 1.60.1 key is UNVERIFIED
+-- pending an in-game /dump C_Item.GetItemStats(link). A global of the same
+-- name, when the client defines it, is only the display label.
+local HIT_ITEM_KEYS = {
+    ITEM_MOD_HIT_RATING_SHORT = true,
+    ITEM_MOD_HIT_SPELL_RATING_SHORT = true,
+    ITEM_MOD_HIT_SHORT = true,
+}
+
+--- True when stats from C.GetItemStats include a Hit key.
+local function ItemCarriesHit(stats)
+    if type(stats) ~= "table" then return false end
+    for key, amount in pairs(stats) do
+        if HIT_ITEM_KEYS[key] and tonumber(amount) ~= nil then
+            return true
+        end
+    end
+    return false
+end
+
+-- Same reading order as Modules/Forever/Gear.lua. Keys not listed sort after.
+local STAT_ORDER = {
+    "ITEM_MOD_STRENGTH_SHORT", "ITEM_MOD_AGILITY_SHORT", "ITEM_MOD_STAMINA_SHORT",
+    "ITEM_MOD_INTELLECT_SHORT", "ITEM_MOD_SPIRIT_SHORT",
+    "ITEM_MOD_ATTACK_POWER_SHORT", "ITEM_MOD_SPELL_POWER_SHORT",
+    "ITEM_MOD_SPELL_DAMAGE_DONE_SHORT", "ITEM_MOD_SPELL_HEALING_DONE_SHORT",
+    "ITEM_MOD_CRIT_RATING_SHORT", "ITEM_MOD_HIT_RATING_SHORT",
+    "ITEM_MOD_HIT_SPELL_RATING_SHORT", "ITEM_MOD_HIT_SHORT",
+    "ITEM_MOD_HASTE_RATING_SHORT", "ITEM_MOD_EXPERTISE_RATING_SHORT",
+    "ITEM_MOD_MANA_REGENERATION_SHORT", "ITEM_MOD_POWER_REGEN0_SHORT",
+    "RESISTANCE0_NAME", "ITEM_MOD_DEFENSE_SKILL_RATING_SHORT",
+    "ITEM_MOD_DODGE_RATING_SHORT", "ITEM_MOD_PARRY_RATING_SHORT",
+    "ITEM_MOD_BLOCK_RATING_SHORT", "ITEM_MOD_BLOCK_VALUE_SHORT",
+}
+
+local STAT_FALLBACK = {
+    ITEM_MOD_STRENGTH_SHORT = "Strength",
+    ITEM_MOD_AGILITY_SHORT = "Agility",
+    ITEM_MOD_STAMINA_SHORT = "Stamina",
+    ITEM_MOD_INTELLECT_SHORT = "Intellect",
+    ITEM_MOD_SPIRIT_SHORT = "Spirit",
+    ITEM_MOD_ATTACK_POWER_SHORT = "Attack Power",
+    ITEM_MOD_SPELL_POWER_SHORT = "Spell Power",
+    ITEM_MOD_SPELL_DAMAGE_DONE_SHORT = "Spell Damage",
+    ITEM_MOD_SPELL_HEALING_DONE_SHORT = "Healing Power",
+    ITEM_MOD_CRIT_RATING_SHORT = "Critical Strike",
+    ITEM_MOD_HIT_RATING_SHORT = "Hit",
+    ITEM_MOD_HIT_SPELL_RATING_SHORT = "Spell Hit",
+    ITEM_MOD_HIT_SHORT = "Hit",
+    ITEM_MOD_HASTE_RATING_SHORT = "Haste",
+    ITEM_MOD_EXPERTISE_RATING_SHORT = "Expertise",
+    ITEM_MOD_MANA_REGENERATION_SHORT = "Mana per 5s",
+    ITEM_MOD_POWER_REGEN0_SHORT = "Mana per 5s",
+    ITEM_MOD_MASTERY_SHORT = "Mastery",
+    RESISTANCE0_NAME = "Armor",
+}
+
+local function StatName(key)
+    local g = _G[key]
+    if type(g) == "string" and g ~= "" and g ~= key and not g:find("%", 1, true) then
+        return g
+    end
+    if STAT_FALLBACK[key] then return STAT_FALLBACK[key] end
+    local t = tostring(key):gsub("^ITEM_MOD_", ""):gsub("_SHORT$", ""):gsub("_NAME$", "")
+    t = t:gsub("_DONE$", ""):gsub("_RATING$", ""):gsub("_", " ")
+    return (t:lower():gsub("(%a)(%w*)", function(a, b) return a:upper() .. b end))
+end
+
+local function Amount(stats, key)
+    if type(stats) ~= "table" then return 0 end
+    return tonumber(stats[key]) or 0
+end
+
+--- Hovered minus equipped. Only nonzero stats, signed, stable order.
+local function TradeLine(itemStats, equippedStats)
+    local seen, keys = {}, {}
+    local function add(key)
+        if type(key) ~= "string" or seen[key] then return end
+        seen[key] = true
+        keys[#keys + 1] = key
+    end
+    for _, key in ipairs(STAT_ORDER) do
+        if Amount(itemStats, key) ~= 0 or Amount(equippedStats, key) ~= 0 then
+            add(key)
+        end
+    end
+    local rest = {}
+    local function collect(stats)
+        if type(stats) ~= "table" then return end
+        for key in pairs(stats) do rest[#rest + 1] = key end
+    end
+    collect(itemStats)
+    collect(equippedStats)
+    table.sort(rest)
+    for _, key in ipairs(rest) do
+        if Amount(itemStats, key) ~= 0 or Amount(equippedStats, key) ~= 0 then
+            add(key)
+        end
+    end
+    local parts = {}
+    for _, key in ipairs(keys) do
+        local diff = Amount(itemStats, key) - Amount(equippedStats, key)
+        if diff ~= 0 then
+            local shown
+            if diff == math.floor(diff) then
+                shown = string.format("%d", diff)
+            else
+                shown = tostring(diff)
+            end
+            if diff > 0 then shown = "+" .. shown end
+            parts[#parts + 1] = shown .. " " .. StatName(key)
+        end
+    end
+    if #parts == 0 then return "ToonAge: same stats as equipped" end
+    return "ToonAge: " .. table.concat(parts, ", ")
+end
+
+--- Stats of the equipped piece BestRounded would compare against.
+--- For rings, trinkets and weapons that is the slot with the higher percent,
+--- which is the same choice the old per-source percent used.
+function M:CompareStats(slots, weights, itemScore)
+    local C = TA.Compat
+    if type(slots) ~= "table" then return {}, true end
+    if not (C and type(C.GetInventoryItemLink) == "function") then return {}, true end
+    if TA.HasAPI and not TA:HasAPI("GetInventoryItemLink") then return {}, true end
+    if type(weights) ~= "table" or type(itemScore) ~= "number" then return {}, true end
+    local best, bestStats, bestEmpty, any = nil, nil, false, false
+    for _, slot in ipairs(slots) do
+        local score, empty = self:SlotScore(slot, weights)
+        if score ~= nil then
+            any = true
+            local pct
+            if score > 0 then
+                pct = (itemScore - score) / score * 100
+            elseif itemScore > 0 then
+                pct = 100
+            else
+                pct = 0
+            end
+            local rounded = math.floor(pct + 0.5)
+            if best == nil or rounded > best then
+                best = rounded
+                bestEmpty = empty and true or false
+                if empty then
+                    bestStats = {}
+                else
+                    local ok, link = pcall(C.GetInventoryItemLink, "player", slot)
+                    if ok and type(link) == "string" and link ~= "" then
+                        bestStats = self:ReadItemStats(link) or {}
+                    else
+                        bestStats = {}
+                    end
+                end
+            end
+        end
+    end
+    if not any then return {}, true end
+    return bestStats or {}, bestEmpty
+end
+
+local GUIDE_WORDS = {
+    Hit = "Hit", SpellPower = "Spell Power", Crit = "Critical Strike",
+    Intellect = "Intellect", Spirit = "Spirit", MP5 = "Mana per 5",
+    Stamina = "Stamina", Strength = "Strength", Agility = "Agility",
+    Haste = "Haste", Expertise = "Expertise", AttackPower = "Attack Power",
+    HealingPower = "Healing", Armor = "Armor", Defense = "Defense",
+    Dodge = "Dodge", Parry = "Parry", Block = "Block", BlockValue = "Block Value",
+    WeaponDPS = "Weapon DPS", WeaponDamage = "Weapon Damage",
+    WeaponSkill = "Weapon Skill", SpellPierce = "Spell Penetration",
+    FireDamage = "Fire Damage", FrostDamage = "Frost Damage",
+    NatureDamage = "Nature Damage", ShadowDamage = "Shadow Damage",
+    ArcaneDamage = "Arcane Damage", HolyDamage = "Holy Damage",
+}
+
+local function GuideWord(name)
+    if GUIDE_WORDS[name] then return GUIDE_WORDS[name] end
+    return (tostring(name):gsub("(%l)(%u)", "%1 %2"))
+end
+
+local function StepNames(step)
+    if type(step) == "table" then return step end
+    return { step }
+end
+
+--- Stored Icy Veins order for this spec. No percents. Nil when that source is absent.
+function M:IcyVeinsLine(classToken, specName, below)
+    local SP = TA.StatPriority
+    if not (SP and SP.Get and SP.Rows) then return nil end
+    local entry = SP:Get(classToken, specName)
+    if type(entry) ~= "table" then return nil end
+    local lines = {}
+    for _, row in ipairs(SP:Rows(entry)) do
+        local src
+        for _, one in ipairs(row.sources or {}) do
+            if type(one) == "table" and one.name == "Icy Veins" then src = one end
+        end
+        if src then
+            local seen, parts = {}, {}
+            for _, list in ipairs(src.lists or {}) do
+                for _, step in ipairs(list.stats or {}) do
+                    for _, name in ipairs(StepNames(step)) do
+                        if type(name) == "string" and name ~= "" and not seen[name] then
+                            seen[name] = true
+                            parts[#parts + 1] = GuideWord(name)
+                        end
+                    end
+                end
+            end
+            if #parts > 0 then
+                local label = "ToonAge: Icy Veins order"
+                if type(row.label) == "string" and row.label ~= "" then
+                    label = label .. ", " .. row.label
+                end
+                label = label .. ", level 60 guide order"
+                if below then label = label .. ", UNVERIFIED for leveling" end
+                lines[#lines + 1] = label .. ": " .. table.concat(parts, " > ")
+            end
+        end
+    end
+    return lines
 end
 
 --- One result per visible source. No combined score.
@@ -211,13 +487,19 @@ function M:Suggestions(link)
     if not slots then return out end
     local itemStats = self:ReadItemStats(link)
     if itemStats == nil then return out end
+    local showCaps = ItemCarriesHit(itemStats) and not self:BelowLevel60()
+    local trade
     for _, row in ipairs(SP:Rows(entry)) do
         for _, src in ipairs(row.sources or {}) do
             if type(src) == "table" and SP:SourceVisible(src.name) then
                 local weights = SP:WeightsForSource(src)
                 local itemScore = SP:ScoreStats(itemStats, weights)
-                local rounded, emptySlot = self:BestRounded(slots, weights, itemScore)
+                local rounded = self:BestRounded(slots, weights, itemScore)
                 if rounded ~= nil then
+                    if not trade then
+                        local equippedStats = self:CompareStats(slots, weights, itemScore)
+                        trade = TradeLine(itemStats, equippedStats)
+                    end
                     local verdict, r, g, b = "same", GREY[1], GREY[2], GREY[3]
                     if rounded > 0 then
                         verdict, r, g, b = "upgrade", GREEN[1], GREEN[2], GREEN[3]
@@ -230,8 +512,8 @@ function M:Suggestions(link)
                         rowLabel = row.label,
                         rounded = rounded,
                         verdict = verdict,
-                        text = LineText(src.name, row.label, rounded, emptySlot, SP:OrderLabel()),
-                        cap = CapLine(src.name, phrases),
+                        text = trade,
+                        cap = showCaps and CapLine(src.name, phrases) or nil,
                         r = r, g = g, b = b,
                     }
                 end
@@ -243,7 +525,9 @@ end
 
 --- True only when every source the current view shows calls this an upgrade.
 --- With both guides visible, one disagreeing source hides the arrow.
+--- A loaded scorer, or a player below 60, draws no ToonAge arrow.
 function M:IsUpgrade(link)
+    if self:ScorerInCharge() or self:BelowLevel60() then return false end
     local rows = self:Suggestions(link)
     if #rows == 0 then return false end
     for _, row in ipairs(rows) do
@@ -252,42 +536,44 @@ function M:IsUpgrade(link)
     return true
 end
 
-function M:AddonLoaded(name)
-    local C = TA.Compat
-    if type(name) ~= "string" or name == "" then return false end
-    if not (C and type(C.IsAddOnLoaded) == "function") then return false end
-    if not BothApis("C_AddOns.IsAddOnLoaded", "IsAddOnLoaded") then return false end
-    local ok, loaded = pcall(C.IsAddOnLoaded, name)
-    return ok and loaded and true or false
-end
-
-local function BisText(value)
-    local kind = type(value)
-    if kind == "string" and value ~= "" then return value end
-    if kind == "number" then return tostring(value) end
-    if kind ~= "table" then return nil end
-    if type(value.text) == "string" and value.text ~= "" then return value.text end
-    if type(value.label) == "string" and value.label ~= "" then return value.label end
-    if type(value[1]) == "string" and value[1] ~= "" then return value[1] end
-    return nil
-end
-
---- Extra tooltip line from another addon, or nil. Read-only.
---- The addon name "BIS" and the call shape of UpgradeInfo are UNVERIFIED.
-function M:BisLine(link)
-    if not self:AddonLoaded("BIS") then return nil end
-    local bis = _G.BIS
-    if type(bis) ~= "table" then return nil end
-    local info = bis.UpgradeInfo
-    if type(info) ~= "function" then return nil end
-    local ok, value = pcall(info, link)
-    if not ok then
-        ok, value = pcall(info, bis, link)
+--- Lines ToonAge may print. A loaded scorer replaces every other line.
+--- No percent is included. Colors are neutral for the trade and dim after that.
+function M:DisplayLines(link)
+    local lines = {}
+    local who = self:ScorerInCharge()
+    if who then
+        lines[1] = {
+            text = "ToonAge: " .. who .. " is scoring gear",
+            r = GREY[1], g = GREY[2], b = GREY[3],
+        }
+        return lines
     end
-    if not ok or value == nil then return nil end
-    local text = BisText(value)
-    if not text then return nil end
-    return "BIS (other addon): " .. text
+    local rows = self:Suggestions(link)
+    if #rows == 0 then return lines end
+    lines[#lines + 1] = {
+        text = rows[1].text,
+        r = NEUTRAL[1], g = NEUTRAL[2], b = NEUTRAL[3],
+    }
+    local below = self:BelowLevel60()
+    if not below then
+        local seen = {}
+        for _, row in ipairs(rows) do
+            if row.cap and not seen[row.cap] then
+                seen[row.cap] = true
+                lines[#lines + 1] = {
+                    text = row.cap, r = GREY[1], g = GREY[2], b = GREY[3],
+                }
+            end
+        end
+    end
+    local classToken, specName = PlayerSpec()
+    if classToken and specName then
+        local orders = self:IcyVeinsLine(classToken, specName, below)
+        for _, text in ipairs(orders or {}) do
+            lines[#lines + 1] = { text = text, r = GREY[1], g = GREY[2], b = GREY[3] }
+        end
+    end
+    return lines
 end
 
 --- Adds lines after the host tooltip. Does not clear or rewrite host lines.
@@ -296,15 +582,8 @@ function M:AppendSuggestions(tooltip, link)
     local kind = type(tooltip)
     if kind ~= "table" and kind ~= "userdata" then return end
     if type(tooltip.AddLine) ~= "function" then return end
-    for _, row in ipairs(self:Suggestions(link)) do
-        tooltip:AddLine(row.text, row.r, row.g, row.b, true)
-        if row.cap then
-            tooltip:AddLine(row.cap, GREY[1], GREY[2], GREY[3], true)
-        end
-    end
-    local bis = self:BisLine(link)
-    if bis then
-        tooltip:AddLine(bis, 0.90, 0.90, 0.90, true)
+    for _, line in ipairs(self:DisplayLines(link)) do
+        tooltip:AddLine(line.text, line.r, line.g, line.b, true)
     end
 end
 

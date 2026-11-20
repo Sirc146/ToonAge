@@ -268,8 +268,10 @@ local function CaptureWho(entry, scan)
             className = F.ClassName(entry.class)
         end
     end
+    -- The saved capture still keys rows by realm and character name so each
+    -- character keeps its own scan. Copy text does not repeat either one.
     return {
-        name = entry.name, className = className,
+        name = "Player", className = className,
         level = scan.level, build = scan.build, when = scan.when,
     }
 end

@@ -236,6 +236,26 @@ function L:Width(parent)
     return math.floor(math.max(w - L.PAD * 2, 40))
 end
 
+-- Width of one line of text in the row font. A missing measurer falls back to
+-- a character estimate so a narrow column can still shrink instead of clipping.
+local measureFS
+
+function L:TextWidth(text, size)
+    local sample = tostring(text or "")
+    local fontSize = size or 10
+    if not measureFS and HOLDER and HOLDER.CreateFontString then
+        measureFS = HOLDER:CreateFontString(nil, "OVERLAY")
+        if measureFS and measureFS.SetFont then measureFS:SetFont(FONT, 10, "") end
+    end
+    if measureFS and measureFS.SetFont then measureFS:SetFont(FONT, fontSize, "") end
+    if measureFS and measureFS.SetText then measureFS:SetText(sample) end
+    if measureFS and measureFS.GetStringWidth then
+        local ok, w = pcall(measureFS.GetStringWidth, measureFS)
+        if ok and type(w) == "number" and w > 0 then return w end
+    end
+    return #sample * fontSize * 0.5
+end
+
 -- Settings-drawer rows. The drawer is ~230px wide and the state text (OFF,
 -- ON, or a choice) is anchored to the row's right edge. A label with no
 -- width draws through that text. These insets match MakeToggleRow: the label
@@ -316,6 +336,22 @@ function L:SectionHeader(parent, y, title, subtitle)
     return y - 10
 end
 
+--- Width of `fs` as one line. GetStringWidth reports the box once SetWidth
+--- has clamped it, which hides the overflow this measurement exists to catch.
+local function UnboundedWidth(fs)
+    if fs.GetUnboundedStringWidth then
+        local wide = fs:GetUnboundedStringWidth()
+        if type(wide) == "number" then return wide end
+    end
+    local limited = fs.GetWidth and fs:GetWidth()
+    if type(limited) ~= "number" then limited = 0 end
+    if fs.SetWidth then fs:SetWidth(0) end
+    local wide = (fs.GetStringWidth and fs:GetStringWidth()) or 0
+    if type(wide) ~= "number" then wide = 0 end
+    if fs.SetWidth and limited > 0 then fs:SetWidth(limited) end
+    return wide
+end
+
 --- Label on the left, value on the right, optional grey note underneath.
 function L:DataRow(parent, y, opts)
     y = math.floor(y)
@@ -338,15 +374,43 @@ function L:DataRow(parent, y, opts)
     -- box). The bag count on the Scrolls tab was that value, so the row showed
     -- only the note ("need 20  bank 0"). The box ends short of the row edge so
     -- the scroll bar does not cover it.
+    --
+    -- labelWidth, when passed, is one shared column. The default (no
+    -- labelWidth) keeps the 96-wide value box and the same anchors.
     local VALUE_W = 96
     local EDGE = 16
     local labelW = math.max(w - VALUE_W - EDGE - 8, 40)
-    StyleText(row.label, { text = opts.label, size = 10, color = opts.labelStatus or L.C_SECONDARY })
+    local valueX = w - VALUE_W - EDGE
+    local labelSize = 10
+    local fixed = type(opts.labelWidth) == "number" and opts.labelWidth > 0
+    if fixed then
+        labelW = math.floor(opts.labelWidth)
+        local gap = 6
+        local room = math.max(w - labelW - gap, 24)
+        VALUE_W = math.floor(opts.valueWidth or room)
+        if VALUE_W > room then VALUE_W = math.floor(room) end
+        if labelW + gap + VALUE_W > w - 8 then
+            VALUE_W = math.max(24, math.floor(w - 8 - labelW - gap))
+        end
+        valueX = labelW + gap
+        if type(opts.labelSize) == "number" and opts.labelSize > 0 then
+            labelSize = opts.labelSize
+        end
+    end
+    StyleText(row.label, { text = opts.label, size = labelSize, color = opts.labelStatus or L.C_SECONDARY })
     row.label:ClearAllPoints()
     row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2)
     row.label:SetWidth(labelW)
     if row.label.SetWordWrap then row.label:SetWordWrap(true) end
     row.label:SetJustifyH("LEFT")
+
+    local noteTop = 16
+    if fixed and row.label.SetHeight and row.label.GetStringHeight then
+        row.label:SetHeight(200)
+        local labelH = math.max(12, math.floor((row.label:GetStringHeight() or 12) + 2))
+        row.label:SetHeight(labelH)
+        noteTop = 4 + labelH
+    end
 
     StyleText(row.value, {
         text = opts.value, size = opts.valueSize or 11,
@@ -354,26 +418,74 @@ function L:DataRow(parent, y, opts)
         color = opts.status, justify = "RIGHT",
     })
     row.value:ClearAllPoints()
-    row.value:SetPoint("TOPLEFT", row, "TOPLEFT", w - VALUE_W - EDGE, -2)
+    row.value:SetPoint("TOPLEFT", row, "TOPLEFT", valueX, -2)
     row.value:SetWidth(VALUE_W)
     if row.value.SetWordWrap then row.value:SetWordWrap(false) end
+    if row.value.SetNonSpaceWrap then row.value:SetNonSpaceWrap(false) end
+    -- Pooled rows keep the previous height. Clear a tall wrapped box so the
+    -- next short value is one line again. A fresh string is already height 0;
+    -- leave it, so a short row is not restyled.
+    local prevH = row.value.GetHeight and row.value:GetHeight()
+    if row.value.SetHeight and type(prevH) == "number" and prevH > 0 then
+        row.value:SetHeight(0)
+    end
+
+    -- The 96px box clips nothing: with wrap off, "Blood Fury, Hardiness,
+    -- Shatter Curse" and the session per-hour line paint past the row.
+    -- Wrap inside the same box and grow the row. A value that fits stays one
+    -- line at the same height, which is every short row on the other tabs.
+    -- The font stays 11 either way, so the line is still readable when the
+    -- whole UI is scaled to 0.64.
+    local valueH = 0
+    if UnboundedWidth(row.value) > VALUE_W then
+        if row.value.SetWordWrap then row.value:SetWordWrap(true) end
+        if row.value.SetNonSpaceWrap then row.value:SetNonSpaceWrap(true) end
+        row.value:SetWidth(VALUE_W)
+        -- Height 0 does not wrap on Forever (see Paragraph).
+        row.value:SetHeight(400)
+        local measured = (row.value.GetStringHeight and row.value:GetStringHeight()) or 0
+        valueH = math.max(12, math.floor(tonumber(measured) or 0))
+        row.value:SetHeight(valueH)
+    end
+
+    -- A one-line value keeps the note on the second line. That is -16, which
+    -- is also where a single-line fixed label puts it. A wrapped label
+    -- (labelWidth) or a wrapped value pushes the note under whichever block
+    -- hangs lower, so the two row styles can share this function.
+    local noteY = -noteTop
+    if valueH > 14 then
+        local underValue = -(2 + valueH + 2)
+        if underValue < noteY then noteY = underValue end
+    end
 
     if hasNote then
         StyleText(row.note, { text = opts.note, size = 9, color = opts.noteColor or L.C_DIM })
         row.note:ClearAllPoints()
-        row.note:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -16)
+        row.note:SetPoint("TOPLEFT", row, "TOPLEFT", 0, noteY)
         row.note:SetWidth(w)
         if row.note.SetWordWrap then row.note:SetWordWrap(true) end
         row.note:SetJustifyH("LEFT")
         row.note:SetHeight(200)
         local noteH = math.max(12, math.floor((row.note:GetStringHeight() or 12) + 2))
         row.note:SetHeight(noteH)
-        height = math.max(height, 18 + noteH)
+        height = math.max(height, -noteY + noteH + 2)
         row:SetHeight(height)
         row.note:Show()
     else
         row.note:SetText("")
         row.note:Hide()
+        local grow = false
+        if fixed then
+            height = math.max(height, noteTop + 2)
+            grow = true
+        end
+        if valueH > 14 then
+            height = math.max(height, self:WrappedRowHeight(2 + valueH, 20))
+            grow = true
+        end
+        if grow then
+            row:SetHeight(height)
+        end
     end
 
     RowTooltip(row, opts.tooltipTitle or opts.label, opts.tooltip)
@@ -490,6 +602,23 @@ function L:StatScale(values, previous)
     return scale
 end
 
+--- Pick the in-bar line that fits. A width we cannot measure keeps the full
+--- line. A line that does not fit drops to the standing name. The name is
+--- never sliced, so a narrow bar does not clip a word in half.
+function L:ChooseBarText(full, short, inner, widthOf)
+    if type(full) ~= "string" or full == "" then
+        if type(short) == "string" and short ~= "" then return short end
+        return full or ""
+    end
+    if type(widthOf) ~= "function" or type(inner) ~= "number" or inner <= 0 then
+        return full
+    end
+    local w = widthOf(full)
+    if type(w) ~= "number" or w <= 0 or w <= inner then return full end
+    if type(short) == "string" and short ~= "" then return short end
+    return full
+end
+
 --- A stat as a bar against a shared, rounded scale.
 ---
 --- The FILL is the real value. The faded remainder is headroom to the group's
@@ -504,15 +633,20 @@ end
 --- tab, and a new component is the wrong place to inherit that.
 --- @return number nextY, table row
 function L:StatBar(parent, y, opts)
+    opts = opts or {}
     y = math.floor(y)
     local w = self:Width(parent)
 
+    -- inside: the value sits in the track, so the right-hand column is gone
+    -- and the bar uses that width. Other callers keep the 64px column.
+    local inside  = opts.inside == true
     local ROW_H   = 22
-    local BAR_H   = 12
+    local BAR_H   = inside and 16 or 12
     local LABEL_W = math.min(110, math.floor(w * 0.28))
-    local VALUE_W = 64
+    local VALUE_W = inside and 0 or 64
     local GAP     = 8
-    local barW    = math.max(w - LABEL_W - VALUE_W - GAP * 2, 40)
+    local barW    = inside and math.max(w - LABEL_W - GAP, 40)
+        or math.max(w - LABEL_W - VALUE_W - GAP * 2, 40)
 
     local row = AcquireFrame("StatBar", parent, function()
         local f = CreateFrame("Frame", nil, HOLDER)
@@ -535,7 +669,7 @@ function L:StatBar(parent, y, opts)
     local track = row.track
     track:ClearAllPoints()
     track:SetSize(barW, BAR_H)
-    track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, -2)
+    track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, inside and -3 or -2)
     if TA._ApplyBackdrop then
         TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
     end
@@ -552,13 +686,31 @@ function L:StatBar(parent, y, opts)
         local basePct = (base and base >= 0 and base <= value) and (base / scale) or total
 
         local cBase = Colour(opts.color or "stat")
+        local alpha = 0.90
+        if inside then
+            if type(cBase[4]) == "number" then
+                alpha = cBase[4]
+            else
+                local theme = TA.Theme and TA.Theme.active
+                local toned = theme and tonumber(theme.slot_current_a)
+                if toned then alpha = toned end
+            end
+        end
+        local px = math.floor(inner * basePct)
+        if inside and basePct <= 0 then
+            px = 0
+        elseif px < 1 then
+            px = 1
+        end
         local fill = row.fill
         fill:ClearAllPoints()
         fill:SetPoint("TOPLEFT",    track, "TOPLEFT",    1, -1)
         fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1,  1)
-        fill:SetWidth(math.max(math.floor(inner * basePct), 1))
-        fill:SetColorTexture(cBase[1], cBase[2], cBase[3], 0.90)
-        fill:Show()
+        if px > 0 then
+            fill:SetWidth(px)
+            fill:SetColorTexture(cBase[1], cBase[2], cBase[3], alpha)
+            fill:Show()
+        end
 
         if base and value > base and total > basePct then
             local g = L.C_STAT_GEAR
@@ -572,17 +724,56 @@ function L:StatBar(parent, y, opts)
         end
     end
 
-    -- The real number, right-justified inside a fixed-width box whose LEFT edge
-    -- is computed -- same look as a right anchor, without depending on the
-    -- parent's right edge being where we think it is.
-    StyleText(row.text, {
-        text = opts.text or (value and tostring(value)) or "|cFF6E6A62n/a|r",
-        size = 11, flags = "OUTLINE", color = opts.status, justify = "RIGHT",
-    })
-    row.text:ClearAllPoints()
-    row.text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
-    row.text:SetWidth(VALUE_W)
-    row.text:SetHeight(0)
+    if inside then
+        -- White token, 1px dark shadow, one line. Outline would fight the
+        -- shadow, so the flags stay empty. The standing name is not sliced.
+        local theme = TA.Theme and TA.Theme.active
+        local white = theme and theme.white
+        local shadow = theme and theme.glass_shadow
+        local innerText = math.max(barW - 8, 8)
+        local fullText = opts.text or ""
+        local function widthOf(sample)
+            row.text:SetFont(FONT, 10, "")
+            row.text:SetText(sample)
+            if not row.text.GetStringWidth then return 0 end
+            local sw = row.text:GetStringWidth()
+            if type(sw) ~= "number" then return 0 end
+            return sw
+        end
+        local chosen = self:ChooseBarText(fullText, opts.shortText, innerText, widthOf)
+        StyleText(row.text, {
+            text = chosen, size = 10, flags = "", color = white or L.C_PRIMARY,
+            justify = "CENTER",
+        })
+        if row.text.SetWordWrap then row.text:SetWordWrap(false) end
+        if row.text.SetJustifyV then row.text:SetJustifyV("MIDDLE") end
+        if shadow and row.text.SetShadowColor then
+            row.text:SetShadowColor(shadow[1], shadow[2], shadow[3], shadow[4] or 1)
+        end
+        if row.text.SetShadowOffset then row.text:SetShadowOffset(1, -1) end
+        row.text:ClearAllPoints()
+        local cx = LABEL_W + GAP + math.floor(barW / 2)
+        local cy = -(3 + math.floor(BAR_H / 2))
+        row.text:SetPoint("CENTER", row, "TOPLEFT", cx, cy)
+        -- Stay on the track. A standing name wider than the bar is clipped
+        -- by this width rather than drawn past the fill.
+        row.text:SetWidth(math.max(innerText, 1))
+        row.text:SetHeight(0)
+    else
+        -- The real number, right-justified inside a fixed-width box whose LEFT
+        -- edge is computed -- same look as a right anchor, without depending
+        -- on the parent's right edge being where we think it is.
+        if row.text.SetWordWrap then row.text:SetWordWrap(true) end
+        if row.text.SetShadowOffset then row.text:SetShadowOffset(0, 0) end
+        StyleText(row.text, {
+            text = opts.text or (value and tostring(value)) or "|cFF6E6A62n/a|r",
+            size = 11, flags = "OUTLINE", color = opts.status, justify = "RIGHT",
+        })
+        row.text:ClearAllPoints()
+        row.text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
+        row.text:SetWidth(VALUE_W)
+        row.text:SetHeight(0)
+    end
 
     RowTooltip(row, opts.tooltipTitle or opts.label, opts.tooltip)
     return y - ROW_H - 2, row
@@ -1126,6 +1317,54 @@ function L:CharacterSidebar(side)
 
     side:SetHeight(math.abs(y) + 10)
     return y
+end
+
+--- One label and a gap reserved for an edit box, in a single column.
+--- The label width is chosen by the caller so every row in the form lines up.
+--- opts.tooltip is the long sentence shown on hover. The short label stays
+--- on the row. Gold is not used; this is not a selection.
+--- @return number nextY, frame row
+function L:LabelInput(parent, y, opts)
+    opts = opts or {}
+    y = math.floor(y)
+    local h = opts.height or 20
+    local x = opts.x or L.PAD
+    local rowW = opts.width
+    if type(rowW) ~= "number" or rowW <= 0 then rowW = self:Width(parent) end
+    local row = AcquireFrame("LabelInput", parent, function()
+        local f = CreateFrame("Frame", nil, HOLDER)
+        f.label = NewFS(f)
+        return f
+    end)
+    row:SetSize(math.floor(rowW), h)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    local labelW = opts.labelWidth or math.floor(rowW * 0.6)
+    StyleText(row.label, {
+        text = opts.label or "",
+        size = opts.size or 9,
+        color = opts.color or L.C_PRIMARY,
+    })
+    row.label:ClearAllPoints()
+    row.label:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.label:SetWidth(labelW)
+    row.label:SetHeight(h)
+    if row.label.SetWordWrap then row.label:SetWordWrap(false) end
+    if row.EnableMouse then row:EnableMouse(true) end
+    if opts.tooltip and GameTooltip and GameTooltip.SetOwner then
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(opts.label or "", 0.92, 0.90, 0.87)
+            GameTooltip:AddLine(opts.tooltip, 0.9, 0.9, 0.9, true)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function()
+            if GameTooltip.Hide then GameTooltip:Hide() end
+        end)
+    else
+        row:SetScript("OnEnter", nil)
+        row:SetScript("OnLeave", nil)
+    end
+    return y - h - 2, row
 end
 
 -- ─── BUTTONS ────────────────────────────────────────────────────────────────

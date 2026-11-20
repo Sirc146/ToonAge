@@ -7,8 +7,8 @@ ranks, rank r weighs (N - r + 1) / N. A repeated stat does not take a second
 rank. Names in one step share a rank. Several lists on one source keep the
 highest weight, not an average. Two sources are never averaged.
 
-The tooltip only appends lines. Arrows are non-secure and guarded. BIS is
-read only after a loaded check. The new file is Forever's TOC only.
+The tooltip only appends lines. Arrows are non-secure and guarded. Another
+addon's BIS number is not echoed. The new file is Forever's TOC only.
 
 Usage:  python3 Tools/test_gear_stage2.py [-v]
 """
@@ -145,10 +145,8 @@ def main():
           "type(_G[name]) ~= \"function\"" in advice_code, True)
     check("advice does not average scores", "average" in advice_code.lower(), False)
 
-    loaded_at = advice.find('self:AddonLoaded("BIS")')
-    info_at = advice.find("bis.UpgradeInfo")
-    check("BIS UpgradeInfo is behind the loaded check",
-          loaded_at >= 0 and info_at > loaded_at, True)
+    check("advice does not echo a BIS line from another addon",
+          "BIS (other addon)" in advice or "UpgradeInfo" in advice_code, False)
     writes = []
     for line in advice_code.splitlines():
         if re.search(r"\bBIS\s*=", line) or re.search(r"\bBIS\s*\[", line):
@@ -166,10 +164,19 @@ def main():
             continue
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if any(name in line for name in FORBIDDEN):
-                ok = line.strip().startswith("--") and "All Rights Reserved" in line
-                if not ok:
+                licence = line.strip().startswith("--") and "All Rights Reserved" in line
+                # The folder name is the IsAddOnLoaded key, verified from the
+                # addon's own .toc. It is not their code.
+                verified_name = (
+                    rel == ADVICE
+                    and "ForeverLevelingBiS" in line
+                    and "MaxDps" not in line
+                    and (line.strip().startswith("--") or "SCORER_FLBIS" in line)
+                )
+                if not (licence or verified_name):
                     licence_hits.append(f"{rel}:{lineno}")
-    check("Forever files name those addons only in a licence comment", licence_hits, [])
+    check("Forever files name those addons only in a licence comment or the verified folder check",
+          licence_hits, [])
 
     if not (ROOT / ADVICE).is_file():
         passed = sum(_results)
@@ -375,11 +382,10 @@ end
     check("neither shown percent is the average of the two",
           expected["Icy Veins"] != mean and expected["Wowhead"] != mean, True)
     for row in both:
-        check(f"{row['name']} line is a suggestion from the level 60 order",
-              "suggestion" in row["text"] and "level 60 guide order" in row["text"]
-              and "upgrade" in row["text"], True)
+        check(f"{row['name']} tooltip text does not print a percent",
+              "%" not in row["text"] and row["verdict"] == "upgrade", True)
         check(f"{row['name']} upgrade is green", row["g"] > 0.8 and row["r"] < 0.5, True)
-        check(f"{row['name']} cap stays text", "text only" in row["cap"] and "%" in row["cap"], True)
+        check(f"{row['name']} cap is omitted when the item has no Hit", row["cap"], "")
 
     lua.execute('ToonAge.StatPriority:SetView("iv")')
     iv_only = [row["name"] for row in dump_rows("item:new")]
@@ -394,10 +400,12 @@ end
     check("a lower score is a downgrade on both sources",
           [row["verdict"] for row in down], ["downgrade", "downgrade"])
     check("downgrade is red", down[0]["r"] > 0.8 and down[0]["g"] < 0.5, True)
-    check("downgrade text says downgrade", "downgrade" in down[0]["text"], True)
+    check("downgrade text does not print a percent",
+          "%" not in down[0]["text"] and down[0]["verdict"] == "downgrade", True)
     lua.execute('equipped = nil')
     empty = dump_rows("item:new")
-    check("an empty slot is named", "empty slot" in empty[0]["text"], True)
+    check("an empty slot does not print a percent",
+          "%" not in empty[0]["text"] and empty[0]["text"].startswith("ToonAge:"), True)
     lua.execute('equipped = "item:old"')
 
     lua.execute('specName = "Arcane"')
@@ -452,29 +460,19 @@ ToonAge.GearAdvice:AppendSuggestions(tip, "item:new")
 
     lua.execute(r"""
 bisCalls = 0
-BIS = { UpgradeInfo = function() bisCalls = bisCalls + 1; return "hidden" end }
-""")
-    check("BIS is not read while the addon is unloaded",
-          lua.eval('ToonAge.GearAdvice:BisLine("item:new")'), None)
-    check("unloaded BIS function was not called", int(lua.eval("bisCalls")), 0)
-    lua.execute(r"""
+_G.BIS = { UpgradeInfo = function() bisCalls = bisCalls + 1; return "plus 4" end }
 ToonAge.Compat.IsAddOnLoaded = function(name) return name == "BIS" end
-BIS = { UpgradeInfo = function(link) return "plus 4" end }
+local lines = {}
+local tip = { AddLine = function(self, text) lines[#lines + 1] = text end }
+ToonAge.GearAdvice:AppendSuggestions(tip, "item:new")
+bisJoined = table.concat(lines, "\n")
 """)
-    check("loaded BIS string is labeled",
-          str(lua.eval('ToonAge.GearAdvice:BisLine("item:new")')),
-          "BIS (other addon): plus 4")
-    lua.execute('BIS = { UpgradeInfo = function() return { text = "ring" } end }')
-    check("loaded BIS table text is labeled",
-          str(lua.eval('ToonAge.GearAdvice:BisLine("item:new")')),
-          "BIS (other addon): ring")
-    lua.execute("BIS = { UpgradeInfo = nil }")
-    check("loaded BIS without UpgradeInfo adds nothing",
-          lua.eval('ToonAge.GearAdvice:BisLine("item:new")'), None)
-    lua.execute('BIS = "not a table"')
-    check("a BIS global that is not a table adds nothing",
-          lua.eval('ToonAge.GearAdvice:BisLine("item:new")'), None)
+    joined = str(lua.eval("bisJoined"))
+    check("a loaded BIS addon adds no BIS tooltip line",
+          [ln for ln in joined.split("\n") if ln.startswith("BIS (other addon)")], [])
+    check("UpgradeInfo is not called from the tooltip", int(lua.eval("bisCalls")), 0)
     lua.execute("ToonAge.Compat.IsAddOnLoaded = function() return false end")
+    lua.execute("_G.BIS = nil")
 
     lua.execute(r"""
 statCalls = 0
