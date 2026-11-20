@@ -872,6 +872,9 @@ local function ShowSource(SP, content, y, src)
             line = list.label .. ": " .. line
         end
         y = L:Paragraph(content, y, line)
+        if list.note and list.note ~= "" then
+            y = L:Paragraph(content, y, tostring(list.note), { color = L.C_DIM })
+        end
     end
     if src.caveat and src.caveat ~= "" then
         y = L:Paragraph(content, y, tostring(src.caveat), { color = L.C_DIM })
