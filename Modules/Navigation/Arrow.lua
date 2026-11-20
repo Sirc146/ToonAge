@@ -286,9 +286,10 @@ end
 local function GetEffectiveCoord(step)
     -- A scenario or dungeon step is tagged noArrow: show the step, draw nothing.
     if not step or step.noArrow then return 0, 0, 0 end
+    if type(C_QuestLog) == "table" then
     -- PRIORITY 1: Blizzard's live quest waypoint system.
     -- GetNextWaypoint only works for supertracked/watched quests.
-    if step.questID and C_QuestLog.GetNextWaypoint then
+    if step.questID and C_QuestLog.GetNextWaypoint and C_QuestLog.GetLogIndexForQuestID then
         -- Make sure the quest is tracked so waypoint data is available
         local questID = step.questID
         local logIdx = C_QuestLog.GetLogIndexForQuestID(questID)
@@ -305,7 +306,7 @@ local function GetEffectiveCoord(step)
         local questID = step.questID
         local logIdx = C_QuestLog.GetLogIndexForQuestID(questID)
         if logIdx then
-            local currentMap = C_Map.GetBestMapForUnit("player")
+            local currentMap = type(C_Map) == "table" and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
             if currentMap and C_Map.GetMapPosFromWorldPos then
                 -- Try to get quest POI via the map system
                 if QuestPOIGetIconInfo then
@@ -322,9 +323,9 @@ local function GetEffectiveCoord(step)
     -- For "pick up" steps where the quest hasn't been accepted yet, use:
     -- (a) Map quest offer POIs via C_Map / C_AreaPoiInfo
     -- (b) Adjacent guide steps that share the same NPC/location
-    if step.questID and not C_QuestLog.GetLogIndexForQuestID(step.questID) then
+    if step.questID and C_QuestLog.GetLogIndexForQuestID and not C_QuestLog.GetLogIndexForQuestID(step.questID) then
         -- 2.5a: Check if Blizzard's map system knows where this quest is offered
-        local currentMap = C_Map.GetBestMapForUnit("player")
+        local currentMap = type(C_Map) == "table" and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
         if currentMap and C_TaskQuest and C_TaskQuest.GetQuestsForPlayerByMapID then
             local ok, tasks = pcall(C_TaskQuest.GetQuestsForPlayerByMapID, currentMap)
             if ok and tasks then
@@ -381,6 +382,7 @@ local function GetEffectiveCoord(step)
                 end
             end
         end
+    end
     end
 
     -- PRIORITY 3: CoordResolver (pulls from APR RouteQuestStepList + other sources)
