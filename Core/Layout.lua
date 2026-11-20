@@ -336,6 +336,22 @@ function L:SectionHeader(parent, y, title, subtitle)
     return y - 10
 end
 
+--- Width of `fs` as one line. GetStringWidth reports the box once SetWidth
+--- has clamped it, which hides the overflow this measurement exists to catch.
+local function UnboundedWidth(fs)
+    if fs.GetUnboundedStringWidth then
+        local wide = fs:GetUnboundedStringWidth()
+        if type(wide) == "number" then return wide end
+    end
+    local limited = fs.GetWidth and fs:GetWidth()
+    if type(limited) ~= "number" then limited = 0 end
+    if fs.SetWidth then fs:SetWidth(0) end
+    local wide = (fs.GetStringWidth and fs:GetStringWidth()) or 0
+    if type(wide) ~= "number" then wide = 0 end
+    if fs.SetWidth and limited > 0 then fs:SetWidth(limited) end
+    return wide
+end
+
 --- Label on the left, value on the right, optional grey note underneath.
 function L:DataRow(parent, y, opts)
     y = math.floor(y)
@@ -405,25 +421,69 @@ function L:DataRow(parent, y, opts)
     row.value:SetPoint("TOPLEFT", row, "TOPLEFT", valueX, -2)
     row.value:SetWidth(VALUE_W)
     if row.value.SetWordWrap then row.value:SetWordWrap(false) end
+    if row.value.SetNonSpaceWrap then row.value:SetNonSpaceWrap(false) end
+    -- Pooled rows keep the previous height. Clear a tall wrapped box so the
+    -- next short value is one line again. A fresh string is already height 0;
+    -- leave it, so a short row is not restyled.
+    local prevH = row.value.GetHeight and row.value:GetHeight()
+    if row.value.SetHeight and type(prevH) == "number" and prevH > 0 then
+        row.value:SetHeight(0)
+    end
+
+    -- The 96px box clips nothing: with wrap off, "Blood Fury, Hardiness,
+    -- Shatter Curse" and the session per-hour line paint past the row.
+    -- Wrap inside the same box and grow the row. A value that fits stays one
+    -- line at the same height, which is every short row on the other tabs.
+    -- The font stays 11 either way, so the line is still readable when the
+    -- whole UI is scaled to 0.64.
+    local valueH = 0
+    if UnboundedWidth(row.value) > VALUE_W then
+        if row.value.SetWordWrap then row.value:SetWordWrap(true) end
+        if row.value.SetNonSpaceWrap then row.value:SetNonSpaceWrap(true) end
+        row.value:SetWidth(VALUE_W)
+        -- Height 0 does not wrap on Forever (see Paragraph).
+        row.value:SetHeight(400)
+        local measured = (row.value.GetStringHeight and row.value:GetStringHeight()) or 0
+        valueH = math.max(12, math.floor(tonumber(measured) or 0))
+        row.value:SetHeight(valueH)
+    end
+
+    -- A one-line value keeps the note on the second line. That is -16, which
+    -- is also where a single-line fixed label puts it. A wrapped label
+    -- (labelWidth) or a wrapped value pushes the note under whichever block
+    -- hangs lower, so the two row styles can share this function.
+    local noteY = -noteTop
+    if valueH > 14 then
+        local underValue = -(2 + valueH + 2)
+        if underValue < noteY then noteY = underValue end
+    end
 
     if hasNote then
         StyleText(row.note, { text = opts.note, size = 9, color = opts.noteColor or L.C_DIM })
         row.note:ClearAllPoints()
-        row.note:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -noteTop)
+        row.note:SetPoint("TOPLEFT", row, "TOPLEFT", 0, noteY)
         row.note:SetWidth(w)
         if row.note.SetWordWrap then row.note:SetWordWrap(true) end
         row.note:SetJustifyH("LEFT")
         row.note:SetHeight(200)
         local noteH = math.max(12, math.floor((row.note:GetStringHeight() or 12) + 2))
         row.note:SetHeight(noteH)
-        height = math.max(height, noteTop + noteH + 2)
+        height = math.max(height, -noteY + noteH + 2)
         row:SetHeight(height)
         row.note:Show()
     else
         row.note:SetText("")
         row.note:Hide()
+        local grow = false
         if fixed then
             height = math.max(height, noteTop + 2)
+            grow = true
+        end
+        if valueH > 14 then
+            height = math.max(height, self:WrappedRowHeight(2 + valueH, 20))
+            grow = true
+        end
+        if grow then
             row:SetHeight(height)
         end
     end
