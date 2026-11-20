@@ -465,11 +465,25 @@ function J:OnXPMessage(event, msg)
     end
 end
 
-function J:OnDeath()
-    local map, zone = self:ReadMap()
+--- Creature name, or "Player" when the target is another character or the
+--- client will not say. The player's own name is not a killer.
+local function DeathOpponent(self)
     local killer = self:PlainName("target")
     local me = self:PlainName("player")
-    if not killer or killer == me then killer = nil end
+    if type(killer) ~= "string" or killer == "" or killer == me then return nil end
+    local C = TA.Compat
+    local isPlayer
+    if C and type(C.UnitIsPlayer) == "function" then
+        local ok, v = pcall(C.UnitIsPlayer, "target")
+        if ok and type(v) == "boolean" then isPlayer = v end
+    end
+    if isPlayer == false then return killer end
+    return "Player"
+end
+
+function J:OnDeath()
+    local map, zone = self:ReadMap()
+    local killer = DeathOpponent(self)
     local sm = self:Summary()
     if not sm then return end
     sm.d = (sm.d or 0) + 1
@@ -730,7 +744,7 @@ function J:SummaryText()
     else
         lines[#lines + 1] = "Flights: taxi map events are available."
     end
-    lines[#lines + 1] = "Killer: readable target name only. Death recap API: UNVERIFIED."
+    lines[#lines + 1] = "Killer: a creature name, or Player for another character. Death recap API: UNVERIFIED."
     local ses = st.ses or {}
     if #ses == 0 then
         lines[#lines + 1] = "No sessions yet."
