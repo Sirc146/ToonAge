@@ -2,7 +2,9 @@ name: Tests
 
 # The offline verification suite. Every check here already runs locally before
 # a change ships; this is the guarantee that it ran, on a machine nobody
-# configured by hand, for every push and every pull request.
+# configured by hand, for every push and every pull request, including main.
+# A push runs the workflow file in that commit. main stays quiet until this
+# file is on main.
 #
 # GitHub Actions runs .github/workflows/ci.yml. That file is this one.
 # Edit both, or copy this file over that one, so they do not drift.
@@ -25,8 +27,13 @@ name: Tests
 
 on:
   push:
-    branches: ['**']
+    branches:
+      - main
+      - '**'
   pull_request:
+    branches:
+      - main
+      - '**'
   workflow_dispatch:
 
 permissions:
