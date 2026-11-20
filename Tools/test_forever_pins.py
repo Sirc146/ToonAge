@@ -367,10 +367,178 @@ def main():
     check("clear drops the saved active waypoint", lua.eval("SAVED_ACTIVE"), None)
     check("clear does not leave the arrow visible", lua.eval("SAVED_VISIBLE"), False)
 
+    # /way clear. Forever keeps the pinned clear. Retail matches the clear
+    # from before that pin work: manual waypoint only, arrow stays up.
+    lua.execute(r"""
+        local A = ToonAge.modules.Arrow
+        CLEARED_UW = false
+        REMOVED = nil
+        _lines = {}
+        function ToonAge:Raw(_, msg) _lines[#_lines + 1] = tostring(msg) end
+        REFRESHED = 0
+        function ToonAge:GetModule(name)
+            if name == "MapPins" then
+                return { Refresh = function() REFRESHED = REFRESHED + 1 end }
+            end
+            return nil
+        end
+        ToonAge.IsForever = true
+        ToonAge.flavor = "forever"
+        FOREVER_GATE = A.OnForeverProfile()
+        ToonAge.charDB = { arrow = { waypoint = { map = 20 }, visible = true, manualWaypoint = { x = 1 } }, activeWaypoint = { map = 20 } }
+        ToonAge.db = { waypoint = { map = 20 } }
+        A.manualWaypoint = { map = 20, x = 0.737, y = 0.331, title = "Owen Thadd" }
+        A._arrived = true
+        A._arrivedTime = 3
+        A._tomtomUid = "cmd-ours"
+        A._userWaypointSet = true
+        A.frame = {
+            hidden = false,
+            Hide = function(self) self.hidden = true end,
+            beamTex = { hidden = false, Hide = function(self) self.hidden = true end },
+            menu = { Hide = function() end },
+        }
+        A:ParseWayCommand("clear")
+        F_GONE = A.manualWaypoint
+        F_FRAME = A.frame.hidden
+        F_SAVED = ToonAge.charDB.arrow.waypoint
+        F_VIS = ToonAge.charDB.arrow.visible
+        F_DB = ToonAge.db.waypoint
+        F_UW = CLEARED_UW
+        F_TOM = REMOVED
+        F_MSG = table.concat(_lines, "\n")
+        F_REF = REFRESHED
+
+        ToonAge.IsForever = true
+        ToonAge.flavor = nil
+        ISO_GATE = A.OnForeverProfile()
+        CLEARED_UW = false
+        _lines = {}
+        ToonAge.charDB = { arrow = { waypoint = { map = 11 }, visible = true } }
+        ToonAge.db = {}
+        A.manualWaypoint = { map = 11, x = 0.2, y = 0.3 }
+        A._userWaypointSet = false
+        A._tomtomUid = nil
+        A.frame.hidden = false
+        A:ParseWayCommand("clear")
+        ISO_GONE = A.manualWaypoint
+        ISO_FRAME = A.frame.hidden
+        ISO_SAVED = ToonAge.charDB.arrow.waypoint
+        ISO_MSG = table.concat(_lines, "\n")
+
+        ToonAge.IsForever = false
+        ToonAge.flavor = "retail"
+        ToonAge.profile = nil
+        RETAIL_GATE = A.OnForeverProfile()
+        CLEARED_UW = false
+        REMOVED = nil
+        _lines = {}
+        REFRESHED = 0
+        ToonAge.charDB = {
+            arrow = { waypoint = { map = 84 }, visible = true, manualWaypoint = { x = 1 } },
+            activeWaypoint = { map = 84 },
+        }
+        ToonAge.db = { waypoint = { map = 84 }, arrow = { waypoint = { map = 84 } } }
+        A.manualWaypoint = { map = 84, x = 0.45, y = 0.67, title = "Bank" }
+        A._arrived = true
+        A._arrivedTime = 9
+        A._otherSaid = "keep"
+        A._tomtomUid = "retail-pin"
+        A._userWaypointSet = true
+        A.frame = {
+            hidden = false,
+            Hide = function(self) self.hidden = true end,
+            beamTex = { hidden = false, Hide = function(self) self.hidden = true end },
+            menu = { hidden = false, Hide = function(self) self.hidden = true end },
+        }
+        A:ParseWayCommand("clear")
+        R_GONE = A.manualWaypoint
+        R_ARRIVED = A._arrived
+        R_TIME = A._arrivedTime
+        R_OTHER = A._otherSaid
+        R_FRAME = A.frame.hidden
+        R_BEAM = A.frame.beamTex.hidden
+        R_MENU = A.frame.menu.hidden
+        R_SAVED_MAP = ToonAge.charDB.arrow.waypoint and ToonAge.charDB.arrow.waypoint.map
+        R_MANUAL_X = ToonAge.charDB.arrow.manualWaypoint and ToonAge.charDB.arrow.manualWaypoint.x
+        R_ACTIVE_MAP = ToonAge.charDB.activeWaypoint and ToonAge.charDB.activeWaypoint.map
+        R_VIS = ToonAge.charDB.arrow.visible
+        R_DB_MAP = ToonAge.db.waypoint and ToonAge.db.waypoint.map
+        R_DB_ARROW_MAP = ToonAge.db.arrow.waypoint and ToonAge.db.arrow.waypoint.map
+        R_UW = CLEARED_UW
+        R_TOM = REMOVED
+        R_UID = A._tomtomUid
+        R_SET = A._userWaypointSet
+        R_MSG = table.concat(_lines, "\n")
+        R_REF = REFRESHED
+        A.manualWaypoint = { map = 84, x = 0.1, y = 0.2 }
+        A.frame.hidden = false
+        A:ClearActiveWaypoint("menu")
+        R_MENU_GONE = A.manualWaypoint
+        R_MENU_FRAME = A.frame.hidden
+        R_MENU_SAVED = ToonAge.charDB.arrow.waypoint and ToonAge.charDB.arrow.waypoint.map
+        ToonAge.IsForever = nil
+        ToonAge.flavor = nil
+        NEITHER = A.OnForeverProfile()
+    """)
+    check("forever profile uses the pinned clear", lua.eval("FOREVER_GATE"), True)
+    check("forever /way clear removes the waypoint", lua.eval("F_GONE"), None)
+    check("forever /way clear removes our TomTom pin", lua.eval("F_TOM"), "cmd-ours")
+    check("forever /way clear clears the user waypoint", lua.eval("F_UW"), True)
+    check("forever /way clear hides the arrow", lua.eval("F_FRAME"), True)
+    check("forever /way clear drops the saved waypoint", lua.eval("F_SAVED"), None)
+    check("forever /way clear drops db.waypoint", lua.eval("F_DB"), None)
+    check("forever /way clear hides the saved arrow", lua.eval("F_VIS"), False)
+    check("forever /way clear refreshes map pins", lua.eval("F_REF"), 1)
+    check("forever /way clear says Waypoint cleared",
+          lua.eval("F_MSG"), "|cFFFFD100[TA Arrow]|r Waypoint cleared.")
+    check("IsForever alone uses the pinned clear", lua.eval("ISO_GATE"), True)
+    check("IsForever /way clear removes the waypoint", lua.eval("ISO_GONE"), None)
+    check("IsForever /way clear hides the arrow", lua.eval("ISO_FRAME"), True)
+    check("IsForever /way clear drops the saved waypoint", lua.eval("ISO_SAVED"), None)
+    check("IsForever /way clear says Waypoint cleared",
+          lua.eval("ISO_MSG"), "|cFFFFD100[TA Arrow]|r Waypoint cleared.")
+    check("retail is not the Forever profile", lua.eval("RETAIL_GATE"), False)
+    check("retail /way clear removes the manual waypoint", lua.eval("R_GONE"), None)
+    check("retail /way clear clears the arrived flag", lua.eval("R_ARRIVED"), False)
+    check("retail /way clear clears the arrived time", lua.eval("R_TIME") is None, True)
+    check("retail /way clear leaves the other-continent flag", lua.eval("R_OTHER"), "keep")
+    check("retail /way clear leaves the arrow frame up", lua.eval("R_FRAME"), False)
+    check("retail /way clear leaves the beam up", lua.eval("R_BEAM"), False)
+    check("retail /way clear leaves the menu up", lua.eval("R_MENU"), False)
+    check("retail /way clear keeps the saved waypoint", lua.eval("R_SAVED_MAP"), 84)
+    check("retail /way clear keeps the saved manual waypoint", lua.eval("R_MANUAL_X"), 1)
+    check("retail /way clear keeps the saved active waypoint", lua.eval("R_ACTIVE_MAP"), 84)
+    check("retail /way clear leaves the arrow visible", lua.eval("R_VIS"), True)
+    check("retail /way clear keeps db.waypoint", lua.eval("R_DB_MAP"), 84)
+    check("retail /way clear keeps db.arrow.waypoint", lua.eval("R_DB_ARROW_MAP"), 84)
+    check("retail /way clear does not clear the user waypoint", lua.eval("R_UW"), False)
+    check("retail /way clear does not remove the TomTom pin", lua.eval("R_TOM") is None, True)
+    check("retail /way clear keeps the TomTom uid", lua.eval("R_UID"), "retail-pin")
+    check("retail /way clear keeps the user-waypoint flag", lua.eval("R_SET"), True)
+    check("retail /way clear says Manual waypoint cleared",
+          lua.eval("R_MSG"), "|cFFFFD100[TA Arrow]|r Manual waypoint cleared.")
+    check("retail /way clear does not refresh map pins", lua.eval("R_REF"), 0)
+    check("retail menu Clear removes only the manual waypoint", lua.eval("R_MENU_GONE"), None)
+    check("retail menu Clear leaves the arrow up", lua.eval("R_MENU_FRAME"), False)
+    check("retail menu Clear keeps the saved waypoint", lua.eval("R_MENU_SAVED"), 84)
+    check("no flavor and no IsForever is not Forever", lua.eval("NEITHER"), False)
+
     arrow_src = read("Modules/Navigation/Arrow.lua")
     settings = read("Modules/Infrastructure/Settings.lua")
+    compat = read("Core/Compat/API.lua")
+    guard = compat.split("function C.ClearUserWaypoint()", 1)[1].split("\nfunction ", 1)[0]
     check("lock control is on TAWaypointArrow", 'CreateFrame("Button", "TAWaypointArrow"' in arrow_src, True)
-    check("lock tooltip is Right-click: Lock / Unlock", "Right-click: Lock / Unlock" in arrow_src, True)
+    check("lock tooltip is Right-click: Lock / Clear menu",
+          "Right-click: Lock / Clear menu" in arrow_src, True)
+    check("old lock tooltip is gone from the shared arrow",
+          "Right-click: Lock / Unlock" not in arrow_src, True)
+    check("ClearUserWaypoint stays behind HasAPI",
+          'not TA:HasAPI("C_Map.ClearUserWaypoint")' in guard, True)
+    check("ClearUserWaypoint stays inside pcall",
+          "pcall(C_Map.ClearUserWaypoint)" in guard, True)
+    check("shared arrow does not call C_Map.ClearUserWaypoint",
+          "C_Map.ClearUserWaypoint" not in arrow_src, True)
     check("Clear button label", 'fs:SetText("Clear")' in arrow_src, True)
     check("Clear menu entry", 'item("Clear"' in arrow_src, True)
     check("settings Clear waypoint button", '"Clear waypoint"' in settings, True)

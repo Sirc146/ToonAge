@@ -23,6 +23,7 @@ PROBE = "Modules/Forever/ScrollProbe.lua"
 API_NAMES = (
     "C_Map.SetUserWaypoint",
     "C_Map.CanSetUserWaypointOnMap",
+    "C_Map.ClearUserWaypoint",
     "C_SuperTrack.SetSuperTrackedUserWaypoint",
     "C_Map.GetBestMapForUnit",
     "C_Map.GetPlayerMapPosition",
@@ -95,7 +96,7 @@ ToonAge = { modules = {}, IsForever = true, flavor = "forever" }
 function ToonAge:RegisterModule(name, mod) self.modules[name] = mod end
 function ToonAge:HasAPI(path) return missing[path] ~= true end
 missing = {}
-calls = { set = 0, can = 0, super = 0, pos = 0, build = 0, container = 0 }
+calls = { set = 0, can = 0, clear = 0, super = 0, pos = 0, build = 0, container = 0 }
 function date() return "Thu Nov 12 04:15:00 2026" end
 function GetBuildInfo()
     calls.build = calls.build + 1
@@ -104,6 +105,7 @@ end
 C_Map = {
     SetUserWaypoint = function() calls.set = calls.set + 1; error("setter") end,
     CanSetUserWaypointOnMap = function() calls.can = calls.can + 1; error("query") end,
+    ClearUserWaypoint = function() calls.clear = calls.clear + 1; error("setter") end,
     GetBestMapForUnit = function(unit)
         if unit ~= "player" then error("unit") end
         return 1454
@@ -159,6 +161,7 @@ def test_report_shape():
     for api, kind in (
         ("C_Map.SetUserWaypoint", "MISSING"),  # HasAPI false in the next test; here it is a function
         ("C_Map.CanSetUserWaypointOnMap", "function"),
+        ("C_Map.ClearUserWaypoint", "function"),
         ("C_SuperTrack.SetSuperTrackedUserWaypoint", "MISSING"),
         ("C_Map.GetBestMapForUnit", "function"),
         ("C_Map.GetPlayerMapPosition", "function"),
@@ -202,6 +205,7 @@ def test_report_shape():
     calls = lua.globals().calls
     check("SetUserWaypoint was not called", calls.set, 0)
     check("CanSetUserWaypointOnMap was not called", calls.can, 0)
+    check("ClearUserWaypoint was not called", calls.clear, 0)
     check("position was read once", calls.pos, 1)
 
     lua.execute(r"""
