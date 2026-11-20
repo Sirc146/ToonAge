@@ -87,7 +87,7 @@ function UnitClass() return "Mage", "MAGE", 8 end
 function UnitLevel() return LEVEL end
 function UnitName(unit)
     if unit == "npc" or unit == "target" then return "Aelthalyste" end
-    return "Eramali"
+    return "Examplechar"
 end
 function GetRealmName() return "Classic Beta PvE" end
 function UnitRace() return "Undead", "Scourge" end
