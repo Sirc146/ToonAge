@@ -1128,6 +1128,54 @@ function L:CharacterSidebar(side)
     return y
 end
 
+--- One label and a gap reserved for an edit box, in a single column.
+--- The label width is chosen by the caller so every row in the form lines up.
+--- opts.tooltip is the long sentence shown on hover. The short label stays
+--- on the row. Gold is not used; this is not a selection.
+--- @return number nextY, frame row
+function L:LabelInput(parent, y, opts)
+    opts = opts or {}
+    y = math.floor(y)
+    local h = opts.height or 20
+    local x = opts.x or L.PAD
+    local rowW = opts.width
+    if type(rowW) ~= "number" or rowW <= 0 then rowW = self:Width(parent) end
+    local row = AcquireFrame("LabelInput", parent, function()
+        local f = CreateFrame("Frame", nil, HOLDER)
+        f.label = NewFS(f)
+        return f
+    end)
+    row:SetSize(math.floor(rowW), h)
+    row:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    local labelW = opts.labelWidth or math.floor(rowW * 0.6)
+    StyleText(row.label, {
+        text = opts.label or "",
+        size = opts.size or 9,
+        color = opts.color or L.C_PRIMARY,
+    })
+    row.label:ClearAllPoints()
+    row.label:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.label:SetWidth(labelW)
+    row.label:SetHeight(h)
+    if row.label.SetWordWrap then row.label:SetWordWrap(false) end
+    if row.EnableMouse then row:EnableMouse(true) end
+    if opts.tooltip and GameTooltip and GameTooltip.SetOwner then
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(opts.label or "", 0.92, 0.90, 0.87)
+            GameTooltip:AddLine(opts.tooltip, 0.9, 0.9, 0.9, true)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function()
+            if GameTooltip.Hide then GameTooltip:Hide() end
+        end)
+    else
+        row:SetScript("OnEnter", nil)
+        row:SetScript("OnLeave", nil)
+    end
+    return y - h - 2, row
+end
+
 -- ─── BUTTONS ────────────────────────────────────────────────────────────────
 -- Tabs offer every action as a button. Slash commands still work for people
 -- who like them, but no tab should require typing one.

@@ -22,6 +22,7 @@
 --   TA:LeftPanelSpec(tabKey) -> spec or nil
 --   TA:ReleaseLeftPanel(ui) -> boolean
 --   TA:MountLeftPanel(ui, tabKey) -> boolean
+--   TA:FinishTabSlot(ui, tabKey, renderedOk) -> boolean
 --   TA:RefreshLeftPanel(ui) -> boolean
 --
 -- host = { scroll, content, sidebar, side, place, width, tabKey }
@@ -206,6 +207,18 @@ function TA:MountLeftPanel(ui, tabKey)
         return false
     end
     return true
+end
+
+--- Called when a tab's Render returns. A failed render does not mount a
+--- slot, and a slot that render managed to mount is released, so the error
+--- text is not shown beside calculator controls.
+function TA:FinishTabSlot(ui, tabKey, renderedOk)
+    if type(ui) == "table" then ui._leftPanelDefer = nil end
+    if not renderedOk then
+        if type(ui) == "table" then self:ReleaseLeftPanel(ui) end
+        return false
+    end
+    return self:MountLeftPanel(ui, tabKey) and true or false
 end
 
 function TA:RefreshLeftPanel(ui)
