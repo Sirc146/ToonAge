@@ -510,6 +510,10 @@ function TA:InitUI()
             end
         end
 
+        -- The previous tab's left-panel slot, if it had one. A tab that never
+        -- registered leaves this as a no-op, so its sidebar draw is unchanged.
+        if TA.ReleaseLeftPanel then TA:ReleaseLeftPanel(self) end
+
         -- Rebuild content panes fresh — this is the key fix.
         -- Destroying and recreating avoids FontString/Texture bleed-through
         -- that GetChildren() misses.
@@ -526,7 +530,13 @@ function TA:InitUI()
         if tabDef then
             local mod = TA:GetModule(tabDef.module)
             if mod and mod.Render then
+                -- While this is set, a tab that opted into the slot draws that
+                -- slot from MountLeftPanel instead of onto the sidebar scroll.
+                local deferSlot = type(TA.MountLeftPanel) == "function"
+                if deferSlot then self._leftPanelDefer = true end
                 local ok, err = pcall(mod.Render, mod, self.contentChild, self.sideChild)
+                if deferSlot then self._leftPanelDefer = nil end
+                if deferSlot then pcall(TA.MountLeftPanel, TA, self, tabID) end
                 if not ok then
                     -- Surface errors in the content pane instead of silently failing
                     local errF = self.contentChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -571,7 +581,11 @@ function TA:InitUI()
             -- means nothing was rendered into it) AND the module didn't parent
             -- persistent frames directly to the sidebar (like 3D models), hide
             -- the sidebar and expand content to consume the full frame width.
-            local sideEmpty = (self.sideChild:GetHeight() <= 1)
+            -- A mounted slot is sidebar content. _leftPanelTab stays nil for
+            -- every tab that did not opt in, so the check below is the same
+            -- one this window has always used.
+            local slotOpen = self._leftPanelTab ~= nil
+            local sideEmpty = (self.sideChild:GetHeight() <= 1) and not slotOpen
             -- Check if the module parented persistent frames to the sidebar
             if sideEmpty and tabDef then
                 local mod2 = TA:GetModule(tabDef.module)
