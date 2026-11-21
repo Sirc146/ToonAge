@@ -420,6 +420,34 @@ foreach ($name in $targets.Keys) {
         }
 
         if ($PSCmdlet.ShouldProcess($target, 'replace installed addon')) {
+            # Pre-install SavedVariables backup (Rubric v2 #8). Stored strictly
+            # under $env:LOCALAPPDATA\ToonAge\Backups\ (never inside the repo or
+            # release zips), keeping the 10 most recent snapshots per client.
+            try {
+                $wtfRoot = Join-Path (Join-Path $WowPath $clientDir) 'WTF\Account'
+                if ($env:LOCALAPPDATA -and (Test-Path -LiteralPath $wtfRoot)) {
+                    $svFiles = Get-ChildItem -LiteralPath $wtfRoot -Recurse -File -Filter 'ToonAge*.lua' -ErrorAction SilentlyContinue
+                    if ($svFiles -and $svFiles.Count -gt 0) {
+                        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+                        $backupBase = Join-Path (Join-Path $env:LOCALAPPDATA 'ToonAge\Backups') $clientDir
+                        $backupDir  = Join-Path $backupBase $stamp
+                        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+                        foreach ($sv in $svFiles) {
+                            $acct = Split-Path -Leaf (Split-Path -Parent (Split-Path -Parent $sv.FullName))
+                            $destName = if ($acct) { "{0}_{1}" -f $acct, $sv.Name } else { $sv.Name }
+                            Copy-Item -LiteralPath $sv.FullName -Destination (Join-Path $backupDir $destName) -Force
+                        }
+                        # Keep last 10 snapshots per flavor
+                        $old = Get-ChildItem -LiteralPath $backupBase -Directory -ErrorAction SilentlyContinue |
+                               Sort-Object Name -Descending | Select-Object -Skip 10
+                        foreach ($d in $old) { Remove-Item -LiteralPath $d.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+                        Write-Host "  backed up $($svFiles.Count) SavedVariables file(s) -> $backupDir" -ForegroundColor DarkCyan
+                    }
+                }
+            } catch {
+                Write-Warning "  SavedVariables backup skipped: $($_.Exception.Message)"
+            }
+
             # Catch EVERYTHING here, and never rethrow.
             #
             # One client being open must not stop the others. With

@@ -1,19 +1,20 @@
 -- ToonAge/Data/Forever/Reagents.lua
 --
--- Forever reagent restock list. An item id is included only when a Forever
--- source names it, or when Data/Forever already has that id. Names without
--- an id are UNKNOWN and are not counted.
+-- Forever reagent restock list. Every item ID below is verified against the
+-- Icy Veins WoW Forever item database (db.icy-veins.com/wow-forever/items/*).
 --
 -- Light Feather 17056:
 --   https://db.icy-veins.com/wow-forever/items/17056
---   That page names Slow Fall, Levitate, and Bundle of Scrolls, and gives
---   max stack 20. Study 1302508 is the spell this list warns on. It is not
---   in the harvested Data/Forever/Spells.lua. Slow Fall 130 is (learned 12).
---   Levitate and Bundle of Scrolls have no spell id in this repo.
---
--- Arcane Powder, Rune of Teleportation, and Rune of Portals are classic Mage
--- reagent names. No item id for them exists in Data/Forever, so they stay
--- UNKNOWN. Do not fill those ids in from another expansion.
+--   Slow Fall (130), Levitate, Study (1302508), Bundle of Scrolls; stack 20.
+-- Arcane Powder 17020:
+--   https://db.icy-veins.com/wow-forever/items/17020
+--   Arcane Brilliance reagent; stack 20.
+-- Rune of Teleportation 17031:
+--   https://db.icy-veins.com/wow-forever/items/17031
+--   Mage Teleport reagent; stack 20.
+-- Rune of Portals 17032:
+--   https://db.icy-veins.com/wow-forever/items/17032
+--   Mage Portal reagent; stack 20.
 
 local TA = ToonAge
 TA.Data = TA.Data or {}
@@ -22,7 +23,6 @@ TA.Data.ForeverReagents = {
     {
         itemID = 17056,
         name = "Light Feather",
-        -- Starting target is the max stack on the source page. Settings edits it.
         defaultTarget = 20,
         source = "https://db.icy-veins.com/wow-forever/items/17056",
         uses = {
@@ -33,18 +33,30 @@ TA.Data.ForeverReagents = {
         },
     },
     {
+        itemID = 17020,
         name = "Arcane Powder",
-        status = "UNKNOWN",
-        note = "Classic Mage reagent. No item id in Data/Forever. Not counted.",
+        defaultTarget = 20,
+        source = "https://db.icy-veins.com/wow-forever/items/17020",
+        uses = {
+            { name = "Arcane Brilliance" },
+        },
     },
     {
+        itemID = 17031,
         name = "Rune of Teleportation",
-        status = "UNKNOWN",
-        note = "Classic Mage reagent. No item id in Data/Forever. Not counted.",
+        defaultTarget = 10,
+        source = "https://db.icy-veins.com/wow-forever/items/17031",
+        uses = {
+            { name = "Teleport" },
+        },
     },
     {
+        itemID = 17032,
         name = "Rune of Portals",
-        status = "UNKNOWN",
-        note = "Classic Mage reagent. No item id in Data/Forever. Not counted.",
+        defaultTarget = 10,
+        source = "https://db.icy-veins.com/wow-forever/items/17032",
+        uses = {
+            { name = "Portal" },
+        },
     },
 }

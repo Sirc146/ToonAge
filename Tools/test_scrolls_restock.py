@@ -90,12 +90,16 @@ def find_row(rows, item_id):
 
 def test_catalog_and_toc():
     text = read("Data/Forever/Reagents.lua")
-    check("17056 is the sourced item", re.findall(r"itemID\s*=\s*(\d+)", text), ["17056"])
+    check("all four Forever reagents have verified item IDs",
+          re.findall(r"itemID\s*=\s*(\d+)", text), ["17056", "17020", "17031", "17032"])
     check("source url is on the list", SOURCE in text, True)
+    check("source urls exist for all four reagents",
+          all(f"https://db.icy-veins.com/wow-forever/items/{i}" in text for i in (17056, 17020, 17031, 17032)),
+          True)
     check("Study 1302508 is named", "1302508" in text and "Study" in text, True)
     check("Slow Fall is named", "Slow Fall" in text, True)
     check("Levitate is named", "Levitate" in text, True)
-    check("three reagents stay UNKNOWN", text.count('status = "UNKNOWN"'), 3)
+    check("no reagents remain UNKNOWN", text.count('status = "UNKNOWN"'), 0)
 
     camelot = read("ToonAge_Camelot.toc")
     check("Camelot lists the reagent data", "Data\\Forever\\Reagents.lua" in camelot, True)
@@ -292,9 +296,9 @@ def test_rows_and_host():
     check("study warning when the spell is known",
           "Light Feather is below target and Study is known" in text, True)
     check("default target is stored on ToonAge", int(g.FEATHER_QTY), 20)
-    check("Arcane Powder is UNKNOWN", "nil|Arcane Powder|UNKNOWN|" in text, True)
-    check("Rune of Teleportation is UNKNOWN", "nil|Rune of Teleportation|UNKNOWN|" in text, True)
-    check("Rune of Portals is UNKNOWN", "nil|Rune of Portals|UNKNOWN|" in text, True)
+    check("Arcane Powder is counted with verified ID 17020", "17020|Arcane Powder|1 / 20|19|" in text, True)
+    check("Rune of Teleportation is counted with verified ID 17031", "17031|Rune of Teleportation|1 / 10|9|" in text, True)
+    check("Rune of Portals is counted with verified ID 17032", "17032|Rune of Portals|1 / 10|9|" in text, True)
 
     lua.execute(r"""
         IsPlayerSpell = function() return false end

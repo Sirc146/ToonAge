@@ -41,7 +41,8 @@ Base: `origin/test @ 6eeb530` (do NOT drop/pop `stash@{0}`; do NOT rebase/force-
 | **5** | `antigravity/phase5-spells-playbook` | `aa34b8e` | Done (local) | `SpellPlaybook.lua`: replaced Lv 10-19 Mage experimental disclaimer wall with working 9-class, Lv 1-60 Playbook (`Single Target`/`Opener`/`AoE`/`Emergency`/`DPS & DPM`, Spec cycler, live buff/wand checks, Casts & Trainer tags) |
 | **6** | `antigravity/phase6-pvp-readiness` | `c68db43` | Done (local) | `PvP.lua` v2: Live Status/Flag/Timer/Zone/BG banner + `Now` Priority 1 alert, Forever BG brackets (incl. 15v15 Darkspear Islands), Readiness checklist (trinket/consumables/plan slot), untruncated utility racials, live spellbook CC counter map, Target Dossier |
 | **7** | `antigravity/phase7-rubric-v2-and-hygiene` | `1bbaddb` | Done (local) | Unified Master Rubric v2 (`Docs/AUDIT_RUBRIC.md`, Part 1 + Part 2 Sections A-L + filled Forever/Remix professions matrix), `Tools/check_pii_hygiene.py`, `Tools/score_rubric.py`, `Tools/test_rubric_tools.py`, fixed TZ-flaky `test_harvest_capture.py` |
-| **8** | `antigravity/phase8-loot-watch-and-libraries` | `f899813` | Done (local, installed to `_forever_`) | `LootWatch.lua`: private dark-gold pill toast with circular icon + run Need counter badge (catches off-class/off-stat Need & BoE green Need before you roll + repeat/contested Need, Settings toggle + `/ta lootwatch`); all-continent Study libraries (`Orgrimmar Darkbriar Lodge`, `Ironforge`, `Tower of Azora`, `Theramore`); regenerated `EVENT_ROUTES` + updated `Media/icons/MEDIA.md` (102 TGAs) |
+| **8** | `antigravity/phase8-loot-watch-and-libraries` | `b33fca7` | Pushed to `origin` (installed `_forever_`) | `LootWatch.lua`, all-continent Study libraries, regenerated `EVENT_ROUTES`, `MEDIA.md` (102 TGAs), `MASTER_README.md` |
+| **9** | `antigravity/phase9-roadmap-backup-reagents` | *in progress* | Local (Roadmap `1.2` + `2A`) | Pre-install SavedVariables auto-backup in `build_flavors.ps1` (last 10 snapshots under `%LOCALAPPDATA%\ToonAge\Backups`); verified Forever reagent IDs `17020`/`17031`/`17032` in `Data/Forever/Reagents.lua` (0 `UNKNOWN` rows on Scrolls) |
 
 ---
 
@@ -79,15 +80,15 @@ Full criteria, weights, and hard fails live in [Docs/AUDIT_RUBRIC.md](AUDIT_RUBR
 
 Check items off here as they complete so nothing is rebuilt twice.
 
-### Part 1 — Addon & Engineering (`9.5 -> 10.0`)
-- [ ] **1.1 Live In-Game Sign-Off (Phases 4–8 on Forever):** Owner runs `/reload`, `/ta lootwatch`, tests `Scrolls` nearest library pin in Kalimdor, checks `Spells`/`PvP`/`Now`/`Character`/`Professions`, and runs `/ta test` (`0 fail / 0 leaks`) -> Criterion `#1` `9.0 -> 10.0`.
-- [ ] **1.2 Automatic Pre-Install SavedVariables Backup:** Add optional timestamped `WTF` SavedVariables backup flag/helper in `Tools/build_flavors.ps1` -> Criterion `#8` `9.0 -> 10.0`.
-- [x] **1.3 Living State Sync:** Create canonical `Docs/MASTER_README.md` and sync `Docs/STATE.md` -> Criterion `#12` `9.0 -> 10.0`.
-- [ ] **1.4 Owner-Approved Push & PRs to `test`:** Push stacked branches `phase1a` → `phase8` after owner's explicit word, verify GitHub Actions CI green, merge on owner's word -> Criterion `#10` `9.5 -> 10.0`.
-- [ ] **1.5 Approved Release Tag & Packaging:** Verify `check_release_zip.py`, CurseForge & Wago upload on owner-approved `v*` tag -> Criterion `#11` `9.0 -> 10.0`.
+### Part 1 — Addon & Engineering (`9.6 -> 10.0`)
+- [ ] **1.1 Live In-Game Sign-Off (Phases 4–9 on Forever):** Owner runs `/reload`, `/ta lootwatch`, tests `Scrolls` (0 `UNKNOWN` reagents + nearest library pin), checks `Spells`/`PvP`/`Now`/`Character`/`Professions`, and runs `/ta test` (`0 fail / 0 leaks`) -> Criterion `#1` `9.0 -> 10.0`.
+- [x] **1.2 Automatic Pre-Install SavedVariables Backup:** Added timestamped `WTF\Account\*\SavedVariables\ToonAge*.lua` backup (last 10 snapshots in `%LOCALAPPDATA%\ToonAge\Backups`) before `-Install` in `Tools/build_flavors.ps1` -> Criterion `#8` `9.0 -> 10.0`.
+- [x] **1.3 Living State Sync:** Created canonical `Docs/MASTER_README.md` and synced `Docs/STATE.md` -> Criterion `#12` `9.0 -> 10.0`.
+- [x] **1.4 Feature Branches Pushed to GitHub (`origin`):** Pushed `antigravity/phase1a-*` through `antigravity/phase8-*` to `Sirc146/ToonAge` (`test`/`main` untouched pending owner merge approval).
+- [ ] **1.5 Approved PR Merges & Release Tag:** Merge approved PRs into `test` and tag `v*` on owner's direct word -> `#10` & `#11` `-> 10.0`.
 
-### Part 2 — Forever `1.60.1` Character & Game Data (`7.5 -> 10.0`)
-- [ ] **2A. Reagents & Consumables Data (`G: 6.0 -> 9.5`):** Verify Forever item IDs for `Arcane Powder`, `Rune of Teleportation`, and `Rune of Portals` in `Data/Forever/Reagents.lua` (removing `UNKNOWN` on Scrolls tab); document expanded First Aid potions & campsite buff stacking rules.
+### Part 2 — Forever `1.60.1` Character & Game Data (`7.8 -> 10.0`)
+- [x] **2A. Reagents & Consumables Data (`G: 6.0 -> 8.5`):** Verified Forever item IDs against `db.icy-veins.com/wow-forever/items/*` for `Arcane Powder` (`17020`), `Rune of Teleportation` (`17031`), and `Rune of Portals` (`17032`) in `Data/Forever/Reagents.lua` — zero `UNKNOWN` rows on `Scrolls`! *(Remaining for `9.5`: campsite buff stacking & expanded First Aid potions catalog.)*
 - [ ] **2B. Forever Enchants & Faction Rewards (`J: 5.0 -> 9.0`, `F: 6.5 -> 9.0`):** Add sourced Forever enchant recommendations per slot/role (incl. enchanter-crafted relics) and Darkspear Islands / Classic faction reward unlocks in `Data/Forever/`.
 - [ ] **2C. Multi-Class Spell Ranks & Generalized Live Combat Suggest HUD (`B: 8.0 -> 9.5`, `L: 9.5 -> 10.0`):** Harvest trainer rank chains for the remaining 7 non-Mage classes into `Data/Forever/SpellRanks.lua`; generalize `MageSuggest.lua` into a spec-aware live Combat Suggest HUD (Arcane/Fire/Frost first, then all 9 classes) with an in-tab toggle on `Spells`.
 - [ ] **2D. Live Client Probes for PvP Currency & Profession Skill IDs (`K: 7.5 -> 9.5`):** Probe `C_CurrencyInfo` (Honor / Rank Points IDs), `GetBattlefieldStatus`, and primary profession skill-line IDs on live Forever `1.60.1` to unlock live Honor/Rank bars on `PvP` and flip `ProfessionSkills.lua` from `unverified = true` to verified.

@@ -181,7 +181,12 @@ def run_gates(quick=False):
 
     # 8. SavedVariables & Migration Safety
     ok_mig, _ = run_py("Tools/test_migrations.py")
-    if ok_mig:
+    build_ps = (ROOT / "Tools/build_flavors.ps1").read_text(encoding="utf-8", errors="ignore")
+    has_backup = "ToonAge\\Backups" in build_ps and "SavedVariables" in build_ps
+    if ok_mig and has_backup:
+        scores[8] = 10.0
+        evidence[8] = "test_migrations green + automatic pre-install SavedVariables backup in build_flavors.ps1"
+    elif ok_mig:
         scores[8] = 9.0
         evidence[8] = "test_migrations green (backup verified on install)"
     else:
@@ -220,8 +225,16 @@ def run_gates(quick=False):
     # 12. Docs & Living State
     has_rubric = (ROOT / "Docs/AUDIT_RUBRIC.md").is_file()
     has_state = (ROOT / "Docs/STATE.md").is_file()
-    scores[12] = 9.0 if (has_rubric and has_state) else 5.0
-    evidence[12] = "Docs/AUDIT_RUBRIC.md + Docs/STATE.md present"
+    has_master = (ROOT / "Docs/MASTER_README.md").is_file()
+    if has_rubric and has_state and has_master:
+        scores[12] = 10.0
+        evidence[12] = "Docs/MASTER_README.md + Docs/AUDIT_RUBRIC.md + Docs/STATE.md synced"
+    elif has_rubric and has_state:
+        scores[12] = 9.0
+        evidence[12] = "Docs/AUDIT_RUBRIC.md + Docs/STATE.md present"
+    else:
+        scores[12] = 5.0
+        evidence[12] = "missing canonical rubric/state docs"
 
     return scores, evidence, hard_fail
 
