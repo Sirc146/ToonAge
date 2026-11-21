@@ -181,6 +181,8 @@ Modules\Character\ProfessionSkills.lua
 Modules\Character\ProfessionBoard.lua
 Modules\Character\ProfessionBatch.lua
 Modules\Progression\FactionTracker.lua
+# Prioritized fact->action briefing lead tab (left of Character).
+Modules\Forever\Now.lua
 Modules\Forever\Character.lua
 Modules\Forever\Gear.lua
 # Per-spec stat priority lookup for the Gear tab. Data lives in Data/Forever.

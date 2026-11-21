@@ -165,7 +165,7 @@ def test_scaffolds_inert():
     # everything that needs Data/Forever stays denied above.
     tabs = list(ta.ProfileTabs(ta).values())
     check("forever tab order", [t.id for t in tabs],
-          ["character", "gear", "professions", "reputations", "talents", "spells", "pets", "pvp",
+          ["now", "character", "gear", "professions", "reputations", "talents", "spells", "pets", "pvp",
            "scrolls", "casts", "harvest"])
     # The readout registers as ForeverCharacter, not Character: Retail ships
     # both files in one TOC and RegisterModule is a flat overwrite, so sharing

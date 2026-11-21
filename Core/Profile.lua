@@ -289,6 +289,9 @@ local PROFILES = {
             -- the client says about this character and ranks nothing. It
             -- registers as ForeverCharacter so it cannot collide with the
             -- retail Character module, which ships in the same TOC.
+            -- Lead fact->action briefing tab (left of Character). Pulls strictly
+            -- from live Forever modules; never invents weights or spends points.
+            ForeverNow       = true,
             ForeverCharacter = true,
             -- Infrastructure — no game-rule content at all
             ErrorLog         = true,
@@ -390,6 +393,7 @@ local PROFILES = {
             ForeverPins      = true,
         },
         tabs      = {
+            { id = "now",        label = "Now",        module = "ForeverNow"       },
             { id = "character",  label = "Character",  module = "ForeverCharacter" },
             { id = "gear",       label = "Gear",       module = "ForeverGear"      },
             { id = "professions", label = "Professions", module = "ProfessionBoard" },

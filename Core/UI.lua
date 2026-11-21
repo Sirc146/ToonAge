@@ -5,13 +5,14 @@ local TA = ToonAge
 local U  = TA.Utils
 
 -- ── Constants ─────────────────────────────────────────────────────────
-local FRAME_WIDTH   = 900
-local FRAME_HEIGHT  = 580
-local SIDEBAR_WIDTH = 210
-local TAB_HEIGHT    = 30
-local TITLEBAR_H    = 34
-local CONTENT_PAD   = 14   -- internal padding for content area
-local ROW_PAD       = 6    -- extra vertical space between rows
+local FRAME_WIDTH        = 900
+local FRAME_HEIGHT       = 580
+local SIDEBAR_WIDTH      = 210
+local TAB_HEIGHT_CLASSIC = 30
+local TAB_HEIGHT_MODERN  = 34   -- 34 title + 34 tabs = 68px Modern Azeroth crown
+local TITLEBAR_H         = 34
+local CONTENT_PAD        = 14   -- internal padding for content area
+local ROW_PAD            = 6    -- extra vertical space between rows
 
 -- Ordered for flow: your build (Character/Gear/Talents/Rotation), then
 -- what to do with it (Delves/Weekly), then side systems (Professions/Pets).
@@ -28,21 +29,96 @@ local DEFAULT_TABS = {
     { id = "pets",        label = "Pets",        module = "Pets"        },
 }
 
--- These three tabs have their own glyphs. The bar is 30px tall, so the
--- glyph is drawn at 20px from the _32 cut. The 64 master is the 32px size.
+local ICON_DIR  = "Interface\\AddOns\\ToonAge\\Media\\icons\\"
+local GLASS_DIR = "Interface\\AddOns\\ToonAge\\Media\\glass\\"
+
+-- Monochrome white silhouettes tinted via SetVertexColor. Modern Azeroth shows
+-- glyphs on every tab; Classic keeps the original three.
 local TAB_GLYPH = {
-    professions = "Interface\\AddOns\\ToonAge\\Media\\icons\\tab_professions_32.tga",
-    pets        = "Interface\\AddOns\\ToonAge\\Media\\icons\\tab_pets_32.tga",
-    racials     = "Interface\\AddOns\\ToonAge\\Media\\icons\\tab_racials_32.tga",
+    now         = ICON_DIR .. "tab_now_32.tga",
+    character   = ICON_DIR .. "tab_character_32.tga",
+    gear        = ICON_DIR .. "tab_gear_32.tga",
+    professions = ICON_DIR .. "tab_professions_32.tga",
+    reputations = ICON_DIR .. "tab_reputation_32.tga",
+    talents     = ICON_DIR .. "tab_talents_32.tga",
+    spells      = ICON_DIR .. "tab_spells_32.tga",
+    pets        = ICON_DIR .. "tab_pets_32.tga",
+    pvp         = ICON_DIR .. "tab_pvp_32.tga",
+    scrolls     = ICON_DIR .. "tab_scrolls_32.tga",
+    casts       = ICON_DIR .. "tab_casts_32.tga",
+    harvest     = ICON_DIR .. "tab_harvest_32.tga",
+    guide       = ICON_DIR .. "tab_guide_32.tga",
+    rotation    = ICON_DIR .. "tab_rotation_32.tga",
+    delves      = ICON_DIR .. "tab_delves_32.tga",
+    weekly      = ICON_DIR .. "tab_weekly_32.tga",
+    caps        = ICON_DIR .. "tab_caps_32.tga",
+    weapons     = ICON_DIR .. "tab_weapons_32.tga",
+    racials     = ICON_DIR .. "tab_racials_32.tga",
+}
+local CLASSIC_TAB_GLYPH = {
+    professions = true,
+    pets        = true,
+    racials     = true,
 }
 local TAB_GLYPH_PX = 20
 
-local function TintTab(btn, hot)
-    local r, g, b = 0.55, 0.52, 0.48
-    if hot then r, g, b = 0.92, 0.90, 0.87 end
+local function IsModernSkin()
+    return TA.Theme and TA.Theme.active and TA.Theme.active.name == "modern_azeroth"
+end
+
+local function ActiveTabHeight()
+    return IsModernSkin() and TAB_HEIGHT_MODERN or TAB_HEIGHT_CLASSIC
+end
+
+local function ActiveAccent()
+    local a = TA.Theme and TA.Theme.active and TA.Theme.active.accent
+    if type(a) == "table" and type(a.primary) == "table" then
+        return a.primary
+    end
+    return { 0.40, 0.75, 1.00, 1.00 }
+end
+
+local function TintTab(btn, hot, isActive)
+    local modern = IsModernSkin()
+    local accent = ActiveAccent()
+    local r, g, b
+    if modern then
+        if isActive then
+            r, g, b = 0.961, 0.969, 0.980
+        elseif hot then
+            r, g, b = 0.788, 0.804, 0.824
+        else
+            r, g, b = 0.549, 0.576, 0.604
+        end
+    else
+        r, g, b = 0.55, 0.52, 0.48
+        if hot or isActive then r, g, b = 0.92, 0.90, 0.87 end
+    end
     if btn.label then btn.label:SetTextColor(r, g, b, 1) end
     if btn.glyph and btn.glyph.SetVertexColor then
-        btn.glyph:SetVertexColor(r, g, b, 1)
+        if modern and isActive then
+            btn.glyph:SetVertexColor(accent[1], accent[2], accent[3], 1)
+        else
+            btn.glyph:SetVertexColor(r, g, b, 1)
+        end
+    end
+    if btn.activeLine then
+        if modern then
+            btn.activeLine:SetColorTexture(accent[1], accent[2], accent[3], 1.00)
+        else
+            btn.activeLine:SetColorTexture(0.40, 0.75, 1.00, 1.00)
+        end
+    end
+    if btn.hoverBg then
+        if modern and isActive then
+            btn.hoverBg:SetColorTexture(accent[1], accent[2], accent[3], 0.14)
+            btn.hoverBg:Show()
+        elseif modern and hot then
+            btn.hoverBg:SetColorTexture(1, 1, 1, 0.06)
+            btn.hoverBg:Show()
+        else
+            btn.hoverBg:Hide()
+        end
     end
 end
 
@@ -59,6 +135,18 @@ local function ApplyBackdrop(frame, br, bg, bb, ba, er, eg, eb, ea)
     frame:SetBackdrop(FLAT_BACKDROP)
     frame:SetBackdropColor(br or 0.05, bg or 0.04, bb or 0.02, ba or 0.98)
     frame:SetBackdropBorderColor(er or 0.55, eg or 0.40, eb or 0.08, ea or 0.70)
+end
+
+local function ApplyDrawerTheme(drawer)
+    if not drawer then return end
+    if IsModernSkin() then
+        local t = TA.Theme.active
+        local fill = (t.glass and t.glass.sheet_fill) or { 0.063, 0.094, 0.133, 0.86 }
+        local rim  = (t.glass and t.glass.sheet_rim) or { 1, 1, 1, 0.16 }
+        ApplyBackdrop(drawer, fill[1], fill[2], fill[3], fill[4], rim[1], rim[2], rim[3], rim[4])
+    else
+        ApplyBackdrop(drawer, 0.04, 0.04, 0.05, 0.97, 0.55, 0.40, 0.08, 0.80)
+    end
 end
 
 -- ── Clean a frame's content completely ───────────────────────────────
@@ -288,7 +376,19 @@ function TA:IsTabEnabled(tabID) return IsTabEnabled(tabID) end
 
 function TA:InitUI()
     if self.UI then return end
+    self.db = self.db or {}
+    self.charDB = self.charDB or {}
     self.db.disabledTabs = self.db.disabledTabs or {}
+
+    -- Activate saved or default Modern Azeroth skin + Class Color accent pack.
+    if self.Theme and self.Theme.Select then
+        local skin = self.db.themeSkin or "modern_azeroth"
+        local pack = self.db.themePack or "class"
+        if self.Theme.SetReducedMotion then
+            self.Theme:SetReducedMotion(self.db.reducedMotion == true)
+        end
+        self.Theme:Select(skin, pack)
+    end
 
     -- ── Outer frame ───────────────────────────────────────────────────
     local frame = CreateFrame("Frame", "ToonAgeFrame", UIParent, "BackdropTemplate")
@@ -301,7 +401,6 @@ function TA:InitUI()
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop",  frame.StopMovingOrSizing)
     frame:SetClampedToScreen(true)
-    -- Main frame gets glass backdrop (applied after M loads via InitDrawer hook)
     ApplyBackdrop(frame, 0.05, 0.05, 0.06, 0.94)
     frame:SetBackdropBorderColor(0.30, 0.30, 0.35, 1.00)
     frame:Hide()
@@ -309,29 +408,46 @@ function TA:InitUI()
     -- The frame's Hide override below also closes the settings drawer.
     tinsert(UISpecialFrames, "ToonAgeFrame")
 
-    -- ── Title bar ─────────────────────────────────────────────────────
+    -- ── Title bar (34px) ──────────────────────────────────────────────
     local titleBar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     titleBar:SetPoint("TOPLEFT",  frame, "TOPLEFT",  0, 0)
     titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     titleBar:SetHeight(TITLEBAR_H)
     ApplyBackdrop(titleBar, 0.10, 0.10, 0.12, 1.00)
 
+    -- Subtle top specular sheen for Liquid Glass crown (hidden on classic)
+    local specTop = titleBar:CreateTexture(nil, "ARTWORK")
+    specTop:SetPoint("TOPLEFT",  titleBar, "TOPLEFT",  1, -1)
+    specTop:SetPoint("TOPRIGHT", titleBar, "TOPRIGHT", -1, -1)
+    specTop:SetHeight(16)
+    specTop:SetTexture(GLASS_DIR .. "spec_top.tga")
+    specTop:Hide()
+    titleBar.specTop = specTop
+
+    local titleRule = titleBar:CreateTexture(nil, "OVERLAY")
+    titleRule:SetHeight(1)
+    titleRule:SetPoint("BOTTOMLEFT",  titleBar, "BOTTOMLEFT",  1, 0)
+    titleRule:SetPoint("BOTTOMRIGHT", titleBar, "BOTTOMRIGHT", -1, 0)
+    titleRule:SetColorTexture(1, 1, 1, 0.08)
+    titleRule:Hide()
+    titleBar.bottomRule = titleRule
+
     local titleIcon = titleBar:CreateTexture(nil, "ARTWORK")
     titleIcon:SetSize(18, 18)
     titleIcon:SetPoint("LEFT", titleBar, "LEFT", 10, 0)
     titleIcon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")
     titleIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    titleBar.titleIcon = titleIcon
 
     local titleLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     titleLabel:SetFont("Fonts\\FRIZQT__.TTF", 13, "OUTLINE")
     titleLabel:SetText("ToonAge")
     titleLabel:SetTextColor(0.92, 0.90, 0.87, 1.00)
     titleLabel:SetPoint("LEFT", titleBar, "LEFT", 34, 0)
+    titleBar.titleLabel = titleLabel
 
     local versionLabel = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     versionLabel:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
-    -- Label from the running client, not a hardcoded Retail string (the TBC
-    -- Anniversary window used to say "Midnight 12.0.5").
     local FLAVOR_NAME = {
         retail = "Midnight", tbc = "TBC Anniversary", mists = "Mists Classic",
         vanilla = "Classic Era", wrath = "Wrath Classic", cata = "Cataclysm Classic",
@@ -341,65 +457,164 @@ function TA:InitUI()
     versionLabel:SetText("v" .. TA.version .. "  ·  "
         .. (FLAVOR_NAME[TA.flavor] or "WoW") .. (build ~= "" and (" " .. build) or ""))
     versionLabel:SetTextColor(0.55, 0.52, 0.45, 1.00)
-    -- Right-to-left anchor chain: Close → Options → Help → Copy → Version
-    local closeBtn = CreateFrame("Button", nil, titleBar, "UIPanelCloseButton")
+    titleBar.versionLabel = versionLabel
+
+    -- Custom 24x24 r6 window controls (no macOS traffic lights, no red Blizzard chrome).
+    local function StyleControlPlate(btn, hover, isClose)
+        if not btn.plate then return end
+        if IsModernSkin() then
+            btn.plate:Show()
+            if hover then
+                if isClose then
+                    btn.plate:SetVertexColor(0.75, 0.24, 0.24, 0.72)
+                else
+                    local ac = ActiveAccent()
+                    btn.plate:SetVertexColor(ac[1] * 0.30, ac[2] * 0.30, ac[3] * 0.30, 0.92)
+                end
+            else
+                btn.plate:SetVertexColor(0.08, 0.12, 0.16, 0.85)
+            end
+        else
+            if isClose then
+                btn.plate:Show()
+                btn.plate:SetVertexColor(hover and 0.65 or 0.42, 0.14, 0.14, 0.90)
+            else
+                btn.plate:Hide()
+            end
+        end
+    end
+
+    -- Right-to-left anchor chain: Close -> Options -> Help -> Copy -> Version
+    local closeBtn = CreateFrame("Button", nil, titleBar)
     closeBtn:SetSize(24, 24)
-    closeBtn:SetPoint("TOPRIGHT", titleBar, "TOPRIGHT", -5, -5)
+    closeBtn:SetPoint("TOPRIGHT", titleBar, "TOPRIGHT", -6, -5)
+    closeBtn.plate = closeBtn:CreateTexture(nil, "BACKGROUND")
+    closeBtn.plate:SetAllPoints()
+    closeBtn.plate:SetTexture(GLASS_DIR .. "button_r6.tga")
+    closeBtn.icon = closeBtn:CreateTexture(nil, "ARTWORK")
+    closeBtn.icon:SetSize(12, 12)
+    closeBtn.icon:SetPoint("CENTER")
+    closeBtn.icon:SetTexture(ICON_DIR .. "util_close_16.tga")
+    closeBtn.icon:SetVertexColor(0.79, 0.80, 0.82, 1)
+    closeBtn:SetScript("OnEnter", function(self)
+        StyleControlPlate(self, true, true)
+        self.icon:SetVertexColor(0.98, 0.98, 0.99, 1)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Close ToonAge", 1, 0.82, 0)
+            GameTooltip:Show()
+        end
+    end)
+    closeBtn:SetScript("OnLeave", function(self)
+        StyleControlPlate(self, false, true)
+        self.icon:SetVertexColor(0.79, 0.80, 0.82, 1)
+        if GameTooltip then GameTooltip:Hide() end
+    end)
     closeBtn:SetScript("OnClick", function() frame:Hide() end)
+    frame.closeBtn = closeBtn
 
     local optionsBtn = CreateFrame("Button", nil, titleBar, "BackdropTemplate")
     frame.optionsBtn = optionsBtn   -- read by the self-test's settings suite (G9 check)
-    optionsBtn:SetSize(20, 20)
+    optionsBtn:SetSize(24, 24)
     optionsBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
+    optionsBtn.plate = optionsBtn:CreateTexture(nil, "BACKGROUND")
+    optionsBtn.plate:SetAllPoints()
+    optionsBtn.plate:SetTexture(GLASS_DIR .. "button_r6.tga")
+    optionsBtn.texIcon = optionsBtn:CreateTexture(nil, "ARTWORK")
+    optionsBtn.texIcon:SetSize(14, 14)
+    optionsBtn.texIcon:SetPoint("CENTER")
+    optionsBtn.texIcon:SetTexture(ICON_DIR .. "util_settings_16.tga")
+    optionsBtn.texIcon:SetVertexColor(0.79, 0.80, 0.82, 1)
 
     -- Help (?) and Copy chat: useful from every tab, so they live here rather
     -- than on one tab. Each runs the /ta command of the same name.
     local function TitleButton(anchor, text, width, tip, cmd)
         local b = CreateFrame("Button", nil, titleBar, "BackdropTemplate")
+        b.plate = b:CreateTexture(nil, "BACKGROUND")
+        b.plate:SetAllPoints()
+        b.plate:SetTexture(GLASS_DIR .. "button_r6.tga")
         local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         fs:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
         fs:SetText(text)
         local textW = (fs.GetStringWidth and fs:GetStringWidth()) or width
-        b:SetSize(math.max(textW + 16, width), 20)
+        b:SetSize(math.max(textW + 14, width), 24)
         b:SetPoint("RIGHT", anchor, "LEFT", -4, 0)
         fs:SetTextColor(0.62, 0.59, 0.55, 1)
         fs:SetAllPoints(b)
         fs:SetJustifyH("CENTER")
+        b.label = fs
         b:SetScript("OnEnter", function(self)
-            fs:SetTextColor(0.92, 0.90, 0.87, 1)
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText(tip, 1, 0.82, 0)
-            GameTooltip:AddLine("/ta " .. cmd, 0.7, 0.7, 0.7)
-            GameTooltip:Show()
+            StyleControlPlate(self, true, false)
+            fs:SetTextColor(0.96, 0.97, 0.98, 1)
+            if GameTooltip then
+                GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+                GameTooltip:SetText(tip, 1, 0.82, 0)
+                GameTooltip:AddLine("/ta " .. cmd, 0.7, 0.7, 0.7)
+                GameTooltip:Show()
+            end
         end)
-        b:SetScript("OnLeave", function() fs:SetTextColor(0.62, 0.59, 0.55, 1); GameTooltip:Hide() end)
+        b:SetScript("OnLeave", function(self)
+            StyleControlPlate(self, false, false)
+            if IsModernSkin() then
+                fs:SetTextColor(0.79, 0.80, 0.82, 1)
+            else
+                fs:SetTextColor(0.62, 0.59, 0.55, 1)
+            end
+            if GameTooltip then GameTooltip:Hide() end
+        end)
         b:SetScript("OnClick", function() TA:SlashCommand(cmd) end)
         return b
     end
-    local helpBtn = TitleButton(optionsBtn, "?", 20, "Commands", "help")
-    local copyBtn = TitleButton(helpBtn, "Copy", 56, "Copy chat", "copy")
+    local helpBtn = TitleButton(optionsBtn, "?", 24, "Commands", "help")
+    local copyBtn = TitleButton(helpBtn, "Copy", 48, "Copy chat", "copy")
+    frame.helpBtn = helpBtn
+    frame.copyBtn = copyBtn
 
     versionLabel:SetPoint("RIGHT", copyBtn, "LEFT", -10, 0)
-    versionLabel:SetWidth(150)
+    versionLabel:SetWidth(165)
     versionLabel:SetJustifyH("RIGHT")
     versionLabel:SetWordWrap(false)
     local versionFull = versionLabel:GetText() or ""
     local versionHit = CreateFrame("Button", nil, titleBar)
     versionHit:SetAllPoints(versionLabel)
     versionHit:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText(versionFull, 1, 0.82, 0)
-        GameTooltip:Show()
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(versionFull, 1, 0.82, 0)
+            GameTooltip:Show()
+        end
     end)
-    versionHit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    versionHit:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+
     local optIcon = optionsBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     optIcon:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
-    optIcon:SetText(ToonAge.Utils.Glyph("settings"))  -- gear glyph
+    optIcon:SetText((ToonAge.Utils and ToonAge.Utils.Glyph and ToonAge.Utils.Glyph("settings")) or "*")
     optIcon:SetTextColor(0.62, 0.59, 0.55, 1)
     optIcon:SetAllPoints(optionsBtn)
     optIcon:SetJustifyH("CENTER")
-    optionsBtn:SetScript("OnEnter", function() optIcon:SetTextColor(0.92, 0.90, 0.87, 1) end)
-    optionsBtn:SetScript("OnLeave", function() optIcon:SetTextColor(0.62, 0.59, 0.55, 1) end)
+    optionsBtn.optIcon = optIcon
+    optionsBtn:SetScript("OnEnter", function(self)
+        StyleControlPlate(self, true, false)
+        if IsModernSkin() then
+            self.texIcon:SetVertexColor(0.96, 0.97, 0.98, 1)
+        else
+            optIcon:SetTextColor(0.92, 0.90, 0.87, 1)
+        end
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Settings & Theme Packs", 1, 0.82, 0)
+            GameTooltip:Show()
+        end
+    end)
+    optionsBtn:SetScript("OnLeave", function(self)
+        StyleControlPlate(self, false, false)
+        if IsModernSkin() then
+            self.texIcon:SetVertexColor(0.79, 0.80, 0.82, 1)
+        else
+            optIcon:SetTextColor(0.62, 0.59, 0.55, 1)
+        end
+        if GameTooltip then GameTooltip:Hide() end
+    end)
     optionsBtn:SetScript("OnClick", function() TA:ToggleOptionsPanel() end)
     -- G9 (2026-10-04): no Settings module, no gear. The scaffold builds (Era,
     -- Cata, Wrath) ship none, and the gear opened an empty drawer there.
@@ -414,15 +629,23 @@ function TA:InitUI()
         end)
     end
 
-    -- ── Tab bar ───────────────────────────────────────────────────────
+    -- ── Tab bar (34px on Modern Azeroth = 68px crown; 30px on Classic) ─
     local tabBar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     tabBar:SetPoint("TOPLEFT",  frame, "TOPLEFT",  0, -TITLEBAR_H)
     tabBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, -TITLEBAR_H)
-    tabBar:SetHeight(TAB_HEIGHT)
+    tabBar:SetHeight(ActiveTabHeight())
     ApplyBackdrop(tabBar, 0.07, 0.07, 0.09, 1.00)
 
-    -- ── Sidebar ───────────────────────────────────────────────────────
-    local sidebarTop = -(TITLEBAR_H + TAB_HEIGHT)
+    local tabRule = tabBar:CreateTexture(nil, "OVERLAY")
+    tabRule:SetHeight(1)
+    tabRule:SetPoint("BOTTOMLEFT",  tabBar, "BOTTOMLEFT",  1, 0)
+    tabRule:SetPoint("BOTTOMRIGHT", tabBar, "BOTTOMRIGHT", -1, 0)
+    tabRule:SetColorTexture(1, 1, 1, 0.10)
+    tabRule:Hide()
+    tabBar.bottomRule = tabRule
+
+    -- ── Sidebar (elevated solid dark well on Modern Azeroth) ──────────
+    local sidebarTop = -(TITLEBAR_H + ActiveTabHeight())
     local sidebar = CreateFrame("Frame", nil, frame, "BackdropTemplate")
     sidebar:SetPoint("TOPLEFT",    frame, "TOPLEFT",    0, sidebarTop)
     sidebar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
@@ -437,10 +660,15 @@ function TA:InitUI()
     sideChild:SetSize(SIDEBAR_WIDTH - 26, 400)
     sideScroll:SetScrollChild(sideChild)
 
-    -- ── Content scroll area ───────────────────────────────────────────
-    -- Positioned to the RIGHT of the sidebar, leaving a 1px gap for the border
+    -- ── Solid dark content well (zero glass-on-glass on Modern Azeroth)
     local contentLeft = SIDEBAR_WIDTH + 1
     local contentWidth = FRAME_WIDTH - contentLeft - 22  -- 22 = scrollbar width
+
+    local contentWell = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    contentWell:SetPoint("TOPLEFT",     frame, "TOPLEFT",     contentLeft, sidebarTop)
+    contentWell:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+    ApplyBackdrop(contentWell, 0.043, 0.055, 0.071, 0.96, 0.043, 0.055, 0.071, 0.00)
+    contentWell:Hide()
 
     local contentScroll = CreateFrame("ScrollFrame", "TAContentScrollFrame", frame, "UIPanelScrollFrameTemplate")
     contentScroll:SetPoint("TOPLEFT",     frame, "TOPLEFT",     contentLeft, sidebarTop)
@@ -451,17 +679,20 @@ function TA:InitUI()
     contentScroll:SetScrollChild(contentChild)
 
     -- ── Store references ──────────────────────────────────────────────
-    frame.tabBar       = tabBar
-    frame.sidebar      = sidebar
-    frame.sideScroll   = sideScroll
+    frame.titleBar      = titleBar
+    frame.tabBar        = tabBar
+    frame.sidebar       = sidebar
+    frame.contentWell   = contentWell
+    frame.sideScroll    = sideScroll
     frame.contentScroll = contentScroll
-    frame.contentWidth = contentWidth
-    frame.sideWidth    = SIDEBAR_WIDTH - 26
-    frame.tabButtons   = {}
-    frame.activeTab    = nil
+    frame.contentWidth  = contentWidth
+    frame.sideWidth     = SIDEBAR_WIDTH - 26
+    frame.tabButtons    = {}
+    frame.activeTab     = nil
+    frame._styleControlPlate = StyleControlPlate
     -- Keep live references (rebuilt on each tab switch)
-    frame.sideChild    = sideChild
-    frame.contentChild = contentChild
+    frame.sideChild     = sideChild
+    frame.contentChild  = contentChild
 
     -- ── SetTab ────────────────────────────────────────────────────────
     -- Defined BEFORE RebuildTabs so RebuildTabs can call self:SetTab()
@@ -489,7 +720,7 @@ function TA:InitUI()
         -- Update tab button states
         for id, btn in pairs(self.tabButtons) do
             local isActive = (id == tabID)
-            TintTab(btn, isActive)
+            TintTab(btn, isActive, isActive)
             if isActive then btn.activeLine:Show() else btn.activeLine:Hide() end
         end
         self.activeTab = tabID
@@ -579,11 +810,17 @@ function TA:InitUI()
                     sideEmpty = false
                 end
             end
+            local topY = -(TITLEBAR_H + ActiveTabHeight())
             if sideEmpty then
                 self.sidebar:Hide()
                 self.contentScroll:ClearAllPoints()
-                self.contentScroll:SetPoint("TOPLEFT",     frame, "TOPLEFT",     1, sidebarTop)
+                self.contentScroll:SetPoint("TOPLEFT",     frame, "TOPLEFT",     1, topY)
                 self.contentScroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -22, 0)
+                if self.contentWell then
+                    self.contentWell:ClearAllPoints()
+                    self.contentWell:SetPoint("TOPLEFT",     frame, "TOPLEFT",     1, topY)
+                    self.contentWell:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+                end
                 -- Update content child width for the wider area
                 local fullW = FRAME_WIDTH - 1 - 22
                 self.contentChild:SetWidth(fullW)
@@ -593,8 +830,13 @@ function TA:InitUI()
                 self.sidebar:Show()
                 self.contentScroll:ClearAllPoints()
                 local contentLeft = SIDEBAR_WIDTH + 1
-                self.contentScroll:SetPoint("TOPLEFT",     frame, "TOPLEFT",     contentLeft, sidebarTop)
+                self.contentScroll:SetPoint("TOPLEFT",     frame, "TOPLEFT",     contentLeft, topY)
                 self.contentScroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -22, 0)
+                if self.contentWell then
+                    self.contentWell:ClearAllPoints()
+                    self.contentWell:SetPoint("TOPLEFT",     frame, "TOPLEFT",     contentLeft, topY)
+                    self.contentWell:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+                end
                 local normalW = FRAME_WIDTH - contentLeft - 22
                 self.contentChild:SetWidth(normalW)
                 self.contentWidth = normalW
@@ -811,13 +1053,14 @@ function TA:InitUI()
         self:SetTab(self.activeTab)
     end
 
-    -- ── Show: open to last tab ────────────────────────────────────────
+    -- ── Show: open to last tab (or Now lead tab when available) ───────
     local origShow = frame.Show
     function frame:Show()
         origShow(self)
         -- Tabs may have changed while the window was closed (respec, pet).
         if self._tabSig ~= TabSignature() then self:RebuildTabs() end
-        self:SetTab(TA.charDB.lastTab or "guide")
+        local defaultTab = IsTabEnabled("now") and "now" or "guide"
+        self:SetTab(TA.charDB.lastTab or defaultTab)
     end
 
     -- The Settings drawer (TASettingsDrawer) is parented to UIParent, not to
@@ -832,11 +1075,109 @@ function TA:InitUI()
         end
     end
 
+    -- ── ApplyTheme — live re-skin (Modern Azeroth <-> Classic, packs) ─
+    function frame:ApplyTheme()
+        local modern = IsModernSkin()
+        local tabH = ActiveTabHeight()
+        local topY = -(TITLEBAR_H + tabH)
+        local accent = ActiveAccent()
+        local activeTheme = TA.Theme and TA.Theme.active
+
+        tabBar:SetHeight(tabH)
+        sidebar:ClearAllPoints()
+        sidebar:SetPoint("TOPLEFT",    frame, "TOPLEFT",    0, topY)
+        sidebar:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+
+        local leftX = (sidebar.IsShown and not sidebar:IsShown()) and 1 or (SIDEBAR_WIDTH + 1)
+        contentScroll:ClearAllPoints()
+        contentScroll:SetPoint("TOPLEFT",     frame, "TOPLEFT",     leftX, topY)
+        contentScroll:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -22, 0)
+        contentWell:ClearAllPoints()
+        contentWell:SetPoint("TOPLEFT",     frame, "TOPLEFT",     leftX, topY)
+        contentWell:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -1, 1)
+
+        if modern and activeTheme and type(activeTheme.glass) == "table" then
+            local g = activeTheme.glass
+            local sf = g.shell_fill or { 0.059, 0.090, 0.122, 0.78 }
+            local sr = g.shell_rim  or { 1.000, 1.000, 1.000, 0.16 }
+            local bg = activeTheme.bg or {}
+            local sb = bg.sidebar   or { 0.055, 0.075, 0.102, 0.96 }
+            local cw = bg.content   or { 0.043, 0.055, 0.071, 0.96 }
+
+            ApplyBackdrop(frame, sf[1], sf[2], sf[3], sf[4], sr[1], sr[2], sr[3], sr[4])
+            if TA.Modern and TA.Modern.ApplyGlassBackdrop then
+                pcall(TA.Modern.ApplyGlassBackdrop, TA.Modern, frame, {
+                    baseTint = sf, borderColor = sr, noFrost = true,
+                })
+            end
+            ApplyBackdrop(titleBar, sf[1], sf[2], sf[3], sf[4], 1, 1, 1, 0)
+            ApplyBackdrop(tabBar,   sf[1], sf[2], sf[3], math.min(sf[4] + 0.04, 0.90), 1, 1, 1, 0)
+            ApplyBackdrop(sidebar,  sb[1], sb[2], sb[3], sb[4], 1, 1, 1, 0.08)
+            ApplyBackdrop(contentWell, cw[1], cw[2], cw[3], cw[4], cw[1], cw[2], cw[3], 0)
+            contentWell:Show()
+
+            titleBar.specTop:Show()
+            titleBar.bottomRule:Show()
+            tabBar.bottomRule:Show()
+
+            titleBar.titleIcon:SetTexture(ICON_DIR .. "logo_mark_32.tga")
+            titleBar.titleIcon:SetTexCoord(0, 1, 0, 1)
+            if titleBar.titleIcon.SetVertexColor then
+                -- logo_mark_32.tga is full-colour brand art (MEDIA.md); never re-tint.
+                titleBar.titleIcon:SetVertexColor(1, 1, 1, 1)
+            end
+            titleBar.titleLabel:SetTextColor(0.961, 0.969, 0.980, 1)
+            titleBar.versionLabel:SetTextColor(0.549, 0.576, 0.604, 1)
+
+            if optionsBtn.texIcon then optionsBtn.texIcon:Show() end
+            if optionsBtn.optIcon then optionsBtn.optIcon:Hide() end
+            helpBtn.label:SetTextColor(0.788, 0.804, 0.824, 1)
+            copyBtn.label:SetTextColor(0.788, 0.804, 0.824, 1)
+        else
+            ApplyBackdrop(frame, 0.05, 0.05, 0.06, 0.94, 0.30, 0.30, 0.35, 1.00)
+            if TA.Modern and TA.Modern.ApplyGlassBackdrop then
+                pcall(TA.Modern.ApplyGlassBackdrop, TA.Modern, frame)
+            end
+            ApplyBackdrop(titleBar, 0.10, 0.10, 0.12, 1.00, 0.30, 0.30, 0.35, 0.70)
+            ApplyBackdrop(tabBar,   0.07, 0.07, 0.09, 1.00, 0.30, 0.30, 0.35, 0.70)
+            ApplyBackdrop(sidebar,  0.05, 0.05, 0.06, 0.96, 0.30, 0.30, 0.35, 0.70)
+            contentWell:Hide()
+
+            titleBar.specTop:Hide()
+            titleBar.bottomRule:Hide()
+            tabBar.bottomRule:Hide()
+
+            titleBar.titleIcon:SetTexture("Interface\\Icons\\Achievement_Character_Human_Female")
+            titleBar.titleIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            if titleBar.titleIcon.SetVertexColor then
+                titleBar.titleIcon:SetVertexColor(1, 1, 1, 1)
+            end
+            titleBar.titleLabel:SetTextColor(0.92, 0.90, 0.87, 1)
+            titleBar.versionLabel:SetTextColor(0.55, 0.52, 0.45, 1)
+
+            if optionsBtn.texIcon then optionsBtn.texIcon:Hide() end
+            if optionsBtn.optIcon then optionsBtn.optIcon:Show() end
+            helpBtn.label:SetTextColor(0.62, 0.59, 0.55, 1)
+            copyBtn.label:SetTextColor(0.62, 0.59, 0.55, 1)
+        end
+
+        StyleControlPlate(closeBtn, false, true)
+        StyleControlPlate(optionsBtn, false, false)
+        StyleControlPlate(helpBtn, false, false)
+        StyleControlPlate(copyBtn, false, false)
+
+        for id, btn in pairs(self.tabButtons) do
+            local isActive = (id == self.activeTab)
+            TintTab(btn, isActive, isActive)
+        end
+        if TA._settingsDrawer then ApplyDrawerTheme(TA._settingsDrawer) end
+    end
+
     -- ── RebuildTabs — callable at any time (e.g. from options panel) ──
     -- Destroys all existing tab buttons and recreates them from the current
-    -- disabledTabs state, then re-selects the active tab (or "character"
+    -- disabledTabs state, then re-selects the active tab (or "now"/"character"
     -- if it was disabled). Called once at init, then again any time the
-    -- player toggles a tab in the options panel.
+    -- player toggles a tab in the options panel or switches skins.
     -- NOTE: SetTab, Refresh, and Show must be defined above this function
     -- because RebuildTabs calls self:SetTab() at the end of its run.
     function frame:RebuildTabs()
@@ -848,67 +1189,126 @@ function TA:InitUI()
         end
         self.tabButtons = {}
 
-        local tabX = 8
+        local modern = IsModernSkin()
+        local tabH = ActiveTabHeight()
+        tabBar:SetHeight(tabH)
+
         -- The Guide Tracker drawer follows the Guide tab: no tab, no drawer.
         if TA.Modern and TA.Modern.UpdateDrawerAvailability then
             pcall(TA.Modern.UpdateDrawerAvailability, TA.Modern)
         end
 
+        local enabledTabs = {}
         for _, tabDef in ipairs(GetTabs()) do
             if IsTabEnabled(tabDef.id) then
-                local btn = CreateFrame("Button", nil, tabBar)
-                btn:SetHeight(TAB_HEIGHT - 2)
-                btn:SetPoint("LEFT", tabBar, "LEFT", tabX, 1)
-
-                local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                lbl:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
-                lbl:SetText(tabDef.label)
-                lbl:SetJustifyH("CENTER")
-                btn.label = lbl
-
-                local glyphFile = TAB_GLYPH[tabDef.id]
-                if glyphFile then
-                    local glyph = btn:CreateTexture(nil, "ARTWORK")
-                    glyph:SetSize(TAB_GLYPH_PX, TAB_GLYPH_PX)
-                    glyph:SetPoint("LEFT", btn, "LEFT", 6, 0)
-                    glyph:SetTexture(glyphFile)
-                    btn.glyph = glyph
-                    lbl:SetPoint("LEFT", glyph, "RIGHT", 4, 0)
-                    lbl:SetJustifyH("LEFT")
-                else
-                    lbl:SetAllPoints(btn)
-                end
-                TintTab(btn, false)
-
-                -- Subtle underline for active tab (white instead of gold)
-                local line = btn:CreateTexture(nil, "OVERLAY")
-                line:SetHeight(2)
-                line:SetPoint("BOTTOMLEFT",  btn, "BOTTOMLEFT",  0, 0)
-                line:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-                line:SetColorTexture(0.40, 0.75, 1.00, 1.00)
-                line:Hide()
-                btn.activeLine = line
-
-                btn.tabID  = tabDef.id
-                btn.module = tabDef.module
-
-                lbl:SetWidth(0)
-                local pad = btn.glyph and (6 + TAB_GLYPH_PX + 4 + 8) or 26
-                btn:SetWidth(lbl:GetStringWidth() + pad)
-                tabX = tabX + btn:GetWidth() + 2
-
-                btn:SetScript("OnClick", function()
-                    frame:SetTab(tabDef.id)
-                end)
-                btn:SetScript("OnEnter", function()
-                    if frame.activeTab ~= tabDef.id then TintTab(btn, true) end
-                end)
-                btn:SetScript("OnLeave", function()
-                    if frame.activeTab ~= tabDef.id then TintTab(btn, false) end
-                end)
-
-                self.tabButtons[tabDef.id] = btn
+                enabledTabs[#enabledTabs + 1] = tabDef
             end
+        end
+
+        -- Measure natural width first so 11-12 Forever tabs fit cleanly inside 900px
+        -- without overflowing off the right edge.
+        local barAvail = FRAME_WIDTH - 16
+        local glyphPx = modern and 14 or TAB_GLYPH_PX
+        local padLeft = modern and 7 or 6
+        local padGap  = 4
+        local padRight = modern and 8 or 8
+        local tabGap = 2
+
+        local created = {}
+        local totalW = 0
+        for _, tabDef in ipairs(enabledTabs) do
+            local btn = CreateFrame("Button", nil, tabBar)
+            btn:SetHeight(tabH - 2)
+
+            local hoverBg = btn:CreateTexture(nil, "BACKGROUND")
+            hoverBg:SetAllPoints()
+            hoverBg:Hide()
+            btn.hoverBg = hoverBg
+
+            local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            lbl:SetFont("Fonts\\FRIZQT__.TTF", 11, "")
+            lbl:SetText(tabDef.label)
+            lbl:SetJustifyH("CENTER")
+            lbl:SetWidth(0)
+            btn.label = lbl
+
+            local useGlyph = TAB_GLYPH[tabDef.id] and (modern or CLASSIC_TAB_GLYPH[tabDef.id])
+            if useGlyph then
+                local glyph = btn:CreateTexture(nil, "ARTWORK")
+                glyph:SetSize(glyphPx, glyphPx)
+                glyph:SetPoint("LEFT", btn, "LEFT", padLeft, 0)
+                glyph:SetTexture(TAB_GLYPH[tabDef.id])
+                btn.glyph = glyph
+                lbl:SetPoint("LEFT", glyph, "RIGHT", padGap, 0)
+                lbl:SetJustifyH("LEFT")
+            else
+                lbl:SetAllPoints(btn)
+            end
+
+            local line = btn:CreateTexture(nil, "OVERLAY")
+            line:SetHeight(2)
+            line:SetPoint("BOTTOMLEFT",  btn, "BOTTOMLEFT",  0, 0)
+            line:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+            line:Hide()
+            btn.activeLine = line
+
+            btn.tabID  = tabDef.id
+            btn.module = tabDef.module
+            local textW = (lbl.GetStringWidth and lbl:GetStringWidth()) or (#tabDef.label * 6)
+            local naturalW = btn.glyph and (padLeft + glyphPx + padGap + textW + padRight) or (textW + 24)
+            btn._textW = textW
+            btn._naturalW = naturalW
+            totalW = totalW + naturalW + tabGap
+            created[#created + 1] = { btn = btn, def = tabDef }
+        end
+
+        -- Tighten spacing automatically when many tabs are enabled (e.g., 12 on Forever)
+        if totalW > barAvail and #created > 0 then
+            glyphPx = modern and 12 or 16
+            padLeft = 4
+            padGap  = 3
+            padRight = 5
+            tabGap = 1
+            totalW = 0
+            for _, item in ipairs(created) do
+                local b = item.btn
+                if b.glyph then
+                    b.glyph:SetSize(glyphPx, glyphPx)
+                    b.glyph:ClearAllPoints()
+                    b.glyph:SetPoint("LEFT", b, "LEFT", padLeft, 0)
+                    b.label:ClearAllPoints()
+                    b.label:SetPoint("LEFT", b.glyph, "RIGHT", padGap, 0)
+                    b._naturalW = padLeft + glyphPx + padGap + b._textW + padRight
+                else
+                    b._naturalW = b._textW + 14
+                end
+                totalW = totalW + b._naturalW + tabGap
+            end
+        end
+
+        local scale = (totalW > barAvail and totalW > 0) and (barAvail / totalW) or 1
+        local tabX = 8
+        for _, item in ipairs(created) do
+            local btn = item.btn
+            local tabDef = item.def
+            local w = math.max(24, math.floor(btn._naturalW * scale))
+            btn:SetWidth(w)
+            btn:SetPoint("LEFT", tabBar, "LEFT", tabX, 1)
+            tabX = tabX + w + tabGap
+
+            TintTab(btn, false, false)
+
+            btn:SetScript("OnClick", function()
+                frame:SetTab(tabDef.id)
+            end)
+            btn:SetScript("OnEnter", function()
+                if frame.activeTab ~= tabDef.id then TintTab(btn, true, false) end
+            end)
+            btn:SetScript("OnLeave", function()
+                if frame.activeTab ~= tabDef.id then TintTab(btn, false, false) end
+            end)
+
+            self.tabButtons[tabDef.id] = btn
         end
 
         -- A flavor with no shipped content (Core/Profile.lua scaffolds: Classic
@@ -921,9 +1321,9 @@ function TA:InitUI()
         end
         if self.noContent then self.noContent:Hide() end
 
-        -- Re-select the previously active tab, falling back to "character"
-        -- if it was just disabled.
-        local tabToShow = FallbackTab(self.activeTab or "character")
+        -- Re-select the previously active tab, falling back to "now" or "character".
+        local fallback = IsTabEnabled("now") and "now" or "character"
+        local tabToShow = FallbackTab(self.activeTab or fallback)
         self:SetTab(tabToShow)
     end
 
@@ -934,7 +1334,7 @@ function TA:InitUI()
 
         if not self.noContent then
             local box = CreateFrame("Frame", nil, self)
-            box:SetPoint("TOPLEFT", 24, -(TAB_HEIGHT + 28))
+            box:SetPoint("TOPLEFT", 24, -(ActiveTabHeight() + 28))
             box:SetPoint("BOTTOMRIGHT", -24, 24)
 
             local title = box:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -997,8 +1397,9 @@ function TA:InitUI()
         self.noContent:Show()
     end
 
-    -- Initial tab build — all frame methods are now defined above this call.
+    -- Initial tab build + Modern Azeroth theme application.
     frame:RebuildTabs()
+    frame:ApplyTheme()
 
     self.UI = frame
 
@@ -1052,9 +1453,46 @@ function TA:InitUI()
     -- Also applies the glass backdrop to the main frame now that M is loaded.
     if TA.Modern and TA.Modern.InitDrawer then
         pcall(function()
-            TA.Modern:ApplyGlassBackdrop(frame)
             TA.Modern:InitDrawer()
         end)
+    end
+    frame:ApplyTheme()
+end
+
+--- Switch window skin ("modern_azeroth" | "classic"), accent pack ("class" |
+--- "toonage_gold" | "blizzard"), or reduced motion live with zero /reload.
+function TA:ApplyTheme(skin, pack, reducedMotion)
+    self.db = self.db or {}
+    if skin ~= nil then self.db.themeSkin = skin end
+    if pack ~= nil then self.db.themePack = pack end
+    if reducedMotion ~= nil then self.db.reducedMotion = reducedMotion and true or false end
+
+    local activeSkin = self.db.themeSkin or "modern_azeroth"
+    local activePack = self.db.themePack or "class"
+    local skinChanged = self.Theme and self.Theme.active and (self.Theme.active.name ~= activeSkin)
+
+    if self.Theme then
+        if self.Theme.SetReducedMotion then
+            self.Theme:SetReducedMotion(self.db.reducedMotion == true)
+        end
+        if self.Theme.Select then
+            self.Theme:Select(activeSkin, activePack)
+        end
+    end
+
+    if self.UI then
+        if skinChanged and self.UI.RebuildTabs then
+            self.UI:RebuildTabs()
+        end
+        if self.UI.ApplyTheme then
+            self.UI:ApplyTheme()
+        end
+        if self.UI.activeTab and self.UI.SetTab then
+            self.UI:SetTab(self.UI.activeTab)
+        end
+    end
+    if self._settingsDrawer then
+        ApplyDrawerTheme(self._settingsDrawer)
     end
 end
 
@@ -1533,8 +1971,7 @@ function TA:ToggleSettingsDrawer()
         drawer:SetScript("OnDragStart", drawer.StartMoving)
         drawer:SetScript("OnDragStop", drawer.StopMovingOrSizing)
         drawer:SetClampedToScreen(true)
-        ApplyBackdrop(drawer, 0.04, 0.04, 0.05, 0.97)
-        drawer:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.8)
+        ApplyDrawerTheme(drawer)
         drawer:Hide()
         tinsert(UISpecialFrames, "TASettingsDrawer")
 

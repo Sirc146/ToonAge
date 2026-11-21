@@ -116,25 +116,33 @@ function M:ApplyGlassBackdrop(frame, opts)
     if not frame or not frame.SetBackdrop then return end
     opts = opts or {}
 
-    -- ── Layer 1: Solid dark base (visibility shield) ──────────────────
+    local activeTheme = TA.Theme and TA.Theme.active
+    local isModern = activeTheme and activeTheme.name == "modern_azeroth" and type(activeTheme.glass) == "table"
+
+    -- ── Layer 1: Base backdrop ────────────────────────────────────────
     frame:SetBackdrop(self.GLASS_BACKDROP_BASE)
-    local bt = opts.baseTint or { 0.05, 0.05, 0.06, 0.90 }
+    local bt = opts.baseTint or (isModern and activeTheme.glass.shell_fill) or { 0.05, 0.05, 0.06, 0.90 }
     frame:SetBackdropColor(bt[1], bt[2], bt[3], bt[4])
-    -- 100% opaque border for sharp definition
-    local bc = opts.borderColor or { 0.30, 0.30, 0.35, 1.00 }
+    local bc = opts.borderColor or (isModern and activeTheme.glass.shell_rim) or { 0.30, 0.30, 0.35, 1.00 }
     frame:SetBackdropBorderColor(bc[1], bc[2], bc[3], bc[4])
 
-    -- ── Layer 2: Frosted glass overlay texture ────────────────────────
-    if not frame._glassFrost then
-        local frost = CreateFrame("Frame", nil, frame, "BackdropTemplate")
-        frost:SetAllPoints(frame)
-        frost:SetFrameLevel(frame:GetFrameLevel() + 1)
-        frame._glassFrost = frost
+    -- ── Layer 2: Frosted glass overlay texture (Classic glass only) ───
+    -- Modern Azeroth uses a clean translucent shell (#0F171F @ 0.78) + top
+    -- specular highlight + solid dark content/sidebar wells (zero glass-on-glass).
+    if isModern or opts.noFrost then
+        if frame._glassFrost then frame._glassFrost:Hide() end
+    else
+        if not frame._glassFrost then
+            local frost = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+            frost:SetAllPoints(frame)
+            frost:SetFrameLevel(frame:GetFrameLevel() + 1)
+            frame._glassFrost = frost
+        end
+        frame._glassFrost:SetBackdrop(self.GLASS_BACKDROP_FROST)
+        local ft = opts.frostTint or { 0.08, 0.08, 0.10, 0.60 }
+        frame._glassFrost:SetBackdropColor(ft[1], ft[2], ft[3], ft[4])
+        frame._glassFrost:Show()
     end
-    frame._glassFrost:SetBackdrop(self.GLASS_BACKDROP_FROST)
-    local ft = opts.frostTint or { 0.08, 0.08, 0.10, 0.60 }
-    frame._glassFrost:SetBackdropColor(ft[1], ft[2], ft[3], ft[4])
-    frame._glassFrost:Show()
 
     -- ── Layer 3: Drop shadow (perceived elevation) ────────────────────
     if not opts.noShadow then
@@ -146,8 +154,10 @@ function M:ApplyGlassBackdrop(frame, opts)
             frame._glassShadow = shadow
         end
         frame._glassShadow:SetBackdrop(self.GLASS_SHADOW_BACKDROP)
-        frame._glassShadow:SetBackdropBorderColor(0, 0, 0, 0.70)
+        frame._glassShadow:SetBackdropBorderColor(0, 0, 0, isModern and 0.65 or 0.70)
         frame._glassShadow:Show()
+    elseif frame._glassShadow then
+        frame._glassShadow:Hide()
     end
 end
 
@@ -259,7 +269,8 @@ end
 function M:AnimateWidth(frame, targetWidth, duration, onFinish)
     duration = duration or 0.25
     local startWidth = frame:GetWidth()
-    if math.abs(startWidth - targetWidth) < 1 then
+    if (TA.Theme and TA.Theme.IsReducedMotion and TA.Theme:IsReducedMotion())
+        or math.abs(startWidth - targetWidth) < 1 then
         frame:SetWidth(targetWidth)
         if onFinish then onFinish() end
         return
@@ -297,7 +308,8 @@ end
 function M:AnimateHeight(frame, targetHeight, duration, onFinish)
     duration = duration or 0.20
     local startHeight = frame:GetHeight()
-    if math.abs(startHeight - targetHeight) < 1 then
+    if (TA.Theme and TA.Theme.IsReducedMotion and TA.Theme:IsReducedMotion())
+        or math.abs(startHeight - targetHeight) < 1 then
         frame:SetHeight(targetHeight)
         if onFinish then onFinish() end
         return
@@ -332,6 +344,11 @@ end
 --- @param onFinish function|nil
 function M:AnimateAlpha(frame, targetAlpha, duration, onFinish)
     duration = duration or 0.15
+    if TA.Theme and TA.Theme.IsReducedMotion and TA.Theme:IsReducedMotion() then
+        frame:SetAlpha(targetAlpha)
+        if onFinish then onFinish() end
+        return
+    end
     local startAlpha = frame:GetAlpha()
 
     if frame._alphaAnimTicker then

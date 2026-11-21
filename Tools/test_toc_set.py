@@ -87,6 +87,7 @@ FOREVER_MODULES = [
     "Modules/Automation/RestOptimizer.lua",
     "Modules/Automation/DeathRecovery.lua",
     "Modules/Farming/GatherTracker.lua",
+    "Modules/Forever/Now.lua",
     "Modules/Forever/Character.lua",
     "Modules/Forever/Gear.lua",
     # Gear Stage 1: the per-spec priority table. Not a tab.

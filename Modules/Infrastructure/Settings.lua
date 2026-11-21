@@ -290,6 +290,60 @@ function Settings:Render(content, sidebar)
         end)
     end
 
+    -- Appearance: window skin, accent pack, and reduced motion. Applies live.
+    if TA.Theme then
+        y = MakeSection(content, y, w, "APPEARANCE")
+
+        y = MakeChoiceRow(content, y, w, "Window style", {
+            { value = "modern_azeroth", text = "|cFF3FC7EBMODERN AZEROTH|r" },
+            { value = "classic",        text = "|cFFFFD100CLASSIC|r" },
+        }, function()
+            return (TA.db and TA.db.themeSkin) or (TA.Theme.active and TA.Theme.active.name) or "modern_azeroth"
+        end, function(v)
+            if TA.ApplyTheme then
+                TA:ApplyTheme(v, nil, nil)
+            elseif TA.Theme and TA.Theme.Select then
+                if TA.db then TA.db.themeSkin = v end
+                TA.Theme:Select(v)
+            end
+        end)
+
+        y = MakeChoiceRow(content, y, w, "Accent theme pack", {
+            { value = "class",        text = "|cFF3FC7EBCLASS COLOR|r" },
+            { value = "toonage_gold", text = "|cFFE8B35ATOONAGE GOLD|r" },
+            { value = "blizzard",     text = "|cFFF0C45ABLIZZARD MODERN|r" },
+        }, function()
+            return (TA.db and TA.db.themePack) or (TA.Theme.active and TA.Theme.active.pack) or "class"
+        end, function(v)
+            if TA.ApplyTheme then
+                TA:ApplyTheme(nil, v, nil)
+            elseif TA.Theme and TA.Theme.SelectPack then
+                if TA.db then TA.db.themePack = v end
+                TA.Theme:SelectPack(v)
+            end
+        end)
+
+        y = MakeToggleRow(content, y, w, "Reduced motion (disable UI transitions)", function()
+            if TA.Theme and TA.Theme.IsReducedMotion then
+                return TA.Theme:IsReducedMotion()
+            end
+            return TA.db and TA.db.reducedMotion == true
+        end, function()
+            local cur = (TA.Theme and TA.Theme.IsReducedMotion and TA.Theme:IsReducedMotion())
+                or (TA.db and TA.db.reducedMotion == true)
+            if TA.ApplyTheme then
+                TA:ApplyTheme(nil, nil, not cur)
+            else
+                if TA.db then TA.db.reducedMotion = not cur end
+                if TA.Theme and TA.Theme.SetReducedMotion then
+                    TA.Theme:SetReducedMotion(not cur)
+                end
+            end
+        end)
+
+        y = y - 8
+    end
+
     -- Waypoints, HUD and map pins: guide-era navigation, not shipped on every flavour.
     if Has("Arrow", "NavHud", "MapPins", "TravelRouter") then
         -- ═══════════════════════════════════════════════════════════════════
