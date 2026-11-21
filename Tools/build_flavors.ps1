@@ -178,6 +178,9 @@ $InstallDirs = @{
 # and Media\glass (glyphs, tab art, talent frames, and the Modern Azeroth glass
 # crown/control kit).
 $AssetDirs = @{
+    'Retail'      = @('Media\icons', 'Media\frame', 'Media\glass')
+    'PTR'         = @('Media\icons', 'Media\frame', 'Media\glass')
+    'Remix'       = @('Media\icons', 'Media\frame', 'Media\glass')
     'Forever'     = @('Media\icons', 'Media\frame', 'Media\glass')
     'Anniversary' = @('Media\icons', 'Media\frame', 'Media\glass')
     'Mists'       = @('Media\icons', 'Media\frame', 'Media\glass')
