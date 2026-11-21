@@ -182,7 +182,7 @@ def run_gates(quick=False):
     # 8. SavedVariables & Migration Safety
     ok_mig, _ = run_py("Tools/test_migrations.py")
     build_ps = (ROOT / "Tools/build_flavors.ps1").read_text(encoding="utf-8", errors="ignore")
-    has_backup = "ToonAge\\Backups" in build_ps and "SavedVariables" in build_ps
+    has_backup = "ToonAge_Backups" in build_ps and "SavedVariables" in build_ps
     if ok_mig and has_backup:
         scores[8] = 10.0
         evidence[8] = "test_migrations green + automatic pre-install SavedVariables backup in build_flavors.ps1"

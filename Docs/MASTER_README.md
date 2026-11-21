@@ -82,7 +82,7 @@ Check items off here as they complete so nothing is rebuilt twice.
 
 ### Part 1 — Addon & Engineering (`9.6 -> 10.0`)
 - [ ] **1.1 Live In-Game Sign-Off (Phases 4–9 on Forever):** Owner runs `/reload`, `/ta lootwatch`, tests `Scrolls` (0 `UNKNOWN` reagents + nearest library pin), checks `Spells`/`PvP`/`Now`/`Character`/`Professions`, and runs `/ta test` (`0 fail / 0 leaks`) -> Criterion `#1` `9.0 -> 10.0`.
-- [x] **1.2 Automatic Pre-Install SavedVariables Backup:** Added timestamped `WTF\Account\*\SavedVariables\ToonAge*.lua` backup (last 10 snapshots in `%LOCALAPPDATA%\ToonAge\Backups`) before `-Install` in `Tools/build_flavors.ps1` -> Criterion `#8` `9.0 -> 10.0`.
+- [x] **1.2 Automatic Pre-Install SavedVariables Backup:** Added timestamped `WTF\Account\*\SavedVariables\ToonAge*.lua` backup (last 10 snapshots in `<WoW>\ToonAge_Backups\<client>\`) before `-Install` in `Tools/build_flavors.ps1` -> Criterion `#8` `9.0 -> 10.0`.
 - [x] **1.3 Living State Sync:** Created canonical `Docs/MASTER_README.md` and synced `Docs/STATE.md` -> Criterion `#12` `9.0 -> 10.0`.
 - [x] **1.4 Feature Branches Pushed to GitHub (`origin`):** Pushed `antigravity/phase1a-*` through `antigravity/phase8-*` to `Sirc146/ToonAge` (`test`/`main` untouched pending owner merge approval).
 - [ ] **1.5 Approved PR Merges & Release Tag:** Merge approved PRs into `test` and tag `v*` on owner's direct word -> `#10` & `#11` `-> 10.0`.
