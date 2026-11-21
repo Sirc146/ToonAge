@@ -15,18 +15,40 @@ Settings.frames = {}
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
 
+local function IsModern()
+    return TA.Theme and TA.Theme.active and TA.Theme.active.name == "modern_azeroth"
+end
+
+local function AccentRGB()
+    local a = TA.Theme and TA.Theme.active and TA.Theme.active.accent
+    if type(a) == "table" and type(a.primary) == "table" then
+        return a.primary[1], a.primary[2], a.primary[3]
+    end
+    return 0.25, 0.78, 0.92
+end
+
 local function MakeSection(parent, y, width, title)
+    local modern = IsModern()
+    local ar, ag, ab = AccentRGB()
     local hdr = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     hdr:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
     hdr:SetText(title)
-    hdr:SetTextColor(0.55, 0.40, 0.08, 1)
+    if modern then
+        hdr:SetTextColor(ar, ag, ab, 1)
+    else
+        hdr:SetTextColor(0.55, 0.40, 0.08, 1)
+    end
     hdr:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y)
 
     local line = parent:CreateTexture(nil, "ARTWORK")
     line:SetHeight(1)
     line:SetPoint("TOPLEFT",  parent, "TOPLEFT",  14, y - 14)
     line:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -14, y - 14)
-    line:SetColorTexture(0.40, 0.32, 0.08, 0.5)
+    if modern then
+        line:SetColorTexture(1, 1, 1, 0.10)
+    else
+        line:SetColorTexture(0.40, 0.32, 0.08, 0.5)
+    end
 
     table.insert(Settings.frames, hdr)
     table.insert(Settings.frames, line)
@@ -65,12 +87,18 @@ local function FitStateLabel(row, lbl, statusLbl)
 end
 
 local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
+    local modern = IsModern()
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
     row:SetSize(width - 28, 22)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y)
     row:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
-    row:SetBackdropColor(0.06, 0.06, 0.06, 1)
-    row:SetBackdropBorderColor(0.30, 0.25, 0.08, 0.4)
+    if modern then
+        row:SetBackdropColor(0.063, 0.082, 0.110, 0.94)
+        row:SetBackdropBorderColor(1, 1, 1, 0.10)
+    else
+        row:SetBackdropColor(0.06, 0.06, 0.06, 1)
+        row:SetBackdropBorderColor(0.30, 0.25, 0.08, 0.4)
+    end
 
     local indicator = row:CreateTexture(nil, "ARTWORK")
     indicator:SetSize(10, 10)
@@ -79,7 +107,11 @@ local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
     local lbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
     lbl:SetText(label)
-    lbl:SetTextColor(0.88, 0.83, 0.65, 1)
+    if modern then
+        lbl:SetTextColor(0.88, 0.90, 0.93, 1)
+    else
+        lbl:SetTextColor(0.88, 0.83, 0.65, 1)
+    end
 
     local statusLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     statusLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
@@ -89,13 +121,17 @@ local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
     local function Refresh()
         local on = getValue()
         if on then
-            indicator:SetColorTexture(0.20, 0.92, 0.40, 1)
-            statusLbl:SetText("|cFF4AFF7AON|r")
-            row:SetBackdropBorderColor(0.20, 0.60, 0.30, 0.6)
+            indicator:SetColorTexture(0.27, 0.78, 0.42, 1)
+            statusLbl:SetText("|cFF46C86AON|r")
+            row:SetBackdropBorderColor(0.27, 0.78, 0.42, 0.55)
         else
-            indicator:SetColorTexture(0.65, 0.20, 0.15, 1)
-            statusLbl:SetText("|cFFFF4444OFF|r")
-            row:SetBackdropBorderColor(0.30, 0.25, 0.08, 0.4)
+            indicator:SetColorTexture(0.75, 0.28, 0.24, 0.90)
+            statusLbl:SetText("|cFFE05850OFF|r")
+            if modern then
+                row:SetBackdropBorderColor(1, 1, 1, 0.10)
+            else
+                row:SetBackdropBorderColor(0.30, 0.25, 0.08, 0.4)
+            end
         end
         rowH = FitStateLabel(row, lbl, statusLbl)
     end
@@ -104,8 +140,12 @@ local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
         onToggle()
         Refresh()
     end)
-    row:SetScript("OnEnter", function(f) f:SetBackdropColor(0.12, 0.10, 0.04, 1) end)
-    row:SetScript("OnLeave", function(f) f:SetBackdropColor(0.06, 0.06, 0.06, 1) end)
+    row:SetScript("OnEnter", function(f)
+        if modern then f:SetBackdropColor(0.10, 0.14, 0.19, 0.96) else f:SetBackdropColor(0.12, 0.10, 0.04, 1) end
+    end)
+    row:SetScript("OnLeave", function(f)
+        if modern then f:SetBackdropColor(0.063, 0.082, 0.110, 0.94) else f:SetBackdropColor(0.06, 0.06, 0.06, 1) end
+    end)
 
     Refresh()
     table.insert(Settings.frames, row)
@@ -113,18 +153,35 @@ local function MakeToggleRow(parent, y, width, label, getValue, onToggle)
 end
 
 local function MakeActionRow(parent, y, width, label, onClick)
+    local modern = IsModern()
+    local ar, ag, ab = AccentRGB()
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
     row:SetSize(width - 28, 22)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y)
     row:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
-    row:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
-    row:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.8)
+    if modern then
+        row:SetBackdropColor(ar * 0.16, ag * 0.16, ab * 0.16, 0.94)
+        row:SetBackdropBorderColor(ar, ag, ab, 0.55)
+    else
+        row:SetBackdropColor(0.15, 0.12, 0.05, 0.95)
+        row:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.8)
+    end
     local lbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
     lbl:SetText(label)
-    lbl:SetTextColor(1, 0.82, 0, 1)
+    if modern then
+        lbl:SetTextColor(0.95, 0.97, 0.99, 1)
+    else
+        lbl:SetTextColor(1, 0.82, 0, 1)
+    end
     lbl:SetPoint("LEFT", row, "LEFT", 8, 0)
     row:SetScript("OnClick", onClick)
+    row:SetScript("OnEnter", function(f)
+        if modern then f:SetBackdropColor(ar * 0.26, ag * 0.26, ab * 0.26, 0.96) end
+    end)
+    row:SetScript("OnLeave", function(f)
+        if modern then f:SetBackdropColor(ar * 0.16, ag * 0.16, ab * 0.16, 0.94) end
+    end)
     table.insert(Settings.frames, row)
     return y - 26
 end
@@ -134,22 +191,37 @@ end
 --- convention so it drops into the same layout flow.
 --- @param options table array of { value = string, text = string }
 local function MakeChoiceRow(parent, y, width, label, options, getValue, setValue)
+    local modern = IsModern()
+    local ar, ag, ab = AccentRGB()
     local row = CreateFrame("Button", nil, parent, "BackdropTemplate")
     row:SetSize(width - 28, 22)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, y)
     row:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
-    row:SetBackdropColor(0.06, 0.06, 0.06, 1)
-    row:SetBackdropBorderColor(0.30, 0.25, 0.08, 0.4)
+    if modern then
+        row:SetBackdropColor(0.063, 0.082, 0.110, 0.94)
+        row:SetBackdropBorderColor(1, 1, 1, 0.12)
+    else
+        row:SetBackdropColor(0.06, 0.06, 0.06, 1)
+        row:SetBackdropBorderColor(0.30, 0.25, 0.08, 0.4)
+    end
 
     local indicator = row:CreateTexture(nil, "ARTWORK")
     indicator:SetSize(10, 10)
     indicator:SetPoint("LEFT", row, "LEFT", 6, 0)
-    indicator:SetColorTexture(0.85, 0.70, 0.20, 1)
+    if modern then
+        indicator:SetColorTexture(ar, ag, ab, 1)
+    else
+        indicator:SetColorTexture(0.85, 0.70, 0.20, 1)
+    end
 
     local lbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     lbl:SetFont(STANDARD_TEXT_FONT, 10, "")
     lbl:SetText(label)
-    lbl:SetTextColor(0.88, 0.83, 0.65, 1)
+    if modern then
+        lbl:SetTextColor(0.88, 0.90, 0.93, 1)
+    else
+        lbl:SetTextColor(0.88, 0.83, 0.65, 1)
+    end
 
     local statusLbl = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     statusLbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
@@ -174,8 +246,12 @@ local function MakeChoiceRow(parent, y, width, label, options, getValue, setValu
         setValue(options[nextIdx].value)
         Refresh()
     end)
-    row:SetScript("OnEnter", function(f) f:SetBackdropColor(0.12, 0.10, 0.04, 1) end)
-    row:SetScript("OnLeave", function(f) f:SetBackdropColor(0.06, 0.06, 0.06, 1) end)
+    row:SetScript("OnEnter", function(f)
+        if modern then f:SetBackdropColor(0.10, 0.14, 0.19, 0.96) else f:SetBackdropColor(0.12, 0.10, 0.04, 1) end
+    end)
+    row:SetScript("OnLeave", function(f)
+        if modern then f:SetBackdropColor(0.063, 0.082, 0.110, 0.94) else f:SetBackdropColor(0.06, 0.06, 0.06, 1) end
+    end)
 
     Refresh()
     table.insert(Settings.frames, row)
@@ -351,93 +427,95 @@ function Settings:Render(content, sidebar)
         -- ═══════════════════════════════════════════════════════════════════
         y = MakeSection(content, y, w, "NAVIGATION & HUD")
 
-        y = MakeToggleRow(content, y, w, "Navigation Arrow (compass arrow pointing to waypoint)", function()
-            local A = TA:GetModule("Arrow")
-            return A and A.frame and A.frame:IsVisible()
-        end, function()
-            local A = TA:GetModule("Arrow")
-            if A then A:Toggle() end
-        end)
+        if Has("Arrow") then
+            y = MakeToggleRow(content, y, w, "Navigation Arrow (compass arrow pointing to waypoint)", function()
+                local A = TA:GetModule("Arrow")
+                return A and A.frame and A.frame:IsVisible()
+            end, function()
+                local A = TA:GetModule("Arrow")
+                if A then A:Toggle() end
+            end)
 
-        y = MakeActionRow(content, y, w, "Clear waypoint", function()
-            local A = TA:GetModule("Arrow")
-            if A and A.ClearActiveWaypoint then A:ClearActiveWaypoint("settings") end
-        end)
-
-        y = MakeToggleRow(content, y, w, "NavHud (transparent FarmHud-style overlay with nodes & waypoints)", function()
-            local NH = TA:GetModule("NavHud")
-            return NH and NH:IsVisible()
-        end, function()
-            local NH = TA:GetModule("NavHud")
-            if NH then NH:Toggle() end
-        end)
-
-        -- NavHud sub-options — FarmHud-style controls, following it as the
-        -- reference: scale/opacity sliders plus per-element visibility toggles,
-        -- instead of the single on/off switch this used to be limited to.
-        -- Wrapped in its own background card (below) so it reads as "these are
-        -- NavHud's sub-settings" rather than 9 more rows in the general list.
-        local navHudGroupTop = y + 4
-        do
-            local NH = TA:GetModule("NavHud")
-            local function NHGet(key) return NH and NH.GetSetting and NH.GetSetting(key) end
-            local function NHSet(key, v)
-                if NH and NH.SetSetting then NH.SetSetting(key, v) end
-                if NH and NH.ApplySettings then NH:ApplySettings() end
-            end
-
-            y = MakeSliderRow(content, y, w, "  NavHud Scale", 0.5, 2.5, 0.1,
-                function() return NHGet("scale") or 1.4 end,
-                function(v) NHSet("scale", v) end)
-
-            y = MakeSliderRow(content, y, w, "  NavHud Opacity", 0.1, 1.0, 0.05,
-                function() return NHGet("opacity") or 0.85 end,
-                function(v) NHSet("opacity", v) end)
-
-            y = MakeToggleRow(content, y, w, "  Show Cardinal Points (N/S/E/W)", function() return NHGet("showCardinals") end,
-                function() NHSet("showCardinals", not NHGet("showCardinals")) end)
-
-            y = MakeToggleRow(content, y, w, "  Show Coordinates", function() return NHGet("showCoords") end,
-                function() NHSet("showCoords", not NHGet("showCoords")) end)
-
-            y = MakeToggleRow(content, y, w, "  Show Distance to Waypoint", function() return NHGet("showDistance") end,
-                function() NHSet("showDistance", not NHGet("showDistance")) end)
-
-            y = MakeToggleRow(content, y, w, "  Show Step Description", function() return NHGet("showStepText") end,
-                function() NHSet("showStepText", not NHGet("showStepText")) end)
-
-            y = MakeToggleRow(content, y, w, "  Show Proximity Ring", function() return NHGet("showRing") end,
-                function() NHSet("showRing", not NHGet("showRing")) end)
-
-            y = MakeToggleRow(content, y, w, "  Show Waypoint Pins", function() return NHGet("showPins") end,
-                function() NHSet("showPins", not NHGet("showPins")) end)
+            y = MakeActionRow(content, y, w, "Clear waypoint", function()
+                local A = TA:GetModule("Arrow")
+                if A and A.ClearActiveWaypoint then A:ClearActiveWaypoint("settings") end
+            end)
         end
 
-        -- Background card behind the NavHud sub-options, drawn at BACKGROUND
-        -- layer so the toggle/slider rows (separate Frames) sit on top of it.
-        do
-            local card = content:CreateTexture(nil, "BACKGROUND")
-            card:SetPoint("TOPLEFT",     content, "TOPLEFT",  6, navHudGroupTop)
-            card:SetPoint("BOTTOMRIGHT", content, "TOPRIGHT", -6, y - 2)
-            card:SetColorTexture(1, 0.82, 0, 0.05)
-            table.insert(Settings.frames, card)
+        if Has("NavHud") then
+            y = MakeToggleRow(content, y, w, "NavHud (transparent FarmHud-style overlay with nodes & waypoints)", function()
+                local NH = TA:GetModule("NavHud")
+                return NH and NH:IsVisible()
+            end, function()
+                local NH = TA:GetModule("NavHud")
+                if NH then NH:Toggle() end
+            end)
+
+            -- NavHud sub-options wrapped cleanly inside 14..-14 margins.
+            local navHudGroupTop = y + 4
+            do
+                local NH = TA:GetModule("NavHud")
+                local function NHGet(key) return NH and NH.GetSetting and NH.GetSetting(key) end
+                local function NHSet(key, v)
+                    if NH and NH.SetSetting then NH.SetSetting(key, v) end
+                    if NH and NH.ApplySettings then NH:ApplySettings() end
+                end
+
+                y = MakeSliderRow(content, y, w, "  NavHud Scale", 0.5, 2.5, 0.1,
+                    function() return NHGet("scale") or 1.4 end,
+                    function(v) NHSet("scale", v) end)
+
+                y = MakeSliderRow(content, y, w, "  NavHud Opacity", 0.1, 1.0, 0.05,
+                    function() return NHGet("opacity") or 0.85 end,
+                    function(v) NHSet("opacity", v) end)
+
+                y = MakeToggleRow(content, y, w, "  Show Cardinal Points (N/S/E/W)", function() return NHGet("showCardinals") end,
+                    function() NHSet("showCardinals", not NHGet("showCardinals")) end)
+
+                y = MakeToggleRow(content, y, w, "  Show Coordinates", function() return NHGet("showCoords") end,
+                    function() NHSet("showCoords", not NHGet("showCoords")) end)
+
+                y = MakeToggleRow(content, y, w, "  Show Distance to Waypoint", function() return NHGet("showDistance") end,
+                    function() NHSet("showDistance", not NHGet("showDistance")) end)
+
+                y = MakeToggleRow(content, y, w, "  Show Step Description", function() return NHGet("showStepText") end,
+                    function() NHSet("showStepText", not NHGet("showStepText")) end)
+
+                y = MakeToggleRow(content, y, w, "  Show Proximity Ring", function() return NHGet("showRing") end,
+                    function() NHSet("showRing", not NHGet("showRing")) end)
+
+                y = MakeToggleRow(content, y, w, "  Show Waypoint Pins", function() return NHGet("showPins") end,
+                    function() NHSet("showPins", not NHGet("showPins")) end)
+            end
+
+            do
+                local card = content:CreateTexture(nil, "BACKGROUND")
+                card:SetPoint("TOPLEFT",     content, "TOPLEFT",  14, navHudGroupTop)
+                card:SetPoint("BOTTOMRIGHT", content, "TOPRIGHT", -14, y - 2)
+                card:SetColorTexture(1, 1, 1, 0.04)
+                table.insert(Settings.frames, card)
+            end
         end
 
-        y = MakeToggleRow(content, y, w, "World Map Pins (numbered step markers on world map)", function()
-            return TA.db and TA.db.modules and TA.db.modules.MapPins ~= false
-        end, function()
-            if TA.db and TA.db.modules then
-                TA.db.modules.MapPins = not TA.db.modules.MapPins
-            end
-        end)
+        if Has("MapPins") then
+            y = MakeToggleRow(content, y, w, "World Map Pins (numbered step markers on world map)", function()
+                return TA.db and TA.db.modules and TA.db.modules.MapPins ~= false
+            end, function()
+                if TA.db and TA.db.modules then
+                    TA.db.modules.MapPins = not TA.db.modules.MapPins
+                end
+            end)
+        end
 
-        y = MakeToggleRow(content, y, w, "Travel Route Suggestions (portal/flight suggestions for cross-zone steps)", function()
-            return TA.db and TA.db.modules and TA.db.modules.TravelRouter ~= false
-        end, function()
-            if TA.db and TA.db.modules then
-                TA.db.modules.TravelRouter = not TA.db.modules.TravelRouter
-            end
-        end)
+        if Has("TravelRouter") then
+            y = MakeToggleRow(content, y, w, "Travel Route Suggestions (portal/flight suggestions for cross-zone steps)", function()
+                return TA.db and TA.db.modules and TA.db.modules.TravelRouter ~= false
+            end, function()
+                if TA.db and TA.db.modules then
+                    TA.db.modules.TravelRouter = not TA.db.modules.TravelRouter
+                end
+            end)
+        end
 
         y = y - 8
     end
@@ -963,8 +1041,9 @@ function Settings:Render(content, sidebar)
 end
 
 function Settings:RenderSidebar(parent)
-    local y = -8
-    local w = parent:GetWidth()
+    local modern = IsModern()
+    local ar, ag, ab = AccentRGB()
+    local y = -6
 
     local function AddBtn(label, onClick)
         local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
@@ -972,17 +1051,40 @@ function Settings:RenderSidebar(parent)
         btn:SetPoint("TOPLEFT",  parent, "TOPLEFT",  4, y)
         btn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, y)
         btn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
-        btn:SetBackdropColor(0.10, 0.08, 0.02, 1)
-        btn:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.6)
+        if modern then
+            btn:SetBackdropColor(0.063, 0.082, 0.110, 0.94)
+            btn:SetBackdropBorderColor(1, 1, 1, 0.12)
+        else
+            btn:SetBackdropColor(0.10, 0.08, 0.02, 1)
+            btn:SetBackdropBorderColor(0.55, 0.40, 0.08, 0.6)
+        end
         local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         lbl:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
         lbl:SetText(label)
-        lbl:SetTextColor(1, 0.82, 0, 1)
+        if modern then
+            lbl:SetTextColor(0.92, 0.94, 0.96, 1)
+        else
+            lbl:SetTextColor(1, 0.82, 0, 1)
+        end
         lbl:SetAllPoints()
         lbl:SetJustifyH("CENTER")
         btn:SetScript("OnClick", onClick)
-        btn:SetScript("OnEnter", function(f) f:SetBackdropColor(0.20, 0.15, 0.04, 1) end)
-        btn:SetScript("OnLeave", function(f) f:SetBackdropColor(0.10, 0.08, 0.02, 1) end)
+        btn:SetScript("OnEnter", function(f)
+            if modern then
+                f:SetBackdropColor(ar * 0.22, ag * 0.22, ab * 0.22, 0.96)
+                f:SetBackdropBorderColor(ar, ag, ab, 0.70)
+            else
+                f:SetBackdropColor(0.20, 0.15, 0.04, 1)
+            end
+        end)
+        btn:SetScript("OnLeave", function(f)
+            if modern then
+                f:SetBackdropColor(0.063, 0.082, 0.110, 0.94)
+                f:SetBackdropBorderColor(1, 1, 1, 0.12)
+            else
+                f:SetBackdropColor(0.10, 0.08, 0.02, 1)
+            end
+        end)
         table.insert(self.frames, btn)
         y = y - 23
     end
@@ -992,7 +1094,11 @@ function Settings:RenderSidebar(parent)
         local h = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         h:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
         h:SetText(text)
-        h:SetTextColor(0.55, 0.40, 0.08, 1)
+        if modern then
+            h:SetTextColor(ar, ag, ab, 1)
+        else
+            h:SetTextColor(0.55, 0.40, 0.08, 1)
+        end
         h:SetPoint("TOPLEFT", parent, "TOPLEFT", 6, y)
         table.insert(self.frames, h)
         y = y - 14

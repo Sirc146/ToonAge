@@ -600,6 +600,28 @@ def main():
     check("Reputation pass 1 & pass 2 have 0 orphans and 0 new frames on pass 2",
           (res.orphan1, res.added2, res.orphan2), (0, 0, 0))
 
+    # 8. Settings drawer sizing & Modern Azeroth styling (sidebar never overflows bottom)
+    res = lua.execute(r"""
+        ToonAge:ApplyTheme("modern_azeroth", "class", false)
+        ToonAge:ToggleSettingsDrawer()
+        local d = ToonAge._settingsDrawer
+        local shown = d and d:IsShown() or false
+        local dh = d and d:GetHeight() or 0
+        local dw = d and d:GetWidth() or 0
+        local sh = d and d.sidebar and d.sidebar:GetHeight() or 0
+        local closeTpl = d and d.closeBtn and d.closeBtn._template
+        local closeIcon = d and d.closeBtn and d.closeBtn.icon and d.closeBtn.icon:GetTexture()
+        ToonAge:ToggleSettingsDrawer()
+        return {
+            shown = shown, dh = dh, dw = dw, sh = sh,
+            closeTpl = closeTpl, closeIcon = closeIcon,
+        }
+    """)
+    check("Settings drawer opens cleanly and fits sidebar inside height (no bottom overflow)",
+          res.shown and res.dh >= res.sh + 36 and res.dw >= 460, True)
+    check("Settings drawer uses custom r6 close button (no UIPanelCloseButton)",
+          (res.closeTpl, "util_close_16.tga" in (res.closeIcon or "")), (None, True))
+
     passed = sum(1 for r in _results if r)
     total = len(_results)
     print(f"\n{passed}/{total} passed")

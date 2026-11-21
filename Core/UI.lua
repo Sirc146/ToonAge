@@ -1493,6 +1493,10 @@ function TA:ApplyTheme(skin, pack, reducedMotion)
     end
     if self._settingsDrawer then
         ApplyDrawerTheme(self._settingsDrawer)
+        if self._settingsDrawer.IsShown and self._settingsDrawer:IsShown()
+            and self.RefreshSettingsDrawer then
+            self:RefreshSettingsDrawer()
+        end
     end
 end
 
@@ -1943,11 +1947,45 @@ end
 -- Right-hand Quick Actions column inside the drawer.
 -- The drawer hangs off the window's outside edge, so it is a side panel,
 -- not a second copy of the 900-wide main frame.
-local DRAWER_W         = 420
-local DRAWER_SIDE_W    = 148
+local DRAWER_W         = 490
+local DRAWER_SIDE_W    = 152
 local function DrawerContentWidth(drawer)
     local w = (drawer and drawer:GetWidth()) or DRAWER_W
-    return math.max(math.floor(w - 26 - DRAWER_SIDE_W - 16), 160)
+    return math.max(math.floor(w - 26 - DRAWER_SIDE_W - 20), 180)
+end
+
+function TA:RefreshSettingsDrawer()
+    local drawer = self._settingsDrawer
+    if not drawer then return end
+    ApplyDrawerTheme(drawer)
+    if drawer.titleLbl then
+        if IsModernSkin() then
+            drawer.titleLbl:SetText("ToonAge Settings")
+            drawer.titleLbl:SetTextColor(0.961, 0.969, 0.980, 1)
+        else
+            drawer.titleLbl:SetText("|cFFFFD100ToonAge Settings|r")
+        end
+    end
+    local old = drawer.scroll:GetScrollChild()
+    if old then old:Hide(); old:SetParent(nil) end
+
+    local content = CreateFrame("Frame", nil, drawer.scroll)
+    content:SetWidth(DrawerContentWidth(drawer))
+    content:SetHeight(1)
+    drawer.scroll:SetScrollChild(content)
+    drawer.scroll:SetVerticalScroll(0)
+    drawer.content = content
+
+    local Settings = self:GetModule("Settings")
+    if Settings and Settings.Render then
+        Settings:Render(content, drawer.sidebar)
+    end
+
+    -- Fit drawer height cleanly around the Quick Actions sidebar so nothing
+    -- overflows past the bottom border (clamped to main window height).
+    local sideH = (drawer.sidebar and drawer.sidebar.GetHeight and drawer.sidebar:GetHeight()) or 400
+    local wantH = math.min(FRAME_HEIGHT, math.max(430, math.floor(sideH + 40)))
+    drawer:SetHeight(wantH)
 end
 
 function TA:ToggleSettingsDrawer()
@@ -1963,7 +2001,7 @@ function TA:ToggleSettingsDrawer()
     -- Create drawer on first use
     if not self._settingsDrawer then
         local drawer = CreateFrame("Frame", "TASettingsDrawer", UIParent, "BackdropTemplate")
-        drawer:SetSize(DRAWER_W, 400)
+        drawer:SetSize(DRAWER_W, 460)
         drawer:SetFrameStrata("DIALOG")
         drawer:SetMovable(true)
         drawer:EnableMouse(true)
@@ -1977,18 +2015,45 @@ function TA:ToggleSettingsDrawer()
 
         -- Title bar
         local titleLbl = drawer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        titleLbl:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
-        titleLbl:SetText("|cFFFFD100ToonAge Settings|r")
-        titleLbl:SetPoint("TOPLEFT", drawer, "TOPLEFT", 10, -8)
+        titleLbl:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+        titleLbl:SetText("ToonAge Settings")
+        titleLbl:SetPoint("TOPLEFT", drawer, "TOPLEFT", 12, -9)
+        drawer.titleLbl = titleLbl
 
-        local closeBtn = CreateFrame("Button", nil, drawer, "UIPanelCloseButton")
+        local closeBtn = CreateFrame("Button", nil, drawer)
         closeBtn:SetSize(22, 22)
-        closeBtn:SetPoint("TOPRIGHT", drawer, "TOPRIGHT", -2, -2)
+        closeBtn:SetPoint("TOPRIGHT", drawer, "TOPRIGHT", -6, -5)
+        closeBtn.plate = closeBtn:CreateTexture(nil, "BACKGROUND")
+        closeBtn.plate:SetAllPoints()
+        closeBtn.plate:SetTexture(GLASS_DIR .. "button_r6.tga")
+        closeBtn.plate:SetVertexColor(0.08, 0.12, 0.16, 0.85)
+        closeBtn.icon = closeBtn:CreateTexture(nil, "ARTWORK")
+        closeBtn.icon:SetSize(11, 11)
+        closeBtn.icon:SetPoint("CENTER")
+        closeBtn.icon:SetTexture(ICON_DIR .. "util_close_16.tga")
+        closeBtn.icon:SetVertexColor(0.79, 0.80, 0.82, 1)
+        closeBtn:SetScript("OnEnter", function(self)
+            self.plate:SetVertexColor(0.75, 0.24, 0.24, 0.72)
+            self.icon:SetVertexColor(0.98, 0.98, 0.99, 1)
+        end)
+        closeBtn:SetScript("OnLeave", function(self)
+            self.plate:SetVertexColor(0.08, 0.12, 0.16, 0.85)
+            self.icon:SetVertexColor(0.79, 0.80, 0.82, 1)
+        end)
+        closeBtn:SetScript("OnClick", function() drawer:Hide() end)
+        drawer.closeBtn = closeBtn
 
-        -- Scroll frame inside drawer
+        local hdrRule = drawer:CreateTexture(nil, "OVERLAY")
+        hdrRule:SetHeight(1)
+        hdrRule:SetPoint("TOPLEFT", drawer, "TOPLEFT", 1, -30)
+        hdrRule:SetPoint("TOPRIGHT", drawer, "TOPRIGHT", -1, -30)
+        hdrRule:SetColorTexture(1, 1, 1, 0.08)
+
+        -- Scroll frame inside drawer (clipped so child cards never bleed past bounds)
         local scroll = CreateFrame("ScrollFrame", "TASettingsDrawerScroll", drawer, "UIPanelScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT", drawer, "TOPLEFT", 4, -26)
-        scroll:SetPoint("BOTTOMRIGHT", drawer, "BOTTOMRIGHT", -(26 + DRAWER_SIDE_W + 8), 4)
+        scroll:SetPoint("TOPLEFT", drawer, "TOPLEFT", 4, -34)
+        scroll:SetPoint("BOTTOMRIGHT", drawer, "BOTTOMRIGHT", -(28 + DRAWER_SIDE_W + 10), 8)
+        if scroll.SetClipsChildren then scroll:SetClipsChildren(true) end
 
         local content = CreateFrame("Frame", nil, scroll)
         content:SetWidth(DrawerContentWidth(drawer))
@@ -1999,7 +2064,7 @@ function TA:ToggleSettingsDrawer()
         -- button Settings:RenderSidebar drew (Reset All Settings among them)
         -- existed but could never be clicked -- /ta test, 2026-09-28.
         local sidebar = CreateFrame("Frame", nil, drawer)
-        sidebar:SetPoint("TOPRIGHT", drawer, "TOPRIGHT", -8, -28)
+        sidebar:SetPoint("TOPRIGHT", drawer, "TOPRIGHT", -8, -32)
         sidebar:SetSize(DRAWER_SIDE_W, 1)
 
         drawer.scroll  = scroll
@@ -2035,7 +2100,7 @@ function TA:ToggleSettingsDrawer()
         local function fit(room)
             if room >= dw + gap then return dw end
             local shrunk = math.floor(room - gap)
-            if shrunk >= 220 then
+            if shrunk >= 260 then
                 drawer:SetWidth(shrunk)
                 return shrunk
             end
@@ -2052,23 +2117,7 @@ function TA:ToggleSettingsDrawer()
     end
     PlaceDrawer()
 
-    -- Rebuild content each time (settings may have changed)
-    local old = drawer.scroll:GetScrollChild()
-    if old then old:Hide(); old:SetParent(nil) end
-
-    local content = CreateFrame("Frame", nil, drawer.scroll)
-    content:SetWidth(DrawerContentWidth(drawer))
-    content:SetHeight(1)
-    drawer.scroll:SetScrollChild(content)
-    drawer.scroll:SetVerticalScroll(0)
-    drawer.content = content
-
-    -- Render settings into the drawer
-    local Settings = self:GetModule("Settings")
-    if Settings and Settings.Render then
-        Settings:Render(content, drawer.sidebar)
-    end
-
+    self:RefreshSettingsDrawer()
     drawer:Show()
 end
 
