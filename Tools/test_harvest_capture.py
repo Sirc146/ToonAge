@@ -291,8 +291,9 @@ check("the scope switch defaults to this character", "ButtonActive|This characte
 check("scan now is the gold button", "ButtonGold|Scan now" in lay)
 check("a trainer this character has visited is counted",
       "DataRow|Trainer ranks (open a class trainer)|4" in lay)
+expected_scanned = L.eval('(date("%I:%M %p", ToonAge.db.harvest.captures[KEY].capturedAt):gsub("^0", ""))')
 check("last scanned sits on the scan row",
-      any(x.startswith("ButtonRow|Scan now,Notices on|") and x.endswith("|Last scanned 12:26 AM") for x in lay))
+      any(x.startswith("ButtonRow|Scan now,Notices on|") and x.endswith("|Last scanned " + expected_scanned) for x in lay))
 L.execute("""
 for _, b in ipairs(ALL_BUTTONS) do
     if b.label == "All characters" then b.onClick() end
