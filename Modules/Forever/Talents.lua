@@ -260,6 +260,329 @@ function M.PlanRouteColor()
     return M.FocusColor()
 end
 
+-- ─── PLAN MODE & NODE DETAIL (READ-ONLY, NEVER SPENDS) ─────────────────────
+-- Plan Mode computes a route to a player-chosen target through real
+-- prerequisites and spent-point gates. It never calls any C_Traits spend or
+-- commit API, and never claims DPS optimality.
+
+M.planTargetID = nil
+M.whatIfEnabled = false
+
+local Secret, MinReq, NodeGate
+
+local PLAN_HONEST_NOTE = "Route to chosen target only. Never spends points or claims DPS optimality."
+
+local function BuildNodeGraph(nodes)
+    local byID = {}
+    local incoming = {}
+    local outgoing = {}
+    if type(nodes) ~= "table" then return byID, incoming, outgoing end
+    for _, n in ipairs(nodes) do
+        if type(n) == "table" and n.id ~= nil then
+            byID[n.id] = n
+            incoming[n.id] = incoming[n.id] or {}
+            outgoing[n.id] = outgoing[n.id] or {}
+        end
+    end
+    local seen = {}
+    local function addEdge(srcID, dstID)
+        if not byID[srcID] or not byID[dstID] or srcID == dstID then return end
+        local key = tostring(srcID) .. ">" .. tostring(dstID)
+        if seen[key] then return end
+        seen[key] = true
+        outgoing[srcID][#outgoing[srcID] + 1] = dstID
+        incoming[dstID][#incoming[dstID] + 1] = srcID
+    end
+    for _, n in ipairs(nodes) do
+        if type(n) == "table" and n.id ~= nil and type(n.edges) == "table" then
+            for _, e in ipairs(n.edges) do
+                local tid, isArrow
+                if type(e) == "table" then
+                    tid = e.targetNode or e.targetNodeID
+                    isArrow = M.EdgeArrow(e.type)
+                else
+                    tid = e
+                    isArrow = false
+                end
+                if tid ~= nil and byID[tid] then
+                    if isArrow then
+                        addEdge(n.id, tid)
+                    elseif type(n.posY) == "number" and type(byID[tid].posY) == "number"
+                        and n.posY < byID[tid].posY then
+                        addEdge(n.id, tid)
+                    end
+                end
+            end
+        end
+    end
+    return byID, incoming, outgoing
+end
+
+--- Client-verbatim details for one node: rank, gate status, prerequisites,
+--- and downstream unlocks. Returns nil when nodeID is absent.
+function M.NodeDetail(nodes, conditions, nodeID, spent)
+    if nodeID == nil or type(nodes) ~= "table" then return nil end
+    local byID, incoming, outgoing = BuildNodeGraph(nodes)
+    local node = byID[nodeID]
+    if not node then return nil end
+
+    local rank = tonumber(node.rank) or 0
+    local max = tonumber(node.max) or 1
+    local locked, unmet = NodeGate(node, conditions or {}, spent)
+
+    local prereqs = {}
+    for _, pid in ipairs(incoming[nodeID] or {}) do
+        local pn = byID[pid]
+        if pn then
+            local pr = tonumber(pn.rank) or 0
+            local pm = tonumber(pn.max) or 1
+            prereqs[#prereqs + 1] = {
+                id = pid,
+                name = pn.name or ("Node " .. tostring(pid)),
+                rank = pr,
+                max = pm,
+                met = pr > 0,
+            }
+        end
+    end
+    table.sort(prereqs, function(a, b) return tostring(a.id) < tostring(b.id) end)
+
+    local unlocks = {}
+    for _, uid in ipairs(outgoing[nodeID] or {}) do
+        local un = byID[uid]
+        if un then
+            unlocks[#unlocks + 1] = {
+                id = uid,
+                name = un.name or ("Node " .. tostring(uid)),
+            }
+        end
+    end
+    table.sort(unlocks, function(a, b) return tostring(a.id) < tostring(b.id) end)
+
+    return {
+        id = node.id,
+        name = node.name or ("Node " .. tostring(node.id)),
+        rank = rank,
+        max = max,
+        spellID = node.spellID,
+        locked = locked and true or false,
+        unmet = unmet,
+        lockTip = locked and M.LockTip(unmet) or nil,
+        prereqs = prereqs,
+        unlocks = unlocks,
+    }
+end
+
+--- Pure read-only route to a player-chosen target node through prerequisite
+--- edges and spent-point gates. Cycle-safe; never mutates game state.
+function M.PlanRoute(nodes, conditions, targetID, spent)
+    if targetID == nil or type(nodes) ~= "table" then
+        return { valid = false, steps = {}, inPath = {}, inPathEdge = {}, honestNote = PLAN_HONEST_NOTE }
+    end
+    local byID, incoming = BuildNodeGraph(nodes)
+    local target = byID[targetID]
+    if not target then
+        return { valid = false, steps = {}, inPath = {}, inPathEdge = {}, honestNote = PLAN_HONEST_NOTE }
+    end
+
+    local curSpent = tonumber(spent) or 0
+    local conds = conditions or {}
+    local ordered = {}
+    local visited = {}
+    local inPathEdge = {}
+
+    local function walk(id)
+        if visited[id] then return end
+        visited[id] = true
+        local preds = incoming[id] or {}
+        table.sort(preds, function(a, b) return tostring(a) < tostring(b) end)
+        for _, pid in ipairs(preds) do
+            if byID[pid] then
+                inPathEdge[tostring(pid) .. ":" .. tostring(id)] = true
+                inPathEdge[tostring(id) .. ":" .. tostring(pid)] = true
+                walk(pid)
+            end
+        end
+        ordered[#ordered + 1] = id
+    end
+    walk(targetID)
+
+    local steps = {}
+    local inPath = {}
+    local projectedSpent = curSpent
+    local totalNeeded = 0
+    local firstGateNeed = 0
+
+    for _, id in ipairs(ordered) do
+        local n = byID[id]
+        local rank = tonumber(n.rank) or 0
+        local max = tonumber(n.max) or 1
+        local need = 0
+        if id == targetID then
+            need = math.max(0, max - rank)
+        else
+            -- Prerequisite unlocks once at least 1 rank is purchased (or full
+            -- rank if single-rank). Remaining ranks stay optional.
+            need = (rank == 0) and 1 or 0
+        end
+        local gate = MinReq(n, conds)
+        local locked, unmet = NodeGate(n, conds, curSpent)
+        local req = unmet or (locked and gate) or gate
+        local gateNeed = 0
+        if req and projectedSpent < req then
+            gateNeed = req - projectedSpent
+        end
+        if need > 0 then
+            local idx = #steps + 1
+            steps[idx] = {
+                id = id,
+                name = n.name or ("Node " .. tostring(id)),
+                rank = rank,
+                max = max,
+                pointsNeeded = need,
+                gate = req,
+                gateNeed = gateNeed,
+            }
+            inPath[id] = idx
+            if idx == 1 then firstGateNeed = gateNeed end
+            projectedSpent = projectedSpent + gateNeed + need
+            totalNeeded = totalNeeded + gateNeed + need
+        end
+    end
+
+    local targetRank = tonumber(target.rank) or 0
+    local targetMax = tonumber(target.max) or 1
+    local alreadyMaxed = targetMax > 0 and targetRank >= targetMax
+    local nextNode = steps[1]
+
+    return {
+        valid = true,
+        targetID = targetID,
+        targetName = target.name or ("Node " .. tostring(targetID)),
+        alreadyMaxed = alreadyMaxed,
+        steps = steps,
+        inPath = inPath,
+        inPathEdge = inPathEdge,
+        totalPointsNeeded = totalNeeded,
+        gateNeed = firstGateNeed,
+        nextNode = nextNode,
+        honestNote = PLAN_HONEST_NOTE,
+    }
+end
+
+--- Non-spending What-If rank projection for one cell along a planned route.
+--- Returns projectedRank, delta. Never writes or commits any talent point.
+function M.WhatIfRank(cell, route, unspent)
+    if type(cell) ~= "table" then return 0, 0 end
+    local base = tonumber(cell.rank) or 0
+    local max = tonumber(cell.max) or 1
+    if not M.whatIfEnabled or type(route) ~= "table" or not route.valid then
+        return base, 0
+    end
+    local idx = route.inPath and route.inPath[cell.id]
+    if not idx then return base, 0 end
+    local budget = tonumber(unspent) or 0
+    if budget <= 0 then budget = 1 end
+    local left = budget
+    for i, st in ipairs(route.steps) do
+        if left <= 0 then break end
+        local add = math.min(st.pointsNeeded or 0, left)
+        if i == idx then
+            local proj = math.min(max, base + add)
+            return proj, proj - base
+        end
+        left = left - add
+    end
+    return base, 0
+end
+
+--- Expose the next planned talent point for the upcoming Now briefing tab.
+--- Never spends points; marks combat-secret values honestly without guessing.
+function M.GetNextPlannedPoint(nodes, conditions, spent, unspent)
+    local isSecret = false
+    if nodes == nil then
+        local ok, rn, rc, _, rs, ru = pcall(M.ReadGrid)
+        if ok and type(rn) == "table" and #rn > 0 then
+            nodes, conditions, spent, unspent = rn, rc, rs, ru
+        elseif type(M._lastNodes) == "table" and #M._lastNodes > 0 then
+            nodes, conditions, spent, unspent = M._lastNodes, M._lastConds, M._lastSpent, M._lastUnspent
+            isSecret = true
+        end
+    end
+    if Secret(unspent) or Secret(spent) then
+        isSecret = true
+        unspent = tonumber(M._lastUnspent) or 0
+        spent = tonumber(M._lastSpent) or 0
+    end
+    local u = math.floor(tonumber(unspent) or 0)
+    local s = math.floor(tonumber(spent) or 0)
+    local prefix = isSecret and "(in combat) " or ""
+
+    if M.planTargetID == nil or type(nodes) ~= "table" then
+        local summary
+        if u > 0 then
+            summary = string.format("%s%d unspent %s. Click any talent to set a plan target.",
+                prefix, u, u == 1 and "point" or "points")
+        else
+            summary = prefix .. "No plan target set. Click any talent to inspect or plan a route."
+        end
+        return {
+            hasPlan = false,
+            unspent = u,
+            isSecret = isSecret,
+            summary = summary,
+            honestNote = PLAN_HONEST_NOTE,
+        }
+    end
+
+    local route = M.PlanRoute(nodes, conditions or {}, M.planTargetID, s)
+    if not route.valid then
+        return {
+            hasPlan = false,
+            unspent = u,
+            isSecret = isSecret,
+            summary = prefix .. "Planned target not found in current tree.",
+            honestNote = PLAN_HONEST_NOTE,
+        }
+    end
+    if route.alreadyMaxed or not route.nextNode then
+        return {
+            hasPlan = true,
+            targetID = route.targetID,
+            targetName = route.targetName,
+            alreadyMaxed = true,
+            unspent = u,
+            gateNeed = 0,
+            isSecret = isSecret,
+            summary = string.format("%sPlanned target %s is maxed.", prefix, route.targetName),
+            honestNote = PLAN_HONEST_NOTE,
+        }
+    end
+
+    local nxt = route.nextNode
+    local summary
+    if route.gateNeed > 0 then
+        summary = string.format("%s%d unspent. Next: %s (needs %d more spent in tree).",
+            prefix, u, nxt.name, route.gateNeed)
+    else
+        summary = string.format("%s%d unspent. Next: %s (toward %s).",
+            prefix, u, nxt.name, route.targetName)
+    end
+    return {
+        hasPlan = true,
+        targetID = route.targetID,
+        targetName = route.targetName,
+        nextNodeID = nxt.id,
+        nextNodeName = nxt.name,
+        alreadyMaxed = false,
+        unspent = u,
+        gateNeed = route.gateNeed,
+        isSecret = isSecret,
+        summary = summary,
+        honestNote = PLAN_HONEST_NOTE,
+    }
+end
+
 --- Master frame at 32px and above; the _32 cut underneath.
 function M.UsesSmallFrame(px)
     return (tonumber(px) or 40) < 32
@@ -299,7 +622,7 @@ function M.EdgeArrow(edgeType)
     return edgeType == sufficient or edgeType == required
 end
 
-local function Secret(v)
+Secret = function(v)
     if v == nil then return false end
     if U and U.IsSecret and U.IsSecret(v) then return true end
     if issecretvalue and issecretvalue(v) then return true end
@@ -401,7 +724,7 @@ local function ReqOf(cond)
 end
 
 --- Lowest spent-requirement on this node, whether or not it is already met.
-local function MinReq(node, conds)
+MinReq = function(node, conds)
     if type(node.conditionIDs) ~= "table" then return nil end
     local best
     for _, cid in ipairs(node.conditionIDs) do
@@ -413,7 +736,7 @@ end
 
 --- Locked when any of this node's own conditions is unmet. A neighbour on
 --- the same row does not lock it. Returns locked, lowest unmet amount.
-local function NodeGate(node, conds, spent)
+NodeGate = function(node, conds, spent)
     if type(node.conditionIDs) ~= "table" then return false, nil end
     local locked, lowest = false, nil
     for _, cid in ipairs(node.conditionIDs) do
@@ -914,9 +1237,14 @@ local function PaintNode(btn)
     local theme = M.Theme
     local rgb = theme[btn.state] or theme.available
     local hot = btn._hover or btn.id == M.selectedID
-    local dim = btn.state == "locked" and not hot
+    local inPlan = btn._inPlan == true
+    local dim = btn.state == "locked" and not hot and not inPlan
     local alpha = dim and M.LOCK_ALPHA or 1
-    if hot then rgb = M.FocusColor() end
+    if hot then
+        rgb = M.FocusColor()
+    elseif inPlan then
+        rgb = M.PlanRouteColor()
+    end
     if btn.frame and btn.frame.SetTexture then
         btn.frame:SetTexture(M.FrameFile(btn.shape, hot, btn._px))
         Tint(btn.frame, rgb, alpha)
@@ -933,7 +1261,7 @@ local function PaintNode(btn)
     Tint(btn.badgeBorder, rgb, alpha)
     if btn.icon then
         btn.icon:SetAlpha(dim and M.LOCK_ALPHA or 1)
-        if btn.icon.SetDesaturated then btn.icon:SetDesaturated(btn.state == "locked") end
+        if btn.icon.SetDesaturated then btn.icon:SetDesaturated(btn.state == "locked" and not inPlan) end
     end
     if btn.lock then
         if btn._locked then btn.lock:Show() else btn.lock:Hide() end
@@ -992,7 +1320,64 @@ local function GridReclaim()
     end
 end
 
-local function DrawGrid(parent, y, plan, pad)
+local DOCK_H = 84
+
+local function UpdateButtonBadge(btn, cell, route, unspent)
+    local projRank, projDelta = M.WhatIfRank(cell, route, unspent)
+    local dispBadge = cell.badge
+    if projDelta > 0 then
+        dispBadge = M.Badge(projRank, cell.max) or ("+" .. tostring(projDelta))
+    end
+    btn._projRank = projRank
+    btn._projDelta = projDelta
+    if dispBadge then
+        local bw = math.min(22, math.max(12, math.floor(cell.w * 0.55)))
+        local bh = math.min(12, math.max(8, math.floor(cell.h * 0.32)))
+        if not btn.badgeFill then
+            btn.badgeFill = btn:CreateTexture(nil, "OVERLAY")
+            btn.badgeBorder = btn:CreateTexture(nil, "OVERLAY")
+            btn.badgeText = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        end
+        local fill = btn.badgeFill
+        fill:Show()
+        fill:ClearAllPoints()
+        fill:SetSize(bw, bh)
+        fill:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+        fill:SetTexture(M.TEX.badgeFill)
+        local border = btn.badgeBorder
+        border:Show()
+        border:ClearAllPoints()
+        border:SetAllPoints(fill)
+        border:SetTexture(M.TEX.badgeBorder)
+        local badge = btn.badgeText
+        badge:Show()
+        badge:ClearAllPoints()
+        badge:SetPoint("CENTER", fill, "CENTER", 0, 0)
+        badge:SetText(dispBadge)
+        if projDelta > 0 then
+            local hi = M.Theme.highlight
+            badge:SetTextColor(hi[1], hi[2], hi[3], 1)
+        else
+            badge:SetTextColor(1, 1, 1, 1)
+        end
+    elseif btn.badgeFill then
+        btn.badgeFill:Hide()
+        btn.badgeBorder:Hide()
+        btn.badgeText:Hide()
+    end
+end
+
+local function TintEdge(line, ln, route)
+    local planned = route and route.inPathEdge
+        and (route.inPathEdge[tostring(ln.a) .. ":" .. tostring(ln.b)] == true)
+    if planned then
+        Tint(line, M.PlanRouteColor(), 0.95)
+    else
+        Tint(line, M.Theme.line, M.Theme.line[4])
+    end
+end
+
+local function DrawGrid(parent, y, plan, pad, route, unspent, onSelect, allButtons, allLines)
     local holder = GridTake("holder", parent, function()
         return CreateFrame("Frame", nil, parent)
     end)
@@ -1022,6 +1407,8 @@ local function DrawGrid(parent, y, plan, pad)
         btn._px = cell.w
         btn._locked = cell.locked
         btn._hover = false
+        btn._cell = cell
+        btn._inPlan = (route and route.inPath and route.inPath[cell.id] ~= nil) or false
         -- A reused node may still be at the raised hover level. Keep the
         -- level it had when it was first built.
         if not btn._taHomeLevel then
@@ -1060,36 +1447,7 @@ local function DrawGrid(parent, y, plan, pad)
         glow:Hide()
         btn.glow = glow
 
-        if cell.badge then
-            local bw = math.min(22, math.max(12, math.floor(cell.w * 0.55)))
-            local bh = math.min(12, math.max(8, math.floor(cell.h * 0.32)))
-            if not btn.badgeFill then
-                btn.badgeFill = btn:CreateTexture(nil, "OVERLAY")
-                btn.badgeBorder = btn:CreateTexture(nil, "OVERLAY")
-                btn.badgeText = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            end
-            local fill = btn.badgeFill
-            fill:Show()
-            fill:ClearAllPoints()
-            fill:SetSize(bw, bh)
-            fill:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
-            fill:SetTexture(M.TEX.badgeFill)
-            local border = btn.badgeBorder
-            border:Show()
-            border:ClearAllPoints()
-            border:SetAllPoints(fill)
-            border:SetTexture(M.TEX.badgeBorder)
-            local badge = btn.badgeText
-            badge:Show()
-            badge:ClearAllPoints()
-            badge:SetPoint("CENTER", fill, "CENTER", 0, 0)
-            badge:SetText(cell.badge)
-            badge:SetTextColor(1, 1, 1, 1)
-        elseif btn.badgeFill then
-            btn.badgeFill:Hide()
-            btn.badgeBorder:Hide()
-            btn.badgeText:Hide()
-        end
+        UpdateButtonBadge(btn, cell, route, unspent)
 
         -- One lock per gated talent. The row used to carry a single "N pts"
         -- label; the requirement now belongs to the node it gates.
@@ -1125,6 +1483,12 @@ local function DrawGrid(parent, y, plan, pad)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(cell.name or "Talent")
                 if cell.badge then GameTooltip:AddLine(cell.badge, 1, 1, 1) end
+                if (self._projDelta or 0) > 0 then
+                    local pc = M.PlanRouteColor()
+                    GameTooltip:AddLine(
+                        string.format("What-If preview: %d/%d (not spent)", self._projRank, cell.max),
+                        pc[1], pc[2], pc[3])
+                end
                 if cell.lockTip then
                     GameTooltip:AddLine(cell.lockTip, 0.85, 0.75, 0.45)
                 end
@@ -1140,9 +1504,11 @@ local function DrawGrid(parent, y, plan, pad)
         btn:SetScript("OnClick", function(self)
             if M.selectedID == self.id then M.selectedID = nil else M.selectedID = self.id end
             for _, other in pairs(buttons) do PaintNode(other) end
+            if onSelect then onSelect() end
         end)
         PaintNode(btn)
         buttons[cell.id] = btn
+        if allButtons then allButtons[#allButtons + 1] = btn end
     end
 
     -- Lines sit under the nodes and use the node's own center, so a resize
@@ -1170,10 +1536,11 @@ local function DrawGrid(parent, y, plan, pad)
                         if line.SetTexture then
                             line:SetTexture(ln.texture or M.TEX.edge)
                         end
-                        Tint(line, M.Theme.line, M.Theme.line[4])
+                        TintEdge(line, ln, route)
                         line:SetStartPoint("CENTER", a)
                         line:SetEndPoint("CENTER", b)
                     end)
+                    if allLines then allLines[#allLines + 1] = { line = line, ln = ln } end
                 end
             end
         end
@@ -1230,7 +1597,7 @@ end
 
 --- The points header is not a child of this frame. The scroll child is as
 --- tall as the trees; the frame itself is only as tall as the pane.
-local function MountTree(content, y, plans, paneH, treeH, treeW)
+local function MountTree(content, y, plans, paneH, treeH, treeW, route, unspent, onSelect)
     -- The anchor is created on the first mount so a later redraw does not
     -- allocate it. Reclaim runs before the grids are drawn again.
     GridAnchor()
@@ -1279,9 +1646,10 @@ local function MountTree(content, y, plans, paneH, treeH, treeW)
     if scroll.SetScrollChild then scroll:SetScrollChild(child) end
     GridReclaim()
 
+    local allButtons, allLines = {}, {}
     local yOff = 0
     for _, plan in ipairs(plans) do
-        DrawGrid(child, yOff, plan, 0)
+        DrawGrid(child, yOff, plan, 0, route, unspent, onSelect, allButtons, allLines)
         yOff = yOff - (tonumber(plan.height) or 0) - TREE_GAP
     end
 
@@ -1291,7 +1659,171 @@ local function MountTree(content, y, plans, paneH, treeH, treeW)
     if keep < 0 then keep = 0 end
     if keep > maxScroll then keep = maxScroll end
     if scroll.SetVerticalScroll then scroll:SetVerticalScroll(keep) end
-    return scroll
+    return scroll, allButtons, allLines
+end
+
+local function FormatLinkNames(list, withRank)
+    if type(list) ~= "table" or #list == 0 then return "none" end
+    local parts = {}
+    local limit = math.min(#list, 3)
+    for i = 1, limit do
+        local item = list[i]
+        if withRank and item.rank ~= nil and item.max ~= nil then
+            parts[i] = string.format("%s (%d/%d)", tostring(item.name), item.rank, item.max)
+        else
+            parts[i] = tostring(item.name)
+        end
+    end
+    if #list > limit then
+        parts[#parts + 1] = string.format("+%d more", #list - limit)
+    end
+    return table.concat(parts, ", ")
+end
+
+local function BuildDockButton(dock)
+    local btn = CreateFrame("Button", nil, dock)
+    btn._laKind = "ForeverTalent"
+    btn.bg = btn:CreateTexture(nil, "BACKGROUND")
+    btn.bg:SetAllPoints()
+    btn.bar = btn:CreateTexture(nil, "BORDER")
+    btn.bar:SetHeight(1)
+    btn.bar:SetPoint("TOPLEFT", btn, "TOPLEFT", 0, 0)
+    btn.bar:SetPoint("TOPRIGHT", btn, "TOPRIGHT", 0, 0)
+    btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    btn.label:SetPoint("CENTER", btn, "CENTER", 0, 0)
+    return btn
+end
+
+local function StyleDockButton(btn, text, active)
+    local accent = active and M.PlanRouteColor() or M.FocusColor()
+    if btn.bg and btn.bg.SetColorTexture then
+        if active then
+            btn.bg:SetColorTexture(accent[1] * 0.22, accent[2] * 0.22, accent[3] * 0.22, 0.94)
+        else
+            btn.bg:SetColorTexture(0.08, 0.11, 0.16, 0.94)
+        end
+    end
+    if btn.bar and btn.bar.SetColorTexture then
+        btn.bar:SetColorTexture(accent[1], accent[2], accent[3], active and 0.95 or 0.55)
+    end
+    if btn.label then
+        btn.label:SetText(text)
+        btn.label:SetTextColor(0.95, 0.97, 0.99, 1)
+    end
+end
+
+--- Pooled bottom Node Detail & Plan Mode dock. Hidden when neither a node nor
+--- a plan target is active so default tree height stays unchanged.
+local function MountDetailDock(content, yTop, width, nodes, conds, spent, unspent, refreshFn)
+    local activeID = M.selectedID or M.planTargetID
+    local dock = _G.TATalentDetailDock
+    if activeID == nil then
+        if dock and dock.Hide then dock:Hide() end
+        return 0
+    end
+    local detail = M.NodeDetail(nodes, conds, activeID, spent)
+    if not detail then
+        if dock and dock.Hide then dock:Hide() end
+        return 0
+    end
+
+    if not dock then
+        dock = CreateFrame("Frame", "TATalentDetailDock", content)
+        dock._laKind = "ForeverTalent"
+        dock.bg = dock:CreateTexture(nil, "BACKGROUND")
+        dock.bg:SetAllPoints()
+        dock.topRule = dock:CreateTexture(nil, "BORDER")
+        dock.topRule:SetHeight(1)
+        dock.topRule:SetPoint("TOPLEFT", dock, "TOPLEFT", 0, 0)
+        dock.topRule:SetPoint("TOPRIGHT", dock, "TOPRIGHT", 0, 0)
+        dock.title = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        dock.title:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -8)
+        dock.meta = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        dock.meta:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -26)
+        dock.planLine = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        dock.planLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -44)
+        dock.noteLine = dock:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        dock.noteLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -64)
+        dock.planBtn = BuildDockButton(dock)
+        dock.planBtn:SetSize(112, 22)
+        dock.planBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -10, -10)
+        dock.whatIfBtn = BuildDockButton(dock)
+        dock.whatIfBtn:SetSize(112, 22)
+        dock.whatIfBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -10, -38)
+    end
+
+    dock._laKind = "ForeverTalent"
+    if dock.SetParent then dock:SetParent(content) end
+    if dock.ClearAllPoints then dock:ClearAllPoints() end
+    local dockW = math.max(220, math.floor((tonumber(width) or 480) + 0.5))
+    dock:SetSize(dockW, DOCK_H)
+    dock:SetPoint("TOPLEFT", content, "TOPLEFT", L.PAD, yTop)
+    if dock.Show then dock:Show() end
+
+    local cardBg = TA.Theme and TA.Theme.active and TA.Theme.active.bg and TA.Theme.active.bg.card
+    if dock.bg and dock.bg.SetColorTexture then
+        if type(cardBg) == "table" and cardBg[1] then
+            dock.bg:SetColorTexture(cardBg[1], cardBg[2], cardBg[3], cardBg[4] or 0.96)
+        else
+            dock.bg:SetColorTexture(0.06, 0.08, 0.11, 0.96)
+        end
+    end
+    local ruleColor = (M.planTargetID ~= nil) and M.PlanRouteColor() or M.FocusColor()
+    if dock.topRule and dock.topRule.SetColorTexture then
+        dock.topRule:SetColorTexture(ruleColor[1], ruleColor[2], ruleColor[3], 0.85)
+    end
+
+    local textW = math.max(120, dockW - 140)
+    if dock.title.SetWidth then dock.title:SetWidth(textW) end
+    if dock.meta.SetWidth then dock.meta:SetWidth(textW) end
+    if dock.planLine.SetWidth then dock.planLine:SetWidth(textW) end
+    if dock.noteLine.SetWidth then dock.noteLine:SetWidth(textW) end
+    if dock.title.SetJustifyH then dock.title:SetJustifyH("LEFT") end
+    if dock.meta.SetJustifyH then dock.meta:SetJustifyH("LEFT") end
+    if dock.planLine.SetJustifyH then dock.planLine:SetJustifyH("LEFT") end
+    if dock.noteLine.SetJustifyH then dock.noteLine:SetJustifyH("LEFT") end
+
+    local titleStr = string.format("%s (%d/%d)", detail.name, detail.rank, detail.max)
+    if detail.lockTip then
+        titleStr = titleStr .. " · " .. detail.lockTip
+    end
+    if M.planTargetID == detail.id then
+        titleStr = titleStr .. " [Plan Target]"
+    end
+    dock.title:SetText(titleStr)
+    dock.title:SetTextColor(0.95, 0.97, 0.99, 1)
+
+    local metaStr = string.format("Prereqs: %s  |  Unlocks: %s",
+        FormatLinkNames(detail.prereqs, true),
+        FormatLinkNames(detail.unlocks, false))
+    dock.meta:SetText(metaStr)
+    dock.meta:SetTextColor(0.75, 0.80, 0.86, 1)
+
+    local nextInfo = M.GetNextPlannedPoint(nodes, conds, spent, unspent)
+    dock.planLine:SetText(nextInfo.summary or "")
+    dock.planLine:SetTextColor(ruleColor[1], ruleColor[2], ruleColor[3], 1)
+
+    dock.noteLine:SetText(PLAN_HONEST_NOTE)
+    dock.noteLine:SetTextColor(0.56, 0.62, 0.70, 1)
+
+    local isTarget = (M.planTargetID == detail.id)
+    StyleDockButton(dock.planBtn, isTarget and "Clear Target" or "Set Plan Target", isTarget)
+    dock.planBtn:SetScript("OnClick", function()
+        if M.planTargetID == detail.id then
+            M.planTargetID = nil
+        else
+            M.planTargetID = detail.id
+        end
+        if refreshFn then refreshFn() end
+    end)
+
+    StyleDockButton(dock.whatIfBtn, M.whatIfEnabled and "What-If: ON" or "What-If: OFF", M.whatIfEnabled)
+    dock.whatIfBtn:SetScript("OnClick", function()
+        M.whatIfEnabled = not M.whatIfEnabled
+        if refreshFn then refreshFn() end
+    end)
+
+    return DOCK_H
 end
 
 -- ─── RENDER ────────────────────────────────────────────────────────────────
@@ -1318,6 +1850,9 @@ function M:Render(content, side)
 
     local nodes, conds, err, spent, unspent = M.ReadGrid()
     if not nodes or #nodes == 0 then
+        if _G.TATalentDetailDock and _G.TATalentDetailDock.Hide then
+            _G.TATalentDetailDock:Hide()
+        end
         y = RenderNoTraits(content, y, level)
         if err then
             y = L:Paragraph(content, y, tostring(err), { color = L.C_DIM })
@@ -1325,6 +1860,11 @@ function M:Render(content, side)
         L:Finish(content, y)
         return
     end
+
+    M._lastNodes = nodes
+    M._lastConds = conds
+    M._lastSpent = spent
+    M._lastUnspent = unspent
 
     local windowW = 900
     if TA.UI and TA.UI.frame and TA.UI.frame.GetWidth then
@@ -1358,16 +1898,49 @@ function M:Render(content, side)
         end
     end
 
-    MountTree(content, y, plans, paneH, treeH, treeW)
-    if scrolls then
-        -- Match the viewport so the outer content scroll does not move
-        -- the points header while the tree scrolls inside its pane.
-        local view = ViewportHeight(content)
-        if not view or view <= 0 then view = CONTENT_VIEW_FALLBACK end
-        content:SetHeight(math.floor(view))
-    else
-        L:Finish(content, y - paneH - 8)
+    local route = M.planTargetID and M.PlanRoute(nodes, conds, M.planTargetID, spent) or nil
+    local mountedButtons, mountedLines
+    local function applyHeight(dockH)
+        if scrolls then
+            local view = ViewportHeight(content)
+            if not view or view <= 0 then view = CONTENT_VIEW_FALLBACK end
+            if dockH > 0 then
+                local needed = math.abs(y - paneH - 8 - dockH) + 8
+                content:SetHeight(math.max(math.floor(view), math.floor(needed)))
+            else
+                content:SetHeight(math.floor(view))
+            end
+        elseif dockH > 0 then
+            L:Finish(content, y - paneH - 8 - dockH - 8)
+        else
+            L:Finish(content, y - paneH - 8)
+        end
     end
+
+    local function refreshPlanUI()
+        local activeRoute = M.planTargetID and M.PlanRoute(nodes, conds, M.planTargetID, spent) or nil
+        if mountedButtons then
+            for _, btn in ipairs(mountedButtons) do
+                btn._inPlan = (activeRoute and activeRoute.inPath and activeRoute.inPath[btn.id] ~= nil) or false
+                if btn._cell then
+                    UpdateButtonBadge(btn, btn._cell, activeRoute, unspent)
+                end
+                PaintNode(btn)
+            end
+        end
+        if mountedLines then
+            for _, entry in ipairs(mountedLines) do
+                pcall(TintEdge, entry.line, entry.ln, activeRoute)
+            end
+        end
+        local dockH = MountDetailDock(content, y - paneH - 8, availW, nodes, conds, spent, unspent, refreshPlanUI)
+        applyHeight(dockH)
+    end
+
+    local _scroll
+    _scroll, mountedButtons, mountedLines = MountTree(content, y, plans, paneH, treeH, treeW, route, unspent, refreshPlanUI)
+    local dockH = MountDetailDock(content, y - paneH - 8, availW, nodes, conds, spent, unspent, refreshPlanUI)
+    applyHeight(dockH)
 end
 
 function M:OnEvent(event)
