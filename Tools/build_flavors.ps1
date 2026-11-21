@@ -426,8 +426,8 @@ foreach ($name in $targets.Keys) {
             try {
                 $wtfRoot = Join-Path (Join-Path $WowPath $clientDir) 'WTF\Account'
                 if ($env:LOCALAPPDATA -and (Test-Path -LiteralPath $wtfRoot)) {
-                    $svFiles = Get-ChildItem -LiteralPath $wtfRoot -Recurse -File -Filter 'ToonAge*.lua' -ErrorAction SilentlyContinue
-                    if ($svFiles -and $svFiles.Count -gt 0) {
+                    $svFiles = @(Get-ChildItem -LiteralPath $wtfRoot -Recurse -File -Filter 'ToonAge*.lua' -ErrorAction SilentlyContinue)
+                    if ($svFiles.Count -gt 0) {
                         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
                         $backupBase = Join-Path (Join-Path $env:LOCALAPPDATA 'ToonAge\Backups') $clientDir
                         $backupDir  = Join-Path $backupBase $stamp
