@@ -1312,7 +1312,9 @@ local function GridReclaim()
             if f.SetScript then
                 f:SetScript("OnEnter", nil)
                 f:SetScript("OnLeave", nil)
-                f:SetScript("OnClick", nil)
+                if kind == "button" then
+                    f:SetScript("OnClick", nil)
+                end
             end
             if f.SetParent then f:SetParent(anchor) end
             free[#free + 1] = f

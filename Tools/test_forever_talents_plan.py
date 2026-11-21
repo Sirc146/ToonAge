@@ -122,7 +122,12 @@ local function Widget(kind, name)
     function f:Show() self._shown = true end
     function f:Hide() self._shown = false end
     function f:IsShown() return self._shown end
-    function f:SetScript(ev, fn) self.scripts[ev] = fn end
+    function f:SetScript(ev, fn)
+        if ev == "OnClick" and self.kind ~= "Button" then
+            error("Frame:SetScript(): Cannot assign script handler for 'onclick' (script type not supported by this object)")
+        end
+        self.scripts[ev] = fn
+    end
     function f:GetScript(ev) return self.scripts[ev] end
     function f:SetFrameLevel(n) self.level = n end
     function f:GetFrameLevel() return self.level or 1 end
