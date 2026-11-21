@@ -211,6 +211,8 @@ Modules\Forever\CastLog.lua
 Modules\Forever\SessionCheck.lua
 # Login-to-logout journal. Local SavedVariables only. Not analytics.
 Modules\Forever\Journey.lua
+# Private dungeon Loot Watch toast (off-class, BoE, repeat & contested Need alerts).
+Modules\Forever\LootWatch.lua
 # Beta "world will refresh" notice: countdown, warnings, log. No tab.
 Modules\Forever\WorldRefresh.lua
 # Manual pin. The retail arrow and map pins, with no guide behind them.

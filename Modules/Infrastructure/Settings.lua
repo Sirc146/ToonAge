@@ -794,6 +794,23 @@ function Settings:Render(content, sidebar)
     end
 
 
+    if Has("ForeverLootWatch") then
+        y = MakeSection(content, y, w, "DUNGEON LOOT WATCH")
+        y = MakeToggleRow(content, y, w, "Loot Watch Toast (alerts on off-class, BoE, repeat, or contested Need rolls)", function()
+            return not (TA.db and TA.db.lootWatch == false)
+        end, function()
+            if not TA.db then return end
+            TA.db.lootWatch = (TA.db.lootWatch == false)
+        end)
+        y = MakeActionRow(content, y, w, "Preview Loot Watch Toast", function()
+            local lw = TA:GetModule("ForeverLootWatch")
+            if lw and lw.SlashCommands and lw.SlashCommands.lootwatch then
+                lw.SlashCommands.lootwatch()
+            end
+        end)
+        y = y - 8
+    end
+
     -- Layout: both rows describe the arrow/tracker windows.
     if Has("Arrow", "QuestTracker") then
         -- ═══════════════════════════════════════════════════════════════════

@@ -110,6 +110,7 @@ FOREVER_MODULES = [
     # world-refresh notice (both tab-less), plus the flavor-neutral self-test.
     "Modules/Forever/SessionCheck.lua",
     "Modules/Forever/Journey.lua",
+    "Modules/Forever/LootWatch.lua",
     "Modules/Forever/WorldRefresh.lua",
     # Shared profession cards. The skill list is Data/Forever/ProfessionSkills.lua
     # and stays unverified until an in-game probe confirms it.

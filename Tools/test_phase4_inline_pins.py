@@ -350,8 +350,10 @@ def main():
     (function()
         local P = ToonAge:GetModule("ForeverPins")
         ToonAge.db.studyLibraries = nil
-        local added1 = P.RecordStudySpot("Horde", "Orgrimmar", 1454, 42.34, 51.67, "Cleft of Shadow")
-        local addedDup = P.RecordStudySpot("Horde", "Orgrimmar", 1454, 43.0, 52.0, "Cleft of Shadow")
+        -- Built-in Horde libraries now include Undercity (Owen Thadd) + Orgrimmar (Darkbriar Lodge Study)
+        local builtInCount = #P.AllLibraries("Horde")
+        local added1 = P.RecordStudySpot("Horde", "Thunder Bluff", 1456, 22.34, 18.67, "Spirit Rise")
+        local addedDup = P.RecordStudySpot("Horde", "Thunder Bluff", 1456, 23.0, 19.0, "Spirit Rise")
         local allH = P.AllLibraries("Horde")
 
         -- Wire lightweight Arrow + Compat to test SuggestLibrary & ToggleLibraryPin
@@ -362,10 +364,11 @@ def main():
             MapIDForZone = function(z)
                 if z == "Undercity" then return 1458 end
                 if z == "Orgrimmar" then return 1454 end
+                if z == "Thunder Bluff" then return 1456 end
                 return nil
             end,
             WalkContinent = function(id)
-                if id == 1454 or id == 1413 then return 1 end -- Kalimdor
+                if id == 1454 or id == 1456 or id == 1413 then return 1 end -- Kalimdor
                 if id == 1458 then return 2 end -- Eastern Kingdoms
                 return nil
             end,
@@ -385,13 +388,14 @@ def main():
             PlayerMapFraction = function() return 0.5, 0.5 end,
             WorldPosFromMapPos = function(id, x, y)
                 if id == 1413 then return 1, 100, 100 end
-                if id == 1454 then return 1, 110, 105 end
+                if id == 1456 then return 1, 105, 102 end -- closer learned Thunder Bluff spot
+                if id == 1454 then return 1, 140, 130 end -- built-in Orgrimmar Darkbriar Lodge
                 return 2, 500, 500
             end,
             MapInfo = function() return nil end,
         }
 
-        -- In Kalimdor with learned Orgrimmar Study spot -> picks Orgrimmar Study spot!
+        -- In Kalimdor with closer learned Spirit Rise spot -> picks Spirit Rise!
         local pinned1 = P:ToggleLibraryPin()
         local firstTitle = lastPin and lastPin.title
         local isPinAfter1 = P:IsPinned("library")
@@ -400,10 +404,10 @@ def main():
         local pinned2 = P:ToggleLibraryPin()
         local isPinAfter2 = P:IsPinned("library")
 
-        -- With no learned Kalimdor spots, falls back cleanly to Owen Thadd (Undercity)
+        -- With no learned spots, Kalimdor Horde picks built-in Orgrimmar Darkbriar Lodge (not Undercity!)
         ToonAge.db.studyLibraries = nil
-        local pinnedFallback = P:SuggestLibrary()
-        local fallbackTitle = lastPin and lastPin.title
+        local pinnedKalimdor = P:SuggestLibrary()
+        local kalimdorTitle = lastPin and lastPin.title
 
         -- Scrolls tab renders library pin button
         local S = ToonAge:GetModule("ForeverScrolls")
@@ -425,6 +429,7 @@ def main():
         local blob = table.concat(texts, "\n")
 
         return {
+            builtInCount = builtInCount,
             added1 = added1,
             addedDup = addedDup,
             allCount = #allH,
@@ -434,21 +439,21 @@ def main():
             pinned2 = pinned2,
             isPinAfter2 = isPinAfter2,
             cleared = cleared,
-            pinnedFallback = pinnedFallback,
-            fallbackTitle = fallbackTitle,
+            pinnedKalimdor = pinnedKalimdor,
+            kalimdorTitle = kalimdorTitle,
             scrollsHasClearLib = blob:find("Clear library pin", 1, true) ~= nil,
             scrollsHasFeathers = blob:find("Pin Light Feathers AH", 1, true) ~= nil,
         }
     end)()
     """)
     check("RecordStudySpot saves new Study spot and deduplicates nearby coords",
-          (r5["added1"], r5["addedDup"], r5["allCount"]), (True, False, 2))
-    check("ToggleLibraryPin prefers learned Kalimdor Study spot over cross-continent capital",
-          (r5["pinned1"], r5["firstTitle"], r5["isPinAfter1"]), (True, "Study: Cleft of Shadow", True))
+          (r5["builtInCount"], r5["added1"], r5["addedDup"], r5["allCount"]), (2, True, False, 3))
+    check("ToggleLibraryPin prefers closer learned Kalimdor Study spot",
+          (r5["pinned1"], r5["firstTitle"], r5["isPinAfter1"]), (True, "Study: Spirit Rise", True))
     check("ToggleLibraryPin clears active pin on second click",
           (r5["pinned2"], r5["isPinAfter2"], r5["cleared"]), (False, False, 1))
-    check("SuggestLibrary falls back to capital librarian when none on current continent",
-          (r5["pinnedFallback"], r5["fallbackTitle"]), (True, "Owen Thadd"))
+    check("SuggestLibrary in Kalimdor picks built-in Orgrimmar Darkbriar Lodge (Study)",
+          (r5["pinnedKalimdor"], r5["kalimdorTitle"]), (True, "Darkbriar Lodge (Study)"))
     check("Scrolls tab renders active library pin toggle & Light Feathers AH button",
           (r5["scrollsHasClearLib"], r5["scrollsHasFeathers"]), (True, True))
 

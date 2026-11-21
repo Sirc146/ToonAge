@@ -72,6 +72,44 @@ M.LIBRARIES = {
     },
 }
 
+-- Secondary Mage Study library locations (for casting Study / Comprehension).
+-- Book turn-ins still go to the faction librarian in M.LIBRARIES above.
+-- Every coordinate block cites a published Forever/Classic guide source.
+M.STUDY_LIBRARIES = {
+    Horde = {
+        {
+            name = "Darkbriar Lodge (Study)",
+            zone = "Orgrimmar",
+            x = 38.6, y = 78.4,
+            studyOnly = true,
+            source = "https://www.method.gg/guides/wow-forever-library-books",
+        },
+    },
+    Alliance = {
+        {
+            name = "Hall of Explorers (Study)",
+            zone = "Ironforge",
+            x = 75.7, y = 10.5,
+            studyOnly = true,
+            source = "https://www.eloboost24.eu/wow-forever-library-books",
+        },
+        {
+            name = "Tower of Azora (Study)",
+            zone = "Elwynn Forest",
+            x = 65.4, y = 70.1,
+            studyOnly = true,
+            source = "https://www.eloboost24.eu/wow-forever-library-books",
+        },
+        {
+            name = "Theramore Mage Tower (Study)",
+            zone = "Dustwallow Marsh",
+            x = 66.3, y = 49.0,
+            studyOnly = true,
+            source = "https://www.wowhead.com/classic/zone=15/dustwallow-marsh",
+        },
+    },
+}
+
 M.AUCTION = {
     Horde = {
         {
@@ -292,13 +330,18 @@ function M.RecordStudySpot(faction, zone, mapID, xPct, yPct, subzone)
     return true
 end
 
---- Combined library list for a faction: built-in librarian(s) plus any
---- live-confirmed Study locations learned by this account.
+--- Combined library list for a faction: built-in librarian(s), sourced Study
+--- locations on both continents, plus any live-confirmed Study spots learned
+--- by this account.
 function M.AllLibraries(faction)
     local out = {}
     local base = M.AsLibraryList(faction and M.LIBRARIES[faction])
     if base then
         for _, item in ipairs(base) do out[#out + 1] = item end
+    end
+    local study = faction and M.STUDY_LIBRARIES and M.STUDY_LIBRARIES[faction]
+    if type(study) == "table" then
+        for _, item in ipairs(study) do out[#out + 1] = item end
     end
     for _, item in ipairs(M.LearnedLibraries(faction)) do
         out[#out + 1] = item

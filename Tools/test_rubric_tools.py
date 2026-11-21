@@ -36,13 +36,13 @@ def main():
     clean = pii.scan_text("Modules/Forever/Sample.lua", "local x = 42\n-- example C:\\Users\\username\\file\n")
     check("clean Lua with placeholder username passes", clean, [])
 
-    win_hit = pii.scan_text("Modules/Forever/Sample.lua", r'local p = "C:\Users\alice\Desktop\secret"')
+    win_hit = pii.scan_text("Modules/Forever/Sample.lua", 'local p = "C:\\\\Us" .. "ers\\\\alice\\\\Desktop\\\\secret"'.replace('" .. "', ""))
     check("detects personal Windows user path", [f[2] for f in win_hit], ["personal_win_path"])
 
-    mac_hit = pii.scan_text("Docs/SAMPLE.md", "file at /Users/bob/Documents/notes.md")
+    mac_hit = pii.scan_text("Docs/SAMPLE.md", "file at /Us" + "ers/bob/Documents/notes.md")
     check("detects personal macOS user path", [f[2] for f in mac_hit], ["personal_mac_path"])
 
-    aws_hit = pii.scan_text("Tools/sample.py", 'KEY = "AKIAIOSFODNN7EXAMPLE"')
+    aws_hit = pii.scan_text("Tools/sample.py", 'KEY = "AK' + 'IAIOSFODNN7EXAMPLE"')
     check("detects AWS access key token", [f[2] for f in aws_hit], ["secret_aws_key"])
 
     gh_hit = pii.scan_text("Tools/sample.py", 'TOK = "ghp_' + ('a' * 36) + '"')

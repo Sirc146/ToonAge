@@ -376,6 +376,8 @@ local PROFILES = {
             ForeverSessionCheck = true,
             -- Login-to-logout journal. Local SavedVariables only, not analytics.
             ForeverJourney   = true,
+            -- Private dungeon Loot Watch toast (off-class, BoE, repeat & contested Need).
+            ForeverLootWatch = true,
             -- Beta "world will refresh in N minutes" notice: countdown bar,
             -- 60s/10s warnings, and a log (/ta refreshlog). No tab.
             ForeverWorldRefresh = true,
