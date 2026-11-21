@@ -195,6 +195,8 @@ Modules\Forever\Talents.lua
 Modules\Forever\MageGuidance.lua
 # Next-spell suggestion icon. Its own frame. No action-button glow.
 Modules\Forever\MageSuggest.lua
+# Working 9-class Spell Playbook (modes, live buff/wand readiness, tooltip DPS/DPM).
+Modules\Forever\SpellPlaybook.lua
 Modules\Forever\Rotation.lua
 Modules\Forever\Pets.lua
 Modules\Forever\PvP.lua

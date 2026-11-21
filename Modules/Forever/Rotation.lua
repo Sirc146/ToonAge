@@ -777,12 +777,29 @@ function M:Render(content, side)
     local y = -8
     local guided = false
     local Guide = TA.MageLevel12
+    local draftApplies = false
     if Guide and Guide.RefreshGate and Guide.Evaluate and Guide.Paint and L then
         local readStatus = readable and "read" or "unreadable"
-        if Guide.RefreshGate(readable and lines or nil, readStatus) then
+        draftApplies = Guide.RefreshGate(readable and lines or nil, readStatus) and true or false
+    end
+
+    local SP = TA.SpellPlaybook
+    if SP and type(SP.Render) == "function" and readable then
+        local catalog = CatalogByName()
+        local level = tonumber(Try(UnitLevel, "player"))
+        local due = (catalog and level) and DueAndCoverage(lines, catalog, level) or {}
+        y = SP.Render(content, y, L, lines, due, { level = level, canShowDraft = draftApplies })
+        if draftApplies and SP.showResearchDraft then
+            y = L:Divider(content, y)
             y = Guide.Paint(content, y, L, Guide.Evaluate(Guide.Context()))
-            guided = true
+        elseif Guide and Guide.Paint then
+            Guide.Paint(content, y, L, { applies = false })
         end
+        guided = true
+        y = L:Divider(content, y)
+    elseif draftApplies then
+        y = Guide.Paint(content, y, L, Guide.Evaluate(Guide.Context()))
+        guided = true
     end
     local RL = TA.RotationLists
     if not guided and RL and RL.Resolve and L then
@@ -808,10 +825,6 @@ function M:Render(content, side)
     if not readable then
         y = RenderUnreadable(content, y)
     else
-        local total = 0
-        for _, g in ipairs(lines) do total = total + #g.spells end
-        y = RenderIntro(content, y, total)
-        y = L:Divider(content, y)
         local catalog = CatalogByName()
         local level = tonumber(Try(UnitLevel, "player"))
         y = RenderTraining(content, y, lines, catalog, level)
@@ -819,6 +832,12 @@ function M:Render(content, side)
         local check
         y, check = RenderRankCheck(content, y, lines)
         y = L:Divider(content, y)
+        local total = 0
+        for _, g in ipairs(lines) do total = total + #g.spells end
+        if not (SP and type(SP.Render) == "function") then
+            y = RenderIntro(content, y, total)
+            y = L:Divider(content, y)
+        end
         y = RenderLines(content, y, lines, check, catalog, level)
     end
     L:Finish(content, y)
