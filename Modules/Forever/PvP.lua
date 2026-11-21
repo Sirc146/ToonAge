@@ -1,40 +1,17 @@
 -- ToonAge/Modules/Forever/PvP.lua  (WoW Forever — Mainline API, Vanilla content)
 --
--- ══════════════════════════════════════════════════════════════════════════
--- ── WHAT THIS TAB IS ──────────────────────────────────────────────────────
--- ══════════════════════════════════════════════════════════════════════════
+-- Reliable live PvP tactical & readiness tab across:
+--   1. Live PvP Context Banner (PvP server / Contested / Hostile / Flagged + unflag
+--      timer / Free-For-All Arena / Active Battleground match) + Now tab alert
+--   2. Forever Battleground Bracket & Marks guide (WSG, AB, Darkspear Islands 15v15, AV)
+--   3. Live PvP Readiness Checklist (PvP Trinket equipped vs in bags, PvP consumables &
+--      Engineering tools, live buffs, and active Talents PvP Plan slot)
+--   4. Live Enemy Target Dossier + Spellbook-aware Racial & Class Matchups (zero text
+--      truncation, includes utility racials like Shadowmeld, Walk on Air, Skysight, Eureka!)
+--   5. Session & Lifetime Honor/HK ledger + quick links to Talents & Casts.
 --
--- A readout of the character's standing in Forever's honor system: current
--- rank, progress toward the next rank, and the honorable-kill / honor tallies
--- for this week, last week, this session and lifetime — exactly what the
--- default Blizzard "Player vs. Player" pane shows (Civilian, Rank Points X/Y,
--- weekly cap climbing to 24750 for Rank 14).
---
--- WHY THIS TAB EXISTS (and why an earlier draft wrongly skipped it). Forever
--- was assumed to have no meaningful PvP at its level-20 cap, on the reasoning
--- that Vanilla's rank grind was a level-60 endgame. That assumption was wrong:
--- the live client runs the full 14-rank honor ladder now, so this is real data
--- to report, not empty theatre. Lesson kept in the code: verify the client,
--- do not infer mechanics from retail-era lore.
---
--- STILL A READOUT, NOT ADVICE. No "grind X honor", no rank projections, no
--- battleground tactics — those need Forever-specific honor rates that only the
--- server knows. This reports the standing the client reports.
---
--- API REALITY: the Vanilla honor globals back that pane — UnitPVPRank /
--- GetPVPRankInfo (rank name + number), GetPVPRankProgress (0..1 toward next),
--- and the stat calls GetPVPThisWeekStats / GetPVPLastWeekStats /
--- GetPVPSessionStats / GetPVPLifetimeStats. Forever is custom, so every call is
--- guarded; a section whose calls return nothing is simply omitted rather than
--- shown as zero.
---
--- MEASURED 2026-09-28/30 (build 70124): UnitPVPRank, GetPVPRankInfo,
--- GetPVPRankProgress, GetPVPThisWeekStats and GetPVPLastWeekStats are ABSENT
--- to addons, so the rank and weekly blocks never draw. Present and drawn:
--- GetPVPSessionStats, GetPVPLifetimeStats, plus the racial matchup sections.
--- The paragraphs above describe the pane this tab was modelled on, not what
--- the API lets it show.
--- ══════════════════════════════════════════════════════════════════════════
+-- Facts only from live client reads and harvested Data/Forever/Racials.lua.
+-- Never guesses server honor rates or hidden ratings.
 
 local TA = ToonAge
 local U  = TA.Utils
@@ -43,9 +20,7 @@ local L                       -- resolved at render; see M:Render
 local M = {}
 TA:RegisterModule("ForeverPvP", M)
 
--- When this login started: the clock for the session honor rate. Session
--- stats count from LOGIN, not from a /reload, so the time is taken only on
--- PLAYER_ENTERING_WORLD with isInitialLogin and kept in charDB across reloads.
+-- When this login started: the clock for the session honor rate.
 do
     local f = CreateFrame("Frame")
     f:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -68,8 +43,21 @@ local function Try(fn, ...)
     return select(2, unpack(res))
 end
 
+local function Secret(v)
+    if v == nil then return false end
+    if U and U.IsSecret and U.IsSecret(v) then return true end
+    if issecretvalue and issecretvalue(v) then return true end
+    return false
+end
+
 local function Num(v)
+    if v == nil or Secret(v) then return nil end
     return tonumber(v)
+end
+
+local function Str(v)
+    if v == nil or Secret(v) or type(v) ~= "string" then return nil end
+    return v ~= "" and v or nil
 end
 
 local function Show(value, fmt)
@@ -78,43 +66,268 @@ local function Show(value, fmt)
     return tostring(value)
 end
 
---- Current rank name and number.
---- UnitPVPRank returns an index; GetPVPRankInfo(index) -> (name, number).
---- The client offsets rank indices by 4 in the classic API, but Forever may
---- differ, so trust whatever the pair returns and fall back gracefully.
+local function OpenTab(tabID)
+    if TA.Layout and TA.Layout.OpenTab then
+        TA.Layout:OpenTab(tabID)
+    elseif TA.UI and TA.UI.SetTab then
+        TA.UI:SetTab(tabID)
+    end
+end
+
+-- ─── 1. LIVE PVP CONTEXT (SERVER / FLAG / AREA / MATCH) ───────────────────
+
+--- Read live PvP context: whether in a BG/Arena match, FFA zone, flagged
+--- (with countdown timer), contested/hostile world zone, or safe zone.
+function M.ReadContext()
+    local inInst, instType = Try(IsInInstance)
+    local zoneType = Str(Try(GetZonePVPInfo))
+    local zoneName = Str(Try(GetRealZoneText)) or Str(Try(GetZoneText)) or "Current zone"
+    local flagged = Try(UnitIsPVP, "player") == true
+    local ffa = Try(UnitIsPVPFreeForAll, "player") == true
+    local timerMs = Num(Try(GetPVPTimer))
+
+    local mode = "safe"
+    local badge = "Safe (Unflagged)"
+    local status = "good"
+    local active = false
+    local detail = zoneName
+
+    if inInst == true and (instType == "pvp" or instType == "arena") then
+        mode = "match"
+        badge = "In PvP Match"
+        status = "warn"
+        active = true
+        detail = string.format("%s (%s)", zoneName, instType == "arena" and "Arena" or "Battleground")
+    elseif ffa or zoneType == "arena" then
+        mode = "ffa"
+        badge = "Free-For-All PvP"
+        status = "warn"
+        active = true
+        detail = zoneName .. " — anyone can attack you here"
+    elseif flagged then
+        mode = "flagged"
+        active = true
+        status = "warn"
+        if timerMs and timerMs > 0 and timerMs < 300000 then
+            local secs = math.floor(timerMs / 1000)
+            badge = string.format("Flagged (drops in %d:%02d)", math.floor(secs / 60), secs % 60)
+        else
+            badge = "PvP Flagged (Active)"
+        end
+        local zTag = zoneType and (" · " .. zoneType) or ""
+        detail = zoneName .. zTag
+    elseif zoneType == "contested" or zoneType == "hostile" or zoneType == "combat" then
+        mode = "contested"
+        active = true
+        status = "warn"
+        badge = (zoneType == "hostile") and "Hostile Territory" or "Contested Territory"
+        detail = zoneName .. " — World PvP risk"
+    elseif zoneType == "sanctuary" then
+        mode = "safe"
+        badge = "Sanctuary"
+        status = "good"
+        detail = zoneName .. " — PvP disabled"
+    elseif zoneType == "friendly" then
+        mode = "safe"
+        badge = "Friendly Territory"
+        status = "good"
+        detail = zoneName .. " — Unflagged"
+    end
+
+    return {
+        mode = mode,
+        badge = badge,
+        status = status,
+        active = active,
+        flagged = flagged,
+        ffa = ffa,
+        zoneType = zoneType,
+        zoneName = zoneName,
+        detail = detail,
+    }
+end
+
+-- ─── 2. FOREVER BATTLEGROUND BRACKETS ──────────────────────────────────────
+
+--- Exact Forever Battleground bracket & available BGs for character level.
+function M.BracketInfo(level)
+    local lv = tonumber(level) or 1
+    if lv < 10 then
+        return {
+            open = false,
+            bracket = "Under 10",
+            position = "Unlock at Lv 10",
+            bgs = {},
+            summary = "Warsong Gulch opens at level 10.",
+        }
+    end
+    local lo, hi
+    if lv >= 60 then
+        lo, hi = 60, 60
+    else
+        lo = math.floor(lv / 10) * 10
+        hi = lo + 9
+    end
+    local bgs = { "Warsong Gulch" }
+    if lv >= 20 then bgs[#bgs + 1] = "Arathi Basin" end
+    if lv >= 30 then bgs[#bgs + 1] = "Darkspear Islands (15v15)" end
+    if lv >= 51 then bgs[#bgs + 1] = "Alterac Valley" end
+
+    local pos
+    if lv >= 60 then
+        pos = "Max level bracket"
+    elseif lv >= hi - 1 then
+        pos = "Top of bracket"
+    elseif lv <= lo + 2 then
+        pos = "Bottom of bracket"
+    else
+        pos = "Mid bracket"
+    end
+    local label = (lo == hi) and "Level 60" or string.format("%d-%d", lo, hi)
+    return {
+        open = true,
+        bracket = label,
+        position = pos,
+        bgs = bgs,
+        summary = table.concat(bgs, " · "),
+    }
+end
+
+-- ─── 3. LIVE PVP READINESS CHECKLIST (TRINKET / CONSUMABLES / PLAN) ───────
+
+local function ItemNameFromLink(link)
+    if type(link) ~= "string" or Secret(link) then return nil end
+    return link:match("%[(.-)%]")
+end
+
+local function IsPvPTrinketName(name)
+    if type(name) ~= "string" then return false end
+    local low = string.lower(name)
+    return low:find("insignia of the horde", 1, true) ~= nil
+        or low:find("insignia of the alliance", 1, true) ~= nil
+        or low:find("pvp trinket", 1, true) ~= nil
+        or low:find("medallion of the", 1, true) ~= nil
+end
+
+--- Scan equipped trinket slots (13/14) + bags for PvP trinket, consumables,
+--- Engineering tools, Marks of Honor, and active Talents saved plan slot.
+function M.ReadReadiness()
+    local trinketState = "missing"
+    local trinketName = nil
+    for _, slot in ipairs({ 13, 14 }) do
+        local link = Try(GetInventoryItemLink, "player", slot)
+        local nm = ItemNameFromLink(link)
+        if nm and IsPvPTrinketName(nm) then
+            trinketState = "equipped"
+            trinketName = nm
+            break
+        end
+    end
+
+    local bags = {
+        bandages = 0,
+        potions = 0,
+        actionPots = 0,
+        engineering = 0,
+        marks = 0,
+    }
+    if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemLink then
+        for bag = 0, 4 do
+            local slots = Num(Try(C_Container.GetContainerNumSlots, bag)) or 0
+            for slot = 1, slots do
+                local link = Try(C_Container.GetContainerItemLink, bag, slot)
+                local nm = ItemNameFromLink(link)
+                if nm then
+                    local low = string.lower(nm)
+                    local cnt = 1
+                    if C_Container.GetContainerItemInfo then
+                        local info = Try(C_Container.GetContainerItemInfo, bag, slot)
+                        if type(info) == "table" and Num(info.stackCount) then
+                            cnt = Num(info.stackCount)
+                        end
+                    end
+                    if trinketState == "missing" and IsPvPTrinketName(nm) then
+                        trinketState = "in_bag"
+                        trinketName = nm
+                    elseif low:find("bandage", 1, true) then
+                        bags.bandages = bags.bandages + cnt
+                    elseif low:find("free action potion", 1, true)
+                        or low:find("living action potion", 1, true)
+                        or low:find("limited invulnerability potion", 1, true)
+                        or low:find("swiftness potion", 1, true)
+                        or low:find("invisibility potion", 1, true) then
+                        bags.actionPots = bags.actionPots + cnt
+                    elseif low:find("healing potion", 1, true) or low:find("mana potion", 1, true) then
+                        bags.potions = bags.potions + cnt
+                    elseif low:find("grenade", 1, true) or low:find("bomb", 1, true)
+                        or low:find("reflector", 1, true) or low:find("net%-o%-matic")
+                        or low:find("rocket boots", 1, true) then
+                        bags.engineering = bags.engineering + cnt
+                    elseif low:find("mark of honor", 1, true) then
+                        bags.marks = bags.marks + cnt
+                    end
+                end
+            end
+        end
+    end
+
+    local planSlot = nil
+    if TA.TalentIntel and type(TA.TalentIntel.ActiveSlot) == "function" then
+        local _, sName = TA.TalentIntel.ActiveSlot()
+        planSlot = sName
+    end
+
+    return {
+        trinketState = trinketState,
+        trinketName = trinketName,
+        bags = bags,
+        planSlot = planSlot,
+    }
+end
+
+--- Expose a Priority-1 alert for Modules/Forever/Now.lua when the player is in
+--- active PvP danger (in a match, FFA, flagged, or contested/hostile zone).
+function M.GetAlert()
+    local ctx = M.ReadContext()
+    if not ctx or not ctx.active then return nil end
+    local ready = M.ReadReadiness()
+    local notes = { ctx.detail }
+    if ready.trinketState == "in_bag" then
+        notes[#notes + 1] = tostring(ready.trinketName or "PvP Trinket") .. " is in your bags — equip before fighting!"
+    end
+    if ready.bags.bandages == 0 and ready.bags.potions == 0 then
+        notes[#notes + 1] = "No bandages or health/mana potions detected in bags."
+    end
+    return {
+        priority = (ctx.mode == "match" or ctx.mode == "ffa" or ctx.flagged or ready.trinketState == "in_bag") and 1 or 2,
+        category = "PvP",
+        status = "warning",
+        title = "PvP Active: " .. ctx.badge,
+        value = (ready.trinketState == "in_bag") and "Equip trinket" or ctx.badge,
+        detail = table.concat(notes, " "),
+        actionLabel = "Open PvP",
+        actionTab = "pvp",
+    }
+end
+
+-- ─── 4. RANK & HONOR READS ─────────────────────────────────────────────────
+
 local function ReadRank()
     local rankIndex = Num(Try(UnitPVPRank, "player"))
     if not rankIndex then return nil end
 
     local name, number = Try(GetPVPRankInfo, rankIndex, "player")
     if not name then
-        -- Some clients want the index without the unit argument.
         name, number = Try(GetPVPRankInfo, rankIndex)
     end
     return {
-        name    = name and tostring(name) or nil,
-        number  = Num(number),
-        -- GetPVPRankProgress is a 0..1 fraction toward the next rank.
+        name     = name and tostring(name) or nil,
+        number   = Num(number),
         progress = Num(Try(GetPVPRankProgress)),
     }
 end
 
--- ─── RACIAL MATCHUPS ─────────────────────────────────────────────────────
---
--- Source: Data/Forever/Racials.lua, generated from the harvest -- every racial
--- measured on this client, per race and faction, tooltip verbatim, with the
--- removes / inflicts / detects / burst tags read from that tooltip text.
--- Measured 2026-09-29, all nine races on build 70124.
---
--- What this section can say from that data alone:
---   * what YOUR racials break, and on what cooldown
---   * what each enemy race brings: what it breaks, what it inflicts, whether
---     it sees stealth, and its burst window
---   * where the two meet: your racial answers their racial CC (Will to
---     Survive vs War Stomp), or theirs answers yours
--- What it does NOT say yet: which CLASS abilities each racial counters. That
--- needs every class's spell kit with its CC type, which comes from the spell
--- catalog scan, not from racials. No class matchups are guessed until then.
+-- ─── 5. RACIAL & LIVE SPELLBOOK MATCHUPS ──────────────────────────────────
 
 local RACE_NAMES = {
     Scourge = "Undead", NightElf = "Night Elf",
@@ -123,7 +336,7 @@ local function RaceName(key) return RACE_NAMES[key] or key end
 
 local TAG_TEXT = {
     stun = "stuns", fear = "fear", charm = "charm", sleep = "sleep",
-    snare = "roots and slows", bleed = "bleeds", poison = "poisons",
+    snare = "roots/slows", bleed = "bleeds", poison = "poisons",
     disease = "diseases", curse = "curses",
 }
 local function TagText(list)
@@ -134,14 +347,104 @@ end
 
 local function Cooldown(sec)
     if not sec then return nil end
-    if sec >= 60 then return string.format("%d min", math.floor(sec / 60)) end
-    return string.format("%d sec", sec)
+    if sec >= 60 then return string.format("%dm CD", math.floor(sec / 60)) end
+    return string.format("%ds CD", sec)
 end
 
---- The racials of one race and faction, one per name. A racial with class
---- variants (Gnome Eureka!, Undead Touch of the Grave) keeps the variant for
---- `class` when given, else the first -- the PvP tags are the same across
---- variants, only resource wording and proc chance differ.
+-- Utility PvP racials harvested in Data/Forever/Racials.lua whose impact isn't
+-- solely removes/inflicts/detects/burst.
+local UTILITY_PVP_RACIALS = {
+    ["Shadowmeld"]     = "combat drop / ambush",
+    ["Walk on Air"]    = "10s cliff glide",
+    ["Skysight"]       = "+10% move/mount speed",
+    ["Read Ley Line"]  = "+100% HP/mana regen",
+    ["Eureka!"]        = "+10% dmg next 3 spells",
+    ["Cannibalize"]    = "corpse HP/mana sustain",
+    ["Plainsrunning"]  = "up to +30% run speed",
+}
+
+-- Known player CC / DoT spells mapped to racial-break tags so PvP matchups
+-- reflect what THIS character can actually cast.
+local SPELL_CC_TAGS = {
+    ["Frost Nova"]         = "snare",
+    ["Frostbolt"]          = "snare",
+    ["Cone of Cold"]       = "snare",
+    ["Entangling Roots"]   = "snare",
+    ["Hamstring"]          = "snare",
+    ["Concussive Shot"]    = "snare",
+    ["Wing Clip"]          = "snare",
+    ["Frost Shock"]        = "snare",
+    ["Crippling Poison"]   = "snare",
+    ["Psychic Scream"]     = "fear",
+    ["Fear"]               = "fear",
+    ["Howl of Terror"]     = "fear",
+    ["Intimidating Shout"] = "fear",
+    ["Hibernate"]          = "sleep",
+    ["Cheap Shot"]         = "stun",
+    ["Kidney Shot"]        = "stun",
+    ["Hammer of Justice"]  = "stun",
+    ["Bash"]               = "stun",
+    ["Intercept"]          = "stun",
+    ["Charge"]             = "stun",
+    ["Rend"]               = "bleed",
+    ["Garrote"]            = "bleed",
+    ["Rupture"]            = "bleed",
+    ["Rake"]               = "bleed",
+    ["Rip"]                = "bleed",
+    ["Deadly Poison"]      = "poison",
+    ["Viper Sting"]        = "poison",
+    ["Serpent Sting"]      = "poison",
+    ["Devouring Plague"]   = "disease",
+    ["Curse of Agony"]     = "curse",
+    ["Curse of Tongues"]   = "curse",
+    ["Curse of Exhaustion"] = "curse",
+}
+
+local CLASS_THREATS = {
+    WARRIOR = "Gap closers (Charge/Intercept), Hamstring snare, Pummel interrupt, Intimidating Shout (Fear).",
+    PALADIN = "Hammer of Justice (Stun), Divine Shield immunity, Blessing of Freedom (breaks roots/slows), Cleanse.",
+    HUNTER  = "Scatter/Freezing Trap, Viper Sting (mana drain), Concussive Shot, Pet pushback.",
+    ROGUE   = "Stealth openers (Cheap Shot/Ambush), Kick interrupt, Kidney Shot, Blind, Vanish reset.",
+    PRIEST  = "Psychic Scream (Fear — WoTF breaks!), Dispel Magic, Power Word: Shield, Mana Burn.",
+    SHAMAN  = "Earth Shock interrupt, Grounding Totem (eats next spell), Purge, Frost Shock.",
+    MAGE    = "Counterspell interrupt, Polymorph, Frost Nova shatter burst, Blink (breaks stuns/roots).",
+    WARLOCK = "Fear / Seduction (WoTF breaks!), Curse of Tongues (+cast time), Spell Lock, Death Coil.",
+    DRUID   = "Shapeshifting breaks roots/Polymorph, Entangling Roots, Bash stun, stealth & HoT kiting.",
+}
+
+local function ReadKnownCCTags(knownOverride)
+    local byTag = {}
+    local function mark(nm)
+        local tag = SPELL_CC_TAGS[nm]
+        if tag then
+            byTag[tag] = byTag[tag] or {}
+            local list = byTag[tag]
+            for _, x in ipairs(list) do if x == nm then return end end
+            list[#list + 1] = nm
+        end
+    end
+    if type(knownOverride) == "table" then
+        for _, nm in ipairs(knownOverride) do mark(nm) end
+        return byTag
+    end
+    if not (C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines) then return byTag end
+    local n = Num(Try(C_SpellBook.GetNumSpellBookSkillLines)) or 0
+    local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player
+    for line = 1, n do
+        local info = Try(C_SpellBook.GetSpellBookSkillLineInfo, line)
+        if type(info) == "table" and info.numSpellBookItems then
+            local off = Num(info.itemIndexOffset) or 0
+            local cnt = Num(info.numSpellBookItems) or 0
+            for i = off + 1, off + cnt do
+                local item = Try(C_SpellBook.GetSpellBookItemInfo, i, bank)
+                local nm = type(item) == "table" and Str(item.name) or nil
+                if nm then mark(nm) end
+            end
+        end
+    end
+    return byTag
+end
+
 local function RacialsFor(race, faction, class)
     local data = TA.Data and TA.Data.ForeverRacials
     local list = data and data[race] and data[race][faction]
@@ -165,29 +468,30 @@ local function RacialsFor(race, faction, class)
 end
 M._RacialsFor = RacialsFor
 
---- PvP-relevant racials only: anything that removes, inflicts, detects or bursts.
 local function PvPOnly(list)
     local out = {}
     for _, r in ipairs(list or {}) do
-        if r.removes or r.inflicts or r.detects or r.burst then out[#out + 1] = r end
+        if r.removes or r.inflicts or r.detects or r.burst or UTILITY_PVP_RACIALS[r.name] then
+            out[#out + 1] = r
+        end
     end
     return out
 end
 
---- One line per racial: what it does in a fight.
 local function Describe(r)
     local bits = {}
     if r.removes then bits[#bits + 1] = "breaks " .. TagText(r.removes) end
     if r.inflicts then bits[#bits + 1] = "inflicts " .. TagText(r.inflicts) end
     if r.detects == "stealth" then bits[#bits + 1] = "reveals stealth" end
     if r.burst then bits[#bits + 1] = "burst" end
+    if #bits == 0 and UTILITY_PVP_RACIALS[r.name] then
+        bits[#bits + 1] = UTILITY_PVP_RACIALS[r.name]
+    end
     local cd = Cooldown(r.cooldown)
-    return table.concat(bits, "; ") .. (cd and ("  ·  " .. cd) or "")
+    return table.concat(bits, "; ") .. (cd and (" · " .. cd) or "")
 end
 
---- Where an enemy race's racials meet yours.
---- @return table notes list of strings
-local function Clashes(mine, theirs, myClass)
+local function Clashes(mine, theirs, myClass, myCCTags)
     local notes = {}
     local myRemoves, theirRemoves = {}, {}
     for _, r in ipairs(mine) do for _, t in ipairs(r.removes or {}) do myRemoves[t] = r end end
@@ -199,12 +503,23 @@ local function Clashes(mine, theirs, myClass)
                     "Your %s breaks their %s.", myRemoves[t].name, r.name) }
             else
                 notes[#notes + 1] = { good = false, text = string.format(
-                    "Their %s (%s) -- you have no racial that breaks it.", r.name, TagText(r.inflicts)) }
+                    "Their %s (%s) — no racial break.", r.name, TagText(r.inflicts)) }
             end
         end
         if r.detects == "stealth" and (myClass == "ROGUE" or myClass == "DRUID") then
             notes[#notes + 1] = { good = false, text = string.format(
-                "Their %s reveals stealth -- open from further out.", r.name) }
+                "Their %s reveals stealth — open from further out.", r.name) }
+        end
+        -- Spellbook-aware counter check: does their racial break a CC/DoT you actually know?
+        if type(myCCTags) == "table" then
+            for _, t in ipairs(r.removes or {}) do
+                local spells = myCCTags[t]
+                if type(spells) == "table" and #spells > 0 then
+                    local sample = table.concat({ spells[1], spells[2] }, " / ")
+                    notes[#notes + 1] = { good = false, text = string.format(
+                        "Their %s breaks your %s.", r.name, sample) }
+                end
+            end
         end
     end
     for _, r in ipairs(mine) do
@@ -219,6 +534,68 @@ local function Clashes(mine, theirs, myClass)
 end
 M._Clashes = Clashes
 
+-- ─── RENDER SECTIONS ───────────────────────────────────────────────────────
+
+local function RenderContextAndBrackets(content, y, ctx, bracket, ready)
+    y = L:SectionHeader(content, y, "PvP Status & Readiness", ctx.detail)
+    y = L:DataRow(content, y, {
+        label = "Live status",
+        value = ctx.badge,
+        status = ctx.status,
+    })
+    y = L:DataRow(content, y, {
+        label = "BG bracket (" .. bracket.bracket .. ")",
+        value = bracket.position,
+        note = bracket.summary,
+        status = (bracket.position == "Top of bracket" or bracket.position == "Max level bracket") and "good" or "neutral",
+    })
+
+    local trinketVal, trinketStatus
+    if ready.trinketState == "equipped" then
+        trinketVal = tostring(ready.trinketName or "Equipped")
+        trinketStatus = "good"
+    elseif ready.trinketState == "in_bag" then
+        trinketVal = "In bags — equip!"
+        trinketStatus = "warn"
+    else
+        trinketVal = "None detected"
+        trinketStatus = "dim"
+    end
+    y = L:DataRow(content, y, {
+        label = "PvP Trinket",
+        value = trinketVal,
+        status = trinketStatus,
+    })
+
+    local b = ready.bags
+    local stockText = string.format("%d bandages · %d pots · %d action pots",
+        b.bandages, b.potions, b.actionPots)
+    if b.engineering > 0 then
+        stockText = stockText .. string.format(" · %d eng", b.engineering)
+    end
+    local marksNote = (b.marks > 0) and string.format("Marks of Honor in bags: %d (WSG/AB/Darkspear/AV)", b.marks) or nil
+    y = L:DataRow(content, y, {
+        label = "Consumables",
+        value = stockText,
+        note = marksNote,
+        status = (b.bandages > 0 or b.potions > 0 or b.actionPots > 0) and "neutral" or "warn",
+    })
+
+    if ready.planSlot then
+        y = L:DataRow(content, y, {
+            label = "Talents plan slot",
+            value = ready.planSlot,
+            status = (ready.planSlot == "PvP") and "good" or "neutral",
+        })
+    end
+
+    y = L:ButtonRow(content, y, {
+        { label = "Open Talents (PvP Plan)", onClick = function() OpenTab("talents") end },
+        { label = "Review fights (Casts)",   onClick = function() OpenTab("casts") end },
+    })
+    return y
+end
+
 local function RenderYourRacials(content, y, race, faction, class)
     local mine = RacialsFor(race, faction, class)
     if not mine then return y, nil end
@@ -226,20 +603,58 @@ local function RenderYourRacials(content, y, race, faction, class)
     y = L:SectionHeader(content, y, "Your racials in PvP",
         string.format("%s · %s", RaceName(race), faction))
     if #pvp == 0 then
-        y = L:Paragraph(content, y, "None of your racials break, inflict or reveal "
-            .. "anything; their value is passive.", { color = L.C_DIM })
+        y = L:Paragraph(content, y, "None of your racials are active PvP tools; their value is passive.",
+            { color = L.C_DIM })
     end
     for _, r in ipairs(pvp) do
+        -- Put short CD in right value and full effect in wrapping note (zero truncation)
         y = L:DataRow(content, y, {
-            label = r.name, value = Describe(r),
+            label = r.name,
+            value = Cooldown(r.cooldown) or "Passive",
+            note = Describe(r),
             status = r.removes and "good" or (r.burst and "warn" or "neutral"),
-            tooltipTitle = r.name, tooltip = { r.tooltip },
+            tooltipTitle = r.name,
+            tooltip = { r.tooltip },
         })
     end
     return y, mine
 end
 
-local function RenderMatchups(content, y, race, faction, class, mine)
+local function RenderTarget(content, y, faction, class, mine, myCCTags)
+    if not (Try(UnitExists, "target") and Try(UnitIsPlayer, "target")) then return y end
+    if not Try(UnitIsEnemy, "player", "target") then return y end
+    local _, tRace = Try(UnitRace, "target")
+    local tFaction = Str(Try(UnitFactionGroup, "target"))
+    if not Str(tRace) or not tFaction then return y end
+    local tClassLoc, tClass = Try(UnitClass, "target")
+    tClass = Str(tClass)
+    local tLevel = Num(Try(UnitLevel, "target"))
+    local theirs = PvPOnly(RacialsFor(tRace, tFaction, tClass) or {})
+    local sub = string.format("%s%s %s (%s)",
+        tLevel and ("Lv " .. tLevel .. " ") or "",
+        RaceName(tRace),
+        Str(tClassLoc) or "",
+        tFaction)
+    y = L:SectionHeader(content, y, "Enemy target dossier", sub)
+    for _, x in ipairs(theirs) do
+        y = L:DataRow(content, y, {
+            label = x.name,
+            value = Cooldown(x.cooldown) or "Passive",
+            note = Describe(x),
+            tooltipTitle = x.name,
+            tooltip = { x.tooltip },
+        })
+    end
+    if tClass and CLASS_THREATS[tClass] then
+        y = L:Paragraph(content, y, "Key class threats: " .. CLASS_THREATS[tClass], { color = L.C_SECONDARY })
+    end
+    for _, n in ipairs(Clashes(PvPOnly(mine or {}), theirs, class, myCCTags)) do
+        y = L:Paragraph(content, y, n.text, { color = n.good and L.C_SUCCESS or L.C_WARNING })
+    end
+    return y
+end
+
+local function RenderMatchups(content, y, race, faction, class, mine, myCCTags)
     local data = TA.Data and TA.Data.ForeverRacials
     if not data then return y end
     local enemy = (faction == "Alliance") and "Horde" or "Alliance"
@@ -251,109 +666,63 @@ local function RenderMatchups(content, y, race, faction, class, mine)
     if #races == 0 then return y end
 
     y = L:SectionHeader(content, y, "Enemy races (" .. enemy .. ")",
-        "What each brings to a fight, and where it meets your racials.")
+        "Cross-checked against your live spellbook CC/DoTs & racials.")
     for _, r in ipairs(races) do
         local theirs = PvPOnly(RacialsFor(r, enemy, nil))
-        local parts = {}
-        for _, x in ipairs(theirs) do parts[#parts + 1] = x.name end
-        local notes = Clashes(PvPOnly(mine or {}), theirs, class)
+        local notes = Clashes(PvPOnly(mine or {}), theirs, class, myCCTags)
         local bad, good = 0, 0
         for _, n in ipairs(notes) do if n.good then good = good + 1 else bad = bad + 1 end end
+
+        local summaryBits = {}
         local tip = {}
-        for _, x in ipairs(theirs) do tip[#tip + 1] = x.name .. ": " .. Describe(x) end
-        for _, n in ipairs(notes) do tip[#tip + 1] = (n.good and "+ " or "- ") .. n.text end
-        local noteText
-        if #notes > 0 then
-            local lines = {}
-            for i, n in ipairs(notes) do
-                if i > 2 then lines[#lines + 1] = "..." break end
-                lines[#lines + 1] = n.text
-            end
-            noteText = table.concat(lines, "  ")
+        for _, x in ipairs(theirs) do
+            local d = Describe(x)
+            summaryBits[#summaryBits + 1] = x.name .. " (" .. d .. ")"
+            tip[#tip + 1] = x.name .. ": " .. d
         end
+        for _, n in ipairs(notes) do
+            tip[#tip + 1] = (n.good and "+ " or "- ") .. n.text
+        end
+        local noteParts = {}
+        if #summaryBits > 0 then noteParts[#noteParts + 1] = table.concat(summaryBits, "  |  ") end
+        for i, n in ipairs(notes) do
+            if i <= 2 then noteParts[#noteParts + 1] = n.text end
+        end
+
         y = L:DataRow(content, y, {
             label = RaceName(r),
-            value = #parts > 0 and table.concat(parts, ", ") or "nothing active",
+            value = (#theirs > 0) and string.format("%d PvP %s", #theirs, #theirs == 1 and "racial" or "racials") or "Passive only",
             status = (bad > good) and "warn" or ((good > 0) and "good" or "neutral"),
-            note = noteText,
+            note = (#noteParts > 0) and table.concat(noteParts, "\n") or nil,
             noteColor = (bad > good) and "warn" or nil,
             tooltipTitle = RaceName(r) .. " (" .. enemy .. ")",
             tooltip = tip,
         })
     end
-    y = L:Paragraph(content, y,
-        "Racials only, measured on this client. Class matchups -- which of your "
-        .. "abilities their racials break, and theirs yours -- arrive with the "
-        .. "spell catalog.", { color = L.C_DIM })
     return y
 end
-
---- Your current target, when it is an enemy player: its race's racials first,
---- since that is the fight in front of you.
-local function RenderTarget(content, y, faction, class, mine)
-    if not (Try(UnitExists, "target") and Try(UnitIsPlayer, "target")) then return y end
-    if not Try(UnitIsEnemy, "player", "target") then return y end
-    local _, tRace = Try(UnitRace, "target")
-    local tFaction = Try(UnitFactionGroup, "target")
-    local tName = Try(UnitName, "target")
-    local isSecret = _G.issecretvalue
-    if not tRace or not tFaction or (isSecret and (isSecret(tRace) or isSecret(tFaction))) then
-        return y
-    end
-    local _, tClass = Try(UnitClass, "target")
-    if tClass and isSecret and isSecret(tClass) then tClass = nil end
-    local theirs = PvPOnly(RacialsFor(tRace, tFaction, tClass) or {})
-    y = L:SectionHeader(content, y, "Your target",
-        string.format("%s · %s", RaceName(tRace), tFaction))
-    for _, x in ipairs(theirs) do
-        y = L:DataRow(content, y, { label = x.name, value = Describe(x),
-            tooltipTitle = x.name, tooltip = { x.tooltip } })
-    end
-    for _, n in ipairs(Clashes(PvPOnly(mine or {}), theirs, class)) do
-        y = L:Paragraph(content, y, n.text, { color = n.good and L.C_SUCCESS or L.C_WARNING })
-    end
-    return y
-end
-
--- ─── SECTIONS ────────────────────────────────────────────────────────────
 
 local function RenderStanding(content, y, rank)
     y = L:SectionHeader(content, y, "Standing",
         rank.number and string.format("Rank %d", rank.number) or nil)
-
-    y = L:DataRow(content, y, {
-        label = "Rank",
-        value = rank.name or "n/a",
-        bold  = true,
-    })
+    y = L:DataRow(content, y, { label = "Rank", value = rank.name or "n/a", bold = true })
     if rank.number ~= nil then
         y = L:DataRow(content, y, { label = "Rank number", value = Show(rank.number) })
     end
-
-    -- Progress toward the next rank, as the pane's "Rank Points X / Y" bar.
-    -- CapBar fills from current/cap, so feed the 0..1 fraction as current with
-    -- a cap of 1; the percentage in the value text mirrors the fill.
     if rank.progress ~= nil then
         local pct = math.max(0, math.min(1, rank.progress))
         y = L:CapBar(content, y, {
-            label   = "Progress to next rank",
-            value   = string.format("%.0f%%", pct * 100),
-            current = pct,
-            cap     = 1,
-            capped  = pct >= 1,
+            label = "Progress to next rank",
+            value = string.format("%.0f%%", pct * 100),
+            current = pct, cap = 1, capped = pct >= 1,
         })
     end
     return y
 end
 
---- One tally block: (honorableKills, [dishonorable], honor).
---- The classic stat calls return several numbers; positions differ slightly by
---- client, so read defensively and only show what is a number.
 local function RenderTally(content, y, title, fn)
     local hk, arg2, arg3 = Try(fn)
     hk = Num(hk)
-    -- Honor is the last meaningful number in every variant; prefer arg3, then
-    -- arg2, when present.
     local honor = Num(arg3) or Num(arg2)
     if hk == nil and honor == nil then return y, false end
 
@@ -364,16 +733,12 @@ local function RenderTally(content, y, title, fn)
     if honor ~= nil then
         y = L:DataRow(content, y, { label = "Honor", value = Show(honor) })
     end
-    -- Your rate, measured (2026-10-03). The server's honor rules are unknown;
-    -- what you earned over the time you have been logged in is not. Session
-    -- stats count from login, so the clock is this UI session's: a /reload
-    -- restarts it, and the line is withheld until 10 minutes have passed.
     if fn == GetPVPSessionStats and M._sessionStart and time then
         local minutes = (time() - M._sessionStart) / 60
         if minutes >= 10 and ((honor or 0) > 0 or (hk or 0) > 0) then
             local perHour = 60 / minutes
             y = L:DataRow(content, y, { label = "Per hour (this session)",
-                value = string.format("%s honor, %s kills  (%d min)",
+                value = string.format("%s honor, %s kills (%d min)",
                     honor and string.format("%.0f", honor * perHour) or "?",
                     hk and string.format("%.1f", hk * perHour) or "?", math.floor(minutes)) })
         end
@@ -381,24 +746,10 @@ local function RenderTally(content, y, title, fn)
     return y, true
 end
 
-local function RenderUnavailable(content, y)
-    y = L:SectionHeader(content, y, "Player vs. Player")
-    y = L:Paragraph(content, y,
-        "The honor API did not answer on this client, so ToonAge shows nothing "
-        .. "rather than a wrong or zero standing. If the in-game PvP pane shows a "
-        .. "rank but this does not, the honor calls are named differently here.",
-        { color = L.C_WARNING })
-    y = L:Paragraph(content, y,
-        "Worth reporting with /ta apiprobe so the honor globals can be mapped.")
-    return y
-end
-
 local function RenderFooter(content, y)
     y = L:Divider(content, y)
     y = L:Paragraph(content, y,
-        "Facts only — the standing the client reports. No honor-per-hour "
-        .. "targets or rank projections; Forever's honor rates are the server's "
-        .. "to define, not ToonAge's to guess.",
+        "Live reads from this client & harvested Forever racials. Forever uses non-decaying Rank Points + spendable Honor; no rates or rank projections are guessed.",
         { color = L.C_DIM })
     return y
 end
@@ -417,54 +768,48 @@ function M:Render(content, side)
         return
     end
 
-    -- Same identity sidebar as the other Forever tabs, when available.
     local FC = TA.GetModule and TA:GetModule("ForeverCharacter")
     if FC and FC.RenderSidebarPublic then
         pcall(FC.RenderSidebarPublic, FC, side)
     end
 
-    local rank = ReadRank()
-
     local y = -8
-    local anyStat = false
+    local level = Num(Try(UnitLevel, "player")) or 1
+    local ctx = M.ReadContext()
+    local bracket = M.BracketInfo(level)
+    local ready = M.ReadReadiness()
 
-    -- Racial matchups first: they are the part of this tab that helps in a
-    -- fight. The honor standing below is a readout.
+    y = RenderContextAndBrackets(content, y, ctx, bracket, ready)
+    y = L:Divider(content, y)
+
     local _, race = Try(UnitRace, "player")
-    local faction = Try(UnitFactionGroup, "player")
+    local faction = Str(Try(UnitFactionGroup, "player"))
     local _, class = Try(UnitClass, "player")
+    race, class = Str(race), Str(class)
+    local myCCTags = ReadKnownCCTags()
+
     if race and faction and TA.Data and TA.Data.ForeverRacials then
         local mine
         y, mine = RenderYourRacials(content, y, race, faction, class)
-        y = RenderTarget(content, y, faction, class, mine)
+        y = RenderTarget(content, y, faction, class, mine, myCCTags)
         y = L:Divider(content, y)
-        y = RenderMatchups(content, y, race, faction, class, mine)
+        y = RenderMatchups(content, y, race, faction, class, mine, myCCTags)
         y = L:Divider(content, y)
     end
 
+    local rank = ReadRank()
     if rank then
         y = RenderStanding(content, y, rank)
         y = L:Divider(content, y)
     end
 
-    -- Tallies, each omitted if the client does not answer it.
     local shown
     y, shown = RenderTally(content, y, "This week",    GetPVPThisWeekStats)
-    anyStat = anyStat or shown
     y, shown = RenderTally(content, y, "Last week",    GetPVPLastWeekStats)
-    anyStat = anyStat or shown
     y, shown = RenderTally(content, y, "This session", GetPVPSessionStats)
-    anyStat = anyStat or shown
     y, shown = RenderTally(content, y, "Lifetime",     GetPVPLifetimeStats)
-    anyStat = anyStat or shown
 
-    -- Nothing at all answered — not even a rank. Say so honestly.
-    if not rank and not anyStat then
-        y = RenderUnavailable(content, y)
-    else
-        y = RenderFooter(content, y)
-    end
-
+    y = RenderFooter(content, y)
     L:Finish(content, y)
 end
 
@@ -479,6 +824,8 @@ M.Events = {
     "HONOR_CURRENCY_UPDATE",
     "PLAYER_FLAGS_CHANGED",
     "UNIT_FACTION",
+    "ZONE_CHANGED_NEW_AREA",
+    "PLAYER_EQUIPMENT_CHANGED",
 }
 
 return M

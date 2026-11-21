@@ -123,6 +123,15 @@ function M:BuildItems()
         end
     end
 
+    -- 2b. Active PvP readiness alert (ForeverPvP: flagged / contested / FFA / in BG)
+    local PVP = TA.GetModule and TA:GetModule("ForeverPvP")
+    if PVP and type(PVP.GetAlert) == "function" then
+        local okP, alert = pcall(PVP.GetAlert)
+        if okP and type(alert) == "table" then
+            items[#items + 1] = alert
+        end
+    end
+
     -- 3. Weapon & Defense skill readiness (ForeverCharacter)
     local FC = TA.GetModule and TA:GetModule("ForeverCharacter")
     if FC and FC._ReadSkillLines and FC._WeaponSkillFor then
