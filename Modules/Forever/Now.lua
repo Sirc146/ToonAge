@@ -231,6 +231,30 @@ function M:Render(content, side)
     local y = -8
     y = L:SectionHeader(content, y, "Now", "Fact-based briefing from live client reads")
 
+    -- Inline "Since last login" delta strip (replaces the old modal popup)
+    local SC = TA.GetModule and TA:GetModule("ForeverSessionCheck")
+    if SC and type(SC.Summary) == "function" then
+        local okS, sum = pcall(SC.Summary, SC)
+        if okS and type(sum) == "table" then
+            local bits = {}
+            if (sum.levelsGained or 0) > 0 and sum.prevLevel and sum.curLevel then
+                bits[#bits + 1] = string.format("Level %d -> %d (+%d)", sum.prevLevel, sum.curLevel, sum.levelsGained)
+            end
+            local eqN = type(sum.equipChanges) == "table" and #sum.equipChanges or 0
+            if eqN > 0 then
+                bits[#bits + 1] = string.format("%d gear %s", eqN, eqN == 1 and "swap" or "swaps")
+            end
+            local valText = (#bits > 0) and table.concat(bits, " · ") or "Same level & gear"
+            local noteText = (eqN > 0) and ("Equipped: " .. table.concat(sum.equipChanges, ", ")) or nil
+            y = L:DataRow(content, y, {
+                label = "Since " .. tostring(sum.whenText or "last login"),
+                value = valText,
+                note = noteText,
+                status = (sum.levelsGained or 0) > 0 and "good" or "neutral",
+            })
+        end
+    end
+
     local items = self:BuildItems()
     local actionCount = 0
     for _, item in ipairs(items) do

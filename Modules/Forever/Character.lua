@@ -285,6 +285,36 @@ local function RenderHeadline(content, y)
 
     if cur and max and max > 0 then
         local rested = Num(GetXPExhaustion and GetXPExhaustion())
+        local noteBits = {}
+        if rested and rested > 0 then
+            noteBits[#noteBits + 1] = string.format("%d rested banked", rested)
+        end
+        local XPT = TA.GetModule and TA:GetModule("XPTracker")
+        if XPT and type(XPT.GetRate) == "function" then
+            local okR, xph = pcall(XPT.GetRate, XPT)
+            if okR and type(xph) == "number" and xph > 0 then
+                local rateStr = (xph >= 1000)
+                    and string.format("%.1fk XP/hr", xph / 1000)
+                    or string.format("%d XP/hr", math.floor(xph + 0.5))
+                noteBits[#noteBits + 1] = rateStr
+                if type(XPT.GetLevelETA) == "function" then
+                    local okE, eta = pcall(XPT.GetLevelETA, XPT)
+                    if okE and type(eta) == "number" and eta > 0 then
+                        local etaStr
+                        if eta < 60 then
+                            etaStr = "<1m"
+                        elseif eta < 3600 then
+                            etaStr = string.format("%dm", math.floor(eta / 60))
+                        else
+                            local hrs = math.floor(eta / 3600)
+                            local mins = math.floor((eta % 3600) / 60)
+                            etaStr = string.format("%dh %02dm", hrs, mins)
+                        end
+                        noteBits[#noteBits + 1] = string.format("Lv %d in ~%s", (level or 0) + 1, etaStr)
+                    end
+                end
+            end
+        end
         -- A bar, not a row. Experience is one of the very few things on this
         -- client with a real denominator, so a fill genuinely means something
         -- -- unlike a stat bar, which would need weights nobody has verified.
@@ -294,8 +324,7 @@ local function RenderHeadline(content, y)
             current = cur,
             cap     = max,
             capped  = false,
-            note   = rested and rested > 0
-                     and string.format("%d rested experience banked", rested) or nil,
+            note   = #noteBits > 0 and table.concat(noteBits, "  ·  ") or nil,
         })
     end
 
@@ -858,34 +887,6 @@ function M:Render(content, side)
 
     local y = -8
     y = RenderHeadline(content, y)
-    -- In-game quick actions. Each runs the same /ta command, so the button and
-    -- the typed command can never drift apart; a command whose module is not
-    -- loaded on this client simply has no button.
-    do
-        local buttons = {}
-        local function Add(cmd, label, module)
-            if TA:GetModule(module) then
-                buttons[#buttons + 1] = { label = label, onClick = function() TA:SlashCommand(cmd) end }
-            end
-        end
-        Add("since",  "Since last session", "ForeverSessionCheck")
-        Add("xp",     "XP rate",            "XPTracker")
-        Add("gather", "Gathering",          "GatherTracker")
-        local Pins = TA:GetModule("ForeverPins")
-        if Pins and Pins.SuggestLibrary then
-            buttons[#buttons + 1] = {
-                label = "Suggest library",
-                onClick = function() Pins:SuggestLibrary() end,
-            }
-        end
-        if Pins and Pins.SuggestFeathers then
-            buttons[#buttons + 1] = {
-                label = "Suggest Light Feathers",
-                onClick = function() Pins:SuggestFeathers() end,
-            }
-        end
-        if #buttons > 0 then y = L:ButtonRow(content, y, buttons) end
-    end
     y = L:Divider(content, y)
     y = RenderAttributes(content, y)
     y = L:Divider(content, y)

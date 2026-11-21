@@ -72,7 +72,30 @@ function B:Render(content, side)
     end
 
     local cards = result.cards or {}
+    local function DrawGathering(at)
+        local GT = TA.GetModule and TA:GetModule("GatherTracker")
+        if not (GT and type(GT.GetSummary) == "function") then return at end
+        local okG, sum = pcall(GT.GetSummary, GT)
+        if not (okG and type(sum) == "table") then return at end
+        at = L:Divider(content, at)
+        at = L:SectionHeader(content, at, "Gathering log",
+            sum.total > 0 and string.format("%d nodes across %d %s", sum.total, sum.zones, sum.zones == 1 and "zone" or "zones")
+                or "Records herb, ore, and skinning spots automatically on loot")
+        if sum.total == 0 then
+            at = L:Paragraph(content, at, "No gather nodes logged yet on this character.", { color = L.C_DIM })
+        else
+            at = L:DataRow(content, at, {
+                label = "Logged nodes",
+                value = string.format("%d herbs · %d ore · %d skinned", sum.herbs, sum.ore, sum.skin),
+                note = (sum.hereNodes and sum.hereNodes > 0)
+                    and string.format("%d %s recorded in your current zone.", sum.hereNodes, sum.hereNodes == 1 and "node" or "nodes")
+                    or nil,
+            })
+        end
+        return at
+    end
     local function finish(at)
+        at = DrawGathering(at)
         at = DrawLearned(content, at, cards)
         L:Finish(content, at)
     end

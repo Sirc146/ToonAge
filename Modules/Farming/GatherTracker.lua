@@ -311,6 +311,29 @@ function GatherTracker:Init()
     end
 end
 
+-- ── Summary (used inline by Professions tab; zero popups/chat dumps) ─────────
+function GatherTracker:GetSummary()
+    local hist = TA.charDB and TA.charDB.gatherHistory
+    local out = { total = 0, zones = 0, herbs = 0, ore = 0, skin = 0, hereNodes = 0 }
+    if type(hist) ~= "table" then return out end
+    local hereMap = (C_Map and C_Map.GetBestMapForUnit) and Try(C_Map.GetBestMapForUnit, "player") or nil
+    for mapID, nodes in pairs(hist) do
+        if type(nodes) == "table" and #nodes > 0 then
+            out.zones = out.zones + 1
+            if hereMap and mapID == hereMap then
+                out.hereNodes = #nodes
+            end
+            for _, node in ipairs(nodes) do
+                out.total = out.total + 1
+                if node.type == "skin" then out.skin = out.skin + 1
+                elseif node.type == "herb" then out.herbs = out.herbs + 1
+                else out.ore = out.ore + 1 end
+            end
+        end
+    end
+    return out
+end
+
 -- ── Slash commands ────────────────────────────────────────────────────────────
 GatherTracker.SlashCommands = {
     gather = function(self)

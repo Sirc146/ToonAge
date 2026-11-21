@@ -250,13 +250,89 @@ function M:TryTomTom(mapID, xPct, yPct, title)
     return ok and true or false
 end
 
-function M:Pin(place, quest)
+--- Auto-learned Study library locations saved in TA.db.studyLibraries[faction].
+--- Recorded dynamically when the player successfully casts Study in-game so
+--- every confirmed spot on either continent joins nearest-library routing.
+function M.LearnedLibraries(faction)
+    if type(faction) ~= "string" or faction == "" then return {} end
+    local store = TA.db and TA.db.studyLibraries
+    local list = type(store) == "table" and store[faction] or nil
+    if type(list) ~= "table" then return {} end
+    return list
+end
+
+--- Record a verified Study spot measured live from the player's position.
+--- Deduplicates spots within 3 map units in the same zone.
+function M.RecordStudySpot(faction, zone, mapID, xPct, yPct, subzone)
+    if type(faction) ~= "string" or faction == "" then return false end
+    if type(zone) ~= "string" or zone == "" then return false end
+    if type(xPct) ~= "number" or type(yPct) ~= "number" then return false end
+    if not TA.db then return false end
+    TA.db.studyLibraries = TA.db.studyLibraries or {}
+    TA.db.studyLibraries[faction] = TA.db.studyLibraries[faction] or {}
+    local list = TA.db.studyLibraries[faction]
+    for _, existing in ipairs(list) do
+        if existing.zone == zone and type(existing.x) == "number" and type(existing.y) == "number" then
+            local dx = existing.x - xPct
+            local dy = existing.y - yPct
+            if (dx * dx + dy * dy) <= 9 then
+                return false
+            end
+        end
+    end
+    local label = (type(subzone) == "string" and subzone ~= "") and ("Study: " .. subzone) or ("Study: " .. zone)
+    local entry = {}
+    entry.name = label
+    entry.zone = zone
+    entry.mapID = type(mapID) == "number" and mapID or nil
+    entry.x = math.floor(xPct * 10 + 0.5) / 10
+    entry.y = math.floor(yPct * 10 + 0.5) / 10
+    entry.learned = true
+    list[#list + 1] = entry
+    return true
+end
+
+--- Combined library list for a faction: built-in librarian(s) plus any
+--- live-confirmed Study locations learned by this account.
+function M.AllLibraries(faction)
+    local out = {}
+    local base = M.AsLibraryList(faction and M.LIBRARIES[faction])
+    if base then
+        for _, item in ipairs(base) do out[#out + 1] = item end
+    end
+    for _, item in ipairs(M.LearnedLibraries(faction)) do
+        out[#out + 1] = item
+    end
+    return #out > 0 and out or nil
+end
+
+--- True when the active manual waypoint matches the given pin kind ("library" or "feathers").
+function M:IsPinned(kind)
+    local Arrow = TA:GetModule("Arrow")
+    local wp = Arrow and Arrow.manualWaypoint
+    if type(wp) ~= "table" then return false end
+    if kind == "library" then return wp._pinKind == "library" or wp.quest == true end
+    if kind == "feathers" then return wp._pinKind == "feathers" end
+    return true
+end
+
+--- Clear the active manual waypoint / beam immediately.
+function M:ClearPin()
+    local Arrow = TA:GetModule("Arrow")
+    if Arrow and type(Arrow.ClearActiveWaypoint) == "function" then
+        Arrow:ClearActiveWaypoint("button")
+        return true
+    end
+    return false
+end
+
+function M:Pin(place, quest, pinKind)
     local Arrow = TA:GetModule("Arrow")
     if not (Arrow and type(Arrow.SetWaypoint) == "function" and type(Arrow.MapIDForZone) == "function") then
         self:Say("Suggestion withheld: the arrow is not running.")
         return false
     end
-    local mapID = Arrow.MapIDForZone(place.zone)
+    local mapID = (type(place.mapID) == "number" and place.mapID) or Arrow.MapIDForZone(place.zone)
     if type(mapID) ~= "number" then
         self:Say(string.format(
             "Suggestion: %s in %s at %.1f, %.1f. This client did not name that map, so no pin was placed.",
@@ -270,6 +346,7 @@ function M:Pin(place, quest)
         Arrow.manualWaypoint.quest = quest and true or false
         Arrow.manualWaypoint.questID = place.questID
         Arrow.manualWaypoint.zone = place.zone
+        Arrow.manualWaypoint._pinKind = pinKind or (quest and "library" or "feathers")
     end
     local C = TA.Compat
     if C and type(C.TryUserWaypoint) == "function" then
@@ -280,7 +357,7 @@ function M:Pin(place, quest)
     self:TryTomTom(mapID, place.x / 100, place.y / 100, title)
     local MP = TA:GetModule("MapPins")
     if MP and type(MP.Refresh) == "function" then MP:Refresh() end
-    local note = quest and "Library quest. Optional." or "Auction house. Optional."
+    local note = quest and "Library. Optional." or "Auction house. Optional."
     self:Say(string.format("Suggestion: %s, %s (%.1f, %.1f). %s",
         title, place.zone, place.x, place.y, note))
     return true
@@ -289,7 +366,7 @@ end
 function M:SuggestLibrary()
     local C = TA.Compat
     local faction = C and type(C.PlayerFaction) == "function" and C.PlayerFaction() or nil
-    local list = M.AsLibraryList(faction and M.LIBRARIES[faction])
+    local list = M.AllLibraries(faction)
     if not list then
         self:Say("Suggestion withheld: the faction could not be read, so no library was chosen.")
         return false
@@ -299,24 +376,45 @@ function M:SuggestLibrary()
     local infoFn = C and C.MapInfo
     local playerCont = Arrow and Arrow.WalkContinent and select(1, Arrow.WalkContinent(mapID, infoFn)) or nil
     local function contOf(place)
-        if not (Arrow and type(Arrow.MapIDForZone) == "function" and type(Arrow.WalkContinent) == "function") then
-            return nil
-        end
-        local id = Arrow.MapIDForZone(place.zone)
+        if not (Arrow and type(Arrow.WalkContinent) == "function") then return nil end
+        local id = (type(place.mapID) == "number" and place.mapID)
+            or (type(Arrow.MapIDForZone) == "function" and Arrow.MapIDForZone(place.zone))
         return select(1, Arrow.WalkContinent(id, infoFn))
     end
     local function worldOf(place)
-        if not (Arrow and type(Arrow.MapIDForZone) == "function") then return nil end
-        local id = Arrow.MapIDForZone(place.zone)
+        local id = (type(place.mapID) == "number" and place.mapID)
+            or (Arrow and type(Arrow.MapIDForZone) == "function" and Arrow.MapIDForZone(place.zone))
         if type(id) ~= "number" then return nil end
         return WorldPoint(id, place.x, place.y)
     end
     local place = M.ChooseLibrary(list, playerCont, contOf, origin, worldOf)
     if not place then
+        -- Fallback to the faction's primary capital librarian so players on
+        -- another continent still get a route (e.g. zeppelin/boat).
+        local fallback = M.AsLibraryList(faction and M.LIBRARIES[faction])
+        place = fallback and fallback[1] or nil
+    end
+    if not place then
         self:Say("Suggestion withheld: no library on this continent could be measured.")
         return false
     end
-    return self:Pin(place, true)
+    return self:Pin(place, true, "library")
+end
+
+function M:ToggleLibraryPin()
+    if self:IsPinned("library") then
+        self:ClearPin()
+        return false
+    end
+    return self:SuggestLibrary()
+end
+
+function M:ToggleFeathersPin()
+    if self:IsPinned("feathers") then
+        self:ClearPin()
+        return false
+    end
+    return self:SuggestFeathers()
 end
 
 function M:NearestAuction()
@@ -366,8 +464,33 @@ function M:SuggestFeathers()
         self:Say(why or "Suggestion withheld: no sourced auction house could be measured from here.")
         return false
     end
-    return self:Pin(place, false)
+    return self:Pin(place, false, "feathers")
 end
+
+-- Auto-learn any location where the player successfully casts Study (Mage
+-- Comprehension) so future "Pin nearest library" clicks find it automatically.
+function M:OnEvent(event, unit, _, spellID)
+    if event ~= "UNIT_SPELLCAST_SUCCEEDED" or unit ~= "player" then return end
+    if type(spellID) ~= "number" then return end
+    local spName
+    if C_Spell and type(C_Spell.GetSpellName) == "function" then
+        local ok, nm = pcall(C_Spell.GetSpellName, spellID)
+        if ok and type(nm) == "string" then spName = nm end
+    end
+    if spName ~= "Study" then return end
+    local C = TA.Compat
+    local faction = C and type(C.PlayerFaction) == "function" and C.PlayerFaction() or nil
+    local mapID, zone = PlayerHere()
+    local x, y = (C and type(C.PlayerMapFraction) == "function" and mapID) and C.PlayerMapFraction(mapID) or nil
+    if faction and zone and type(x) == "number" and type(y) == "number" then
+        local sub = (type(GetSubZoneText) == "function") and select(2, pcall(GetSubZoneText)) or nil
+        if M.RecordStudySpot(faction, zone, mapID, x * 100, y * 100, sub) then
+            self:Say(string.format("Learned Study library in %s (%.1f, %.1f).", zone, x * 100, y * 100))
+        end
+    end
+end
+
+M.Events = { "UNIT_SPELLCAST_SUCCEEDED" }
 
 -- ── Beam marker ───────────────────────────────────────────────────────────
 -- Assigned onto Arrow so Tick can paint it. Retail never calls PaintBeam.

@@ -723,6 +723,33 @@ function M:Render(content, side)
         y = restock:Draw(content, y)
     end
 
+    local Pins = TA.GetModule and TA:GetModule("ForeverPins")
+    if Pins and (Pins.ToggleLibraryPin or Pins.SuggestLibrary) then
+        local libPinned = Pins.IsPinned and Pins:IsPinned("library") or false
+        local feaPinned = Pins.IsPinned and Pins:IsPinned("feathers") or false
+        local pinBtns = {
+            {
+                label = libPinned and "Clear library pin" or "Pin nearest library",
+                active = libPinned,
+                onClick = function()
+                    if Pins.ToggleLibraryPin then Pins:ToggleLibraryPin() else Pins:SuggestLibrary() end
+                    if TA.QueueUIRefresh then TA:QueueUIRefresh("PIN_TOGGLE") end
+                end,
+            },
+        }
+        if Pins.ToggleFeathersPin or Pins.SuggestFeathers then
+            pinBtns[#pinBtns + 1] = {
+                label = feaPinned and "Clear Light Feathers pin" or "Pin Light Feathers AH",
+                active = feaPinned,
+                onClick = function()
+                    if Pins.ToggleFeathersPin then Pins:ToggleFeathersPin() else Pins:SuggestFeathers() end
+                    if TA.QueueUIRefresh then TA:QueueUIRefresh("PIN_TOGGLE") end
+                end,
+            }
+        end
+        y = L:ButtonRow(content, y, pinBtns)
+    end
+
     if #entries == 0 then
         y = L:SectionHeader(content, y, "Scrolls")
         y = L:Paragraph(content, y,

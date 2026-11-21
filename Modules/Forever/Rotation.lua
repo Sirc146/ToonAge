@@ -536,7 +536,17 @@ local function RankLabel(r)
     return r.n and ("Rank " .. r.n) or ("the level " .. r.learned .. " rank")
 end
 
+-- General auto-attack entries are never trainable class ranks, even if a
+-- catalog scan sees a spell sharing their name.
+local SKIP_TRAINABLE = {
+    ["Attack"]    = true,
+    ["Auto Shot"] = true,
+    ["Shoot"]     = true,
+    ["Throw"]     = true,
+}
+
 local function NextRank(catalog, name, haveLearned)
+    if SKIP_TRAINABLE[name] then return nil end
     local list = catalog and catalog[name]
     if not (list and haveLearned) or #list < 2 then return nil end
     for _, r in ipairs(list) do
@@ -552,6 +562,7 @@ M._NextRank = NextRank
 --- your class (the shipped data is Mage-only, 2026-09-30) cannot tell
 --- "up to date" from "unknown" -- and must not claim the first.
 local function Covered(catalog, sp)
+    if SKIP_TRAINABLE[sp.name] then return false end
     local list = catalog and catalog[sp.name]
     if not list then return false end
     local top = sp.topLearned or 0
@@ -562,6 +573,7 @@ local function Covered(catalog, sp)
 end
 
 local function IsRanked(sp)
+    if SKIP_TRAINABLE[sp.name] then return false end
     return sp.n ~= nil or (sp.count or 1) > 1
 end
 
@@ -572,7 +584,7 @@ local function DueAndCoverage(lines, catalog, level)
     local due, seen, ranked, covered = {}, {}, 0, 0
     for _, g in ipairs(lines) do
         for _, sp in ipairs(Collapse(g.spells)) do
-            if not seen[sp.name] then
+            if not seen[sp.name] and not SKIP_TRAINABLE[sp.name] then
                 seen[sp.name] = true
                 if IsRanked(sp) then
                     ranked = ranked + 1

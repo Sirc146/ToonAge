@@ -258,6 +258,34 @@ function M:Build()
     return lines, n
 end
 
+--- Structured read-only summary for the inline Now tab card (zero popups).
+function M:Summary()
+    local s, key = Store(), CharKey()
+    local prev = s and key and s[key]
+    if type(prev) ~= "table" then return nil end
+    local level = tonumber(Plain(Try(UnitLevel, "player")))
+    local prevLevel = tonumber(prev.level)
+    local gained = (level and prevLevel and level > prevLevel) and (level - prevLevel) or 0
+    local changed = {}
+    if type(prev.equipped) == "table" then
+        local now = Equipped()
+        for slot, id in pairs(now) do
+            if prev.equipped[slot] ~= id then
+                changed[#changed + 1] = ItemName(id)
+            end
+        end
+        table.sort(changed)
+    end
+    local whenText = prev.at and date and date("%Y-%m-%d %H:%M", prev.at) or "last login"
+    return {
+        whenText = whenText,
+        prevLevel = prevLevel,
+        curLevel = level,
+        levelsGained = gained,
+        equipChanges = changed,
+    }
+end
+
 function M:Show()
     local lines = self:Build()
     if TA.ShowCopyWindow then
