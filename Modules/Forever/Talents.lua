@@ -267,6 +267,8 @@ end
 
 M.planTargetID = nil
 M.whatIfEnabled = false
+M.sandboxEnabled = false
+M.activeFilter = "all"
 
 local Secret, MinReq, NodeGate
 
@@ -496,7 +498,25 @@ function M.WhatIfRank(cell, route, unspent)
     return base, 0
 end
 
---- Expose the next planned talent point for the upcoming Now briefing tab.
+--- Active planned route: uses TalentIntel's multi-milestone roadmap when
+--- milestones are pinned in the active saved slot, otherwise falls back to
+--- single-target M.PlanRoute(M.planTargetID).
+function M.ActiveRoute(nodes, conditions, spent, unspent, playerLevel)
+    local TI = TA.TalentIntel
+    if TI and TI.ActiveSlot and TI.BuildRoadmap then
+        local slot = TI.ActiveSlot()
+        if slot and type(slot.targets) == "table" and #slot.targets > 0 then
+            return TI.BuildRoadmap(nodes, conditions or {}, slot.targets, spent, unspent, playerLevel, M.PlanRoute)
+        end
+    end
+    if M.planTargetID ~= nil then
+        return M.PlanRoute(nodes, conditions or {}, M.planTargetID, spent)
+    end
+    return nil
+end
+
+--- Expose the next planned talent point for the Now briefing tab.
+--- Reads active multi-milestone roadmap / sandbox / single target.
 --- Never spends points; marks combat-secret values honestly without guessing.
 function M.GetNextPlannedPoint(nodes, conditions, spent, unspent)
     local isSecret = false
@@ -516,9 +536,44 @@ function M.GetNextPlannedPoint(nodes, conditions, spent, unspent)
     end
     local u = math.floor(tonumber(unspent) or 0)
     local s = math.floor(tonumber(spent) or 0)
+    local lvl = Num(Try(UnitLevel, "player")) or 10
     local prefix = isSecret and "(in combat) " or ""
 
-    if M.planTargetID == nil or type(nodes) ~= "table" then
+    local TI = TA.TalentIntel
+    local slot, slotName
+    if TI and TI.ActiveSlot then slot, slotName = TI.ActiveSlot() end
+    local hasMilestones = slot and type(slot.targets) == "table" and #slot.targets > 0
+    local sandboxTotals = (TI and TI.SandboxTotals and type(nodes) == "table") and TI.SandboxTotals(nodes, s, lvl) or nil
+    local hasSandbox = sandboxTotals and sandboxTotals.added > 0
+
+    if not hasMilestones and M.planTargetID == nil then
+        if hasSandbox and type(nodes) == "table" then
+            -- Find first unspent sandbox node to surface as next planned point
+            local nextName, nextID
+            for _, n in ipairs(nodes) do
+                if (TI.SandboxDelta(n.id) or 0) > 0 then
+                    nextName = n.name or ("Node " .. tostring(n.id))
+                    nextID = n.id
+                    break
+                end
+            end
+            local summary = string.format("%s[%s] %d unspent. Sandbox +%d pts (Lv %d build). Next: %s.",
+                prefix, tostring(slotName or "Solo"), u, sandboxTotals.added, sandboxTotals.buildLevel,
+                tostring(nextName or "planned talent"))
+            return {
+                hasPlan = true,
+                slotName = slotName,
+                targetName = tostring(slotName or "Solo") .. " Sandbox",
+                nextNodeID = nextID,
+                nextNodeName = nextName,
+                alreadyMaxed = false,
+                unspent = u,
+                gateNeed = 0,
+                isSecret = isSecret,
+                summary = summary,
+                honestNote = PLAN_HONEST_NOTE,
+            }
+        end
         local summary
         if u > 0 then
             summary = string.format("%s%d unspent %s. Click any talent to set a plan target.",
@@ -535,8 +590,18 @@ function M.GetNextPlannedPoint(nodes, conditions, spent, unspent)
         }
     end
 
-    local route = M.PlanRoute(nodes, conditions or {}, M.planTargetID, s)
-    if not route.valid then
+    if type(nodes) ~= "table" then
+        return {
+            hasPlan = false,
+            unspent = u,
+            isSecret = isSecret,
+            summary = prefix .. "No plan target set. Click any talent to inspect or plan a route.",
+            honestNote = PLAN_HONEST_NOTE,
+        }
+    end
+
+    local route = M.ActiveRoute(nodes, conditions or {}, s, u, lvl)
+    if not route or not route.valid then
         return {
             hasPlan = false,
             unspent = u,
@@ -545,38 +610,53 @@ function M.GetNextPlannedPoint(nodes, conditions, spent, unspent)
             honestNote = PLAN_HONEST_NOTE,
         }
     end
+    local targetLabel = route.targetName
+    local unlockLv = nil
+    if type(route.milestones) == "table" and #route.milestones > 0 then
+        local lastM = route.milestones[#route.milestones]
+        targetLabel = lastM.name
+        unlockLv = lastM.unlockLevel
+        if #route.milestones > 1 then
+            targetLabel = string.format("%s (+%d)", route.milestones[1].name, #route.milestones - 1)
+        end
+    end
     if route.alreadyMaxed or not route.nextNode then
         return {
             hasPlan = true,
+            slotName = slotName,
             targetID = route.targetID,
-            targetName = route.targetName,
+            targetName = targetLabel,
             alreadyMaxed = true,
             unspent = u,
             gateNeed = 0,
             isSecret = isSecret,
-            summary = string.format("%sPlanned target %s is maxed.", prefix, route.targetName),
+            summary = string.format("%sPlanned target %s is maxed.", prefix, tostring(targetLabel or "target")),
             honestNote = PLAN_HONEST_NOTE,
         }
     end
 
     local nxt = route.nextNode
     local summary
+    local slotTag = (hasMilestones and slotName) and ("[" .. slotName .. "] ") or ""
+    local lvTag = (unlockLv and unlockLv > lvl) and string.format(" (Lv %d)", unlockLv) or ""
     if route.gateNeed > 0 then
-        summary = string.format("%s%d unspent. Next: %s (needs %d more spent in tree).",
-            prefix, u, nxt.name, route.gateNeed)
+        summary = string.format("%s%s%d unspent. Next: %s (needs %d more spent in tree).",
+            prefix, slotTag, u, nxt.name, route.gateNeed)
     else
-        summary = string.format("%s%d unspent. Next: %s (toward %s).",
-            prefix, u, nxt.name, route.targetName)
+        summary = string.format("%s%s%d unspent. Next: %s (toward %s%s).",
+            prefix, slotTag, u, nxt.name, tostring(targetLabel or "target"), lvTag)
     end
     return {
         hasPlan = true,
-        targetID = route.targetID,
-        targetName = route.targetName,
+        slotName = slotName,
+        targetID = route.targetID or (route.milestones and route.milestones[1] and route.milestones[1].id),
+        targetName = targetLabel,
         nextNodeID = nxt.id,
         nextNodeName = nxt.name,
         alreadyMaxed = false,
         unspent = u,
         gateNeed = route.gateNeed,
+        unlockLevel = unlockLv,
         isSecret = isSecret,
         summary = summary,
         honestNote = PLAN_HONEST_NOTE,
@@ -1237,12 +1317,15 @@ local function PaintNode(btn)
     local theme = M.Theme
     local rgb = theme[btn.state] or theme.available
     local hot = btn._hover or btn.id == M.selectedID
-    local inPlan = btn._inPlan == true
-    local dim = btn.state == "locked" and not hot and not inPlan
-    local alpha = dim and M.LOCK_ALPHA or 1
+    local inPlan = (btn._inPlan == true) or ((btn._sandboxDelta or 0) > 0)
+    local filterActive = (M.activeFilter ~= nil and M.activeFilter ~= "all")
+    local filterMatch = filterActive and (btn._filterDim ~= true)
+    local filterDim = (btn._filterDim == true) and not hot
+    local dim = (btn.state == "locked" and not hot and not inPlan and not filterMatch) or filterDim
+    local alpha = filterDim and 0.22 or (dim and M.LOCK_ALPHA or 1)
     if hot then
         rgb = M.FocusColor()
-    elseif inPlan then
+    elseif inPlan or filterMatch then
         rgb = M.PlanRouteColor()
     end
     if btn.frame and btn.frame.SetTexture then
@@ -1260,8 +1343,10 @@ local function PaintNode(btn)
     Tint(btn.badgeFill, rgb, alpha)
     Tint(btn.badgeBorder, rgb, alpha)
     if btn.icon then
-        btn.icon:SetAlpha(dim and M.LOCK_ALPHA or 1)
-        if btn.icon.SetDesaturated then btn.icon:SetDesaturated(btn.state == "locked" and not inPlan) end
+        btn.icon:SetAlpha(alpha)
+        if btn.icon.SetDesaturated then
+            btn.icon:SetDesaturated((btn.state == "locked" and not inPlan and not filterMatch) or filterDim)
+        end
     end
     if btn.lock then
         if btn._locked then btn.lock:Show() else btn.lock:Hide() end
@@ -1322,18 +1407,34 @@ local function GridReclaim()
     end
 end
 
-local DOCK_H = 84
+local DOCK_H_BASIC = 84
+local DOCK_H_INTEL = 132
+local FILTER_BAR_H = 26
 
-local function UpdateButtonBadge(btn, cell, route, unspent)
+local function UpdateButtonBadge(btn, cell, route, unspent, unlockLv, playerLevel)
+    local TI = TA.TalentIntel
+    local sbDelta = (TI and TI.SandboxDelta) and TI.SandboxDelta(cell.id) or 0
     local projRank, projDelta = M.WhatIfRank(cell, route, unspent)
+    if sbDelta > 0 then
+        local base = tonumber(cell.rank) or 0
+        local max = tonumber(cell.max) or 1
+        projRank = math.min(max, base + sbDelta)
+        projDelta = projRank - base
+    end
     local dispBadge = cell.badge
+    local isLevelBadge = false
     if projDelta > 0 then
         dispBadge = M.Badge(projRank, cell.max) or ("+" .. tostring(projDelta))
+    elseif not dispBadge and cell.locked and unlockLv and playerLevel and unlockLv > playerLevel then
+        dispBadge = "L" .. tostring(unlockLv)
+        isLevelBadge = true
     end
     btn._projRank = projRank
     btn._projDelta = projDelta
+    btn._sandboxDelta = sbDelta
+    btn._unlockLv = unlockLv
     if dispBadge then
-        local bw = math.min(22, math.max(12, math.floor(cell.w * 0.55)))
+        local bw = math.min(24, math.max(12, math.floor(cell.w * 0.60)))
         local bh = math.min(12, math.max(8, math.floor(cell.h * 0.32)))
         if not btn.badgeFill then
             btn.badgeFill = btn:CreateTexture(nil, "OVERLAY")
@@ -1359,6 +1460,8 @@ local function UpdateButtonBadge(btn, cell, route, unspent)
         if projDelta > 0 then
             local hi = M.Theme.highlight
             badge:SetTextColor(hi[1], hi[2], hi[3], 1)
+        elseif isLevelBadge then
+            badge:SetTextColor(0.75, 0.82, 0.90, 1)
         else
             badge:SetTextColor(1, 1, 1, 1)
         end
@@ -1379,7 +1482,7 @@ local function TintEdge(line, ln, route)
     end
 end
 
-local function DrawGrid(parent, y, plan, pad, route, unspent, onSelect, allButtons, allLines)
+local function DrawGrid(parent, y, plan, pad, route, unspent, onSelect, allButtons, allLines, intelCtx)
     local holder = GridTake("holder", parent, function()
         return CreateFrame("Frame", nil, parent)
     end)
@@ -1390,10 +1493,12 @@ local function DrawGrid(parent, y, plan, pad, route, unspent, onSelect, allButto
     if pad == nil then pad = L.PAD end
     holder:SetPoint("TOPLEFT", parent, "TOPLEFT", pad, y)
 
+    local TI = TA.TalentIntel
     local buttons = {}
     for _, cell in ipairs(plan.cells) do
         local btn = GridTake("button", holder, function()
             local b = CreateFrame("Button", nil, holder)
+            if b.RegisterForClicks then b:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
             b.frame = b:CreateTexture(nil, "BORDER")
             b.frame:SetAllPoints()
             b.icon = b:CreateTexture(nil, "ARTWORK")
@@ -1411,6 +1516,11 @@ local function DrawGrid(parent, y, plan, pad, route, unspent, onSelect, allButto
         btn._hover = false
         btn._cell = cell
         btn._inPlan = (route and route.inPath and route.inPath[cell.id] ~= nil) or false
+        local unlockLv = intelCtx and intelCtx.unlockByID and intelCtx.unlockByID[cell.id] or nil
+        local nodeDesc = intelCtx and intelCtx.descByID and intelCtx.descByID[cell.id] or ""
+        local filterKey = M.activeFilter or "all"
+        btn._filterDim = (TI and filterKey ~= "all")
+            and (not TI.NodeMatchesFilter(cell, nodeDesc, filterKey)) or false
         -- A reused node may still be at the raised hover level. Keep the
         -- level it had when it was first built.
         if not btn._taHomeLevel then
@@ -1449,7 +1559,7 @@ local function DrawGrid(parent, y, plan, pad, route, unspent, onSelect, allButto
         glow:Hide()
         btn.glow = glow
 
-        UpdateButtonBadge(btn, cell, route, unspent)
+        UpdateButtonBadge(btn, cell, route, unspent, unlockLv, intelCtx and intelCtx.playerLevel)
 
         -- One lock per gated talent. The row used to carry a single "N pts"
         -- label; the requirement now belongs to the node it gates.
@@ -1487,12 +1597,22 @@ local function DrawGrid(parent, y, plan, pad, route, unspent, onSelect, allButto
                 if cell.badge then GameTooltip:AddLine(cell.badge, 1, 1, 1) end
                 if (self._projDelta or 0) > 0 then
                     local pc = M.PlanRouteColor()
+                    local modeTag = ((self._sandboxDelta or 0) > 0) and "Sandbox" or "What-If preview"
                     GameTooltip:AddLine(
-                        string.format("What-If preview: %d/%d (not spent)", self._projRank, cell.max),
+                        string.format("%s: %d/%d (not spent)", modeTag, self._projRank, cell.max),
                         pc[1], pc[2], pc[3])
                 end
                 if cell.lockTip then
                     GameTooltip:AddLine(cell.lockTip, 0.85, 0.75, 0.45)
+                end
+                if self._unlockLv and intelCtx and intelCtx.playerLevel and self._unlockLv > intelCtx.playerLevel then
+                    GameTooltip:AddLine(string.format("Unlockable at Level %d", self._unlockLv), 0.55, 0.78, 0.96)
+                end
+                if nodeDesc ~= "" then
+                    GameTooltip:AddLine(nodeDesc, 0.82, 0.85, 0.88, true)
+                end
+                if M.sandboxEnabled then
+                    GameTooltip:AddLine("Sandbox: Shift-Click +1 · Right-Click -1", 0.58, 0.65, 0.72)
                 end
                 GameTooltip:Show()
             end
@@ -1503,7 +1623,20 @@ local function DrawGrid(parent, y, plan, pad, route, unspent, onSelect, allButto
             PaintNode(self)
             if GameTooltip then GameTooltip:Hide() end
         end)
-        btn:SetScript("OnClick", function(self)
+        btn:SetScript("OnClick", function(self, mouseBtn)
+            if M.sandboxEnabled and TI and intelCtx then
+                if mouseBtn == "RightButton" then
+                    M.selectedID = self.id
+                    TI.SandboxRemove(self.id)
+                    if onSelect then onSelect() end
+                    return
+                elseif IsShiftKeyDown and IsShiftKeyDown() then
+                    M.selectedID = self.id
+                    TI.SandboxAdd(cell, intelCtx.nodes, intelCtx.spent)
+                    if onSelect then onSelect() end
+                    return
+                end
+            end
             if M.selectedID == self.id then M.selectedID = nil else M.selectedID = self.id end
             for _, other in pairs(buttons) do PaintNode(other) end
             if onSelect then onSelect() end
@@ -1599,7 +1732,7 @@ end
 
 --- The points header is not a child of this frame. The scroll child is as
 --- tall as the trees; the frame itself is only as tall as the pane.
-local function MountTree(content, y, plans, paneH, treeH, treeW, route, unspent, onSelect)
+local function MountTree(content, y, plans, paneH, treeH, treeW, route, unspent, onSelect, intelCtx)
     -- The anchor is created on the first mount so a later redraw does not
     -- allocate it. Reclaim runs before the grids are drawn again.
     GridAnchor()
@@ -1651,7 +1784,7 @@ local function MountTree(content, y, plans, paneH, treeH, treeW, route, unspent,
     local allButtons, allLines = {}, {}
     local yOff = 0
     for _, plan in ipairs(plans) do
-        DrawGrid(child, yOff, plan, 0, route, unspent, onSelect, allButtons, allLines)
+        DrawGrid(child, yOff, plan, 0, route, unspent, onSelect, allButtons, allLines, intelCtx)
         yOff = yOff - (tonumber(plan.height) or 0) - TREE_GAP
     end
 
@@ -1714,10 +1847,87 @@ local function StyleDockButton(btn, text, active)
     end
 end
 
---- Pooled bottom Node Detail & Plan Mode dock. Hidden when neither a node nor
---- a plan target is active so default tree height stays unchanged.
-local function MountDetailDock(content, yTop, width, nodes, conds, spent, unspent, refreshFn)
-    local activeID = M.selectedID or M.planTargetID
+--- Pooled Spell & Playstyle Filter Pills + Saved Plan Slot selector bar.
+--- Mounted only when TA.TalentIntel is loaded. 0 frame churn on redraw.
+local function MountFilterBar(content, yTop, width, pills, refreshFn)
+    local TI = TA.TalentIntel
+    local bar = _G.TATalentFilterBar
+    if not (TI and type(pills) == "table" and #pills > 0) then
+        if bar and bar.Hide then bar:Hide() end
+        return 0
+    end
+    if not bar then
+        bar = CreateFrame("Frame", "TATalentFilterBar", content)
+        bar._laKind = "ForeverTalent"
+        bar._pills = {}
+        bar.slotBtn = BuildDockButton(bar)
+        bar.slotBtn:SetSize(78, 20)
+        bar.slotBtn:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+    end
+    bar._laKind = "ForeverTalent"
+    if bar.SetParent then bar:SetParent(content) end
+    if bar.ClearAllPoints then bar:ClearAllPoints() end
+    local barW = math.max(220, math.floor((tonumber(width) or 480) + 0.5))
+    bar:SetSize(barW, FILTER_BAR_H)
+    bar:SetPoint("TOPLEFT", content, "TOPLEFT", L.PAD, yTop)
+    if bar.Show then bar:Show() end
+
+    -- Saved Plan slot cycler on the right edge (Solo / Dungeon / PvP)
+    local _, slotName = TI.ActiveSlot()
+    StyleDockButton(bar.slotBtn, "Plan: " .. tostring(slotName or "Solo"), false)
+    bar.slotBtn:SetScript("OnClick", function()
+        local newSlot = TI.CycleSlot()
+        M.planTargetID = (newSlot and newSlot.targets and newSlot.targets[#newSlot.targets]) or nil
+        if refreshFn then refreshFn() end
+    end)
+
+    local maxX = barW - 84
+    local curX = 0
+    local used = 0
+    for _, pill in ipairs(pills) do
+        local labelTxt = pill.label
+        local approxW = math.max(36, math.min(96, (#labelTxt * 6) + 14))
+        if curX + approxW <= maxX then
+            used = used + 1
+            local btn = bar._pills[used]
+            if not btn then
+                btn = BuildDockButton(bar)
+                bar._pills[used] = btn
+            end
+            btn._laKind = "ForeverTalent"
+            if btn.ClearAllPoints then btn:ClearAllPoints() end
+            btn:SetSize(approxW, 20)
+            btn:SetPoint("LEFT", bar, "LEFT", curX, 0)
+            local isActive = (M.activeFilter or "all") == pill.key
+            StyleDockButton(btn, labelTxt, isActive)
+            local pKey = pill.key
+            btn:SetScript("OnClick", function()
+                if M.activeFilter == pKey and pKey ~= "all" then
+                    M.activeFilter = "all"
+                else
+                    M.activeFilter = pKey
+                end
+                if refreshFn then refreshFn() end
+            end)
+            if btn.Show then btn:Show() end
+            curX = curX + approxW + 4
+        end
+    end
+    for i = used + 1, #bar._pills do
+        if bar._pills[i] and bar._pills[i].Hide then bar._pills[i]:Hide() end
+    end
+    return FILTER_BAR_H
+end
+
+--- Pooled bottom Node Detail, Sandbox Plan Mode & Reality Callouts dock.
+--- Hidden when neither a node nor a plan target/milestone/sandbox is active.
+local function MountDetailDock(content, yTop, width, nodes, conds, spent, unspent, refreshFn, intelCtx)
+    local TI = TA.TalentIntel
+    local slot, slotName
+    if TI and TI.ActiveSlot then slot, slotName = TI.ActiveSlot() end
+    local hasMilestones = slot and type(slot.targets) == "table" and #slot.targets > 0
+    local firstMilestone = hasMilestones and slot.targets[1] or nil
+    local activeID = M.selectedID or M.planTargetID or firstMilestone
     local dock = _G.TATalentDetailDock
     if activeID == nil then
         if dock and dock.Hide then dock:Hide() end
@@ -1728,6 +1938,8 @@ local function MountDetailDock(content, yTop, width, nodes, conds, spent, unspen
         if dock and dock.Hide then dock:Hide() end
         return 0
     end
+
+    local dockH = TI and DOCK_H_INTEL or DOCK_H_BASIC
 
     if not dock then
         dock = CreateFrame("Frame", "TATalentDetailDock", content)
@@ -1741,24 +1953,48 @@ local function MountDetailDock(content, yTop, width, nodes, conds, spent, unspen
         dock.title = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         dock.title:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -8)
         dock.meta = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        dock.meta:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -26)
+        dock.meta:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -25)
         dock.planLine = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        dock.planLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -44)
+        dock.planLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -42)
+        dock.mathLine = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        dock.mathLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -60)
+        dock.castsLine = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        dock.castsLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -77)
+        dock.gearLine = dock:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        dock.gearLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -94)
         dock.noteLine = dock:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        dock.noteLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -64)
+        dock.noteLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -112)
+
         dock.planBtn = BuildDockButton(dock)
         dock.planBtn:SetSize(112, 22)
-        dock.planBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -10, -10)
+        dock.planBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -10, -8)
+
         dock.whatIfBtn = BuildDockButton(dock)
         dock.whatIfBtn:SetSize(112, 22)
-        dock.whatIfBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -10, -38)
+        dock.whatIfBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -10, -34)
+
+        dock.sandboxBtn = BuildDockButton(dock)
+        dock.sandboxBtn:SetSize(112, 22)
+        dock.sandboxBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -10, -60)
+
+        dock.plusBtn = BuildDockButton(dock)
+        dock.plusBtn:SetSize(34, 20)
+        dock.plusBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -88, -86)
+
+        dock.minusBtn = BuildDockButton(dock)
+        dock.minusBtn:SetSize(34, 20)
+        dock.minusBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -50, -86)
+
+        dock.clearBtn = BuildDockButton(dock)
+        dock.clearBtn:SetSize(36, 20)
+        dock.clearBtn:SetPoint("TOPRIGHT", dock, "TOPRIGHT", -10, -86)
     end
 
     dock._laKind = "ForeverTalent"
     if dock.SetParent then dock:SetParent(content) end
     if dock.ClearAllPoints then dock:ClearAllPoints() end
     local dockW = math.max(220, math.floor((tonumber(width) or 480) + 0.5))
-    dock:SetSize(dockW, DOCK_H)
+    dock:SetSize(dockW, dockH)
     dock:SetPoint("TOPLEFT", content, "TOPLEFT", L.PAD, yTop)
     if dock.Show then dock:Show() end
 
@@ -1770,27 +2006,31 @@ local function MountDetailDock(content, yTop, width, nodes, conds, spent, unspen
             dock.bg:SetColorTexture(0.06, 0.08, 0.11, 0.96)
         end
     end
-    local ruleColor = (M.planTargetID ~= nil) and M.PlanRouteColor() or M.FocusColor()
+    local hasAnyPlan = (M.planTargetID ~= nil) or hasMilestones or M.sandboxEnabled
+    local ruleColor = hasAnyPlan and M.PlanRouteColor() or M.FocusColor()
     if dock.topRule and dock.topRule.SetColorTexture then
         dock.topRule:SetColorTexture(ruleColor[1], ruleColor[2], ruleColor[3], 0.85)
     end
 
     local textW = math.max(120, dockW - 140)
-    if dock.title.SetWidth then dock.title:SetWidth(textW) end
-    if dock.meta.SetWidth then dock.meta:SetWidth(textW) end
-    if dock.planLine.SetWidth then dock.planLine:SetWidth(textW) end
-    if dock.noteLine.SetWidth then dock.noteLine:SetWidth(textW) end
-    if dock.title.SetJustifyH then dock.title:SetJustifyH("LEFT") end
-    if dock.meta.SetJustifyH then dock.meta:SetJustifyH("LEFT") end
-    if dock.planLine.SetJustifyH then dock.planLine:SetJustifyH("LEFT") end
-    if dock.noteLine.SetJustifyH then dock.noteLine:SetJustifyH("LEFT") end
+    for _, fs in ipairs({ dock.title, dock.meta, dock.planLine, dock.mathLine, dock.castsLine, dock.gearLine, dock.noteLine }) do
+        if fs and fs.SetWidth then fs:SetWidth(textW) end
+        if fs and fs.SetJustifyH then fs:SetJustifyH("LEFT") end
+        if fs and fs.SetWordWrap then fs:SetWordWrap(false) end
+    end
 
+    local unlockLv = intelCtx and intelCtx.unlockByID and intelCtx.unlockByID[detail.id] or nil
     local titleStr = string.format("%s (%d/%d)", detail.name, detail.rank, detail.max)
     if detail.lockTip then
         titleStr = titleStr .. " · " .. detail.lockTip
     end
-    if M.planTargetID == detail.id then
-        titleStr = titleStr .. " [Plan Target]"
+    if unlockLv and intelCtx and intelCtx.playerLevel and unlockLv > intelCtx.playerLevel then
+        titleStr = titleStr .. string.format(" (Lv %d)", unlockLv)
+    end
+    local isMilestone = TI and TI.HasMilestone and TI.HasMilestone(detail.id)
+    local isTarget = (M.planTargetID == detail.id) or isMilestone
+    if isTarget then
+        titleStr = titleStr .. (TI and " [Milestone]" or " [Plan Target]")
     end
     dock.title:SetText(titleStr)
     dock.title:SetTextColor(0.95, 0.97, 0.99, 1)
@@ -1805,16 +2045,109 @@ local function MountDetailDock(content, yTop, width, nodes, conds, spent, unspen
     dock.planLine:SetText(nextInfo.summary or "")
     dock.planLine:SetTextColor(ruleColor[1], ruleColor[2], ruleColor[3], 1)
 
-    dock.noteLine:SetText(PLAN_HONEST_NOTE)
-    dock.noteLine:SetTextColor(0.56, 0.62, 0.70, 1)
+    if TI then
+        local desc = (intelCtx and intelCtx.descByID and intelCtx.descByID[detail.id])
+            or TI.ReadSpellDesc(detail.spellID)
+        local mathInfo = TI.SpellMath(detail, desc)
+        local castText = TI.CastReality(detail, desc, intelCtx and intelCtx.castStats)
+        local gearText = TI.GearReality(detail, desc, intelCtx and intelCtx.gearStats, intelCtx and intelCtx.playerLevel)
 
-    local isTarget = (M.planTargetID == detail.id)
-    StyleDockButton(dock.planBtn, isTarget and "Clear Target" or "Set Plan Target", isTarget)
-    dock.planBtn:SetScript("OnClick", function()
-        if M.planTargetID == detail.id then
-            M.planTargetID = nil
+        dock.mathLine:SetText(mathInfo.text or "")
+        dock.mathLine:SetTextColor(0.96, 0.88, 0.56, 1)
+        dock.mathLine:Show()
+
+        dock.castsLine:SetText(castText or "")
+        dock.castsLine:SetTextColor(0.72, 0.85, 0.94, 1)
+        dock.castsLine:Show()
+
+        dock.gearLine:SetText(gearText or "")
+        dock.gearLine:SetTextColor(0.68, 0.88, 0.74, 1)
+        dock.gearLine:Show()
+
+        dock.noteLine:ClearAllPoints()
+        dock.noteLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -112)
+        local sbTotals = TI.SandboxTotals(nodes, spent, intelCtx and intelCtx.playerLevel)
+        if sbTotals.added > 0 then
+            dock.noteLine:SetText(string.format("[%s] Sandbox: +%d pts -> %d/51 (Lv %d build) · %s",
+                tostring(slotName or "Solo"), sbTotals.added, sbTotals.totalSpent, sbTotals.buildLevel, PLAN_HONEST_NOTE))
         else
-            M.planTargetID = detail.id
+            dock.noteLine:SetText(PLAN_HONEST_NOTE)
+        end
+        dock.noteLine:SetTextColor(0.56, 0.62, 0.70, 1)
+
+        dock.sandboxBtn:Show()
+        dock.plusBtn:Show()
+        dock.minusBtn:Show()
+        dock.clearBtn:Show()
+
+        StyleDockButton(dock.sandboxBtn, M.sandboxEnabled and "Sandbox: ON" or "Sandbox: OFF", M.sandboxEnabled)
+        dock.sandboxBtn:SetScript("OnClick", function()
+            M.sandboxEnabled = not M.sandboxEnabled
+            if refreshFn then refreshFn() end
+        end)
+
+        StyleDockButton(dock.plusBtn, "+1", (TI.SandboxDelta(detail.id) or 0) > 0)
+        dock.plusBtn:SetScript("OnClick", function()
+            M.sandboxEnabled = true
+            TI.SandboxAdd(detail, nodes, spent)
+            if refreshFn then refreshFn() end
+        end)
+
+        StyleDockButton(dock.minusBtn, "-1", false)
+        dock.minusBtn:SetScript("OnClick", function()
+            TI.SandboxRemove(detail.id)
+            if refreshFn then refreshFn() end
+        end)
+
+        StyleDockButton(dock.clearBtn, "Clr", false)
+        dock.clearBtn:SetScript("OnClick", function()
+            M.planTargetID = nil
+            TI.ClearMilestones()
+            TI.SandboxClear()
+            if refreshFn then refreshFn() end
+        end)
+    else
+        dock.mathLine:Hide()
+        dock.castsLine:Hide()
+        dock.gearLine:Hide()
+        dock.sandboxBtn:Hide()
+        dock.plusBtn:Hide()
+        dock.minusBtn:Hide()
+        dock.clearBtn:Hide()
+        dock.noteLine:ClearAllPoints()
+        dock.noteLine:SetPoint("TOPLEFT", dock, "TOPLEFT", 10, -64)
+        dock.noteLine:SetText(PLAN_HONEST_NOTE)
+        dock.noteLine:SetTextColor(0.56, 0.62, 0.70, 1)
+    end
+
+    local planBtnLabel
+    if TI then
+        if isTarget then
+            planBtnLabel = "Unpin Milestone"
+        elseif hasMilestones then
+            planBtnLabel = "Add Milestone"
+        else
+            planBtnLabel = "Pin Milestone"
+        end
+    else
+        planBtnLabel = isTarget and "Clear Target" or "Set Plan Target"
+    end
+    StyleDockButton(dock.planBtn, planBtnLabel, isTarget)
+    dock.planBtn:SetScript("OnClick", function()
+        if TI and TI.ToggleMilestone then
+            local pinned = TI.ToggleMilestone(detail.id)
+            if pinned then
+                M.planTargetID = detail.id
+            elseif M.planTargetID == detail.id then
+                local sl = TI.ActiveSlot()
+                M.planTargetID = (sl and sl.targets and sl.targets[#sl.targets]) or nil
+            end
+        else
+            if M.planTargetID == detail.id then
+                M.planTargetID = nil
+            else
+                M.planTargetID = detail.id
+            end
         end
         if refreshFn then refreshFn() end
     end)
@@ -1825,7 +2158,7 @@ local function MountDetailDock(content, yTop, width, nodes, conds, spent, unspen
         if refreshFn then refreshFn() end
     end)
 
-    return DOCK_H
+    return dockH
 end
 
 -- ─── RENDER ────────────────────────────────────────────────────────────────
@@ -1854,6 +2187,9 @@ function M:Render(content, side)
     if not nodes or #nodes == 0 then
         if _G.TATalentDetailDock and _G.TATalentDetailDock.Hide then
             _G.TATalentDetailDock:Hide()
+        end
+        if _G.TATalentFilterBar and _G.TATalentFilterBar.Hide then
+            _G.TATalentFilterBar:Hide()
         end
         y = RenderNoTraits(content, y, level)
         if err then
@@ -1885,9 +2221,47 @@ function M:Render(content, side)
     local treeH, treeW = M.StackHeight(plans)
     M._report = plans[1] and plans[1].report
 
-    -- The header stays on the content frame. `y` is where the tree starts,
-    -- so the pane is whatever the content scroll still has under that line.
+    -- Precompute Phase 3 intelligence context once per render (cached descriptions,
+    -- exact unlock levels, Casts share, equipped Gear stats, and filter pills).
+    local TI = TA.TalentIntel
+    local intelCtx = nil
+    local filterPills = nil
+    if TI then
+        local descByID, unlockByID = {}, {}
+        for _, n in ipairs(nodes) do
+            if n.id ~= nil then
+                local d = TI.ReadSpellDesc(n.spellID)
+                descByID[n.id] = d
+                local ulv = TI.UnlockLevel(n, conds, spent, unspent, level, MinReq, NodeGate)
+                if ulv then unlockByID[n.id] = ulv end
+            end
+        end
+        filterPills = TI.DiscoverFilters(nodes, function(n) return descByID[n.id] or "" end)
+        intelCtx = {
+            nodes = nodes,
+            spent = spent,
+            playerLevel = level,
+            descByID = descByID,
+            unlockByID = unlockByID,
+            castStats = TI.ReadCastStats(),
+            gearStats = TI.ReadEquippedStats(),
+        }
+    end
+
+    -- The header stays on the content frame. Filter bar sits right under it
+    -- when TalentIntel is loaded.
     y = L:SectionHeader(content, y, M.Header(spent, unspent))
+    local filterY = y
+    local refreshPlanUI
+    if TI and filterPills then
+        local fH = MountFilterBar(content, filterY, availW, filterPills, function()
+            if refreshPlanUI then refreshPlanUI() end
+        end)
+        if fH > 0 then y = y - fH - 4 end
+    elseif _G.TATalentFilterBar and _G.TATalentFilterBar.Hide then
+        _G.TATalentFilterBar:Hide()
+    end
+
     local availH = M.TreeAvail(ViewportHeight(content), math.abs(y))
     local paneH, scrolls = M.TreePane(treeH, availH)
     if scrolls and availW > SCROLLBAR_PX + 40 then
@@ -1900,7 +2274,7 @@ function M:Render(content, side)
         end
     end
 
-    local route = M.planTargetID and M.PlanRoute(nodes, conds, M.planTargetID, spent) or nil
+    local route = M.ActiveRoute(nodes, conds, spent, unspent, level)
     local mountedButtons, mountedLines
     local function applyHeight(dockH)
         if scrolls then
@@ -1919,13 +2293,24 @@ function M:Render(content, side)
         end
     end
 
-    local function refreshPlanUI()
-        local activeRoute = M.planTargetID and M.PlanRoute(nodes, conds, M.planTargetID, spent) or nil
+    refreshPlanUI = function()
+        local activeRoute = M.ActiveRoute(nodes, conds, spent, unspent, level)
+        if TI and filterPills then
+            MountFilterBar(content, filterY, availW, filterPills, refreshPlanUI)
+        end
         if mountedButtons then
+            local fKey = M.activeFilter or "all"
             for _, btn in ipairs(mountedButtons) do
                 btn._inPlan = (activeRoute and activeRoute.inPath and activeRoute.inPath[btn.id] ~= nil) or false
+                if TI and intelCtx then
+                    local d = intelCtx.descByID[btn.id] or ""
+                    btn._filterDim = (fKey ~= "all") and (not TI.NodeMatchesFilter(btn._cell, d, fKey)) or false
+                else
+                    btn._filterDim = false
+                end
                 if btn._cell then
-                    UpdateButtonBadge(btn, btn._cell, activeRoute, unspent)
+                    local ulv = intelCtx and intelCtx.unlockByID[btn.id] or nil
+                    UpdateButtonBadge(btn, btn._cell, activeRoute, unspent, ulv, intelCtx and intelCtx.playerLevel)
                 end
                 PaintNode(btn)
             end
@@ -1935,13 +2320,13 @@ function M:Render(content, side)
                 pcall(TintEdge, entry.line, entry.ln, activeRoute)
             end
         end
-        local dockH = MountDetailDock(content, y - paneH - 8, availW, nodes, conds, spent, unspent, refreshPlanUI)
+        local dockH = MountDetailDock(content, y - paneH - 8, availW, nodes, conds, spent, unspent, refreshPlanUI, intelCtx)
         applyHeight(dockH)
     end
 
     local _scroll
-    _scroll, mountedButtons, mountedLines = MountTree(content, y, plans, paneH, treeH, treeW, route, unspent, refreshPlanUI)
-    local dockH = MountDetailDock(content, y - paneH - 8, availW, nodes, conds, spent, unspent, refreshPlanUI)
+    _scroll, mountedButtons, mountedLines = MountTree(content, y, plans, paneH, treeH, treeW, route, unspent, refreshPlanUI, intelCtx)
+    local dockH = MountDetailDock(content, y - paneH - 8, availW, nodes, conds, spent, unspent, refreshPlanUI, intelCtx)
     applyHeight(dockH)
 end
 

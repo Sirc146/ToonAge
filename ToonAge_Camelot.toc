@@ -189,6 +189,8 @@ Modules\Forever\Gear.lua
 Modules\Forever\StatPriority.lua
 # Tooltip suggestions and bag/loot/quest arrows from those orders. Not a module.
 Modules\Forever\GearAdvice.lua
+# Talent intelligence helpers: spell filters, unlock levels, sandbox planner, casts/gear callouts.
+Modules\Forever\TalentIntel.lua
 Modules\Forever\Talents.lua
 Modules\Forever\MageGuidance.lua
 # Next-spell suggestion icon. Its own frame. No action-button glow.
