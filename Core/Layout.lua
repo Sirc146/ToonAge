@@ -507,41 +507,60 @@ function L:StatBar(parent, y, opts)
     y = math.floor(y)
     local w = self:Width(parent)
 
-    local ROW_H   = 22
-    local BAR_H   = 12
-    local LABEL_W = math.min(110, math.floor(w * 0.28))
-    local VALUE_W = 64
-    local GAP     = 8
-    local barW    = math.max(w - LABEL_W - VALUE_W - GAP * 2, 40)
+    local hasBadge = opts.badge and opts.badge ~= ""
+    local BAR_H    = opts.barHeight or 12
+    local ROW_H    = math.max(22, BAR_H + 10)
+    local LABEL_W  = opts.labelWidth or math.min(130, math.floor(w * 0.28))
+    local BADGE_W  = hasBadge and (opts.badgeWidth or 62) or 0
+    local VALUE_W  = opts.valueWidth or 86
+    local GAP      = 8
+    local badgeGap = hasBadge and GAP or 0
+    local barW     = math.max(w - LABEL_W - BADGE_W - VALUE_W - GAP * 2 - badgeGap, 40)
 
     local row = AcquireFrame("StatBar", parent, function()
         local f = CreateFrame("Frame", nil, HOLDER)
-        f.label = NewFS(f)
-        f.track = CreateFrame("Frame", nil, f)
-        f.fill  = f.track:CreateTexture(nil, "ARTWORK")
-        f.extra = f.track:CreateTexture(nil, "ARTWORK")
-        f.text  = NewFS(f)
+        f.label   = NewFS(f)
+        f.track   = CreateFrame("Frame", nil, f)
+        f.fill    = f.track:CreateTexture(nil, "ARTWORK")
+        f.extra   = f.track:CreateTexture(nil, "ARTWORK")
+        f.barText = NewFS(f.track)
+        f.badge   = NewFS(f)
+        f.text    = NewFS(f)
         return f
     end)
     row:SetSize(w, ROW_H)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
 
-    StyleText(row.label, { text = opts.label, size = 10, color = L.C_SECONDARY })
+    local isModern = TA.Theme and TA.Theme.active and TA.Theme.active.name == "modern_azeroth"
+    local textTop = -math.floor((ROW_H - 12) / 2)
+    local trackTop = -math.floor((ROW_H - BAR_H) / 2)
+
+    StyleText(row.label, {
+        text = opts.label,
+        size = opts.labelSize or 10,
+        color = opts.labelColor or (isModern and L.C_PRIMARY or L.C_SECONDARY),
+    })
     row.label:ClearAllPoints()
-    row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -3)
+    row.label:SetPoint("TOPLEFT", row, "TOPLEFT", 0, textTop)
     row.label:SetWidth(LABEL_W)
+    if row.label.SetWordWrap then row.label:SetWordWrap(false) end
     row.label:SetHeight(0)
 
     local track = row.track
     track:ClearAllPoints()
     track:SetSize(barW, BAR_H)
-    track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, -2)
+    track:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP, trackTop)
     if TA._ApplyBackdrop then
-        TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
+        if isModern then
+            TA._ApplyBackdrop(track, 0.08, 0.11, 0.15, 0.96, 1.00, 1.00, 1.00, 0.12)
+        else
+            TA._ApplyBackdrop(track, 0.10, 0.09, 0.08, 1.00, 0.28, 0.26, 0.22, 1.00)
+        end
     end
 
     local value = tonumber(opts.value)
     local scale = tonumber(opts.scale)
+    local cBase = Colour(opts.color or "stat")
     row.fill:Hide()
     row.extra:Hide()
 
@@ -551,7 +570,6 @@ function L:StatBar(parent, y, opts)
         local base  = tonumber(opts.base)
         local basePct = (base and base >= 0 and base <= value) and (base / scale) or total
 
-        local cBase = Colour(opts.color or "stat")
         local fill = row.fill
         fill:ClearAllPoints()
         fill:SetPoint("TOPLEFT",    track, "TOPLEFT",    1, -1)
@@ -572,20 +590,52 @@ function L:StatBar(parent, y, opts)
         end
     end
 
+    if opts.barText and opts.barText ~= "" then
+        StyleText(row.barText, {
+            text = opts.barText, size = 9, flags = "OUTLINE",
+            color = L.C_PRIMARY, justify = "CENTER",
+        })
+        row.barText:ClearAllPoints()
+        row.barText:SetPoint("CENTER", track, "CENTER", 0, 0)
+        row.barText:SetWidth(math.max(barW - 8, 20))
+        if row.barText.SetWordWrap then row.barText:SetWordWrap(false) end
+        row.barText:Show()
+    elseif row.barText then
+        row.barText:Hide()
+    end
+
+    local rightX = LABEL_W + GAP + barW + GAP
+    if hasBadge then
+        StyleText(row.badge, {
+            text = opts.badge, size = 10, flags = "OUTLINE",
+            color = opts.badgeColor or cBase, justify = "RIGHT",
+        })
+        row.badge:ClearAllPoints()
+        row.badge:SetPoint("TOPLEFT", row, "TOPLEFT", rightX, textTop)
+        row.badge:SetWidth(BADGE_W)
+        if row.badge.SetWordWrap then row.badge:SetWordWrap(false) end
+        row.badge:Show()
+        rightX = rightX + BADGE_W + GAP
+    elseif row.badge then
+        row.badge:Hide()
+    end
+
     -- The real number, right-justified inside a fixed-width box whose LEFT edge
     -- is computed -- same look as a right anchor, without depending on the
     -- parent's right edge being where we think it is.
+    local shownText = opts.displayText or opts.text or (value and tostring(value)) or "|cFF6E6A62n/a|r"
     StyleText(row.text, {
-        text = opts.text or (value and tostring(value)) or "|cFF6E6A62n/a|r",
-        size = 11, flags = "OUTLINE", color = opts.status, justify = "RIGHT",
+        text = shownText,
+        size = opts.valueSize or 10, flags = "OUTLINE", color = opts.status, justify = "RIGHT",
     })
     row.text:ClearAllPoints()
-    row.text:SetPoint("TOPLEFT", row, "TOPLEFT", LABEL_W + GAP + barW + GAP, -3)
+    row.text:SetPoint("TOPLEFT", row, "TOPLEFT", rightX, textTop)
     row.text:SetWidth(VALUE_W)
+    if row.text.SetWordWrap then row.text:SetWordWrap(false) end
     row.text:SetHeight(0)
 
     RowTooltip(row, opts.tooltipTitle or opts.label, opts.tooltip)
-    return y - ROW_H - 2, row
+    return y - ROW_H - (opts.rowGap or 2), row
 end
 
 -- Profession colours.

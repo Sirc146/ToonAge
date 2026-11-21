@@ -438,6 +438,24 @@ end
 --- is collapsed. list.unreadable is true when a row, its header flag, or
 --- its name cannot be read. list.capped is true when the client count was
 --- above 200 and the rest was not read. None of these open or close a header.
+local STANDING_INFO = {
+    [1] = { name = "Hated",      nextName = "Hostile",    color = { 0.80, 0.25, 0.25 } },
+    [2] = { name = "Hostile",    nextName = "Unfriendly", color = { 0.85, 0.32, 0.26 } },
+    [3] = { name = "Unfriendly", nextName = "Neutral",    color = { 0.86, 0.52, 0.24 } },
+    [4] = { name = "Neutral",    nextName = "Friendly",   color = { 0.85, 0.70, 0.30 } },
+    [5] = { name = "Friendly",   nextName = "Honored",    color = { 0.27, 0.78, 0.42 } },
+    [6] = { name = "Honored",    nextName = "Revered",    color = { 0.18, 0.76, 0.62 } },
+    [7] = { name = "Revered",    nextName = "Exalted",    color = { 0.25, 0.78, 0.92 } },
+    [8] = { name = "Exalted",    nextName = nil,          color = { 0.42, 0.92, 0.94 } },
+}
+
+local function FormatComma(n)
+    if type(n) ~= "number" then return tostring(n or "") end
+    local s = tostring(math.floor(n + 0.5))
+    local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+    return (out:gsub("^,", ""))
+end
+
 function FT.WalkClientFactions()
     local C = TA.Compat
     if not (C and type(C.GetNumFactions) == "function" and type(C.GetFactionDataByIndex) == "function") then
@@ -477,6 +495,7 @@ function FT.WalkClientFactions()
 
     local list = {}
     local collapsed, unreadable = false, false
+    local currentGroup = nil
     for i = 1, n do
         local row = rowAt(i)
         if not row then
@@ -485,10 +504,13 @@ function FT.WalkClientFactions()
             unreadable = true
         elseif row.isHeader == true then
             if row.isCollapsed == true then collapsed = true end
+            local gname = plainName(row.name)
+            if gname then currentGroup = gname end
         else
             local name = plainName(row.name)
             if name then
                 row.name = name
+                row.group = currentGroup
                 row.observed = true
                 list[#list + 1] = row
             else
@@ -506,6 +528,7 @@ local function ReadObserved(row)
     local value, badV = CleanNum(row.currentStanding)
     local hi, badH = CleanNum(row.nextReactionThreshold)
     local lo = CleanNum(row.currentReactionThreshold)
+    local reaction = CleanNum(row.reaction)
     if badV == "secret" or badH == "secret" then
         return Hidden(true, "standing")
     end
@@ -514,13 +537,36 @@ local function ReadObserved(row)
     local span = (type(lo) == "number" and type(hi) == "number") and (hi - lo) or nil
     local into = value
     if value and type(lo) == "number" and span and span > 0 then into = value - lo end
+    local cap = (span and span > 0) and span or hi
+    local atMax = (reaction and reaction >= 8) and true or false
+    local st = reaction and STANDING_INFO[reaction] or nil
+
+    local displayText = text
+    local barText = nil
+    local remaining = nil
+    if atMax then
+        displayText = "Max"
+        barText = "Exalted"
+    elseif type(into) == "number" and type(cap) == "number" and cap > 0 then
+        local pct = math.floor(math.min(math.max(into / cap, 0), 1) * 100 + 0.5)
+        displayText = string.format("%s / %s", FormatComma(into), FormatComma(cap))
+        barText = string.format("%d%%", pct)
+        if cap > into then remaining = cap - into end
+    end
+
     return {
         current = into,
-        cap = (span and span > 0) and span or hi,
-        atMax = false,
+        cap = cap,
+        atMax = atMax,
         paragon = false,
         unverified = true,
         text = text,
+        displayText = displayText,
+        barText = barText,
+        standingName = st and st.name or nil,
+        standingColor = st and st.color or nil,
+        nextStanding = st and st.nextName or nil,
+        remaining = remaining,
         system = "standing",
         scale = "rep",
         secret = false,
@@ -543,12 +589,15 @@ end
 function FT:Render(content, side)
     local L = TA.Layout
     if not L then return end
-    local y = -8
-    y = L:SectionHeader(content, y, "Reputation")
-    if FT.Family() == "forever" then
-        y = L:Paragraph(content, y,
-            "Reputation reads are unverified until Harvest probes them.")
+
+    if side then
+        local FC = TA.GetModule and TA:GetModule("ForeverCharacter")
+        if FC and FC.RenderSidebarPublic then
+            pcall(FC.RenderSidebarPublic, FC, side)
+        end
     end
+
+    local y = -8
     local list = SortedFactions()
     local observed = false
     if FT.Family() == "forever" then
@@ -557,6 +606,36 @@ function FT:Render(content, side)
             list = walked
             observed = true
         end
+    end
+
+    -- Pre-read observed Forever factions so the header can summarize closest progress
+    local preRead = {}
+    local subtitle = nil
+    if observed and type(list) == "table" and #list > 0 then
+        local closestName, closestRem, closestNext
+        for i, faction in ipairs(list) do
+            local r = ReadObserved(faction)
+            preRead[i] = r
+            if r.remaining and r.remaining > 0 and (not closestRem or r.remaining < closestRem) then
+                closestRem = r.remaining
+                closestName = faction.name
+                closestNext = r.nextStanding
+            end
+        end
+        if closestName and closestRem then
+            local target = closestNext and (" to " .. closestNext) or " to next standing"
+            subtitle = string.format("%d tracked · Closest: %s (%s%s)",
+                #list, tostring(closestName), FormatComma(closestRem), target)
+        else
+            subtitle = string.format("%d tracked", #list)
+        end
+    end
+
+    y = L:SectionHeader(content, y, "Reputation", subtitle)
+    if FT.Family() == "forever" then
+        y = L:Paragraph(content, y,
+            "Reputation reads are unverified until Harvest probes them.",
+            { color = L.C_DIM })
     end
     if not list then
         local missing = FT.Family() == "forever"
@@ -587,17 +666,47 @@ function FT:Render(content, side)
         L:Finish(content, y)
         return
     end
-    for _, faction in ipairs(list) do
-        local read = observed and ReadObserved(faction) or FT.Read(faction)
+
+    local lastGroup = nil
+    for i, faction in ipairs(list) do
+        if observed and faction.group and faction.group ~= lastGroup then
+            lastGroup = faction.group
+            if i > 1 and L.Spacer then y = L:Spacer(y, 6) end
+            y = L:SectionHeader(content, y, faction.group)
+        end
+        local read = observed and (preRead[i] or ReadObserved(faction)) or FT.Read(faction)
         local active = (not observed) and FT.IsActive(faction)
         local left = observed and nil or FT.QuestsLeft(faction, read)
+
+        local tipLines
+        if observed then
+            tipLines = {}
+            if read.standingName then
+                tipLines[#tipLines + 1] = "Standing: " .. read.standingName
+            end
+            if read.displayText then
+                tipLines[#tipLines + 1] = "In current tier: " .. read.displayText
+            end
+            if read.remaining and read.nextStanding then
+                tipLines[#tipLines + 1] = string.format("%s rep to %s", FormatComma(read.remaining), read.nextStanding)
+            end
+        end
+
         y = L:StatBar(content, y, {
             label = faction.name or "Faction",
+            labelWidth = observed and 126 or nil,
             value = read.current,
             scale = read.cap,
-            color = FT.FillColor(read, active),
+            barHeight = observed and 16 or nil,
+            rowGap = observed and 4 or nil,
+            color = (observed and read.standingColor) or FT.FillColor(read, active),
+            badge = observed and read.standingName or nil,
+            barText = observed and read.barText or nil,
             text = read.text,
+            displayText = observed and read.displayText or nil,
+            valueWidth = observed and 88 or nil,
             status = "neutral",
+            tooltip = tipLines,
         })
         local line = (not observed) and FT.LeftLine(read, left) or nil
         if line then y = L:Paragraph(content, y, line) end
@@ -619,6 +728,13 @@ function FT:Render(content, side)
     if observed and list.capped then
         y = L:Paragraph(content, y,
             "The faction list was longer than 200 rows. Only the first 200 were read.")
+    end
+    if observed and L.ButtonRow and L.OpenTab then
+        if L.Divider then y = L:Divider(content, y) end
+        y = L:ButtonRow(content, y, {
+            { label = "Open Now", onClick = function() L:OpenTab("now") end },
+            { label = "Open Harvest", onClick = function() L:OpenTab("harvest") end },
+        }, { label = "Next steps:" })
     end
     L:Finish(content, y)
 end

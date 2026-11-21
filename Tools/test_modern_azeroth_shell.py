@@ -515,6 +515,91 @@ def main():
     check("Settings APPEARANCE has Accent theme pack row", res.hasPackRow, True)
     check("Clicking Accent theme pack cycles class -> toonage_gold live", (res.beforePack, res.afterPack), ("class", "toonage_gold"))
 
+    # 7. Reputation tab visual upgrade: standing colors, badges, in-tier text, group headers, 0-churn
+    lua.execute(read("Core/Compat/API.lua"))
+    lua.execute(read("Modules/Progression/FactionTracker.lua"))
+    res = lua.execute(r"""
+        local FT = ToonAge.FactionTracker
+        ToonAge.flavor = "forever"
+        C_Reputation = {
+            GetNumFactions = function() return 4 end,
+            GetFactionDataByIndex = function(i)
+                local rows = {
+                    { name = "Horde", isHeader = true, isCollapsed = false, factionID = 67 },
+                    { name = "Darkspear Trolls", factionID = 530, reaction = 4, isHeader = false,
+                      currentReactionThreshold = 0, nextReactionThreshold = 3000, currentStanding = 2943 },
+                    { name = "Orgrimmar", factionID = 76, reaction = 5, isHeader = false,
+                      currentReactionThreshold = 3000, nextReactionThreshold = 9000, currentStanding = 3963 },
+                    { name = "Undercity", factionID = 68, reaction = 6, isHeader = false,
+                      currentReactionThreshold = 9000, nextReactionThreshold = 21000, currentStanding = 11108 },
+                }
+                return rows[i]
+            end,
+        }
+        local content = CreateFrame("Frame")
+        content:SetSize(640, 1)
+        content._laPane = true
+        local side = CreateFrame("Frame")
+        side:SetSize(184, 1)
+
+        FT:Render(content, side)
+        local orphan1 = CountDescendants(content)
+        local sideH = side:GetHeight()
+        local bars = {}
+        for _, ch in ipairs(content._children) do
+            if ch._laKind == "StatBar" then
+                bars[ch.label:GetText()] = {
+                    badge = ch.badge and ch.badge:GetText() or "",
+                    barText = ch.barText and ch.barText:GetText() or "",
+                    text = ch.text and ch.text:GetText() or "",
+                    fillColor = ch.fill and ch.fill._colorTex,
+                }
+            end
+        end
+        local sawHordeHeader = false
+        local sawClosest = false
+        for _, r in ipairs(content._regions) do
+            if r._kind == "FontString" then
+                if r._text == "Horde" then sawHordeHeader = true end
+                if string.find(r._text or "", "Closest: Darkspear Trolls %(57 to Friendly%)", 1) then
+                    sawClosest = true
+                end
+            end
+        end
+
+        ToonAge.Layout:ReleasePane(content)
+        local before2 = createdFrames
+        FT:Render(content, side)
+        local added2 = createdFrames - before2
+        local orphan2 = CountDescendants(content)
+
+        return {
+            sideH = sideH,
+            orphan1 = orphan1,
+            added2 = added2,
+            orphan2 = orphan2,
+            sawHordeHeader = sawHordeHeader,
+            sawClosest = sawClosest,
+            orgBadge = bars["Orgrimmar"] and bars["Orgrimmar"].badge,
+            orgBarText = bars["Orgrimmar"] and bars["Orgrimmar"].barText,
+            orgText = bars["Orgrimmar"] and bars["Orgrimmar"].text,
+            orgFill = bars["Orgrimmar"] and bars["Orgrimmar"].fillColor,
+            ucBadge = bars["Undercity"] and bars["Undercity"].badge,
+            ucText = bars["Undercity"] and bars["Undercity"].text,
+        }
+    """)
+    check("Reputation renders persistent 3D character sidebar", res.sideH > 100, True)
+    check("Reputation emits client group header (Horde)", res.sawHordeHeader, True)
+    check("Reputation subtitle names closest next standing (57 to Friendly)", res.sawClosest, True)
+    check("Orgrimmar shows Friendly badge, 16% bar text, and in-tier 963 / 6,000",
+          (res.orgBadge, res.orgBarText, res.orgText), ("Friendly", "16%", "963 / 6,000"))
+    check("Orgrimmar Friendly bar uses emerald green fill (g > r and g > b)",
+          res.orgFill[2] > res.orgFill[1] and res.orgFill[2] > res.orgFill[3], True)
+    check("Undercity shows Honored badge and in-tier 2,108 / 12,000",
+          (res.ucBadge, res.ucText), ("Honored", "2,108 / 12,000"))
+    check("Reputation pass 1 & pass 2 have 0 orphans and 0 new frames on pass 2",
+          (res.orphan1, res.added2, res.orphan2), (0, 0, 0))
+
     passed = sum(1 for r in _results if r)
     total = len(_results)
     print(f"\n{passed}/{total} passed")
