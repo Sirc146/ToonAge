@@ -1050,10 +1050,10 @@ function L:Paragraph(parent, y, text, opts)
     opts = opts or {}
     y = math.floor(y)
     local fs = Text(parent, { text = text, size = opts.size or 10, color = opts.color or "dim" })
-    fs:SetPoint("TOPLEFT", parent, "TOPLEFT", L.PAD, y)
+    fs:SetPoint("TOPLEFT", parent, "TOPLEFT", opts.x or L.PAD, y)
     if fs.SetWordWrap then fs:SetWordWrap(true) end
     fs:SetJustifyH("LEFT")
-    fs:SetWidth(self:Width(parent))
+    fs:SetWidth(opts.width or self:Width(parent))
     -- Height 0 does not wrap on Forever. The line runs to the scroll child's
     -- edge and the frame clips it ("classify correctly the first ti").
     -- Measure against a tall box, then size the string to the wrapped lines.

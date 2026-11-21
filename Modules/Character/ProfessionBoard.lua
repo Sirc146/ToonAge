@@ -50,7 +50,12 @@ function B:Render(content, side)
     end
     Retire(content)
     Retire(side)
-    if L.CharacterSidebar then L:CharacterSidebar(side) end
+    local FC = TA.GetModule and TA:GetModule("ForeverCharacter")
+    if FC and FC.RenderSidebarPublic then
+        pcall(FC.RenderSidebarPublic, FC, side)
+    elseif L.CharacterSidebar then
+        L:CharacterSidebar(side)
+    end
     -- Retail gear lives in its own file. Older clients never load it, and a
     -- client without profession slot calls draws no row.
     local gear = TA.ProfessionGear
@@ -143,44 +148,64 @@ function DrawLearned(content, y, cards)
             rerender()
         end
     end
-    local function plan()
-        local rows = {
-            { key = "n", label = "Batch size: number of crafts" },
-            { key = "cut", label = "Auction cut as a fraction of the sale price, for example 0.05" },
-            { key = "vendor", label = "Vendor buy for the whole batch, in gold. Enter 0 when there is no vendor material." },
-            { key = "lostCraft", label = "Known lost deposit on the crafted listings, in gold. Leave blank if unknown." },
-            { key = "lostRaw", label = "Known lost deposit on the raw listings this craft avoids, in gold. Leave blank if unknown." },
-            { key = "refund", label = "Refundable deposit tied up, in gold. It is not subtracted. Leave blank if none." },
-            { key = "seconds", label = "Active crafting seconds for the batch. Leave blank to withhold the hour rate." },
+    local function sections()
+        local out = {
+            {
+                title = "Batch & Fees",
+                fields = {
+                    { key = "n",         short = "Batch size (crafts)",          full = "Batch size: number of crafts" },
+                    { key = "cut",       short = "Auction cut (e.g. 0.05)",      full = "Auction cut as a fraction of the sale price, for example 0.05" },
+                    { key = "vendor",    short = "Vendor buy (gold, whole batch)", full = "Vendor buy for the whole batch, in gold. Enter 0 when there is no vendor material." },
+                    { key = "seconds",   short = "Active crafting seconds",      full = "Active crafting seconds for the batch. Leave blank to withhold the hour rate." },
+                    { key = "lostCraft", short = "Lost deposit: crafted (gold)", full = "Known lost deposit on the crafted listings, in gold. Leave blank if unknown." },
+                    { key = "lostRaw",   short = "Lost deposit: raw avoided (g)", full = "Known lost deposit on the raw listings this craft avoids, in gold. Leave blank if unknown." },
+                    { key = "refund",    short = "Refundable deposit tied up (g)", full = "Refundable deposit tied up, in gold. It is not subtracted. Leave blank if none." },
+                },
+            },
         }
         for i = 1, PB.form.reagents do
             local p = "Reagent " .. i .. " "
-            rows[#rows + 1] = { key = "reag" .. i .. "need", label = p .. "need per craft, in items. The batch size multiplies this." }
-            rows[#rows + 1] = { key = "reag" .. i .. "owned", label = p .. "owned, in items. This is not multiplied again." }
-            rows[#rows + 1] = { key = "reag" .. i .. "price", label = p .. "listing price, in gold each. Not a completed sale." }
-            rows[#rows + 1] = { key = "reag" .. i .. "buyQty", label = p .. "quantity bought, in items. The full quantity is the cash paid." }
-            rows[#rows + 1] = { key = "reag" .. i .. "buyPrice", label = p .. "price paid, in gold each." }
+            out[#out + 1] = {
+                title = "Reagent " .. i,
+                fields = {
+                    { key = "reag" .. i .. "need",     short = "Need per craft",      full = p .. "need per craft, in items. The batch size multiplies this." },
+                    { key = "reag" .. i .. "owned",    short = "Owned (items)",       full = p .. "owned, in items. This is not multiplied again." },
+                    { key = "reag" .. i .. "price",    short = "Listing price (g ea)", full = p .. "listing price, in gold each. Not a completed sale." },
+                    { key = "reag" .. i .. "buyQty",   short = "Quantity bought",     full = p .. "quantity bought, in items. The full quantity is the cash paid." },
+                    { key = "reag" .. i .. "buyPrice", short = "Price paid (g ea)",   full = p .. "price paid, in gold each." },
+                },
+            }
         end
         for i = 1, PB.form.outputs do
             local p = "Output " .. i .. " "
-            rows[#rows + 1] = { key = "out" .. i .. "count", label = p .. "count per craft, in items. The batch size multiplies this." }
-            rows[#rows + 1] = { key = "out" .. i .. "price", label = p .. "listing price, in gold each. Not realized profit." }
+            out[#out + 1] = {
+                title = "Output " .. i,
+                fields = {
+                    { key = "out" .. i .. "count", short = "Count per craft",     full = p .. "count per craft, in items. The batch size multiplies this." },
+                    { key = "out" .. i .. "price", short = "Listing price (g ea)", full = p .. "listing price, in gold each. Not realized profit." },
+                },
+            }
         end
-        return rows
+        return out
     end
-    y = L:SectionHeader(content, y, "Learned recipes")
+
+    y = L:SectionHeader(content, y, "Learned recipes", "Manual batch estimator")
     y = L:Paragraph(content, y, PB.lastNote or
-        "Learned recipes are not enabled from the open profession window. Ownership of that window is not a verified field. The calculator below uses only the numbers you type.")
+        "Learned recipes are not enabled from the open profession window. Ownership of that window is not a verified field. The calculator below uses only the numbers you type.",
+        { color = L.C_DIM })
     local shown = PB.CurrentView and PB.CurrentView(PB.LiveIdentity and PB.LiveIdentity() or nil) or {}
     if #shown == 0 then
-        y = L:Paragraph(content, y, "No saved learned recipes are shown for this character.")
+        y = L:Paragraph(content, y, "No saved learned recipes are shown for this character.", { color = L.C_DIM })
     end
     for _, rec in ipairs(shown) do
         y = L:Paragraph(content, y, tostring(rec.professionID) .. " " .. tostring(rec.profession) .. ": " .. rec.name
             .. " (previously saved, not a complete current read)")
     end
     y = L:ButtonRow(content, y, {
-        { label = "Refresh learned recipes", onClick = function() PB:Refresh(cards); rerender() end },
+        { label = "Calculate batch", gold = true, onClick = function()
+            PB.lastResult = PB.CompareBatch(PB.InputFromForm())
+            rerender()
+        end },
         { label = "Add reagent", onClick = changeRows(function() PB.form.reagents = PB.form.reagents + 1 end) },
         { label = "Remove reagent", onClick = changeRows(function()
             if PB.form.reagents > 1 then PB.form.reagents = PB.form.reagents - 1 end
@@ -189,14 +214,20 @@ function DrawLearned(content, y, cards)
         { label = "Remove output", onClick = changeRows(function()
             if PB.form.outputs > 1 then PB.form.outputs = PB.form.outputs - 1 end
         end) },
-        { label = "Calculate batch", onClick = function()
-            PB.lastResult = PB.CompareBatch(PB.InputFromForm())
-            rerender()
-        end },
+        { label = "Refresh learned recipes", onClick = function() PB:Refresh(cards); rerender() end },
     })
     y = L:Paragraph(content, y,
-        "Gold means the number you type. The result is a conditional listing estimate, not realized profit and not gold earned. The hour, when shown, uses active crafting seconds only.")
-    local function PlaceBox(field, at)
+        "Gold means the number you type. Result is a conditional listing estimate, not realized profit. Hover any input for details.",
+        { color = L.C_DIM })
+
+    local usable = (L.Width and L:Width(content)) or 600
+    if type(usable) ~= "number" or usable <= 0 then usable = 600 end
+    local twoCol = usable >= 460
+    local pad = L.PAD or 14
+    local colGap = 16
+    local colW = twoCol and math.floor((usable - colGap) / 2) or usable
+
+    local function PlaceBox(field, x, at, maxW)
         local box = PB.boxes[field.key]
         if not (box and box.SetText) then
             box = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
@@ -223,6 +254,17 @@ function DrawLearned(content, y, cards)
         if box.SetScript then
             box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
             box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+            box:SetScript("OnEnter", function(self)
+                if GameTooltip then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(field.short or field.key, 1, 0.82, 0)
+                    GameTooltip:AddLine(field.full or "", 0.85, 0.87, 0.90, true)
+                    GameTooltip:Show()
+                end
+            end)
+            box:SetScript("OnLeave", function()
+                if GameTooltip then GameTooltip:Hide() end
+            end)
             -- userInput is true only for typing. SetText during a redraw
             -- passes false and must not invalidate or draw again.
             box:SetScript("OnTextChanged", function(self, userInput)
@@ -240,13 +282,10 @@ function DrawLearned(content, y, cards)
                 end
             end)
         end
-        local boxW, boxH = 160, 22
-        if L.Width then
-            local usable = L:Width(content)
-            if type(usable) == "number" and usable > 0 and usable < boxW then boxW = usable end
-        end
+        local boxW, boxH = 148, 22
+        if type(maxW) == "number" and maxW > 0 and maxW < boxW then boxW = maxW end
         if box.SetSize then box:SetSize(boxW, boxH) end
-        if box.SetPoint then box:SetPoint("TOPLEFT", content, "TOPLEFT", L.PAD or 14, at) end
+        if box.SetPoint then box:SetPoint("TOPLEFT", content, "TOPLEFT", x, at) end
         if content.GetFrameLevel and box.SetFrameLevel then
             box:SetFrameLevel((content:GetFrameLevel() or 0) + 2)
         end
@@ -258,14 +297,49 @@ function DrawLearned(content, y, cards)
         box.hidden = false
         if detached and box.ClearFocus then box:ClearFocus() end
         if box.Show then box:Show() end
-        return box, at - boxH - 6
+        return box, at - boxH - 8
     end
+
     local order = {}
-    for _, field in ipairs(plan()) do
-        y = L:Paragraph(content, y, field.label)
-        local box
-        box, y = PlaceBox(field, y)
-        order[#order + 1] = box
+    local activeKeys = {}
+    for _, sec in ipairs(sections()) do
+        y = L:SectionHeader(content, y, sec.title)
+        local fields = sec.fields
+        if twoCol then
+            local i = 1
+            while i <= #fields do
+                local leftF = fields[i]
+                local rightF = fields[i + 1]
+                local xL = pad
+                local xR = pad + colW + colGap
+                local yL = L:Paragraph(content, y, leftF.short, { x = xL, width = colW, color = L.C_SECONDARY, gap = 3 })
+                local yR = yL
+                if rightF then
+                    yR = L:Paragraph(content, y, rightF.short, { x = xR, width = colW, color = L.C_SECONDARY, gap = 3 })
+                end
+                local boxTop = math.min(yL, yR)
+                local bL, nextL = PlaceBox(leftF, xL, boxTop, colW)
+                order[#order + 1] = bL
+                activeKeys[leftF.key] = true
+                local nextR = nextL
+                if rightF then
+                    local bR
+                    bR, nextR = PlaceBox(rightF, xR, boxTop, colW)
+                    order[#order + 1] = bR
+                    activeKeys[rightF.key] = true
+                end
+                y = math.min(nextL, nextR)
+                i = i + 2
+            end
+        else
+            for _, field in ipairs(fields) do
+                y = L:Paragraph(content, y, field.full, { color = L.C_SECONDARY, gap = 3 })
+                local box
+                box, y = PlaceBox(field, pad, y, usable)
+                order[#order + 1] = box
+                activeKeys[field.key] = true
+            end
+        end
     end
     for i = 1, #order do
         local nxt = order[i + 1]
@@ -276,9 +350,7 @@ function DrawLearned(content, y, cards)
         end
     end
     for key, box in pairs(PB.boxes) do
-        local keep = false
-        for _, field in ipairs(plan()) do if field.key == key then keep = true end end
-        if not keep then
+        if not activeKeys[key] then
             box.hidden = true
             if box.Hide then box:Hide() end
         end
