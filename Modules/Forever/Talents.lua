@@ -238,6 +238,28 @@ M.Theme = {
     line      = { 0.62, 0.58, 0.48, 0.90 },
 }
 
+--- Active focus colour for hover, selection, and glow. Reads Core/Theme.lua
+--- when loaded so modern_azeroth tracks the active theme pack (Class / Gold /
+--- Blizzard), and falls back to M.Theme.gold on classic or standalone runs.
+function M.FocusColor()
+    local active = TA.Theme and TA.Theme.active
+    local t = active and active.talent
+    if type(t) == "table" and type(t.focus) == "table" and t.focus[1] ~= nil then
+        return t.focus
+    end
+    return M.Theme.gold
+end
+
+--- Active route highlight colour for planned talent paths.
+function M.PlanRouteColor()
+    local active = TA.Theme and TA.Theme.active
+    local t = active and active.talent
+    if type(t) == "table" and type(t.plan_route) == "table" and t.plan_route[1] ~= nil then
+        return t.plan_route
+    end
+    return M.FocusColor()
+end
+
 --- Master frame at 32px and above; the _32 cut underneath.
 function M.UsesSmallFrame(px)
     return (tonumber(px) or 40) < 32
@@ -894,13 +916,18 @@ local function PaintNode(btn)
     local hot = btn._hover or btn.id == M.selectedID
     local dim = btn.state == "locked" and not hot
     local alpha = dim and M.LOCK_ALPHA or 1
-    if hot then rgb = theme.gold end
+    if hot then rgb = M.FocusColor() end
     if btn.frame and btn.frame.SetTexture then
         btn.frame:SetTexture(M.FrameFile(btn.shape, hot, btn._px))
         Tint(btn.frame, rgb, alpha)
     end
     if btn.glow then
-        if hot then btn.glow:Show() else btn.glow:Hide() end
+        if hot then
+            Tint(btn.glow.tex, rgb, 1)
+            btn.glow:Show()
+        else
+            btn.glow:Hide()
+        end
     end
     Tint(btn.badgeFill, rgb, alpha)
     Tint(btn.badgeBorder, rgb, alpha)
@@ -1028,8 +1055,7 @@ local function DrawGrid(parent, y, plan, pad)
         glow:EnableMouse(false)
         local gtex = glow.tex
         gtex:SetTexture(M.TEX.glow)
-        local gold = M.Theme.gold
-        Tint(gtex, gold, 1)
+        Tint(gtex, M.FocusColor(), 1)
         if gtex.SetBlendMode then gtex:SetBlendMode("ADD") end
         glow:Hide()
         btn.glow = glow
