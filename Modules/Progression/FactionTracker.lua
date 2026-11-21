@@ -586,6 +586,120 @@ local function SortedFactions()
     return list
 end
 
+-- Forever notable faction reward helpers (pure data lookups; nil-safe when
+-- Data/Forever/FactionRewards.lua is not loaded).
+local NEXT_REWARD_TIER = {
+    Hated      = "Friendly",
+    Hostile    = "Friendly",
+    Unfriendly = "Friendly",
+    Neutral    = "Friendly",
+    Friendly   = "Honored",
+    Honored    = "Revered",
+    Revered    = "Exalted",
+}
+
+function FT.LookupForeverFaction(name)
+    local data = TA.Data and TA.Data.ForeverFactionRewards
+    if type(data) ~= "table" or type(data.factions) ~= "table" then return nil end
+    if type(name) ~= "string" or name == "" then return nil end
+    local needle = name:lower()
+    for _, entry in ipairs(data.factions) do
+        if type(entry) == "table" and type(entry.name) == "string" and entry.name:lower() == needle then
+            return entry
+        end
+    end
+    return nil
+end
+
+function FT.NextRewardTier(entry, standingName)
+    if type(entry) ~= "table" or type(entry.tiers) ~= "table" then return nil end
+    if standingName == "Exalted" then
+        return { tier = "Exalted", reward = entry.tiers.Exalted, maxed = true }
+    end
+    local nextTier = (type(standingName) == "string" and NEXT_REWARD_TIER[standingName]) or "Friendly"
+    local reward = entry.tiers[nextTier]
+    if not reward then return nil end
+    return { tier = nextTier, reward = reward, maxed = false }
+end
+
+function FT.FilterForeverFactions(playerSide)
+    local data = TA.Data and TA.Data.ForeverFactionRewards
+    if type(data) ~= "table" or type(data.factions) ~= "table" then return {} end
+    local side = (type(playerSide) == "string" and playerSide ~= "") and playerSide or nil
+    local out = {}
+    for _, entry in ipairs(data.factions) do
+        if type(entry) == "table" then
+            if not side or entry.side == "Both" or entry.side == side then
+                out[#out + 1] = entry
+            end
+        end
+    end
+    return out
+end
+
+local function PlayerSide()
+    if type(_G.UnitFactionGroup) == "function" then
+        local ok, side = pcall(_G.UnitFactionGroup, "player")
+        if ok and type(side) == "string" and (side == "Horde" or side == "Alliance") then
+            return side
+        end
+    end
+    return nil
+end
+
+local function RenderForeverRewards(content, y, L, observedByName)
+    local data = TA.Data and TA.Data.ForeverFactionRewards
+    if type(data) ~= "table" or type(data.factions) ~= "table" then return y end
+    local side = PlayerSide()
+    local filtered = FT.FilterForeverFactions(side)
+    if #filtered == 0 then return y end
+    if L.Divider then y = L:Divider(content, y) end
+    local sub = side
+        and ("Key Forever PvP & PvE unlocks (" .. side .. " + Neutral) · Hover for all tiers")
+        or "Key Forever PvP & PvE unlocks · Hover for all tiers"
+    y = L:SectionHeader(content, y, "Forever Faction Rewards", sub)
+    local tierOrder = (data.meta and data.meta.tierOrder) or { "Friendly", "Honored", "Revered", "Exalted" }
+    for _, entry in ipairs(filtered) do
+        local obs = observedByName and observedByName[entry.name:lower()] or nil
+        local standing = obs and obs.standingName or nil
+        local nxt = FT.NextRewardTier(entry, standing)
+        local badge, status, note
+        if standing and nxt and nxt.maxed then
+            badge = "Exalted"
+            status = "neutral"
+            note = "Unlocked: " .. tostring(nxt.reward or "")
+        elseif standing and nxt then
+            badge = standing .. " -> " .. nxt.tier
+            status = "warn"
+            note = "Next (" .. nxt.tier .. "): " .. tostring(nxt.reward or "")
+        else
+            badge = entry.category or "Faction"
+            status = "neutral"
+            note = (entry.activity or "") .. (entry.tiers and entry.tiers.Friendly and (" · Friendly: " .. entry.tiers.Friendly) or "")
+        end
+        local tip = {}
+        if entry.activity then tip[#tip + 1] = "Source: " .. entry.activity end
+        if entry.quartermaster then tip[#tip + 1] = "Quartermaster: " .. entry.quartermaster end
+        for _, t in ipairs(tierOrder) do
+            if entry.tiers and entry.tiers[t] then
+                tip[#tip + 1] = t .. ": " .. entry.tiers[t]
+            end
+        end
+        if L.DataRow then
+            y = L:DataRow(content, y, {
+                label = entry.name,
+                value = badge,
+                note = note,
+                status = status,
+                tooltip = tip,
+            })
+        else
+            y = L:Paragraph(content, y, entry.name .. " (" .. badge .. ") — " .. note)
+        end
+    end
+    return y
+end
+
 function FT:Render(content, side)
     local L = TA.Layout
     if not L then return end
@@ -668,6 +782,7 @@ function FT:Render(content, side)
     end
 
     local lastGroup = nil
+    local observedByName = {}
     for i, faction in ipairs(list) do
         if observed and faction.group and faction.group ~= lastGroup then
             lastGroup = faction.group
@@ -680,6 +795,9 @@ function FT:Render(content, side)
 
         local tipLines
         if observed then
+            if type(faction.name) == "string" and faction.name ~= "" then
+                observedByName[faction.name:lower()] = read
+            end
             tipLines = {}
             if read.standingName then
                 tipLines[#tipLines + 1] = "Standing: " .. read.standingName
@@ -689,6 +807,20 @@ function FT:Render(content, side)
             end
             if read.remaining and read.nextStanding then
                 tipLines[#tipLines + 1] = string.format("%s rep to %s", FormatComma(read.remaining), read.nextStanding)
+            end
+            local rew = FT.LookupForeverFaction(faction.name)
+            if rew then
+                if rew.quartermaster then
+                    tipLines[#tipLines + 1] = "Quartermaster: " .. rew.quartermaster
+                end
+                local nxt = FT.NextRewardTier(rew, read.standingName)
+                if nxt then
+                    if nxt.maxed then
+                        tipLines[#tipLines + 1] = "Exalted unlocked: " .. tostring(nxt.reward or "")
+                    else
+                        tipLines[#tipLines + 1] = "Next unlock (" .. nxt.tier .. "): " .. tostring(nxt.reward or "")
+                    end
+                end
             end
         end
 
@@ -728,6 +860,9 @@ function FT:Render(content, side)
     if observed and list.capped then
         y = L:Paragraph(content, y,
             "The faction list was longer than 200 rows. Only the first 200 were read.")
+    end
+    if observed and FT.Family() == "forever" then
+        y = RenderForeverRewards(content, y, L, observedByName)
     end
     if observed and L.ButtonRow and L.OpenTab then
         if L.Divider then y = L:Divider(content, y) end

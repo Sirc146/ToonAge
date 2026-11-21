@@ -8,7 +8,7 @@
 - **Version:** `v2.0.0-dev.1` · **Language:** Lua 5.1
 - **Lead Client:** **WoW Forever** (`1.60.1`, build `71037`, interface `16001`, `ToonAge_Camelot.toc`)
 - **Other Supported Flavors:** Retail (`ToonAge_Mainline.toc`), TBC Anniversary (`ToonAge_TBC.toc`), Mists Classic (`ToonAge_Mists.toc`), Classic Era (`ToonAge_Vanilla.toc`), Cata (`ToonAge_Cata.toc`), Wrath (`ToonAge_Wrath.toc`)
-- **Last Verified State:** `2026-11-21` · HEAD `antigravity/phase8-loot-watch-and-libraries` (`87` automated test suites · `8/8` TOCs parse clean · `0` PII/hygiene findings across `485+` files)
+- **Last Verified State:** `2026-11-21` · HEAD `antigravity/phase10-enchants-and-factions` (`88` automated test suites · `8/8` TOCs parse clean · `0` PII/hygiene findings across `488+` files)
 
 ---
 
@@ -41,8 +41,9 @@ Base: `origin/test @ 6eeb530` (do NOT drop/pop `stash@{0}`; do NOT rebase/force-
 | **5** | `antigravity/phase5-spells-playbook` | `aa34b8e` | Done (local) | `SpellPlaybook.lua`: replaced Lv 10-19 Mage experimental disclaimer wall with working 9-class, Lv 1-60 Playbook (`Single Target`/`Opener`/`AoE`/`Emergency`/`DPS & DPM`, Spec cycler, live buff/wand checks, Casts & Trainer tags) |
 | **6** | `antigravity/phase6-pvp-readiness` | `c68db43` | Done (local) | `PvP.lua` v2: Live Status/Flag/Timer/Zone/BG banner + `Now` Priority 1 alert, Forever BG brackets (incl. 15v15 Darkspear Islands), Readiness checklist (trinket/consumables/plan slot), untruncated utility racials, live spellbook CC counter map, Target Dossier |
 | **7** | `antigravity/phase7-rubric-v2-and-hygiene` | `1bbaddb` | Done (local) | Unified Master Rubric v2 (`Docs/AUDIT_RUBRIC.md`, Part 1 + Part 2 Sections A-L + filled Forever/Remix professions matrix), `Tools/check_pii_hygiene.py`, `Tools/score_rubric.py`, `Tools/test_rubric_tools.py`, fixed TZ-flaky `test_harvest_capture.py` |
-| **8** | `antigravity/phase8-loot-watch-and-libraries` | `b33fca7` | Pushed to `origin` (installed `_forever_`) | `LootWatch.lua`, all-continent Study libraries, regenerated `EVENT_ROUTES`, `MEDIA.md` (102 TGAs), `MASTER_README.md` |
-| **9** | `antigravity/phase9-roadmap-backup-reagents` | *in progress* | Local (Roadmap `1.2` + `2A`) | Pre-install SavedVariables auto-backup in `build_flavors.ps1` (last 10 snapshots under `%LOCALAPPDATA%\ToonAge\Backups`); verified Forever reagent IDs `17020`/`17031`/`17032` in `Data/Forever/Reagents.lua` (0 `UNKNOWN` rows on Scrolls) |
+| **8** | `antigravity/phase8-loot-watch-and-libraries` | `b33fca7` | Pushed to `origin` | `LootWatch.lua`, all-continent Study libraries, regenerated `EVENT_ROUTES`, `MEDIA.md` (102 TGAs), `MASTER_README.md` |
+| **9** | `antigravity/phase9-roadmap-backup-reagents` | `f87c0b9` | Pushed to `origin` | Roadmap `1.2` + `2A`: pre-install SavedVariables auto-backup in `build_flavors.ps1` (last 10 snapshots in `<WoW>\ToonAge_Backups\<client>\`); verified Forever reagent IDs `17020`/`17031`/`17032` in `Data/Forever/Reagents.lua` |
+| **10** | `antigravity/phase10-enchants-and-factions` | *current* | Pushed to `origin` (installed `_forever_`) | Roadmap `2B`: `Data/Forever/Enchants.lua` + `Gear.lua` role-aware Forever Enchant Guide (Necklace, Off-Hand, Relics, Enchanter Rings, no gems); `Data/Forever/FactionRewards.lua` + `FactionTracker.lua` faction-filtered standing unlock milestones (`test_forever_enchants_factions.py` 52/52) |
 
 ---
 
@@ -71,8 +72,8 @@ Base: `origin/test @ 6eeb530` (do NOT drop/pop `stash@{0}`; do NOT rebase/force-
 
 Full criteria, weights, and hard fails live in [Docs/AUDIT_RUBRIC.md](AUDIT_RUBRIC.md). Run `python Tools/score_rubric.py` anytime to re-measure Part 1.
 
-- **Part 1 (Addon & PR Quality):** **9.5 / 10.0** (Merge Bar `>= 8.0`: **PASS** · `0` Hard Fails · `8/8` TOCs · `87/87` test suites · `0` PII findings)
-- **Part 2 (Forever `1.60.1` Character & Game Data):** **7.5 / 10.0** (Strongest: Racials `9.5`, Live Telemetry `9.5` · Biggest upside: Enchants `5.0`, Consumables/Reagents `6.0`, Reputation unlocks `6.5`, Multi-class SpellRanks `8.0`)
+- **Part 1 (Addon & PR Quality):** **9.6 / 10.0** (Merge Bar `>= 8.0`: **PASS** · `0` Hard Fails · `8/8` TOCs · `88/88` test suites · `0` PII findings)
+- **Part 2 (Forever `1.60.1` Character & Game Data):** **8.5 / 10.0** (Strongest: Racials `9.5`, Live Telemetry `9.5`, Enchants `9.0`, Faction Rewards `9.0`, Reagents `8.5` · Remaining upside: Multi-class SpellRanks `8.0`, Live PvP Currency & Profession Skill IDs `7.5`)
 
 ---
 
@@ -89,10 +90,19 @@ Check items off here as they complete so nothing is rebuilt twice.
 
 ### Part 2 — Forever `1.60.1` Character & Game Data (`7.8 -> 10.0`)
 - [x] **2A. Reagents & Consumables Data (`G: 6.0 -> 8.5`):** Verified Forever item IDs against `db.icy-veins.com/wow-forever/items/*` for `Arcane Powder` (`17020`), `Rune of Teleportation` (`17031`), and `Rune of Portals` (`17032`) in `Data/Forever/Reagents.lua` — zero `UNKNOWN` rows on `Scrolls`! *(Remaining for `9.5`: campsite buff stacking & expanded First Aid potions catalog.)*
-- [ ] **2B. Forever Enchants & Faction Rewards (`J: 5.0 -> 9.0`, `F: 6.5 -> 9.0`):** Add sourced Forever enchant recommendations per slot/role (incl. enchanter-crafted relics) and Darkspear Islands / Classic faction reward unlocks in `Data/Forever/`.
+- [x] **2B. Forever Enchants & Faction Rewards (`J: 5.0 -> 9.0`, `F: 6.5 -> 9.0`):** Added sourced `Data/Forever/Enchants.lua` (Necklace, Off-Hand, Class Relics, Enchanter Rings, zero-gems note) wired into `Modules/Forever/Gear.lua`, plus `Data/Forever/FactionRewards.lua` (Darkspear Raiders, Theramore Expeditionary Force, WSG/AB/AV, Argent Dawn, Thorium Brotherhood, Timbermaw Hold) wired into `Modules/Progression/FactionTracker.lua` with Horde/Alliance filtering & next-tier tooltips (`test_forever_enchants_factions.py` 52/52).
 - [ ] **2C. Multi-Class Spell Ranks & Generalized Live Combat Suggest HUD (`B: 8.0 -> 9.5`, `L: 9.5 -> 10.0`):** Harvest trainer rank chains for the remaining 7 non-Mage classes into `Data/Forever/SpellRanks.lua`; generalize `MageSuggest.lua` into a spec-aware live Combat Suggest HUD (Arcane/Fire/Frost first, then all 9 classes) with an in-tab toggle on `Spells`.
 - [ ] **2D. Live Client Probes for PvP Currency & Profession Skill IDs (`K: 7.5 -> 9.5`):** Probe `C_CurrencyInfo` (Honor / Rank Points IDs), `GetBattlefieldStatus`, and primary profession skill-line IDs on live Forever `1.60.1` to unlock live Honor/Rank bars on `PvP` and flip `ProfessionSkills.lua` from `unverified = true` to verified.
 - [ ] **2E. Optional Google Docs Mirror:** If Google Docs plugin is connected later, sync this file's sections to a read/review mirror in Google Drive while keeping `Docs/MASTER_README.md` as the git source of truth.
+
+### Part 3 — Retail (`Midnight 12.x`) Priority Fix Track (Audited from 10 Live Screenshots `2026-11-21`)
+- [ ] **R1. Settings & Modern Azeroth Shell Sync:** Bring Phase 2 Modern Azeroth shell + auto-fit Settings drawer to Retail and truncate/wrap left-column toggle labels so text never collides with `ON`/`OFF` badges.
+- [ ] **R2. Character Tab Versatility % Bug:** Fix `0.00%` (`0.00% damage reduction`) shown despite positive Versatility rating (`618 rating`) on Midnight `12.x`.
+- [ ] **R3. Rotation Tab Blank for Healers / Preservation Evoker:** Default Healer specs to `Heal (M+)` / `Heal (Raid)` instead of blank `DPS`, and verify Midnight `12.x` Preservation Evoker rotation/heal lists populate cleanly.
+- [ ] **R4. Professions Tab `0 / 100` & Clipped Expansion Tooltip:** Fix Midnight `12.x` `C_TradeSkillUI` / `GetProfessionInfo` skill-level readout showing `0 / 100` across Herbalism/Skinning/Fishing, and clamp the expansion-tier breakdown tooltip inside the viewport.
+- [ ] **R5. Weekly Great Vault Thresholds & Ready Banner:** Fix mismatched Raid labels (`Kill 3` over `0/2`, `Kill 7` over `0/4` — Midnight Raid vault is `2/4/6`) and reconcile `"Claim your Great Vault reward!"` with empty progress rows.
+- [ ] **R6. Gear Tab Layout & Cosmetic Slot Noise:** Stop flagging empty `SHIRT` as red `"Missing Item"`, hide the giant `"No heirloom upgrades"` card at max level (Lv 90), and fix header wrap/overlap (`GEAR ADVISOR: BAG SCANNER` vs `Src: pawn` / `PvP: OFF` / `Scan Target`).
+- [ ] **R7. Guide & Reputation Tab Polish:** Suggest `Midnight` (not `Dragonflight`) for Lv 80–90 characters, populate the empty Reputation left sidebar, and cut repetitive per-row `"Per-level renown is not in the data"` clutter.
 
 ---
 

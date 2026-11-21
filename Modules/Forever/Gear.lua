@@ -1101,14 +1101,45 @@ end
 -- Bracer - ..."). Other locales: the slot list still shows, matching does not.
 
 local ENCHANT_SLOTS = {        -- slot id -> what the enchant recipes call it
-    [5] = "Chest", [8] = "Boots", [9] = "Bracer", [10] = "Gloves",
-    [15] = "Cloak", [16] = "Weapon", [17] = "Shield",
+    [2] = "Necklace", [5] = "Chest", [8] = "Boots", [9] = "Bracer", [10] = "Gloves",
+    [11] = "Ring", [12] = "Ring", [15] = "Cloak", [16] = "Weapon", [17] = "Off-Hand",
 }
 local ENCHANT_NAME_SLOT = {    -- longest first: "2H Weapon" before "Weapon"
     { "Enchant 2H Weapon", 16, "2h" }, { "Enchant Weapon", 16 }, { "Enchant Bracer", 9 },
     { "Enchant Boots", 8 }, { "Enchant Chest", 5 }, { "Enchant Cloak", 15 },
-    { "Enchant Gloves", 10 }, { "Enchant Shield", 17, "shield" },
+    { "Enchant Gloves", 10 }, { "Enchant Necklace", 2 }, { "Enchant Neck", 2 },
+    { "Enchant Off-Hand", 17, "holdable" }, { "Enchant Shield", 17, "shield" },
+    { "Enchant Ring", 11, "ring" },
 }
+
+--- Resolve the Forever enchant guide role key for a class + optional spec.
+function M.ResolveEnchantRole(classToken, specName)
+    local data = TA.Data and TA.Data.ForeverEnchants
+    if type(data) ~= "table" or type(data.classRoleMap) ~= "table" then return nil end
+    local cls = type(classToken) == "string" and classToken:upper() or nil
+    local map = cls and data.classRoleMap[cls]
+    if type(map) ~= "table" then return nil end
+    if type(specName) == "string" and specName ~= "" and map[specName] then
+        return map[specName]
+    end
+    return map._default
+end
+
+--- Return the sourced Forever enchant guide table for a class + spec, or nil.
+function M.GetEnchantGuide(classToken, specName)
+    local data = TA.Data and TA.Data.ForeverEnchants
+    if type(data) ~= "table" or type(data.roles) ~= "table" then return nil end
+    local roleKey = M.ResolveEnchantRole(classToken, specName)
+    if not roleKey then return nil end
+    local role = data.roles[roleKey]
+    if type(role) ~= "table" then return nil end
+    return {
+        roleKey = roleKey,
+        role = role,
+        meta = data.meta,
+        perks = data.perks,
+    }
+end
 
 --- Enchant id on an equipped item's link, 0 when none, nil when no link.
 local function EnchantID(link)
@@ -1298,8 +1329,10 @@ RenderEnchants = function(content, y)
     local mh = Try(GetInventoryItemLink, "player", 16)
     local mhInfo = mh and FullInfo(mh)
     local twoHanded = mhInfo and mhInfo.equipLoc == "INVTYPE_2HWEAPON"
-    local ohInfo = FullInfo(Try(GetInventoryItemLink, "player", 17))
+    local ohLink = Try(GetInventoryItemLink, "player", 17)
+    local ohInfo = ohLink and FullInfo(ohLink)
     local hasShield = ohInfo and ohInfo.equipLoc == "INVTYPE_SHIELD"
+    local hasHoldable = ohInfo and ohInfo.equipLoc == "INVTYPE_HOLDABLE"
 
     -- Known enchants, by slot, from every recorded profession.
     local recipes = (TA.charDB and TA.charDB.recipes) or {}
@@ -1308,11 +1341,19 @@ RenderEnchants = function(content, y)
         for _, r in ipairs(rec.list or {}) do
             for _, m in ipairs(ENCHANT_NAME_SLOT) do
                 if r.name:sub(1, #m[1]) == m[1] then
-                    local fits = (m[3] == nil) or (m[3] == "2h" and twoHanded) or (m[3] == "shield" and hasShield)
+                    local fits = (m[3] == nil)
+                        or (m[3] == "2h" and twoHanded)
+                        or (m[3] == "shield" and hasShield)
+                        or (m[3] == "holdable" and hasHoldable)
+                        or (m[3] == "ring")
                     if m[1] == "Enchant Weapon" and twoHanded then fits = true end   -- 1H enchants fit 2H too
                     if fits then
                         bySlot[m[2]] = bySlot[m[2]] or {}
                         table.insert(bySlot[m[2]], { name = r.name, avail = r.avail, at = rec.at })
+                        if m[3] == "ring" then
+                            bySlot[12] = bySlot[12] or {}
+                            table.insert(bySlot[12], { name = r.name, avail = r.avail, at = rec.at })
+                        end
                     end
                     break
                 end
@@ -1323,9 +1364,14 @@ RenderEnchants = function(content, y)
     local missing = 0
     local missingRows = {}
     local hasEnchanting = recipes["Enchanting"] ~= nil
-    for _, slot in ipairs({ 15, 5, 9, 10, 8, 16, 17 }) do
+    local checkSlots = { 2, 15, 5, 9, 10, 8, 16, 17 }
+    if hasEnchanting then
+        checkSlots[#checkSlots + 1] = 11
+        checkSlots[#checkSlots + 1] = 12
+    end
+    for _, slot in ipairs(checkSlots) do
         local link = Try(GetInventoryItemLink, "player", slot)
-        local relevant = link and (slot ~= 17 or hasShield)
+        local relevant = link and (slot ~= 17 or hasShield or hasHoldable)
         if relevant then
             local enchanted = (EnchantID(link) or 0) > 0
             if not enchanted then
@@ -1421,6 +1467,63 @@ RenderEnchants = function(content, y)
     end
     if #footer > 0 then
         y = L:Paragraph(content, y, table.concat(footer, " "), { color = L.C_DIM })
+    end
+
+    -- Forever Enchant Guide (sourced per-role reference; skipped if data absent).
+    local classToken, specName = PlayerClassAndSpec()
+    local guide = M.GetEnchantGuide(classToken, specName)
+    if guide and guide.role then
+        local lvl = tonumber(Try(UnitLevel, "player"))
+        local sub = (lvl and lvl < 60)
+            and ("Endgame (Lv 60) reference for " .. guide.role.label .. " · Save gold while leveling")
+            or ("Sourced Forever reference for " .. guide.role.label)
+        if L.Spacer then y = L:Spacer(y, 6) end
+        y = L:SectionHeader(content, y, "Forever Enchant Guide (" .. guide.role.label .. ")", sub)
+        if guide.meta and guide.meta.summary then
+            y = L:Paragraph(content, y, guide.meta.summary, { color = L.C_DIM })
+        end
+        for _, row in ipairs(guide.role.slots or {}) do
+            local link = Try(GetInventoryItemLink, "player", row.slotID)
+            local skipOffhand = (row.requireHoldable and link and not hasHoldable)
+                or (row.requireShield and link and not hasShield)
+            if not skipOffhand then
+                local status, badge
+                if not link then
+                    status, badge = "dim", "Empty slot"
+                elseif (EnchantID(link) or 0) > 0 then
+                    status, badge = "good", "Enchanted"
+                else
+                    status, badge = "warn", "Needs enchant"
+                end
+                local label = row.foreverNew and (row.slot .. " [New]") or row.slot
+                y = L:DataRow(content, y, {
+                    label = label,
+                    value = badge,
+                    note = row.enchant,
+                    status = status,
+                })
+            end
+        end
+        if guide.perks then
+            local ringPerk = guide.perks.enchanterRings
+            if ringPerk then
+                y = L:DataRow(content, y, {
+                    label = ringPerk.label .. " [New]",
+                    value = hasEnchanting and "Available" or "Enchanting only",
+                    note = ringPerk.note,
+                    status = hasEnchanting and "good" or "dim",
+                })
+            end
+            local relicPerk = guide.perks.classRelics
+            if relicPerk and (classToken == "PALADIN" or classToken == "SHAMAN" or classToken == "DRUID") then
+                y = L:DataRow(content, y, {
+                    label = relicPerk.label .. " [New]",
+                    value = "Class slot",
+                    note = relicPerk.note,
+                    status = "neutral",
+                })
+            end
+        end
     end
     return y
 end

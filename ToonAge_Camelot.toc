@@ -99,6 +99,10 @@ Data\Forever\Coach.lua
 # Stat priority orders. Icy Veins and Wowhead Forever guides, read 2026-11-13.
 # Each spec cites its page. Not a weight table.
 Data\Forever\StatPriority.lua
+# Sourced Forever Enchanting guide (no gems; Necklace, Off-Hand, Relics, Enchanter Rings).
+Data\Forever\Enchants.lua
+# Sourced Forever faction reward milestones by standing tier (PvP BGs & PvE).
+Data\Forever\FactionRewards.lua
 # Rotation priorities. Forever entries stay verified=false until a harvest
 # confirms the rank IDs. Retail, TBC, Mists, and Era lists are not loaded here.
 Data\Forever\RotationLists.lua
