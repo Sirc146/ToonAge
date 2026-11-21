@@ -14,7 +14,12 @@ local function RankOf(card)
     local rank, max = card.rank, card.max
     if type(card.segments) == "table" then
         for _, seg in ipairs(card.segments) do
-            if seg.current then return seg.rank, seg.max end
+            if seg.current then
+                if (seg.rank and seg.rank > 0) or not (rank and rank > 0) then
+                    return seg.rank, seg.max
+                end
+                return rank, (max and max > 0) and max or seg.max
+            end
         end
     end
     return rank, max

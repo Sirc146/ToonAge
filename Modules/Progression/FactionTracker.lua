@@ -708,6 +708,8 @@ function FT:Render(content, side)
         local FC = TA.GetModule and TA:GetModule("ForeverCharacter")
         if FC and FC.RenderSidebarPublic then
             pcall(FC.RenderSidebarPublic, FC, side)
+        elseif L.CharacterSidebar then
+            pcall(L.CharacterSidebar, L, side)
         end
     end
 

@@ -43,11 +43,16 @@ local function SafeCall(fn, ...)
     return ok and SafeNum(v) or 0
 end
 
+local CR_VERS_DONE = _G.CR_VERSATILITY_DAMAGE_DONE or 29
+
 local function GetVers()
-    local ok, cr = pcall(GetCombatRating, 29)
-    if ok and cr then return SafeCall(GetVersatilityBonus, SafeNum(cr)) end
-    return 0
+    -- CR_VERSATILITY_DAMAGE_DONE (29) expects the combat rating enum ID, not
+    -- the player's rating number. Total Versatility % = rating bonus + aura bonus.
+    local fromRating = type(GetCombatRatingBonus) == "function" and SafeCall(GetCombatRatingBonus, CR_VERS_DONE) or 0
+    local fromBonus  = type(GetVersatilityBonus) == "function"  and SafeCall(GetVersatilityBonus, CR_VERS_DONE) or 0
+    return fromRating + fromBonus
 end
+Character._GetVers = GetVers
 
 -- DR (diminishing-returns) soft-cap RATING thresholds — file-scoped (not
 -- local to UpdateData) because both UpdateData's stat-row rendering AND

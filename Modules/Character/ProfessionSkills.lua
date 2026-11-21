@@ -189,6 +189,8 @@ local function ReadProfessionSlots(data, children)
                 }
                 if children and spec and type(spec.children) == "table" and #spec.children > 1 then
                     local segs = {}
+                    local anySegRank = false
+                    local currentSeg = nil
                     for i, childId in ipairs(spec.children) do
                         local exp = data.expansions and data.expansions[i] or nil
                         local childRank, childMax, childName = 0, exp and exp.cap or data.cap, nil
@@ -200,7 +202,8 @@ local function ReadProfessionSlots(data, children)
                         elseif okChild and type(info) == "string" then
                             childName = UsefulName(info)
                         end
-                        segs[#segs + 1] = {
+                        if childRank > 0 then anySegRank = true end
+                        local seg = {
                             id      = childId,
                             name    = childName or card.name,
                             label   = exp and exp.label or tostring(childId),
@@ -209,6 +212,15 @@ local function ReadProfessionSlots(data, children)
                             current = exp and exp.current and true or false,
                             header  = exp and exp.label or header,
                         }
+                        if seg.current then currentSeg = seg end
+                        segs[#segs + 1] = seg
+                    end
+                    -- If child skill lines have not been populated by the client yet
+                    -- (e.g. gathering professions before opening the window), seed the
+                    -- current expansion segment from GetProfessionInfo's live rank.
+                    if not anySegRank and currentSeg and card.rank and card.rank > 0 then
+                        currentSeg.rank = card.rank
+                        if card.max and card.max > 0 then currentSeg.max = card.max end
                     end
                     card.segments = segs
                 end

@@ -483,15 +483,33 @@ function Rotation:RenderContent(content, rotData, specID, level)
     end
 
     if specID and not self:HasVerified(specID) then
-        local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        f:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
-        f:SetText("No suggestions for this spec")
-        f:SetTextColor(0.85, 0.86, 0.88, 1)
-        f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
-        f:SetWidth(w)
-        table.insert(self.frames, f)
-        content:SetHeight(80)
-        return
+        if not (rotData and rotData.priorities and #rotData.priorities > 0) then
+            local f = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            f:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+            f:SetText("No suggestions for this spec")
+            f:SetTextColor(0.85, 0.86, 0.88, 1)
+            f:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+            f:SetWidth(w)
+            table.insert(self.frames, f)
+            content:SetHeight(80)
+            return
+        end
+        local banner = CreateFrame("Frame", nil, content, "BackdropTemplate")
+        banner:SetSize(w, 34)
+        banner:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+        banner:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        banner:SetBackdropColor(0.10, 0.08, 0.02, 0.92)
+        banner:SetBackdropBorderColor(0.85, 0.65, 0.18, 0.55)
+        local bTxt = banner:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        bTxt:SetFont(STANDARD_TEXT_FONT, 9, "")
+        bTxt:SetText("|cFFFFD100Reference guide (unverified):|r In-combat next-cast uses Blizzard's Assisted Combat. Priority list below is reference data.")
+        bTxt:SetTextColor(0.86, 0.84, 0.76, 1)
+        bTxt:SetPoint("LEFT", banner, "LEFT", 10, 0)
+        bTxt:SetPoint("RIGHT", banner, "RIGHT", -10, 0)
+        bTxt:SetJustifyH("LEFT")
+        bTxt:SetWordWrap(true)
+        table.insert(self.frames, banner)
+        y = y - 42
     end
 
     -- Guard: empty data

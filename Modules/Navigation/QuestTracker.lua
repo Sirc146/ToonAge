@@ -2838,10 +2838,12 @@ function QT:Render(content, sidebar)
     sideTitle:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 6, sideY)
     sideY = sideY - 16
 
-    -- recommended comes from the options list, not from a level bracket.
+    -- recommended comes from Chromie Time options (leveling < 80 only);
+    -- Midnight characters (80+) should never see Dragonflight tagged Suggested.
     local suggestedKey = nil
+    local pLevel = (U and U.GetPlayerLevel and U.GetPlayerLevel()) or (type(UnitLevel) == "function" and UnitLevel("player")) or 1
     local timeline = self._timeline
-    if timeline and timeline.eligible then
+    if pLevel < 80 and timeline and timeline.eligible then
         for _, opt in ipairs(timeline.eligible) do
             if opt.recommended and opt.guideKey then
                 suggestedKey = opt.guideKey

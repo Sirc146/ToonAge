@@ -811,7 +811,8 @@ function L:ProfessionCard(parent, y, opts)
     if segs and #segs > 0 then
         card:EnableMouse(true)
         card:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+            if GameTooltip.SetClampedToScreen then GameTooltip:SetClampedToScreen(true) end
             GameTooltip:SetText(tostring(opts.name or ""), 1, 0.82, 0)
             for _, seg in ipairs(segs) do
                 local label = tostring(seg.label or seg.name or "")

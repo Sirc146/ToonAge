@@ -8,7 +8,7 @@
 - **Version:** `v2.0.0-dev.1` · **Language:** Lua 5.1
 - **Lead Client:** **WoW Forever** (`1.60.1`, build `71037`, interface `16001`, `ToonAge_Camelot.toc`)
 - **Other Supported Flavors:** Retail (`ToonAge_Mainline.toc`), TBC Anniversary (`ToonAge_TBC.toc`), Mists Classic (`ToonAge_Mists.toc`), Classic Era (`ToonAge_Vanilla.toc`), Cata (`ToonAge_Cata.toc`), Wrath (`ToonAge_Wrath.toc`)
-- **Last Verified State:** `2026-11-21` · HEAD `antigravity/phase10-enchants-and-factions` (`88` automated test suites · `8/8` TOCs parse clean · `0` PII/hygiene findings across `488+` files)
+- **Last Verified State:** `2026-11-21` · HEAD `antigravity/phase11-retail-midnight-fixes` (`89` automated test suites · `8/8` TOCs parse clean · `0` PII/hygiene findings across `490` files)
 
 ---
 
@@ -43,7 +43,8 @@ Base: `origin/test @ 6eeb530` (do NOT drop/pop `stash@{0}`; do NOT rebase/force-
 | **7** | `antigravity/phase7-rubric-v2-and-hygiene` | `1bbaddb` | Done (local) | Unified Master Rubric v2 (`Docs/AUDIT_RUBRIC.md`, Part 1 + Part 2 Sections A-L + filled Forever/Remix professions matrix), `Tools/check_pii_hygiene.py`, `Tools/score_rubric.py`, `Tools/test_rubric_tools.py`, fixed TZ-flaky `test_harvest_capture.py` |
 | **8** | `antigravity/phase8-loot-watch-and-libraries` | `b33fca7` | Pushed to `origin` | `LootWatch.lua`, all-continent Study libraries, regenerated `EVENT_ROUTES`, `MEDIA.md` (102 TGAs), `MASTER_README.md` |
 | **9** | `antigravity/phase9-roadmap-backup-reagents` | `f87c0b9` | Pushed to `origin` | Roadmap `1.2` + `2A`: pre-install SavedVariables auto-backup in `build_flavors.ps1` (last 10 snapshots in `<WoW>\ToonAge_Backups\<client>\`); verified Forever reagent IDs `17020`/`17031`/`17032` in `Data/Forever/Reagents.lua` |
-| **10** | `antigravity/phase10-enchants-and-factions` | *current* | Pushed to `origin` (installed `_forever_`) | Roadmap `2B`: `Data/Forever/Enchants.lua` + `Gear.lua` role-aware Forever Enchant Guide (Necklace, Off-Hand, Relics, Enchanter Rings, no gems); `Data/Forever/FactionRewards.lua` + `FactionTracker.lua` faction-filtered standing unlock milestones (`test_forever_enchants_factions.py` 52/52) |
+| **10** | `antigravity/phase10-enchants-and-factions` | `0bb4538` | Pushed to `origin` | Roadmap `2B`: `Data/Forever/Enchants.lua` + `Gear.lua` role-aware Forever Enchant Guide (Necklace, Off-Hand, Relics, Enchanter Rings, no gems); `Data/Forever/FactionRewards.lua` + `FactionTracker.lua` faction-filtered standing unlock milestones (`test_forever_enchants_factions.py` 52/52) |
+| **11** | `antigravity/phase11-retail-midnight-fixes` | *current* | Pushed to `origin` (installed `_retail_` + `_forever_`) | Retail `Midnight 12.x` fixes `R1`-`R7`: Modern Azeroth shell + auto-fit Settings synced, Character Versatility % (`CR_VERSATILITY_DAMAGE_DONE = 29`) fix, Rotation unverified-reference banner for all 39 specs, Professions `0/100` rank seeding + `ANCHOR_CURSOR` clamped tooltip, Weekly live Vault thresholds (`Kill 2/4/6`) + prior-week wording, Gear cosmetic Shirt/Tabard + single-line header + max-level Heirlooms hide, Guide Lv 80+ Chromie gate + Retail Reputation sidebar (`test_retail_midnight_fixes.py`) |
 
 ---
 
@@ -96,13 +97,13 @@ Check items off here as they complete so nothing is rebuilt twice.
 - [ ] **2E. Optional Google Docs Mirror:** If Google Docs plugin is connected later, sync this file's sections to a read/review mirror in Google Drive while keeping `Docs/MASTER_README.md` as the git source of truth.
 
 ### Part 3 — Retail (`Midnight 12.x`) Priority Fix Track (Audited from 10 Live Screenshots `2026-11-21`)
-- [ ] **R1. Settings & Modern Azeroth Shell Sync:** Bring Phase 2 Modern Azeroth shell + auto-fit Settings drawer to Retail and truncate/wrap left-column toggle labels so text never collides with `ON`/`OFF` badges.
-- [ ] **R2. Character Tab Versatility % Bug:** Fix `0.00%` (`0.00% damage reduction`) shown despite positive Versatility rating (`618 rating`) on Midnight `12.x`.
-- [ ] **R3. Rotation Tab Blank for Healers / Preservation Evoker:** Default Healer specs to `Heal (M+)` / `Heal (Raid)` instead of blank `DPS`, and verify Midnight `12.x` Preservation Evoker rotation/heal lists populate cleanly.
-- [ ] **R4. Professions Tab `0 / 100` & Clipped Expansion Tooltip:** Fix Midnight `12.x` `C_TradeSkillUI` / `GetProfessionInfo` skill-level readout showing `0 / 100` across Herbalism/Skinning/Fishing, and clamp the expansion-tier breakdown tooltip inside the viewport.
-- [ ] **R5. Weekly Great Vault Thresholds & Ready Banner:** Fix mismatched Raid labels (`Kill 3` over `0/2`, `Kill 7` over `0/4` — Midnight Raid vault is `2/4/6`) and reconcile `"Claim your Great Vault reward!"` with empty progress rows.
-- [ ] **R6. Gear Tab Layout & Cosmetic Slot Noise:** Stop flagging empty `SHIRT` as red `"Missing Item"`, hide the giant `"No heirloom upgrades"` card at max level (Lv 90), and fix header wrap/overlap (`GEAR ADVISOR: BAG SCANNER` vs `Src: pawn` / `PvP: OFF` / `Scan Target`).
-- [ ] **R7. Guide & Reputation Tab Polish:** Suggest `Midnight` (not `Dragonflight`) for Lv 80–90 characters, populate the empty Reputation left sidebar, and cut repetitive per-row `"Per-level renown is not in the data"` clutter.
+- [x] **R1. Settings & Modern Azeroth Shell Sync:** Synced Phase 2 Modern Azeroth shell + auto-fit Settings drawer (`FitStateLabel` + height clamp) to Retail.
+- [x] **R2. Character Tab Versatility % Bug:** Fixed `GetVers()` in `Modules/Character/Character.lua` to call `GetCombatRatingBonus(29) + GetVersatilityBonus(29)` with enum `CR_VERSATILITY_DAMAGE_DONE` (`29`) instead of passing the rating number.
+- [x] **R3. Rotation Tab Blank for Non-Rogue / Healer Specs:** Updated `Modules/Combat/Rotation.lua` to render Midnight reference priorities with an explicit `"Reference guide (unverified)"` banner (noting Blizzard Assisted Combat drives live combat), keeping `"No suggestions for this spec"` only when a spec truly has no data.
+- [x] **R4. Professions Tab `0 / 100` & Clipped Expansion Tooltip:** Seeded Midnight's current expansion segment from `GetProfessionInfo` when child skill lines return `0`, fixed `RankOf` fallback in `ProfessionBoard.lua`, and switched `L:ProfessionCard` tooltip to `ANCHOR_CURSOR` + `SetClampedToScreen(true)`.
+- [x] **R5. Weekly Great Vault Thresholds & Ready Banner:** Derived Great Vault labels dynamically from live `tier.threshold` (`Kill 2/4/6` for Midnight Raid) and clarified `"Claim last week's Great Vault reward!"` (`Prior week`).
+- [x] **R6. Gear Tab Layout & Cosmetic Slot Noise:** Marked `Shirt`/`Tabard` as `isCosmetic = true` (never flagged red `"Missing Item"`), cleaned up single-line `"GEAR ADVISOR"` header with zero button overlap, and hid empty `"No heirloom upgrades"` card at max level (`Lv 80+`).
+- [x] **R7. Guide & Reputation Tab Polish:** Gated Chromie Time `(Suggested)` badge to `level < 80` in `QuestTracker.lua` and populated Retail Reputation's sidebar via `L:CharacterSidebar(side)` in `FactionTracker.lua`.
 
 ---
 

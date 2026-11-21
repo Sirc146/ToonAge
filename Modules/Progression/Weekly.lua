@@ -58,19 +58,31 @@ local ACTIVITY_META = {
     [ACTIVITY_TYPE.DUNGEON] = {
         label   = "Dungeons / M+",
         icon    = "Interface\\Icons\\Achievement_Dungeon_GloryoftheRaider",
+        verb    = "Clear",
         tiers   = { "Clear 1",  "Clear 4",  "Clear 8"  },
     },
     [ACTIVITY_TYPE.RAID]    = {
         label   = "Raid",
         icon    = "Interface\\Icons\\Achievement_Raid_GloryoftheRaider",
-        tiers   = { "Kill 3",   "Kill 7",   "Kill bosses"  },
+        verb    = "Kill",
+        tiers   = { "Kill 2",   "Kill 4",   "Kill 6"  },
     },
     [ACTIVITY_TYPE.WORLD]   = {
         label   = "World / Delves",
         icon    = "Interface\\Icons\\Achievement_Challenges_Delves",
-        tiers   = { "Complete 1", "Complete 3", "Complete 4 Bountiful" },
+        verb    = "Complete",
+        tiers   = { "Complete 2", "Complete 4", "Complete 8" },
     },
 }
+
+local function FormatTierLabel(meta, index, threshold)
+    local n = tonumber(threshold) or 0
+    if n > 0 and meta and meta.verb then
+        return meta.verb .. " " .. n
+    end
+    return (meta and meta.tiers and meta.tiers[index]) or ("Tier " .. index)
+end
+Weekly._FormatTierLabel = FormatTierLabel
 
 -- ── Fetch and normalise activity data ─────────────────────────────────────────
 -- Returns an array of activity groups, each:
@@ -107,7 +119,7 @@ local function FetchActivities()
                 progress   = progress,
                 isUnlocked = isUnlocked,
                 ilvl       = ilvl,
-                tierLabel  = meta.tiers[i] or ("Tier " .. i),
+                tierLabel  = FormatTierLabel(meta, i, threshold),
             })
         end
 
@@ -237,8 +249,8 @@ function Weekly:BuildRecommendations()
     -- 2. Check vault claimable
     if HasVaultReward() then
         table.insert(recs, {
-            text = "Claim your Great Vault reward!",
-            reason = "Ready now",
+            text = "Claim last week's Great Vault reward!",
+            reason = "Prior week",
             priority = 200,
         })
     end
@@ -437,7 +449,7 @@ function Weekly:Render(content, sidebar)
     if HasVaultReward() then
         local badge = Track(content:CreateFontString(nil, "OVERLAY", "GameFontNormal"))
         badge:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
-        badge:SetText(COL_GREEN .. (ToonAge.Utils.Glyph("square", "4AFF7A") .. " Vault Open — claim your reward!") .. CLOSE)
+        badge:SetText(COL_GREEN .. (ToonAge.Utils.Glyph("square", "4AFF7A") .. " Vault Open — claim last week's reward!") .. CLOSE)
         badge:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y)
     end
 

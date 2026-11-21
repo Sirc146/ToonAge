@@ -44,8 +44,8 @@ local CORE_GRID_SLOTS = {
     { slotID = 3,  name = "Shoulder",  isEnchantable = true },
     { slotID = 15, name = "Back" },
     { slotID = 5,  name = "Chest",     isEnchantable = true },
-    { slotID = 4,  name = "Shirt" },
-    { slotID = 19, name = "Tabard" },
+    { slotID = 4,  name = "Shirt",     isCosmetic = true },
+    { slotID = 19, name = "Tabard",    isCosmetic = true },
     { slotID = 9,  name = "Wrist" },
     { slotID = 10, name = "Hands" },
     { slotID = 6,  name = "Waist" },
@@ -669,19 +669,18 @@ function Gear:Render(content, sidebar)
     local padL, y     = 20, -10
     local w           = content:GetWidth() - 40
 
-    -- Header
+    -- Header (keep title crisp on one line so buttons never collide with it)
     local hdr = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     hdr:SetFont(STANDARD_TEXT_FONT, 14, "")
-    hdr:SetText((self.viewMode == "player" and "GEAR ADVISOR: BAG SCANNER"
-                                           or  "GEAR ADVISOR: TARGET SCOUTER")
-                .. " |cFF888780(Weights: " .. weightSource:upper() .. ")|r")
+    hdr:SetText(self.viewMode == "player" and "GEAR ADVISOR" or "TARGET SCOUTER")
     hdr:SetTextColor(1, 0.82, 0, 1)
     hdr:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
+    hdr:SetWordWrap(false)
     table.insert(self.frames, hdr)
 
     -- View Mode toggle
     local viewBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    viewBtn:SetSize(110, 22)
+    viewBtn:SetSize(100, 22)
     viewBtn:SetPoint("TOPRIGHT", content, "TOPRIGHT", -padL, y + 4)
     viewBtn:SetText(self.viewMode == "player" and "Scan Target" or "View Player")
     viewBtn:SetScript("OnClick", function()
@@ -695,7 +694,7 @@ function Gear:Render(content, sidebar)
 
     -- PvP toggle
     local pvpBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    pvpBtn:SetSize(90, 22)
+    pvpBtn:SetSize(82, 22)
     pvpBtn:SetPoint("TOPRIGHT", viewBtn, "TOPLEFT", -4, 0)
     pvpBtn:SetText(pvxMode == "pvp" and "PvP: ON" or "PvP: OFF")
     pvpBtn:SetScript("OnClick", function()
@@ -707,7 +706,7 @@ function Gear:Render(content, sidebar)
 
     -- Weight source cycling
     local srcBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    srcBtn:SetSize(110, 22)
+    srcBtn:SetSize(96, 22)
     srcBtn:SetPoint("TOPRIGHT", pvpBtn, "TOPLEFT", -4, 0)
     srcBtn:SetText("Src: " .. weightSource)
     srcBtn:SetScript("OnClick", function()
@@ -719,24 +718,30 @@ function Gear:Render(content, sidebar)
     end)
     table.insert(self.frames, srcBtn)
 
-    -- Constrain the header to stop before the button row (anchored to
-    -- srcBtn, the left-most button) so long weight-source labels don't
-    -- run underneath the buttons; wrap instead of overflowing.
-    hdr:SetPoint("RIGHT", srcBtn, "LEFT", -10, 0)
-    hdr:SetWordWrap(true)
+    hdr:SetPoint("RIGHT", srcBtn, "LEFT", -8, 0)
 
-    y = y - 30
+    y = y - 24
     local disc = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     disc:SetFont(STANDARD_TEXT_FONT, 10, "")
-    disc:SetText("|cFFAAAAAAPvP gear shows world ilvl + PvP ilvl (green) when available. Click any slot to see score details.|r")
+    disc:SetText("|cFFAAAAAAWeights: " .. weightSource:upper() .. " · PvP gear shows world + PvP ilvl (green). Click any slot for score details.|r")
     disc:SetPoint("TOPLEFT", content, "TOPLEFT", padL, y)
     table.insert(self.frames, disc)
     y = y - 20
 
     if self.viewMode ~= "target" then
         local heirlooms = TA:GetModule("Heirlooms")
-        if heirlooms and heirlooms.Draw then
-            y = heirlooms:Draw(content, y, w) or y
+        local pLvl = (type(UnitLevel) == "function" and UnitLevel("player")) or 1
+        local skipEmptyMaxHeirlooms = (TA.IsRetail or TA.flavor == "retail")
+            and pLvl >= 80
+            and heirlooms and heirlooms._scanned
+            and (#(heirlooms._suggestions or {}) == 0)
+        if heirlooms and heirlooms.Draw and not skipEmptyMaxHeirlooms then
+            if (TA.IsRetail or TA.flavor == "retail") and pLvl >= 80 and not heirlooms._scanned and heirlooms.Scan then
+                pcall(heirlooms.Scan, heirlooms)
+            end
+            if not ((TA.IsRetail or TA.flavor == "retail") and pLvl >= 80 and #(heirlooms._suggestions or {}) == 0) then
+                y = heirlooms:Draw(content, y, w) or y
+            end
         end
     end
 
@@ -872,6 +877,8 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
             local r, g, b = TA.Compat.GetItemQualityColor(quality or 1)
             nameF:SetText(U.Truncate(itemName or "Loading...", 24))
             if r and g and b then nameF:SetTextColor(r, g, b, 1) end
+        elseif slotDef.isCosmetic then
+            nameF:SetText("|cFF666666Cosmetic Slot|r")
         else
             nameF:SetText("|cFFFF4444Empty Slot|r")
         end
@@ -927,6 +934,9 @@ function Gear:RenderPlayerGrid(content, sidebar, padL, y, w, pvxMode)
             statusF:SetText("|cFFFF9A1AEquip a Main Hand weapon first|r")
             row:SetBackdropBorderColor(1.0, 0.60, 0.10, 0.5)
             if M then M:ApplyStatusStrip(row, "warning") end
+        elseif slotDef.isCosmetic then
+            -- Shirt and Tabard are purely cosmetic; never flag them as missing gear.
+            statusF:SetText("|cFF666666Optional (Cosmetic)|r")
         else
             statusF:SetText("|cFFFF4444Missing Item|r")
             row:SetBackdropBorderColor(1.0, 0.27, 0.27, 0.6)
