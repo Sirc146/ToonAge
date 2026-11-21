@@ -716,7 +716,7 @@ function FT:Render(content, side)
     local y = -8
     local list = SortedFactions()
     local observed = false
-    if FT.Family() == "forever" then
+    if FT.Family() == "forever" or (FT.Flavor() == "tbc" and not list) then
         local walked = FT.WalkClientFactions()
         if type(walked) == "table" then
             list = walked

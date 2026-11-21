@@ -199,9 +199,29 @@ def test_r7_guide_and_reputation():
             Finish = function() end,
         }
     """)
+    lua.execute(read("Core/Compat/API.lua"))
     lua.execute(read("Modules/Progression/FactionTracker.lua"))
     lua.execute("ToonAge.FactionTracker:Render({}, {})")
     check("R7: Retail Reputation populates CharacterSidebar", lua.eval("SIDEBAR_CALLED"), True)
+
+    # TBC Anniversary Reputation walks live factions instead of saying "No reputation routes"
+    lua.execute(r"""
+        ToonAge.flavor = "tbc"
+        ToonAge.Reputations = nil
+        TBC_BARS = {}
+        function GetNumFactions() return 2 end
+        function GetFactionInfo(i)
+            if i == 1 then return "Outland", "", 4, 0, 3000, 0, false, false, true, false, false, false, false, 980 end
+            return "Thrallmar", "", 6, 9000, 21000, 15000, false, false, false, false, false, false, false, 947
+        end
+        ToonAge.Layout.StatBar = function(_, _, y, opts)
+            TBC_BARS[#TBC_BARS + 1] = tostring(opts.label) .. "|" .. tostring(opts.badge)
+            return y - 20
+        end
+        ToonAge.FactionTracker:Render({}, {})
+    """)
+    check("TBC Anniversary: Reputation walks live client factions (Thrallmar Honored)",
+          lua.eval('TBC_BARS[1]'), "Thrallmar|Honored")
 
 
 def main():
