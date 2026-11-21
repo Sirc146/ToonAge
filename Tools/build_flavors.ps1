@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Builds a per-client working copy of ToonAge into each version folder.
 
@@ -174,19 +174,14 @@ $InstallDirs = @{
 # would otherwise be missing from the folder WoW loads.
 #
 # Forever, Anniversary, Mists and Classic Era load Core\Utils.lua, Core\UI.lua,
-# Core\Layout.lua and Core\Theme.lua, which point at Media\icons and
-# Media\frame (glyphs, tab art, the classic ring). Forever also points at both
-# folders from Modules\Forever\Talents.lua and CastLog.lua. Theme.lua names a
-# Media\glass kit, but those files are not in the repo and Theme:Select("classic")
-# does not read them, so that folder is not copied.
-#
-# Retail, PTR and Remix load the same core files and omit the same folders.
-# Their build contents stay as they are.
+# Core\Layout.lua and Core\Theme.lua, which point at Media\icons, Media\frame,
+# and Media\glass (glyphs, tab art, talent frames, and the Modern Azeroth glass
+# crown/control kit).
 $AssetDirs = @{
-    'Forever'     = @('Media\icons', 'Media\frame')
-    'Anniversary' = @('Media\icons', 'Media\frame')
-    'Mists'       = @('Media\icons', 'Media\frame')
-    'Classic Era' = @('Media\icons', 'Media\frame')
+    'Forever'     = @('Media\icons', 'Media\frame', 'Media\glass')
+    'Anniversary' = @('Media\icons', 'Media\frame', 'Media\glass')
+    'Mists'       = @('Media\icons', 'Media\frame', 'Media\glass')
+    'Classic Era' = @('Media\icons', 'Media\frame', 'Media\glass')
 }
 
 function Get-TocFiles {
