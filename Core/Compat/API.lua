@@ -1666,4 +1666,14 @@ function C.OnTaxi()
     return v == true or v == 1
 end
 
+--- Blizzard's sanctioned Assisted Combat next-spell suggestion (12.x / Forever).
+--- Returns raw spellID (caller checks issecretvalue/canaccessvalue) or nil.
+function C.AssistedNextSpell()
+    if TA.HasAPI and not TA:HasAPI("C_AssistedCombat.GetNextCastSpell") then return nil end
+    if not (C_AssistedCombat and type(C_AssistedCombat.GetNextCastSpell) == "function") then return nil end
+    local ok, id = pcall(C_AssistedCombat.GetNextCastSpell)
+    if not ok then return nil end
+    return id
+end
+
 return C

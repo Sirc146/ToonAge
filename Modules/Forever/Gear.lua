@@ -1354,6 +1354,15 @@ function M.GetRareGearQuests(level, side, classToken, completedFn)
             end
         end
     end
+    table.sort(out, function(a, b)
+        local va = (a.verified == true) and 1 or 0
+        local vb = (b.verified == true) and 1 or 0
+        if va ~= vb then return va > vb end
+        local ma = tonumber(a.minLevel) or 99
+        local mb = tonumber(b.minLevel) or 99
+        if ma ~= mb then return ma < mb end
+        return tostring(a.name) < tostring(b.name)
+    end)
     return out
 end
 
@@ -1574,24 +1583,29 @@ RenderEnchants = function(content, y)
         y = L:Paragraph(content, y, table.concat(footer, " "), { color = L.C_DIM })
     end
 
-    -- Forever Rare Gear Quests (populated from Data/Forever/RareGearQuests.lua as verified entries land).
+    -- Forever Rare Gear Quests (sourced from Data/Forever/RareGearQuests.lua).
     local classToken, specName = PlayerClassAndSpec()
     local rareQuests = M.GetRareGearQuests(playerLvl, playerSide, classToken)
     if #rareQuests > 0 then
         if L.Spacer then y = L:Spacer(y, 6) end
         y = L:SectionHeader(content, y, "Rare Gear Quests (Forever)",
-            "Notable drop & rare quests awarding upgrades for your level and faction.")
-        for _, q in ipairs(rareQuests) do
-            local tag = (q.verified == false) and " [UNVERIFIED]" or ""
+            "Notable dungeon, rare-drop & chain upgrades for your level, faction, and class.")
+        local cap = math.min(#rareQuests, 8)
+        for i = 1, cap do
+            local q = rareQuests[i]
+            local qual = q.quality or (q.verified and "Rare" or "Unverified")
+            local badge = (q.slot and (q.slot .. " · " .. qual)) or qual
+            local st = (q.verified == true) and "good"
+                or (qual == "Disputed" and "warn" or "neutral")
             local where = (q.zone and q.giver) and (q.zone .. " · " .. q.giver)
                 or (q.zone or q.giver or "")
             local note = (q.reward and (q.reward .. " · ") or "")
                 .. (q.howToStart or where)
             y = L:DataRow(content, y, {
-                label = q.name .. tag,
-                value = q.slot or "Upgrade",
+                label = q.name,
+                value = badge,
                 note = note,
-                status = "good",
+                status = st,
             })
         end
     end

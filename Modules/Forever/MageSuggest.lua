@@ -947,8 +947,39 @@ end
 
 function M:IsEnabled()
     local db = TA.db and TA.db.mageSuggest
-    if db and db.enabled == false then return false end
-    return true
+    return (db and db.enabled == true) and true or false
+end
+
+--- Read Blizzard's sanctioned Assisted Combat next-spell suggestion (12.x / Forever).
+--- Returns { spellID, name, why, source="assisted", mode="combat" } or nil.
+function M.ReadAssistedCombat(specName)
+    local compat = TA.Compat
+    if not (compat and type(compat.AssistedNextSpell) == "function") then
+        return nil
+    end
+    local ok, spellID = pcall(compat.AssistedNextSpell)
+    if not ok or not M.ValueKnown(spellID) or type(spellID) ~= "number" or spellID <= 0 then
+        return nil
+    end
+    local name = ""
+    if C_Spell and type(C_Spell.GetSpellName) == "function" then
+        local okN, raw = pcall(C_Spell.GetSpellName, spellID)
+        if okN and M.ValueKnown(raw) and type(raw) == "string" then name = raw end
+    elseif C_Spell and type(C_Spell.GetSpellInfo) == "function" then
+        local okI, info = pcall(C_Spell.GetSpellInfo, spellID)
+        if okI and type(info) == "table" and M.ValueKnown(info.name) and type(info.name) == "string" then
+            name = info.name
+        end
+    end
+    return {
+        spellID = spellID,
+        name = name,
+        why = "Blizzard Assisted Combat next-spell suggestion (C_AssistedCombat).",
+        source = "assisted",
+        spec = specName,
+        mode = "combat",
+        unverified = false,
+    }
 end
 
 function M:SetEnabled(flag)
@@ -1092,9 +1123,13 @@ local function Paint(frame, suggestion, state)
         end
         if frame.label then frame.label:SetText(suggestion.name or "") end
         if frame.badge then
-            local modeTag = (suggestion.mode == "aoe") and "AoE" or "ST"
-            local specTag = suggestion.spec or (state and state.spec) or ""
-            frame.badge:SetText(specTag ~= "" and (specTag .. " " .. modeTag) or modeTag)
+            if suggestion.source == "assisted" then
+                frame.badge:SetText("Assisted")
+            else
+                local modeTag = (suggestion.mode == "aoe") and "AoE" or "Prep"
+                local specTag = suggestion.spec or (state and state.spec) or ""
+                frame.badge:SetText(specTag ~= "" and (specTag .. " " .. modeTag) or modeTag)
+            end
         end
     else
         if frame.icon then frame.icon:Hide() end
@@ -1104,22 +1139,48 @@ local function Paint(frame, suggestion, state)
 end
 
 function M:Refresh()
-    local state = M.ReadState()
     local forever = TA.flavor == "forever"
     local enabled = self:IsEnabled()
-    local show = forever and enabled and type(state.class) == "string" and state.class ~= ""
-    local suggestion
-    if show then
-        suggestion = M.Suggest(state, state.class == "MAGE" and M.Spells() or nil)
-        -- For non-Mage classes, hide the capsule cleanly if no spell is ready/known
-        -- so the player never sees an empty floating box.
-        if state.class ~= "MAGE" and not suggestion then
-            show = false
+    if not (forever and enabled) then
+        self._wantShow = false
+        if self._frame then Paint(self._frame, nil, nil) end
+        self:ApplyFrame()
+        return
+    end
+
+    local classToken = nil
+    local compat = TA.Compat
+    if compat and type(compat.UnitClass) == "function" then
+        local _, token = compat.UnitClass("player")
+        if M.ValueKnown(token) and type(token) == "string" and token ~= "" then
+            classToken = token
         end
     end
+    if not classToken then
+        self._wantShow = false
+        if self._frame then Paint(self._frame, nil, nil) end
+        self:ApplyFrame()
+        return
+    end
+
+    -- Option A (Blizzard 12.x / Forever compliant for all 9 classes):
+    --   * In combat: NEVER poll custom APL rules against secret combat values;
+    --     surface Blizzard's sanctioned C_AssistedCombat.GetNextCastSpell() only.
+    --   * Out of combat: full Prep & Buff + Playbook suggestion across all 9 classes.
+    local suggestion, state
+    if InCombat() then
+        state = { class = classToken, spec = ResolveActiveSpec(), mode = "combat" }
+        suggestion = M.ReadAssistedCombat(state.spec)
+    else
+        state = M.ReadState()
+        suggestion = M.Suggest(state, state.class == "MAGE" and M.Spells() or nil)
+    end
+
+    -- Show the capsule whenever enabled (in combat it stays ready for Assisted Combat).
+    local show = (suggestion ~= nil) or InCombat()
     self._wantShow = show and true or false
     if self._frame then
-        self:ApplyTheme(state.class)
+        self:ApplyTheme(classToken)
         Paint(self._frame, suggestion, state)
     end
     self:ApplyFrame()
@@ -1204,14 +1265,18 @@ function M:CreateFrame()
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:ClearLines()
         local header = self.suggestion.name or "Suggestion"
-        if self.suggestion.spec and self.suggestion.spec ~= "" then
+        if self.suggestion.source == "assisted" then
+            header = header .. " (Blizzard Assisted Combat)"
+        elseif self.suggestion.spec and self.suggestion.spec ~= "" then
             header = header .. " (" .. self.suggestion.spec
-                .. (self.suggestion.mode == "aoe" and " · AoE" or " · ST") .. ")"
+                .. (self.suggestion.mode == "aoe" and " · AoE" or " · Prep") .. ")"
         end
         GameTooltip:AddLine(header, 1, 0.85, 0.3, false)
         GameTooltip:AddLine(self.suggestion.why or "Suggestion", 0.92, 0.90, 0.87, true)
-        if self.suggestion.unverified then
-            GameTooltip:AddLine("Reference priority (unverified on Forever 1.60.1).", 0.85, 0.70, 0.35, true)
+        if self.suggestion.source == "assisted" then
+            GameTooltip:AddLine("Source: Blizzard Assisted Combat (C_AssistedCombat).", 0.45, 0.85, 1.00, true)
+        elseif self.suggestion.unverified then
+            GameTooltip:AddLine("Out-of-combat reference priority (unverified on Forever 1.60.1).", 0.85, 0.70, 0.35, true)
         end
         GameTooltip:AddLine("Suggestion only. This frame does not cast. (/ta hud)", 0.62, 0.59, 0.55, true)
         GameTooltip:Show()

@@ -241,11 +241,14 @@ def main():
         local inCombat = false
         local shown = false
         local movable = true
+        local activeClass = "MAGE"
+        local paintedLabel = ""
+        local paintedBadge = ""
 
         ToonAge.Compat = {
             InCombat = function() return inCombat end,
-            UnitClass = function() return "Mage", "MAGE" end,
-            SpellLearned = function() return "no" end,
+            UnitClass = function() return activeClass, activeClass end,
+            SpellLearned = function(id) return (id == 116 or id == 6673) and "yes" or "no" end,
             GetSpellCooldown = function() return 0, 0 end,
         }
         M._frame = {
@@ -258,20 +261,23 @@ def main():
             ClearAllPoints = function() end,
             SetPoint = function() end,
             icon = { SetTexture = function() end, Show = function() end, Hide = function() end },
-            label = { SetText = function() end },
-            badge = { SetText = function() end, SetTextColor = function() end },
+            label = { SetText = function(_, t) paintedLabel = t end },
+            badge = { SetText = function(_, t) paintedBadge = t end, SetTextColor = function() end },
             specular = { SetColorTexture = function() end },
         }
 
-        -- Toggle off & on via API and slash command
+        -- Option A: HUD defaults to opt-in OFF until player turns it on
         ENABLED_DEFAULT = M:IsEnabled()
+        M:SetEnabled(true)
+        ENABLED_ON = M:IsEnabled()
+        SHOWN_WHEN_ON = shown
+
         M:ToggleEnabled()
         ENABLED_OFF = M:IsEnabled()
         SHOWN_WHEN_OFF = shown
 
         M.SlashCommands.hud(M, "on")
-        ENABLED_ON = M:IsEnabled()
-        SHOWN_WHEN_ON = shown
+        SLASH_ON = M:IsEnabled()
 
         M.SlashCommands.hud(M, "lock")
         LOCKED_AFTER = M:Locked()
@@ -280,8 +286,28 @@ def main():
         M.SlashCommands.hud(M, "aoe")
         MODE_AOE = M:GetMode()
 
-        -- Combat deferral: hiding during combat must NOT call frame:Hide() immediately
+        -- Option A In-Combat: uses Blizzard C_AssistedCombat via Compat.AssistedNextSpell for ALL classes
+        activeClass = "WARRIOR"
         inCombat = true
+        local assistedReturn = 78
+        ToonAge.Compat.AssistedNextSpell = function() return assistedReturn end
+        C_Spell = { GetSpellName = function(id) return id == 78 and "Heroic Strike" or nil end }
+        M:Refresh()
+        ASSISTED_WAR_LABEL = paintedLabel
+        ASSISTED_WAR_BADGE = paintedBadge
+        ASSISTED_WAR_SRC = M._frame.suggestion and M._frame.suggestion.source or ""
+
+        -- Secret return from C_AssistedCombat fails closed cleanly (nil suggestion, no error)
+        issecretvalue = function(v) return v == 999 end
+        assistedReturn = 999
+        M:Refresh()
+        ASSISTED_SECRET_NIL = (M._frame.suggestion == nil)
+        issecretvalue = nil
+        ToonAge.Compat.AssistedNextSpell = nil
+        C_Spell = nil
+        activeClass = "MAGE"
+
+        -- Combat deferral: hiding during combat must NOT call frame:Hide() immediately
         M:SetEnabled(false)
         STILL_SHOWN_IN_COMBAT = shown
         DEFERRED_FLAG = M._deferred == true
@@ -308,14 +334,19 @@ def main():
         end
     """)
 
-    check("HUD defaults to enabled", lua.eval("ENABLED_DEFAULT"), True)
+    check("Option A: HUD defaults to opt-in OFF", lua.eval("ENABLED_DEFAULT"), False)
+    check("SetEnabled(true) turns HUD on", lua.eval("ENABLED_ON"), True)
+    check("HUD frame shows when enabled out of combat", lua.eval("SHOWN_WHEN_ON"), True)
     check("ToggleEnabled turns HUD off", lua.eval("ENABLED_OFF"), False)
     check("HUD frame hides when disabled out of combat", lua.eval("SHOWN_WHEN_OFF"), False)
-    check("/ta hud on re-enables HUD", lua.eval("ENABLED_ON"), True)
-    check("HUD frame shows when enabled out of combat", lua.eval("SHOWN_WHEN_ON"), True)
+    check("/ta hud on re-enables HUD", lua.eval("SLASH_ON"), True)
     check("/ta hud lock locks the HUD", lua.eval("LOCKED_AFTER"), True)
     check("Locked HUD sets frame movable=false", lua.eval("MOVABLE_AFTER"), False)
     check("/ta hud aoe sets mode to aoe", lua.eval("MODE_AOE"), "aoe")
+    check("Option A in-combat Warrior reads C_AssistedCombat spell", lua.eval("ASSISTED_WAR_LABEL"), "Heroic Strike")
+    check("Option A in-combat badge says Assisted", lua.eval("ASSISTED_WAR_BADGE"), "Assisted")
+    check("Option A in-combat suggestion tags source=assisted", lua.eval("ASSISTED_WAR_SRC"), "assisted")
+    check("Option A secret C_AssistedCombat return fails closed to nil", lua.eval("ASSISTED_SECRET_NIL"), True)
     check("Disabling HUD in combat defers frame:Hide()", lua.eval("STILL_SHOWN_IN_COMBAT"), True)
     check("Combat deferral sets _deferred flag", lua.eval("DEFERRED_FLAG"), True)
     check("Leaving combat applies deferred Hide()", lua.eval("HIDDEN_AFTER_COMBAT"), True)
@@ -346,44 +377,63 @@ def main():
     check("ForeverJourney ignores secret/locked chat strings without throwing",
           lua.eval("JOURNEY_SAFE"), True)
 
-    # 6. Forever RareGearQuests + Gear <-> Professions <-> Reputation sourcing
+    # 6. Forever RareGearQuests + Gear <-> Professions <-> Reputation sourcing (REAL data!)
     lua.execute(read("Data/Forever/RareGearQuests.lua"))
     lua.execute(read("Data/Forever/FactionRewards.lua"))
     lua.execute(read("Data/Forever/Enchants.lua"))
     lua.execute(r"""
-        -- Minimal stub to test ForeverGear sourcing helpers
         ToonAge.Utils = ToonAge.Utils or {}
         ToonAge.Compat = ToonAge.Compat or {}
-        ToonAge.Data.ForeverRareGearQuests.quests = {
-            {
-                questID = 90001, name = "Sample Horde Rare Quest", zone = "The Barrens",
-                giver = "Rare Mob", side = "Horde", minLevel = 15, maxLevel = 25,
-                classes = { MAGE = true }, slot = "Weapon", reward = "Sample Staff",
-                howToStart = "Drops from Rare Mob in The Barrens", verified = true,
-            },
-            {
-                questID = 90002, name = "Sample Alliance Quest", zone = "Westfall",
-                giver = "NPC", side = "Alliance", minLevel = 15, maxLevel = 25,
-                slot = "Ring", reward = "Sample Band", verified = true,
-            },
-        }
     """)
     lua.execute(read("Modules/Forever/Gear.lua"))
     lua.execute(r"""
         local FG = ToonAge.modules.ForeverGear
-        local hQuests = FG.GetRareGearQuests(19, "Horde", "MAGE", function(id) return false end)
-        RARE_HORDE_CNT = #hQuests
-        local hDone = FG.GetRareGearQuests(19, "Horde", "MAGE", function(id) return id == 90001 end)
-        RARE_DONE_CNT = #hDone
-        local hWrongClass = FG.GetRareGearQuests(19, "Horde", "WARRIOR", function() return false end)
-        RARE_WRONG_CLS = #hWrongClass
+        local function hasName(list, target)
+            for _, q in ipairs(list) do
+                if q.name == target then return true end
+            end
+            return false
+        end
+
+        -- Horde Lv 19 Mage: sees Arugal Must Die, Greater Friend of the Library, Blackfathom Villainy;
+        -- NEVER sees Alliance-only Old Ironforge Incursion or Malignant Root, nor Rogue-only Horn of Xelthos.
+        local hm19 = FG.GetRareGearQuests(19, "Horde", "MAGE", function() return false end)
+        HM19_ARUGAL = hasName(hm19, "Arugal Must Die")
+        HM19_LIB    = hasName(hm19, "Greater Friend of the Library (20 Books)")
+        HM19_BFD    = hasName(hm19, "Blackfathom Villainy")
+        HM19_NO_ALLI = (not hasName(hm19, "Old Ironforge Incursion")) and (not hasName(hm19, "Malignant Root (Rare Mob Turn-In)"))
+        HM19_VERIFIED_FIRST = (hm19[1] and hm19[1].verified == true) or false
+
+        -- Auto-hides Arugal Must Die (questID 1014) once flagged completed
+        local hm19Done = FG.GetRareGearQuests(19, "Horde", "MAGE", function(id) return id == 1014 end)
+        HM19_ARUGAL_HIDDEN = not hasName(hm19Done, "Arugal Must Die")
+
+        -- Horde Lv 27 Warrior: sees Arugal Must Die, Elder Knowledge, Brutal Armor; does NOT see Mage-only BFD wand
+        local hw27 = FG.GetRareGearQuests(27, "Horde", "WARRIOR", function() return false end)
+        HW27_BRUTAL = hasName(hw27, "Brutal Armor (Warrior Class)")
+        HW27_ELDER  = hasName(hw27, "Elder Knowledge / Lost Relic Carry")
+        HW27_NO_BFD = not hasName(hw27, "Blackfathom Villainy")
+
+        -- Alliance Lv 16 Hunter: sees Old Ironforge Incursion; NEVER sees Horde-only Arugal Must Die
+        local ah16 = FG.GetRareGearQuests(16, "Alliance", "HUNTER", function() return false end)
+        AH16_IRONFORGE = hasName(ah16, "Old Ironforge Incursion")
+        AH16_NO_ARUGAL = not hasName(ah16, "Arugal Must Die")
+
         local facHorde = FG.GetFactionUpgradeSources("Horde", 2)
         FAC_HORDE_CNT = #facHorde
         FAC_HORDE_FIRST = facHorde[1] and facHorde[1].name or ""
     """)
-    check("RareGearQuests filters by Horde + level + class", lua.eval("RARE_HORDE_CNT"), 1)
-    check("RareGearQuests hides already-completed quests", lua.eval("RARE_DONE_CNT"), 0)
-    check("RareGearQuests filters out mismatched classes", lua.eval("RARE_WRONG_CLS"), 0)
+    check("Horde Lv 19 Mage sees Arugal Must Die", lua.eval("HM19_ARUGAL"), True)
+    check("Horde Lv 19 Mage sees Greater Friend of the Library", lua.eval("HM19_LIB"), True)
+    check("Horde Lv 19 Mage sees Blackfathom Villainy (Gravestone Scepter)", lua.eval("HM19_BFD"), True)
+    check("Horde Lv 19 Mage never sees Alliance-only rare quests", lua.eval("HM19_NO_ALLI"), True)
+    check("RareGearQuests sorts verified Rare quests ahead of unverified", lua.eval("HM19_VERIFIED_FIRST"), True)
+    check("RareGearQuests auto-hides completed questID 1014 (Arugal Must Die)", lua.eval("HM19_ARUGAL_HIDDEN"), True)
+    check("Horde Lv 27 Warrior sees Brutal Armor class chain", lua.eval("HW27_BRUTAL"), True)
+    check("Horde Lv 27 Warrior sees Elder Knowledge (Heavehammer)", lua.eval("HW27_ELDER"), True)
+    check("Horde Lv 27 Warrior skips caster-only Blackfathom Villainy", lua.eval("HW27_NO_BFD"), True)
+    check("Alliance Lv 16 Hunter sees Old Ironforge Incursion", lua.eval("AH16_IRONFORGE"), True)
+    check("Alliance Lv 16 Hunter never sees Horde-only Arugal Must Die", lua.eval("AH16_NO_ARUGAL"), True)
     check("Gear surfaces Horde Faction Quartermaster sources", lua.eval("FAC_HORDE_CNT"), 2)
     check("Gear Horde Faction source leads with Darkspear Raiders",
           lua.eval("FAC_HORDE_FIRST"), "Darkspear Raiders")

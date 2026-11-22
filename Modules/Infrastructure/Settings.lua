@@ -701,17 +701,17 @@ function Settings:Render(content, sidebar)
 
     if Has("ForeverMageSuggest") then
         y = MakeSection(content, y, w, "COMBAT SUGGESTION HUD")
-        y = MakeToggleRow(content, y, w, "Show live Combat Suggest HUD (floating icon; never casts)", function()
+        y = MakeToggleRow(content, y, w, "Show live Combat Suggest HUD (opt-in: Prep out of combat, Blizzard Assisted Combat in combat)", function()
             local mod = TA:GetModule("ForeverMageSuggest")
             if mod and mod.IsEnabled then return mod:IsEnabled() end
-            return not (TA.db and TA.db.mageSuggest and TA.db.mageSuggest.enabled == false)
+            return TA.db and TA.db.mageSuggest and TA.db.mageSuggest.enabled == true or false
         end, function()
             local mod = TA:GetModule("ForeverMageSuggest")
             if mod and mod.ToggleEnabled then
                 mod:ToggleEnabled()
             elseif TA.db then
                 TA.db.mageSuggest = TA.db.mageSuggest or {}
-                TA.db.mageSuggest.enabled = (TA.db.mageSuggest.enabled == false)
+                TA.db.mageSuggest.enabled = not (TA.db.mageSuggest.enabled == true)
             end
         end)
         y = MakeToggleRow(content, y, w, "Lock the Combat Suggest HUD position", function()
