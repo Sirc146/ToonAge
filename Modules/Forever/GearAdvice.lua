@@ -252,6 +252,18 @@ function M:IsUpgrade(link)
     return true
 end
 
+--- True when every visible source agrees this item is a downgrade (e.g. -20%
+--- Icy Veins AND -23% Wowhead). Keeps obvious downgrades out of ForeverGear's
+--- "Trade-offs" and craftable "sidegrade" lists so the tab agrees with tooltips.
+function M:IsDowngrade(link)
+    local rows = self:Suggestions(link)
+    if #rows == 0 then return false end
+    for _, row in ipairs(rows) do
+        if row.verdict ~= "downgrade" then return false end
+    end
+    return true
+end
+
 function M:AddonLoaded(name)
     local C = TA.Compat
     if type(name) ~= "string" or name == "" then return false end

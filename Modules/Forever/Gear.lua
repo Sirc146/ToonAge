@@ -478,6 +478,13 @@ local function EvaluateLink(link, ctx)
         end
     end
     if not best then return nil end
+    -- If every visible Forever guide agrees this "trade-off" is actually a
+    -- downgrade (e.g. -20% Icy Veins and -23% Wowhead), suppress it so the
+    -- Gear tab never recommends an item its own tooltip flags as a downgrade.
+    if best.v.verdict == "trade" and TA.GearAdvice and type(TA.GearAdvice.IsDowngrade) == "function" then
+        local okD, isDown = pcall(TA.GearAdvice.IsDowngrade, TA.GearAdvice, link)
+        if okD and isDown == true then return nil end
+    end
     return {
         slot = SLOT_NAME[best.slot] or tostring(best.slot), name = info.name,
         quality = info.quality, ilvl = info.ilvl or 0,
@@ -882,6 +889,64 @@ local function ShowSource(SP, content, y, src)
     return y
 end
 
+--- Build a plain-English diff explaining why two Forever guides are flagged CONFLICT.
+function M.ExplainConflict(entry)
+    local SP = TA.StatPriority
+    local rows = (SP and SP.Rows and SP:Rows(entry)) or { entry }
+    local firstRow = rows[1]
+    local sources = firstRow and firstRow.sources or {}
+    if #sources < 2 then
+        return {
+            summary = "CONFLICT means the public Forever guides disagree on the exact stat order for this spec. ToonAge shows each guide verbatim instead of inventing an average.",
+            shared = {},
+            diffs = {},
+        }
+    end
+    local function Tokens(src)
+        local out, seen = {}, {}
+        for _, list in ipairs(src.lists or {}) do
+            local line = tostring(list.line or "")
+            for part in line:gmatch("[^>]+") do
+                local clean = part:gsub("%b()", ""):gsub("^%s+", ""):gsub("%s+$", "")
+                if clean ~= "" then
+                    local norm = clean:lower():gsub("spell damage", "spell power")
+                        :gsub("critical strike chance", "critical strike")
+                        :gsub("hit chance.*", "hit chance")
+                    if not seen[norm] then
+                        seen[norm] = clean
+                        out[#out + 1] = { norm = norm, label = clean }
+                    end
+                end
+            end
+        end
+        return out, seen
+    end
+    local aTok, aSet = Tokens(sources[1])
+    local bTok, bSet = Tokens(sources[2])
+    local shared, onlyA, onlyB = {}, {}, {}
+    for _, t in ipairs(aTok) do
+        if bSet[t.norm] then shared[#shared + 1] = t.label else onlyA[#onlyA + 1] = t.label end
+    end
+    for _, t in ipairs(bTok) do
+        if not aSet[t.norm] then onlyB[#onlyB + 1] = t.label end
+    end
+    local nameA = tostring(sources[1].name or "Guide 1")
+    local nameB = tostring(sources[2].name or "Guide 2")
+    local diffs = {}
+    if #onlyA > 0 then diffs[#diffs + 1] = "Only in " .. nameA .. ": " .. table.concat(onlyA, ", ") end
+    if #onlyB > 0 then diffs[#diffs + 1] = "Only in " .. nameB .. ": " .. table.concat(onlyB, ", ") end
+    if #diffs == 0 then
+        diffs[1] = nameA .. " and " .. nameB .. " rank the same stats in a different order."
+    end
+    return {
+        summary = "CONFLICT means " .. nameA .. " and " .. nameB
+            .. " disagree on the stat order (Forever Lv 60 endgame data is still settling). "
+            .. "ToonAge never averages them -- pick the guide you prefer above.",
+        shared = shared,
+        diffs = diffs,
+    }
+end
+
 local function RenderStatPriority(content, y)
     y = L:SectionHeader(content, y, "Suggested stat priority",
         "Public Forever guides. Not a score. Which list to follow is not decided yet.")
@@ -901,6 +966,14 @@ local function RenderStatPriority(content, y)
             { label = "Both", active = mode == "both", onClick = pick("both") },
             { label = "Icy Veins", active = mode == "iv", onClick = pick("iv") },
             { label = "Wowhead", active = mode == "wh", onClick = pick("wh") },
+            {
+                label = M._showConflictHelp and "Hide Conflict Info" or "Why CONFLICT?",
+                active = M._showConflictHelp == true,
+                onClick = function()
+                    M._showConflictHelp = not M._showConflictHelp
+                    if TA.QueueUIRefresh then TA:QueueUIRefresh("STAT_PRIORITY_VIEW") end
+                end,
+            },
         }, { label = "Show" })
     end
     local classToken, specName = PlayerClassAndSpec()
@@ -922,8 +995,29 @@ local function RenderStatPriority(content, y)
     y = L:DataRow(content, y, {
         label = specName,
         value = "CONFLICT",
+        note = M._showConflictHelp and nil or "Icy Veins and Wowhead disagree -- click 'Why CONFLICT?' above for the breakdown.",
         status = "warn",
     })
+    if M._showConflictHelp then
+        local info = M.ExplainConflict(entry)
+        y = L:Paragraph(content, y, info.summary, { color = L.C_TEXT })
+        if #info.shared > 0 then
+            y = L:DataRow(content, y, {
+                label = "Both guides agree",
+                value = "Safe to prioritize",
+                note = table.concat(info.shared, " -> "),
+                status = "good",
+            })
+        end
+        for _, d in ipairs(info.diffs) do
+            y = L:DataRow(content, y, {
+                label = "Where they differ",
+                value = "Guide diff",
+                note = d,
+                status = "warn",
+            })
+        end
+    end
     local rows = SP.Rows and SP:Rows(entry) or { entry }
     for _, row in ipairs(rows) do
         if row.label and row.label ~= "" then

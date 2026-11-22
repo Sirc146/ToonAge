@@ -140,6 +140,42 @@ def main():
     pins_src = read("Modules/Forever/Pins.lua")
     check("ForeverPins defines ToggleTargetPin", "function M:ToggleTargetPin" in pins_src, True)
 
+    # 5. GearAdvice:IsDowngrade + clickable Why CONFLICT? explainer
+    lua.execute(read("Data/Forever/StatPriority.lua"))
+    lua.execute(read("Modules/Forever/StatPriority.lua"))
+    lua.execute(read("Modules/Forever/GearAdvice.lua"))
+    lua.execute(read("Modules/Forever/Gear.lua"))
+    lua.execute(r"""
+        local GA = ToonAge.GearAdvice
+        local FG = ToonAge.modules.ForeverGear
+
+        -- IsDowngrade true only when EVERY visible guide says downgrade
+        GA.Suggestions = function(_, link)
+            if link == "item:blue_linen" then
+                return { { name = "Icy Veins", verdict = "downgrade" }, { name = "Wowhead", verdict = "downgrade" } }
+            elseif link == "item:mixed" then
+                return { { name = "Icy Veins", verdict = "downgrade" }, { name = "Wowhead", verdict = "upgrade" } }
+            end
+            return {}
+        end
+        DOWN_BOTH  = GA:IsDowngrade("item:blue_linen")
+        DOWN_MIXED = GA:IsDowngrade("item:mixed")
+        DOWN_EMPTY = GA:IsDowngrade("item:none")
+
+        -- ExplainConflict computes shared stats + guide differences for Arcane Mage
+        local entry = ToonAge.StatPriority:Get("MAGE", "Arcane")
+        local info = FG.ExplainConflict(entry)
+        CONF_HAS_SUMMARY = type(info.summary) == "string" and info.summary:find("Icy Veins", 1, true) ~= nil
+        CONF_SHARED_CNT  = #(info.shared or {})
+        CONF_DIFFS_CNT   = #(info.diffs or {})
+    """)
+    check("GearAdvice:IsDowngrade returns true when both guides say downgrade", lua.eval("DOWN_BOTH"), True)
+    check("GearAdvice:IsDowngrade returns false when guides disagree", lua.eval("DOWN_MIXED"), False)
+    check("GearAdvice:IsDowngrade returns false when no suggestions exist", lua.eval("DOWN_EMPTY"), False)
+    check("ExplainConflict generates plain-English summary naming guides", lua.eval("CONF_HAS_SUMMARY"), True)
+    check("ExplainConflict finds shared agreed stats for Arcane Mage", lua.eval("CONF_SHARED_CNT") >= 3, True)
+    check("ExplainConflict identifies where Icy Veins and Wowhead differ", lua.eval("CONF_DIFFS_CNT") >= 1, True)
+
     passed = sum(_results)
     total = len(_results)
     print(f"[{'OK' if passed == total else 'FAIL'}] {passed}/{total} assertions passed.")
