@@ -100,6 +100,32 @@ function M:BuildItems()
         end
     end
 
+    -- 1b. Profession tier trainer reminders (ProfessionBoard) -- never cap out silently!
+    local PB = TA.GetModule and TA:GetModule("ProfessionBoard")
+    if PB and type(PB.GetTrainerReminders) == "function" then
+        local okP, rems = pcall(PB.GetTrainerReminders, level)
+        if okP and type(rems) == "table" and #rems > 0 then
+            local anyCapped = false
+            local names = {}
+            for _, r in ipairs(rems) do
+                if r.capped then anyCapped = true end
+                names[#names + 1] = tostring(r.name or "Profession") .. " (" .. tostring(r.rank) .. "/" .. tostring(r.max) .. ")"
+            end
+            items[#items + 1] = {
+                priority = anyCapped and 1 or 2,
+                category = "Professions",
+                status = anyCapped and "alert" or "warning",
+                title = anyCapped
+                    and "Profession capped -- visit trainer now!"
+                    or "Profession tier trainer open",
+                value = tostring(#rems) .. " ready",
+                detail = table.concat(names, " · ") .. ". Train the next cap so skillups aren't wasted.",
+                actionLabel = "Open Professions",
+                actionTab = "professions",
+            }
+        end
+    end
+
     -- 2. Talent plan status (ForeverTalents Phase 1b GetNextPlannedPoint)
     local T = TA.GetModule and TA:GetModule("ForeverTalents")
     if T and T.GetNextPlannedPoint then

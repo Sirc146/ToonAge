@@ -1323,9 +1323,67 @@ local function Ago(at)
     return math.floor(m / 1440) .. " d ago"
 end
 
+local GATHERING_PROFS = {
+    Skinning = true,
+    Herbalism = true,
+    Mining = true,
+    Fishing = true,
+}
+
+--- Filter ForeverRareGearQuests by player level, faction, class, and completion.
+function M.GetRareGearQuests(level, side, classToken, completedFn)
+    local root = TA.Data and TA.Data.ForeverRareGearQuests
+    if type(root) ~= "table" or type(root.quests) ~= "table" then return {} end
+    local lv = tonumber(level) or 1
+    local out = {}
+    for _, q in ipairs(root.quests) do
+        if type(q) == "table" and type(q.name) == "string" and q.name ~= "" then
+            local sideOk = (not q.side) or q.side == "Both" or (not side) or q.side == side
+            local lvOk = (not q.minLevel or lv >= q.minLevel) and (not q.maxLevel or lv <= q.maxLevel)
+            local clsOk = (type(q.classes) ~= "table") or (not classToken) or (q.classes[classToken] == true)
+            local done = false
+            if type(q.questID) == "number" then
+                if type(completedFn) == "function" then
+                    done = completedFn(q.questID) == true
+                elseif C_QuestLog and type(C_QuestLog.IsQuestFlaggedCompleted) == "function" then
+                    done = Try(C_QuestLog.IsQuestFlaggedCompleted, q.questID) == true
+                end
+            end
+            if sideOk and lvOk and clsOk and not done then
+                out[#out + 1] = q
+            end
+        end
+    end
+    return out
+end
+
+--- Summarize relevant Faction Quartermaster gear sources for the player's side.
+function M.GetFactionUpgradeSources(side, limit)
+    local root = TA.Data and TA.Data.ForeverFactionRewards
+    if type(root) ~= "table" or type(root.factions) ~= "table" then return {} end
+    local out = {}
+    local cap = tonumber(limit) or 2
+    for _, f in ipairs(root.factions) do
+        if type(f) == "table" and type(f.name) == "string" then
+            local sideOk = (not f.side) or f.side == "Both" or f.side == "Neutral"
+                or (not side) or f.side == side
+            if sideOk and f.quartermaster then
+                out[#out + 1] = {
+                    name = f.name,
+                    activity = f.activity or f.category or "",
+                    quartermaster = f.quartermaster,
+                    friendly = f.tiers and f.tiers.Friendly or nil,
+                }
+                if #out >= cap then break end
+            end
+        end
+    end
+    return out
+end
+
 RenderEnchants = function(content, y)
     y = L:SectionHeader(content, y, "Enchants & crafting",
-        "What is enchanted, what you know for the rest, and what your professions can make.")
+        "What your professions can craft now, plus where to source upgrades and enchants you cannot make.")
     local mh = Try(GetInventoryItemLink, "player", 16)
     local mhInfo = mh and FullInfo(mh)
     local twoHanded = mhInfo and mhInfo.equipLoc == "INVTYPE_2HWEAPON"
@@ -1333,6 +1391,8 @@ RenderEnchants = function(content, y)
     local ohInfo = ohLink and FullInfo(ohLink)
     local hasShield = ohInfo and ohInfo.equipLoc == "INVTYPE_SHIELD"
     local hasHoldable = ohInfo and ohInfo.equipLoc == "INVTYPE_HOLDABLE"
+    local playerLvl = tonumber(Try(UnitLevel, "player")) or 1
+    local playerSide = type(UnitFactionGroup) == "function" and Try(UnitFactionGroup, "player") or nil
 
     -- Known enchants, by slot, from every recorded profession.
     local recipes = (TA.charDB and TA.charDB.recipes) or {}
@@ -1383,7 +1443,8 @@ RenderEnchants = function(content, y)
     if missing == 0 then
         y = L:Paragraph(content, y, "Every enchantable piece you wear is enchanted.", { color = L.C_SUCCESS })
     elseif not hasEnchanting then
-        y = L:Paragraph(content, y, "No Enchanting profession, so empty slots are not listed one by one.",
+        y = L:Paragraph(content, y,
+            tostring(missing) .. " equipped slot(s) are unenchanted. Without Enchanting, ask a capital-city/guild Enchanter (bring dust & essences from AH) — see the Forever Enchant Guide below.",
             { color = L.C_DIM })
     else
         for _, slot in ipairs(missingRows) do
@@ -1399,17 +1460,15 @@ RenderEnchants = function(content, y)
                 end
                 note = "you know: " .. table.concat(parts, "; ")
             else
-                note = "no enchant for this slot among your recorded recipes"
+                note = "no enchant for this slot among your recorded recipes -- train higher Enchanting or ask an Enchanter"
             end
             y = L:DataRow(content, y, { label = (SLOT_NAME[slot] or tostring(slot)) .. " — not enchanted",
-                value = (known and #known > 0) and "you can enchant this" or "", note = note,
+                value = (known and #known > 0) and "you can enchant this" or "Ask Enchanter / train", note = note,
                 status = (known and #known > 0) and "warn" or "dim" })
         end
     end
 
     -- Craftable upgrades: every recipe product through the shared verdict.
-    -- The same window can be recorded twice, once before the client names the
-    -- profession and once as Tailoring. Those used to list each item twice.
     local ctx = JudgeContext()
     local craft = M.CraftRows(recipes, function(link)
         return EvaluateLink(link, ctx)
@@ -1424,8 +1483,12 @@ RenderEnchants = function(content, y)
         return not anyPos and tostring(diff):find("%-%d") ~= nil
     end
     local shown = {}
+    local betterCount = 0
     for _, c in ipairs(craft) do
-        if not NetNegative(c.v.diff) then shown[#shown + 1] = c end
+        if not NetNegative(c.v.diff) then
+            shown[#shown + 1] = c
+            if c.v.verdict == "better" then betterCount = betterCount + 1 end
+        end
     end
     table.sort(shown, function(a, b)
         if (a.v.verdict == "better") ~= (b.v.verdict == "better") then return a.v.verdict == "better" end
@@ -1447,36 +1510,98 @@ RenderEnchants = function(content, y)
         })
     end
 
-    -- What has not been read yet, by name, from the professions you have.
+    -- When current professions cannot craft a clear upgrade at current level,
+    -- surface where to look next and link directly to Professions & Reputation.
+    if betterCount == 0 then
+        local craftMsg = (#shown > 0)
+            and ("Only sidegrades in your recorded recipes at Lv " .. tostring(playerLvl) .. ".")
+            or ("No craftable gear upgrades found in your recorded professions at Lv " .. tostring(playerLvl) .. ".")
+        y = L:DataRow(content, y, {
+            label = "Upgrade Sourcing (Next Step)",
+            value = "Beyond current recipes",
+            note = craftMsg .. " Train higher recipes on Professions, check Dungeon/Rare quests, Faction Quartermasters, or Auction House / Trade crafters.",
+            status = "neutral",
+        })
+        local repSources = M.GetFactionUpgradeSources(playerSide, 2)
+        for _, src in ipairs(repSources) do
+            y = L:DataRow(content, y, {
+                label = "Faction: " .. src.name,
+                value = src.activity,
+                note = "Quartermaster: " .. src.quartermaster
+                    .. (src.friendly and (" · Friendly: " .. src.friendly) or ""),
+                status = "neutral",
+            })
+        end
+    end
+
+    if L.ButtonRow then
+        local navBtns = {}
+        navBtns[#navBtns + 1] = {
+            label = "Open Professions",
+            onClick = function()
+                if TA.UI and TA.UI.SetTab then TA.UI:SetTab("professions") end
+            end,
+        }
+        navBtns[#navBtns + 1] = {
+            label = "Open Reputation",
+            onClick = function()
+                if TA.UI and TA.UI.SetTab then TA.UI:SetTab("reputations") end
+            end,
+        }
+        y = L:ButtonRow(content, y, navBtns)
+    end
+
+    -- What crafting windows have not been opened yet (skip gathering professions).
     local unread = {}
     local p1, p2, _, fishing, cooking = Try(GetProfessions)
     for _, idx in ipairs({ p1, p2, cooking, fishing }) do
         local name = idx and Try(GetProfessionInfo, idx)
-        if name and not recipes[name] and name ~= "Fishing" then unread[#unread + 1] = name end
+        if name and not recipes[name] and not GATHERING_PROFS[name] then
+            unread[#unread + 1] = name
+        end
     end
     local footer = {}
     if #unread > 0 then
         footer[#footer + 1] = "Open your " .. table.concat(unread, ", ")
-            .. " window once so ToonAge can read your recipes."
+            .. " window once so ToonAge can scan your recipes."
     end
     local oldest
     for _, rec in pairs(recipes) do if rec.at and (not oldest or rec.at < oldest) then oldest = rec.at end end
     if oldest then
-        footer[#footer + 1] = "Material counts are from when each window was last open (oldest " .. Ago(oldest)
-            .. "). Enchants other players can make are not listed: only your own recipes are known."
+        footer[#footer + 1] = "Material counts are from when each crafting window was last open (oldest " .. Ago(oldest) .. ")."
     end
     if #footer > 0 then
         y = L:Paragraph(content, y, table.concat(footer, " "), { color = L.C_DIM })
     end
 
-    -- Forever Enchant Guide (sourced per-role reference; skipped if data absent).
+    -- Forever Rare Gear Quests (populated from Data/Forever/RareGearQuests.lua as verified entries land).
     local classToken, specName = PlayerClassAndSpec()
+    local rareQuests = M.GetRareGearQuests(playerLvl, playerSide, classToken)
+    if #rareQuests > 0 then
+        if L.Spacer then y = L:Spacer(y, 6) end
+        y = L:SectionHeader(content, y, "Rare Gear Quests (Forever)",
+            "Notable drop & rare quests awarding upgrades for your level and faction.")
+        for _, q in ipairs(rareQuests) do
+            local tag = (q.verified == false) and " [UNVERIFIED]" or ""
+            local where = (q.zone and q.giver) and (q.zone .. " · " .. q.giver)
+                or (q.zone or q.giver or "")
+            local note = (q.reward and (q.reward .. " · ") or "")
+                .. (q.howToStart or where)
+            y = L:DataRow(content, y, {
+                label = q.name .. tag,
+                value = q.slot or "Upgrade",
+                note = note,
+                status = "good",
+            })
+        end
+    end
+
+    -- Forever Enchant Guide (sourced per-role reference + how/where to obtain).
     local guide = M.GetEnchantGuide(classToken, specName)
     if guide and guide.role then
-        local lvl = tonumber(Try(UnitLevel, "player"))
-        local sub = (lvl and lvl < 60)
-            and ("Endgame (Lv 60) reference for " .. guide.role.label .. " · Save gold while leveling")
-            or ("Sourced Forever reference for " .. guide.role.label)
+        local sub = (playerLvl < 60)
+            and ("Endgame (Lv 60) reference for " .. guide.role.label .. " · Save gold while leveling · Ask Enchanter / AH")
+            or ("Sourced Forever reference for " .. guide.role.label .. " · Craft, Guild/Trade Enchanter, or AH mats")
         if L.Spacer then y = L:Spacer(y, 6) end
         y = L:SectionHeader(content, y, "Forever Enchant Guide (" .. guide.role.label .. ")", sub)
         if guide.meta and guide.meta.summary then
@@ -1488,18 +1613,25 @@ RenderEnchants = function(content, y)
                 or (row.requireShield and link and not hasShield)
             if not skipOffhand then
                 local status, badge
+                local knownSlot = bySlot[row.slotID]
+                local how = ""
                 if not link then
                     status, badge = "dim", "Empty slot"
                 elseif (EnchantID(link) or 0) > 0 then
                     status, badge = "good", "Enchanted"
                 else
                     status, badge = "warn", "Needs enchant"
+                    if knownSlot and #knownSlot > 0 then
+                        how = " · You can craft (" .. knownSlot[1].name:gsub("^Enchant [^-]+%- ", "") .. ")"
+                    else
+                        how = " · Ask Enchanter / AH mats"
+                    end
                 end
                 local label = row.foreverNew and (row.slot .. " [New]") or row.slot
                 y = L:DataRow(content, y, {
                     label = label,
                     value = badge,
-                    note = row.enchant,
+                    note = row.enchant .. how,
                     status = status,
                 })
             end

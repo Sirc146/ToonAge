@@ -446,6 +446,98 @@ local function AuditItemEnchants(itemLink, isEnchantable)
     return true, "|cFF888780Enchanted|r"
 end
 
+-- ── Socket & Jewelcrafting audit (empty sockets + BoP / farmed gem sourcing) ──
+local SOCKET_KEYS = {
+    { key = "EMPTY_SOCKET_META",      label = "Meta" },
+    { key = "EMPTY_SOCKET_PRISMATIC", label = "Prismatic" },
+    { key = "EMPTY_SOCKET_RED",       label = "Red" },
+    { key = "EMPTY_SOCKET_YELLOW",    label = "Yellow" },
+    { key = "EMPTY_SOCKET_BLUE",      label = "Blue" },
+}
+
+local GEM_STAT_LABELS = {
+    { key = "CRIT",    label = "Critical Strike" },
+    { key = "HASTE",   label = "Haste" },
+    { key = "MASTERY", label = "Mastery" },
+    { key = "VERS",    label = "Versatility" },
+}
+
+local function BestGemStatForSpec(specID)
+    if not (SW and type(SW.GetWeights) == "function") then return nil end
+    local ok, w = pcall(SW.GetWeights, SW, specID)
+    if not ok or type(w) ~= "table" then return nil end
+    local bestLabel, bestVal = nil, 0
+    for _, s in ipairs(GEM_STAT_LABELS) do
+        local v = tonumber(w[s.key]) or 0
+        if v > bestVal then
+            bestVal = v
+            bestLabel = s.label
+        end
+    end
+    return bestLabel
+end
+
+local function AuditItemSockets(itemLink, specID, opts)
+    opts = opts or {}
+    if not itemLink then
+        return { total = 0, filled = 0, empty = 0, types = {}, hasJC = false }
+    end
+    local statsFn = opts.getStats or (TA.Compat and TA.Compat.GetItemStats)
+    local raw = nil
+    if type(statsFn) == "function" then
+        local ok, tbl = pcall(statsFn, itemLink)
+        if ok and type(tbl) == "table" then raw = tbl end
+    end
+    local total = 0
+    local types = {}
+    if type(raw) == "table" then
+        for _, sk in ipairs(SOCKET_KEYS) do
+            local n = tonumber(raw[sk.key]) or 0
+            if n > 0 then
+                total = total + n
+                types[#types + 1] = (n > 1) and (tostring(n) .. "x " .. sk.label) or sk.label
+            end
+        end
+    end
+    local filled = 0
+    local gemFn = opts.getGem or (C_Item and C_Item.GetItemGem) or GetItemGem
+    if total > 0 and type(gemFn) == "function" then
+        for i = 1, total do
+            local okG, gName = pcall(gemFn, itemLink, i)
+            if okG and type(gName) == "string" and gName ~= "" then
+                filled = filled + 1
+            end
+        end
+    end
+    local empty = math.max(0, total - filled)
+    local hasJC = (opts.hasJC ~= nil) and (opts.hasJC == true)
+        or (PlayerProfessionsCache["JEWELCRAFTING"] == true)
+    local topStat = opts.topStat or BestGemStatForSpec(specID)
+    local advice = nil
+    local howToGet = nil
+    if empty > 0 then
+        advice = topStat and ("Prioritize " .. topStat .. " gem(s) for your spec.")
+            or "Match your spec's top stat priority."
+        if hasJC then
+            howToGet = "You have Jewelcrafting: cut/socket your own gems (including BoP JC-only gems that cannot be bought on AH)."
+        else
+            howToGet = "Tradeable gems: Auction House or Jewelcrafting Crafting Orders. BoP/unique gems cannot be bought -- farm via Reputation vendors, Dungeon/Heroic badges, or PvP vendors."
+        end
+    end
+    return {
+        total = total,
+        filled = filled,
+        empty = empty,
+        types = types,
+        hasJC = hasJC,
+        topStat = topStat,
+        advice = advice,
+        howToGet = howToGet,
+    }
+end
+
+Gear.AuditItemSockets = AuditItemSockets
+
 -- Debounced re-render for the bag-change events, which can fire many times
 -- in a single loot/vendor action — each full render rescans every bag slot
 -- against all 18 grid slots, so batching avoids repeating that scan per event.
@@ -1345,14 +1437,29 @@ function Gear:RenderSidebarDetails(parent, slotID, curLink, upLink, curScore, up
         SLabel("[OK] Slot is optimized.", 10, 0.5, 0.5, 0.5)
     end
 
-    -- Enchant sidebar audit
+    -- Enchant & Socket sidebar audit (connects Gear <-> Professions)
     if curLink then
         y = y - 4
         local isOk, auditStr = AuditItemEnchants(curLink, IsEnchantableSlot(slotID, curLink))
         SLabel(auditStr ~= "" and auditStr or "|cFF555555[OK] No enchant slot|r", 9)
-        if not isOk and auditStr:find("Needs") then
+        local sock = AuditItemSockets(curLink, specID)
+        if sock.total > 0 then
+            if sock.empty > 0 then
+                local typeStr = (#sock.types > 0) and (" (" .. table.concat(sock.types, ", ") .. ")") or ""
+                SLabel("|cFFFFAA33[!] " .. sock.empty .. "/" .. sock.total .. " empty socket(s)" .. typeStr .. "|r", 9)
+                if sock.advice then SLabel(sock.advice, 9, 0.85, 0.90, 0.95) end
+                if sock.howToGet then SLabel(sock.howToGet, 9, 0.65, 0.68, 0.72) end
+            else
+                SLabel("|cFF888780[OK] Sockets filled (" .. sock.filled .. "/" .. sock.total .. ")|r", 9)
+            end
+        end
+        if (not isOk and auditStr:find("Needs")) or (sock.empty > 0) then
             SButton("Open Professions", function()
-                pcall(ToggleSpellBook, BOOKTYPE_PROFESSION)
+                if TA.UI and TA.UI.SetTab then
+                    TA.UI:SetTab("professions")
+                else
+                    pcall(ToggleSpellBook, BOOKTYPE_PROFESSION)
+                end
             end)
         end
     end

@@ -700,8 +700,21 @@ function Settings:Render(content, sidebar)
     end
 
     if Has("ForeverMageSuggest") then
-        y = MakeSection(content, y, w, "MAGE SUGGESTION")
-        y = MakeToggleRow(content, y, w, "Lock the Mage suggestion frame", function()
+        y = MakeSection(content, y, w, "COMBAT SUGGESTION HUD")
+        y = MakeToggleRow(content, y, w, "Show live Combat Suggest HUD (floating icon; never casts)", function()
+            local mod = TA:GetModule("ForeverMageSuggest")
+            if mod and mod.IsEnabled then return mod:IsEnabled() end
+            return not (TA.db and TA.db.mageSuggest and TA.db.mageSuggest.enabled == false)
+        end, function()
+            local mod = TA:GetModule("ForeverMageSuggest")
+            if mod and mod.ToggleEnabled then
+                mod:ToggleEnabled()
+            elseif TA.db then
+                TA.db.mageSuggest = TA.db.mageSuggest or {}
+                TA.db.mageSuggest.enabled = (TA.db.mageSuggest.enabled == false)
+            end
+        end)
+        y = MakeToggleRow(content, y, w, "Lock the Combat Suggest HUD position", function()
             return TA.db and TA.db.mageSuggest and TA.db.mageSuggest.locked and true or false
         end, function()
             if not TA.db then return end

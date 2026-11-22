@@ -305,7 +305,7 @@ local function ToastFrame()
 
     f = CreateFrame("Button", "TALootWatchToast", UIParent)
     f._laKind = "ForeverLootWatch"
-    f:SetSize(332, 52)
+    f:SetSize(432, 54)
     f:SetFrameStrata("DIALOG")
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
@@ -316,7 +316,7 @@ local function ToastFrame()
     if type(pos) == "table" and type(pos.x) == "number" and type(pos.y) == "number" then
         f:SetPoint(pos.point or "CENTER", UIParent, pos.relPoint or "CENTER", pos.x, pos.y)
     else
-        f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 215)
+        f:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 260)
     end
 
     -- Dark Modern Azeroth pill body (starts at x=24 so the circular icon overlaps cleanly)
@@ -342,20 +342,30 @@ local function ToastFrame()
     f.bLft = Edge(); f.bLft:SetWidth(1);  f.bLft:SetPoint("TOPLEFT"); f.bLft:SetPoint("BOTTOMLEFT")
     f.bRgt = Edge(); f.bRgt:SetWidth(1);  f.bRgt:SetPoint("TOPRIGHT"); f.bRgt:SetPoint("BOTTOMRIGHT")
 
-    -- Left circular icon + golden ring halo (matches screenshot toast look)
-    local iconBg = f:CreateTexture(nil, "ARTWORK", nil, 0)
+    -- Elevated holder so the circular icon & counter badge always render ABOVE the pill
+    local iconHolder = CreateFrame("Frame", nil, f)
+    iconHolder._laKind = "ForeverLootWatch"
+    iconHolder:SetSize(48, 48)
+    iconHolder:SetPoint("LEFT", f, "LEFT", 0, 0)
+    if iconHolder.SetFrameLevel and pill.GetFrameLevel then
+        local lvl = pill:GetFrameLevel()
+        if type(lvl) == "number" then iconHolder:SetFrameLevel(lvl + 2) end
+    end
+    f.iconHolder = iconHolder
+
+    local iconBg = iconHolder:CreateTexture(nil, "ARTWORK", nil, 0)
     iconBg:SetSize(44, 44)
-    iconBg:SetPoint("LEFT", f, "LEFT", 2, 0)
+    iconBg:SetPoint("CENTER", iconHolder, "CENTER", 0, 0)
     iconBg:SetColorTexture(0.04, 0.05, 0.07, 1)
     f.iconBg = iconBg
 
-    local icon = f:CreateTexture(nil, "ARTWORK", nil, 1)
+    local icon = iconHolder:CreateTexture(nil, "ARTWORK", nil, 1)
     icon:SetSize(38, 38)
     icon:SetPoint("CENTER", iconBg, "CENTER", 0, 0)
     if icon.SetTexCoord then icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
     f.icon = icon
 
-    local ring = f:CreateTexture(nil, "OVERLAY", nil, 2)
+    local ring = iconHolder:CreateTexture(nil, "OVERLAY", nil, 2)
     ring:SetSize(48, 48)
     ring:SetPoint("CENTER", iconBg, "CENTER", 0, 0)
     if U and U.TEX_RING then
@@ -366,13 +376,13 @@ local function ToastFrame()
     f.ring = ring
 
     -- Bottom-right circular Need counter badge (e.g. (3))
-    local badgeBg = f:CreateTexture(nil, "OVERLAY", nil, 3)
+    local badgeBg = iconHolder:CreateTexture(nil, "OVERLAY", nil, 3)
     badgeBg:SetSize(18, 18)
     badgeBg:SetPoint("BOTTOMRIGHT", iconBg, "BOTTOMRIGHT", 3, -2)
     badgeBg:SetColorTexture(0.08, 0.10, 0.14, 0.98)
     f.badgeBg = badgeBg
 
-    local badgeRing = f:CreateTexture(nil, "OVERLAY", nil, 4)
+    local badgeRing = iconHolder:CreateTexture(nil, "OVERLAY", nil, 4)
     badgeRing:SetSize(20, 20)
     badgeRing:SetPoint("CENTER", badgeBg, "CENTER", 0, 0)
     if U and U.TEX_RING then
@@ -382,7 +392,7 @@ local function ToastFrame()
     end
     f.badgeRing = badgeRing
 
-    local badgeText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local badgeText = iconHolder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     badgeText:SetPoint("CENTER", badgeBg, "CENTER", 0, 0)
     f.badgeText = badgeText
 

@@ -155,7 +155,7 @@ end
 -- Frame recycler pool (file-scope, persists across tab switches)
 local _framePool = { content = {}, side = {} }
 
-local function RebuildChild(scrollFrame, width)
+local function RebuildChild(scrollFrame, width, preserveScroll)
     -- Frame recycler pool: prevents memory inflation from creating new frames
     -- on every tab switch. WoW's C-engine does NOT release unparented widget
     -- memory — so we reuse frames instead of abandoning them.
@@ -207,7 +207,9 @@ local function RebuildChild(scrollFrame, width)
 
     child._laPane = true          -- Core/Layout.lua recycles what it draws here
     scrollFrame:SetScrollChild(child)
-    scrollFrame:SetVerticalScroll(0)
+    if not preserveScroll then
+        scrollFrame:SetVerticalScroll(0)
+    end
     return child
 end
 
@@ -743,13 +745,13 @@ function TA:InitUI()
 
         -- Rebuild content panes fresh — this is the key fix.
         -- Destroying and recreating avoids FontString/Texture bleed-through
-        -- that GetChildren() misses.
-        self.contentChild = RebuildChild(self.contentScroll, self.contentWidth)
-        self.sideChild    = RebuildChild(self.sideScroll,    self.sideWidth)
+        -- that GetChildren() misses. When refreshing the SAME tab, keep the
+        -- scroll position intact so the pane never flashes to scroll=0.
+        self.contentChild = RebuildChild(self.contentScroll, self.contentWidth, sameTab)
+        self.sideChild    = RebuildChild(self.sideScroll,    self.sideWidth,    sameTab)
 
-        -- Restored AFTER the module renders, below: the scroll range is zero
-        -- until the child has its real height, so restoring here would clamp to
-        -- nothing. Remembered now because RebuildChild has just zeroed it.
+        -- Restored right after the module renders below (synchronously first
+        -- to eliminate any 1-frame snap to the top, plus a 0s fallback).
         self._restoreScroll = (keepScroll > 0) and keepScroll or nil
 
         -- Ask the module to render into the fresh panes
@@ -771,18 +773,22 @@ function TA:InitUI()
                 end
             end
 
-            -- Put the view back where it was. One frame later: the scroll
-            -- range is computed from the child's height, and that height was
-            -- only just set by Finish() inside the render above.
-            if self._restoreScroll and C_Timer and C_Timer.After then
+            -- Restore scroll immediately in the same frame so there is zero
+            -- flash to the top, then confirm on the next frame if layout grew.
+            if self._restoreScroll then
                 local want, sf = self._restoreScroll, self.contentScroll
                 self._restoreScroll = nil
-                C_Timer.After(0, function()
+                local function ApplyScroll()
                     if not (sf and sf.GetVerticalScrollRange) then return end
+                    if sf.UpdateScrollChildRect then pcall(sf.UpdateScrollChildRect, sf) end
                     local maxScroll = sf:GetVerticalScrollRange() or 0
                     if maxScroll <= 0 then return end
                     sf:SetVerticalScroll(math.min(want, maxScroll))
-                end)
+                end
+                ApplyScroll()
+                if C_Timer and C_Timer.After then
+                    C_Timer.After(0, ApplyScroll)
+                end
             end
 
             -- ── Guide tab conditional behavior ────────────────────────────
@@ -894,7 +900,6 @@ function TA:InitUI()
         },
         professions = {
             SKILL_LINES_CHANGED = true, PLAYER_LEVEL_UP = true,
-            GET_ITEM_INFO_RECEIVED = true,
         },
         pets = {
             PET_STABLE_UPDATE = true, UNIT_PET = true, PLAYER_LEVEL_UP = true,
@@ -989,12 +994,14 @@ function TA:InitUI()
         end
     end
 
-    -- Events that no tab renders: combat/nameplate churn, cinematics, and
-    -- death/res transitions. These are the high-frequency ones worth filtering
-    -- (NAME_PLATE_UNIT_ADDED/REMOVED fire constantly in combat). Anything not
-    -- listed here and not claimed by a tab falls through to a rebuild.
+    -- Events that no tab renders: combat/nameplate/aura/power churn, cinematics,
+    -- loot-chat, and death/res transitions. Any tab that explicitly claims one
+    -- of these in TAB_EVENTS still refreshes; unclaimed tabs skip the rebuild.
     local UI_IRRELEVANT = {
         NAME_PLATE_UNIT_ADDED = true, NAME_PLATE_UNIT_REMOVED = true,
+        UNIT_AURA = true, UNIT_POWER_UPDATE = true, SPELL_UPDATE_COOLDOWN = true,
+        CHAT_MSG_LOOT = true, CHAT_MSG_COMBAT_XP_GAIN = true, START_LOOT_ROLL = true,
+        PLAYER_CONTROL_LOST = true, PLAYER_CONTROL_GAINED = true,
         CINEMATIC_START = true, PLAY_MOVIE = true,
         PLAYER_REGEN_ENABLED = true, PLAYER_REGEN_DISABLED = true,
         PLAYER_DEAD = true, PLAYER_ALIVE = true, PLAYER_UNGHOST = true,
@@ -1048,6 +1055,17 @@ function TA:InitUI()
         if events then
             if type(events) ~= "table" then events = { [events] = true } end
             if not BatchAffectsTab(events, self.activeTab) then return end
+            -- Never rebuild the active tab out from under the user while they
+            -- are typing in one of its EditBoxes (e.g. Professions Batch inputs).
+            if type(GetCurrentKeyBoardFocus) == "function" and self.contentChild then
+                local focus = GetCurrentKeyBoardFocus()
+                local cur = focus
+                for _ = 1, 6 do
+                    if not cur then break end
+                    if cur == self.contentChild then return end
+                    cur = cur.GetParent and cur:GetParent() or nil
+                end
+            end
         end
 
         self:SetTab(self.activeTab)
@@ -1498,6 +1516,9 @@ function TA:ApplyTheme(skin, pack, reducedMotion)
             self:RefreshSettingsDrawer()
         end
     end
+    if self._copyWindow and self._copyWindow.ApplyTheme then
+        self._copyWindow:ApplyTheme()
+    end
 end
 
 -- ── Copyable text window ──────────────────────────────────────────────
@@ -1509,10 +1530,11 @@ local function Plain(text)
     return (tostring(text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))
 end
 
--- Chat pastes get cut off past a few thousand characters. A long report is
--- split on line breaks into parts of about this many characters, and the
--- window shows one part at a time ("part 1/3").
+-- Chat pastes get cut off past a few thousand characters. CopyPages defaults to
+-- 3500 for chat-sized chunking, while ShowCopyWindow holds up to 60,000 chars
+-- in a single EditBox so reports like /ta test copy in one Ctrl+C.
 local COPY_PAGE_CHARS = 3500
+local COPY_SINGLE_CHARS = 60000
 
 function TA.CopyPages(text, limit)
     limit = tonumber(limit) or COPY_PAGE_CHARS
@@ -1540,74 +1562,196 @@ function TA.CopyPages(text, limit)
     return pages
 end
 
-function TA:ShowCopyWindow(title, text)
+local function MakeCopyButton(parent, width, height, labelText)
+    local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    btn:SetSize(width, height)
+    btn.plate = btn:CreateTexture(nil, "BACKGROUND")
+    btn.plate:SetAllPoints()
+    btn.plate:SetTexture(GLASS_DIR .. "button_r6.tga")
+    btn.plate:SetVertexColor(0.08, 0.12, 0.16, 0.90)
+
+    local lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    lbl:SetPoint("CENTER")
+    lbl:SetText(labelText or "")
+    btn.label = lbl
+
+    btn._enabled = true
+    function btn:SetEnabled(v)
+        self._enabled = v and true or false
+        if self.ApplyStyle then self:ApplyStyle(false) end
+    end
+    function btn:IsEnabled()
+        return self._enabled ~= false
+    end
+    function btn:ApplyStyle(hover)
+        local ac = ActiveAccent()
+        local modern = IsModernSkin()
+        if not self._enabled then
+            if self.plate then self.plate:SetVertexColor(0.06, 0.08, 0.10, 0.45) end
+            if self.label then self.label:SetTextColor(0.45, 0.46, 0.48, 0.70) end
+            return
+        end
+        if modern then
+            if hover then
+                self.plate:SetVertexColor(ac[1] * 0.34, ac[2] * 0.34, ac[3] * 0.34, 0.96)
+                self.label:SetTextColor(0.98, 0.98, 0.99, 1.00)
+            else
+                self.plate:SetVertexColor(0.08, 0.12, 0.17, 0.92)
+                self.label:SetTextColor(0.90, 0.92, 0.95, 1.00)
+            end
+        else
+            if hover then
+                self.plate:SetVertexColor(0.28, 0.21, 0.06, 0.95)
+                self.label:SetTextColor(1.00, 0.92, 0.65, 1.00)
+            else
+                self.plate:SetVertexColor(0.14, 0.11, 0.05, 0.92)
+                self.label:SetTextColor(0.92, 0.85, 0.65, 1.00)
+            end
+        end
+    end
+    btn:SetScript("OnEnter", function(self) self:ApplyStyle(true) end)
+    btn:SetScript("OnLeave", function(self) self:ApplyStyle(false) end)
+    btn:ApplyStyle(false)
+    return btn
+end
+
+function TA:ShowCopyWindow(title, text, opts)
     local f = self._copyWindow
     if not f then
         f = CreateFrame("Frame", "ToonAgeCopyWindow", UIParent, "BackdropTemplate")
-        f:SetSize(620, 460)
+        f:SetSize(640, 480)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
+        f:SetClampedToScreen(true)
         f:SetMovable(true)
         f:EnableMouse(true)
         f:RegisterForDrag("LeftButton")
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
-        f:SetBackdrop({
-            bgFile   = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            edgeSize = 1,
-        })
-        f:SetBackdropColor(0.05, 0.05, 0.06, 0.96)
-        f:SetBackdropBorderColor(0.85, 0.65, 0.13, 0.85)
 
-        local hdr = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        hdr:SetPoint("TOPLEFT", 12, -10)
+        -- Title bar matching the main Modern Azeroth window
+        local titleBar = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        titleBar:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+        titleBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
+        titleBar:SetHeight(34)
+        f.titleBar = titleBar
+
+        local specTop = titleBar:CreateTexture(nil, "ARTWORK")
+        specTop:SetPoint("TOPLEFT", titleBar, "TOPLEFT", 0, 0)
+        specTop:SetPoint("TOPRIGHT", titleBar, "TOPRIGHT", 0, 0)
+        specTop:SetHeight(16)
+        specTop:SetTexture(GLASS_DIR .. "spec_top.tga")
+        f.specTop = specTop
+
+        local titleRule = titleBar:CreateTexture(nil, "OVERLAY")
+        titleRule:SetHeight(1)
+        titleRule:SetPoint("BOTTOMLEFT", titleBar, "BOTTOMLEFT", 0, 0)
+        titleRule:SetPoint("BOTTOMRIGHT", titleBar, "BOTTOMRIGHT", 0, 0)
+        titleRule:SetColorTexture(1, 1, 1, 0.10)
+        f.titleRule = titleRule
+
+        local hdr = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        hdr:SetPoint("LEFT", titleBar, "LEFT", 12, 0)
+        hdr:SetPoint("RIGHT", titleBar, "RIGHT", -38, 0)
+        if hdr.SetJustifyH then hdr:SetJustifyH("LEFT") end
         f.header = hdr
 
-        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        local close = CreateFrame("Button", nil, titleBar)
         close:SetSize(24, 24)
-        close:SetPoint("TOPRIGHT", -4, -4)
+        close:SetPoint("RIGHT", titleBar, "RIGHT", -6, 0)
+        close.plate = close:CreateTexture(nil, "BACKGROUND")
+        close.plate:SetAllPoints()
+        close.plate:SetTexture(GLASS_DIR .. "button_r6.tga")
+        close.plate:SetVertexColor(0.08, 0.12, 0.16, 0.85)
+        close.icon = close:CreateTexture(nil, "ARTWORK")
+        close.icon:SetSize(12, 12)
+        close.icon:SetPoint("CENTER")
+        close.icon:SetTexture(ICON_DIR .. "util_close_16.tga")
+        close.icon:SetVertexColor(0.79, 0.80, 0.82, 1)
+        close:SetScript("OnEnter", function(self)
+            self.plate:SetVertexColor(0.75, 0.24, 0.24, 0.78)
+            self.icon:SetVertexColor(0.98, 0.98, 0.99, 1)
+        end)
+        close:SetScript("OnLeave", function(self)
+            self.plate:SetVertexColor(0.08, 0.12, 0.16, 0.85)
+            self.icon:SetVertexColor(0.79, 0.80, 0.82, 1)
+        end)
+        close:SetScript("OnClick", function() f:Hide() end)
+        f.closeBtn = close
 
-        local scroll = CreateFrame("ScrollFrame", "ToonAgeCopyWindowScroll", f, "UIPanelScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT", 12, -32)
-        scroll:SetPoint("BOTTOMRIGHT", -30, 40)
+        -- Solid dark content well (zero glass-on-glass; high text contrast)
+        local well = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        well:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -40)
+        well:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 42)
+        ApplyBackdrop(well, 0.04, 0.05, 0.07, 0.95, 1, 1, 1, 0.08)
+        f.well = well
+
+        local scroll = CreateFrame("ScrollFrame", "ToonAgeCopyWindowScroll", well, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", well, "TOPLEFT", 8, -8)
+        scroll:SetPoint("BOTTOMRIGHT", well, "BOTTOMRIGHT", -26, 8)
 
         local edit = CreateFrame("EditBox", nil, scroll)
         edit:SetMultiLine(true)
         edit:SetFontObject(ChatFontNormal)
-        edit:SetWidth(560)
+        edit:SetWidth(570)
         edit:SetAutoFocus(false)
         edit:SetScript("OnEscapePressed", function() f:Hide() end)
         scroll:SetScrollChild(edit)
         f.editBox = edit
 
-        local sel = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        sel:SetSize(90, 22)
-        sel:SetPoint("BOTTOMLEFT", 12, 10)
-        sel:SetText("Select All")
+        local sel = MakeCopyButton(f, 96, 24, "Select All")
+        sel:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
         sel:SetScript("OnClick", function()
             edit:SetFocus()
             edit:HighlightText()
-            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Selected — press Ctrl+C to copy.")
+            TA:Raw(TA.LOG.OUTPUT, "|cFFFFD100[ToonAge]|r Selected -- press Ctrl+C to copy.")
         end)
+        f.selectBtn = sel
 
-        local prev = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        prev:SetSize(70, 22)
+        local prev = MakeCopyButton(f, 70, 24, "Prev")
         prev:SetPoint("LEFT", sel, "RIGHT", 8, 0)
-        prev:SetText("Prev")
         prev:SetScript("OnClick", function()
             if f.page and f.page > 1 then f:ShowPage(f.page - 1) end
         end)
         f.prevBtn = prev
 
-        local nxt = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        nxt:SetSize(70, 22)
+        local nxt = MakeCopyButton(f, 70, 24, "Next")
         nxt:SetPoint("LEFT", prev, "RIGHT", 8, 0)
-        nxt:SetText("Next")
         nxt:SetScript("OnClick", function()
             if f.page and f.pages and f.page < #f.pages then f:ShowPage(f.page + 1) end
         end)
         f.nextBtn = nxt
+
+        local status = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        status:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 16)
+        status:SetTextColor(0.62, 0.65, 0.70, 1)
+        f.statusText = status
+
+        function f:ApplyTheme()
+            local ac = ActiveAccent()
+            if IsModernSkin() then
+                local t = TA.Theme and TA.Theme.active
+                local fill = (t and t.glass and t.glass.sheet_fill) or { 0.063, 0.094, 0.133, 0.92 }
+                local rim  = (t and t.glass and t.glass.sheet_rim) or { 1, 1, 1, 0.18 }
+                ApplyBackdrop(self, fill[1], fill[2], fill[3], math.max(fill[4] or 0.92, 0.92),
+                    rim[1], rim[2], rim[3], rim[4])
+                ApplyBackdrop(self.titleBar, 0.07, 0.10, 0.15, 0.96, ac[1], ac[2], ac[3], 0.35)
+                if self.specTop then self.specTop:Show() end
+                if self.well then
+                    ApplyBackdrop(self.well, 0.035, 0.045, 0.065, 0.96, 1, 1, 1, 0.08)
+                end
+            else
+                ApplyBackdrop(self, 0.05, 0.05, 0.06, 0.96, 0.85, 0.65, 0.13, 0.85)
+                ApplyBackdrop(self.titleBar, 0.09, 0.09, 0.11, 0.98, 0.55, 0.40, 0.08, 0.60)
+                if self.specTop then self.specTop:Hide() end
+                if self.well then
+                    ApplyBackdrop(self.well, 0.03, 0.03, 0.04, 0.96, 0.35, 0.28, 0.10, 0.50)
+                end
+            end
+            if self.selectBtn and self.selectBtn.ApplyStyle then self.selectBtn:ApplyStyle(false) end
+            if self.prevBtn and self.prevBtn.ApplyStyle then self.prevBtn:ApplyStyle(false) end
+            if self.nextBtn and self.nextBtn.ApplyStyle then self.nextBtn:ApplyStyle(false) end
+        end
 
         function f:ShowPage(n)
             local pages = self.pages or { "" }
@@ -1617,8 +1761,14 @@ function TA:ShowCopyWindow(title, text)
             self.page = n
             local label = tostring(self.baseTitle or "")
             if total > 1 then label = label .. " part " .. n .. "/" .. total end
-            self.header:SetText("|cFFFFD100" .. label .. "|r  (Ctrl+A to select, Ctrl+C to copy)")
-            self.editBox:SetText(pages[n] or "")
+            local ac = ActiveAccent()
+            local hex = string.format("%02X%02X%02X",
+                math.floor((ac[1] or 1) * 255 + 0.5),
+                math.floor((ac[2] or 0.82) * 255 + 0.5),
+                math.floor((ac[3] or 0) * 255 + 0.5))
+            self.header:SetText("|cFF" .. hex .. label .. "|r  |cFF9AA3B0(Ctrl+C to copy)|r")
+            local chunk = pages[n] or ""
+            self.editBox:SetText(chunk)
             self.editBox:SetCursorPosition(0)
             if total > 1 then
                 self.prevBtn:Show()
@@ -1629,16 +1779,26 @@ function TA:ShowCopyWindow(title, text)
             end
             if self.prevBtn.SetEnabled then self.prevBtn:SetEnabled(n > 1) end
             if self.nextBtn.SetEnabled then self.nextBtn:SetEnabled(n < total) end
+            if self.statusText then
+                local suffix = (total > 1) and (" · Page " .. n .. "/" .. total) or " · Single copy ready"
+                self.statusText:SetText(tostring(#chunk) .. " chars" .. suffix)
+            end
         end
 
         tinsert(UISpecialFrames, "ToonAgeCopyWindow")
         self._copyWindow = f
     end
 
+    local pageLimit = (type(opts) == "table" and tonumber(opts.pageChars)) or COPY_SINGLE_CHARS
     f.baseTitle = title
-    f.pages = self.CopyPages(Plain(text), COPY_PAGE_CHARS)
+    f.pages = self.CopyPages(Plain(text), pageLimit)
+    if f.ApplyTheme then f:ApplyTheme() end
     f:ShowPage(1)
     f:Show()
+    if f.editBox and f.editBox.SetFocus and f.editBox.HighlightText then
+        pcall(f.editBox.SetFocus, f.editBox)
+        pcall(f.editBox.HighlightText, f.editBox)
+    end
 end
 
 --- Collect a multi-line report, then put it where it can actually be read.

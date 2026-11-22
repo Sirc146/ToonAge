@@ -9,8 +9,127 @@ local B = {}
 TA:RegisterModule("ProfessionBoard", B)
 
 local DrawLearned
+local RankOf
 
-local function RankOf(card)
+local GATHERING_SET = {
+    Skinning = true,
+    Herbalism = true,
+    Mining = true,
+}
+
+local SECONDARY_BOOK_SET = {
+    Cooking = true,
+    ["First Aid"] = true,
+    Fishing = true,
+}
+
+-- Classic / Forever / TBC profession tier thresholds:
+-- triggers right when the next tier first opens so you never cap out.
+function B.TrainerReminder(card, rank, max, playerLevel)
+    if type(card) ~= "table" then return nil end
+    rank = tonumber(rank) or 0
+    max  = tonumber(max) or 0
+    if max <= 0 or rank <= 0 then return nil end
+    -- Retail segmented professions (Dragonflight/TWW/Midnight) don't use 75/150/225 caps.
+    if type(card.segments) == "table" and #card.segments > 1 then return nil end
+
+    local name = tostring(card.name or "")
+    local isGather = GATHERING_SET[name] == true
+    local isBookSec = SECONDARY_BOOK_SET[name] == true or card.secondary == true
+    local lv = tonumber(playerLevel)
+    local nextTier, nextCap, openAt, reqLv, how
+
+    if max == 75 then
+        nextTier, nextCap, openAt = "Journeyman", 150, 50
+        reqLv = (isGather or isBookSec) and 1 or 10
+        how = "Visit your " .. name .. " trainer"
+    elseif max == 150 then
+        nextTier, nextCap, openAt = "Expert", 225, 125
+        reqLv = isGather and 10 or 20
+        how = isBookSec
+            and ("Buy the Expert " .. name .. " book from a vendor")
+            or ("Visit an Expert " .. name .. " trainer")
+    elseif max == 225 then
+        nextTier, nextCap, openAt = "Artisan", 300, 200
+        reqLv = isGather and 25 or 35
+        how = isBookSec
+            and ("Complete the Artisan " .. name .. " quest (Lv 35)")
+            or ("Visit an Artisan " .. name .. " trainer")
+    elseif max == 300 and (TA.IsTBC or TA.flavor == "tbc") then
+        nextTier, nextCap, openAt = "Master", 375, 275
+        reqLv = isGather and 50 or 50
+        how = "Visit an Outland Master " .. name .. " trainer"
+    else
+        return nil
+    end
+
+    if rank < openAt then return nil end
+
+    local capped = (rank >= max)
+    local levelBlocked = (lv ~= nil and reqLv and lv < reqLv)
+    if capped then
+        if levelBlocked then
+            return {
+                capped = true,
+                readyNow = false,
+                status = "warn",
+                badge = "Capped (" .. tostring(rank) .. "/" .. tostring(max) .. ")",
+                note = nextTier .. " (" .. tostring(nextCap) .. " cap) requires Lv " .. tostring(reqLv) .. ".",
+            }
+        end
+        return {
+            capped = true,
+            readyNow = true,
+            status = "bad",
+            badge = "CAPPED -- Train " .. nextTier .. "!",
+            note = how .. " to unlock " .. tostring(nextCap) .. " cap so skillups aren't wasted.",
+        }
+    end
+
+    if levelBlocked then
+        return {
+            capped = false,
+            readyNow = false,
+            status = "neutral",
+            badge = nextTier .. " at Lv " .. tostring(reqLv),
+            note = "Skill " .. tostring(rank) .. "/" .. tostring(max) .. " reached " .. tostring(openAt)
+                .. "; " .. nextTier .. " (" .. tostring(nextCap) .. " cap) unlocks at Lv " .. tostring(reqLv) .. ".",
+        }
+    end
+
+    return {
+        capped = false,
+        readyNow = true,
+        status = "warn",
+        badge = "Train " .. nextTier .. " (" .. tostring(nextCap) .. " cap)",
+        note = how .. " now (opens at " .. tostring(openAt) .. ") so you don't cap out at " .. tostring(max) .. ".",
+    }
+end
+
+--- Collect all active profession tier reminders (used by Now tab for cross-tab briefing).
+function B.GetTrainerReminders(playerLevel)
+    local PS = TA.ProfessionSkills
+    local result = (PS and PS.Collect and PS.Collect()) or { cards = {} }
+    local lv = playerLevel
+    if lv == nil and type(UnitLevel) == "function" then
+        local ok, raw = pcall(UnitLevel, "player")
+        if ok and type(raw) == "number" then lv = raw end
+    end
+    local out = {}
+    for _, card in ipairs(result.cards or {}) do
+        local rank, max = RankOf(card)
+        local rem = B.TrainerReminder(card, rank, max, lv)
+        if rem and rem.readyNow then
+            rem.name = card.name
+            rem.rank = rank
+            rem.max = max
+            out[#out + 1] = rem
+        end
+    end
+    return out
+end
+
+RankOf = function(card)
     local rank, max = card.rank, card.max
     if type(card.segments) == "table" then
         for _, seg in ipairs(card.segments) do
@@ -115,6 +234,12 @@ function B:Render(content, side)
         return
     end
 
+    local playerLvl = nil
+    if type(UnitLevel) == "function" then
+        local okL, rawLv = pcall(UnitLevel, "player")
+        if okL and type(rawLv) == "number" then playerLvl = rawLv end
+    end
+
     for _, card in ipairs(cards) do
         local rank, max = RankOf(card)
         local text = string.format("%d / %d", rank or 0, max or 0)
@@ -127,6 +252,15 @@ function B:Render(content, side)
             max      = max,
             segments = card.segments,
         })
+        local rem = B.TrainerReminder(card, rank, max, playerLvl)
+        if rem then
+            y = L:DataRow(content, y, {
+                label  = card.name .. " — Next tier open",
+                value  = rem.badge,
+                note   = rem.note,
+                status = rem.status,
+            })
+        end
         if gear and gear.Draw then
             y = gear:Draw(content, y, card)
         end

@@ -103,6 +103,8 @@ Data\Forever\StatPriority.lua
 Data\Forever\Enchants.lua
 # Sourced Forever faction reward milestones by standing tier (PvP BGs & PvE).
 Data\Forever\FactionRewards.lua
+# Verified Forever rare/drop quests awarding notable gear upgrades.
+Data\Forever\RareGearQuests.lua
 # Rotation priorities. Forever entries stay verified=false until a harvest
 # confirms the rank IDs. Retail, TBC, Mists, and Era lists are not loaded here.
 Data\Forever\RotationLists.lua

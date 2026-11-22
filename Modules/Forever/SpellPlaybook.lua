@@ -60,6 +60,11 @@ local CLASS_BUFF_GROUPS = {
     },
 }
 
+--- Shared class self-buff groups (used by both SpellPlaybook and ForeverMageSuggest).
+function SP.GetBuffGroups(classToken)
+    return CLASS_BUFF_GROUPS[classToken] or {}
+end
+
 local function Try(fn, ...)
     if type(fn) ~= "function" then return nil end
     local res = { pcall(fn, ...) }
@@ -338,6 +343,7 @@ function SP.Render(content, y, L, lines, dueList, opts)
     y = L:SectionHeader(content, y, "Spell Playbook", subTitle)
 
     -- Mode switcher pills right at the top (zero scrolling required)
+    local hudMod = TA.GetModule and TA:GetModule("ForeverMageSuggest") or nil
     local modeBtns = {}
     for _, m in ipairs(MODES) do
         local key = m.key
@@ -346,6 +352,11 @@ function SP.Render(content, y, L, lines, dueList, opts)
             active = (SP.activeMode or "st") == key,
             onClick = function()
                 SP.activeMode = key
+                if hudMod and (key == "st" or key == "aoe") and hudMod.SetMode then
+                    hudMod:SetMode(key)
+                elseif hudMod and hudMod.Refresh then
+                    hudMod:Refresh()
+                end
                 if TA.QueueUIRefresh then TA:QueueUIRefresh("PLAYBOOK_MODE") end
             end,
         }
@@ -359,9 +370,32 @@ function SP.Render(content, y, L, lines, dueList, opts)
                     if s == specName then idx = i; break end
                 end
                 SP.selectedSpec = specs[(idx % #specs) + 1]
+                if hudMod and hudMod.Refresh then hudMod:Refresh() end
                 if TA.QueueUIRefresh then TA:QueueUIRefresh("PLAYBOOK_SPEC") end
             end,
         }
+    end
+    if hudMod and hudMod.ToggleEnabled then
+        local hudOn = hudMod.IsEnabled and hudMod:IsEnabled() or false
+        modeBtns[#modeBtns + 1] = {
+            label = hudOn and "HUD: On" or "HUD: Off",
+            active = hudOn,
+            onClick = function()
+                hudMod:ToggleEnabled()
+                if TA.QueueUIRefresh then TA:QueueUIRefresh("PLAYBOOK_HUD") end
+            end,
+        }
+        if hudOn and hudMod.ToggleLock then
+            local hudLocked = hudMod.Locked and hudMod:Locked() or false
+            modeBtns[#modeBtns + 1] = {
+                label = hudLocked and "HUD: Locked" or "HUD: Unlocked",
+                active = hudLocked,
+                onClick = function()
+                    hudMod:ToggleLock()
+                    if TA.QueueUIRefresh then TA:QueueUIRefresh("PLAYBOOK_HUD_LOCK") end
+                end,
+            }
+        end
     end
     if opts.canShowDraft then
         modeBtns[#modeBtns + 1] = {

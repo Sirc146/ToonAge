@@ -426,8 +426,21 @@ function J:NoteXP(src, amount)
     end
 end
 
+local function IsPlainString(v)
+    if type(v) ~= "string" then return false end
+    if type(issecretvalue) == "function" then
+        local ok, secret = pcall(issecretvalue, v)
+        if not ok or secret == true then return false end
+    end
+    if type(canaccessvalue) == "function" then
+        local ok, access = pcall(canaccessvalue, v)
+        if not ok or access ~= true then return false end
+    end
+    return true
+end
+
 function J.ParseXP(msg)
-    if type(msg) ~= "string" then return nil end
+    if not IsPlainString(msg) then return nil end
     local base = tonumber(msg:match("[Gg]ain%s+(%d+)%s+experience"))
         or tonumber(msg:match("(%d+)%s+experience%s+gained"))
     if not base then return nil end
@@ -436,7 +449,7 @@ function J.ParseXP(msg)
 end
 
 function J.SourceFor(event, msg, questRecent)
-    if type(msg) ~= "string" then return nil, nil end
+    if not IsPlainString(msg) then return nil, nil end
     if event == "CHAT_MSG_SYSTEM" then
         if msg:find("iscover", 1, true) then return XP_EXPLORE, J.ParseXP(msg) end
         return nil, nil
@@ -451,6 +464,7 @@ function J.SourceFor(event, msg, questRecent)
 end
 
 function J:OnXPMessage(event, msg)
+    if not IsPlainString(msg) then return end
     if event == "CHAT_MSG_COMBAT_XP_GAIN" then
         local src, amt = J.SourceFor(event, msg, self._questXP and true or false)
         self._questXP = false
@@ -458,7 +472,6 @@ function J:OnXPMessage(event, msg)
         return
     end
     if event == "CHAT_MSG_SYSTEM" then
-        if type(msg) ~= "string" then return end
         if not msg:find("experience", 1, true) and not msg:find("iscover", 1, true) then return end
         local src, amt = J.SourceFor(event, msg, false)
         if src and amt then self:NoteXP(src, amt) end
@@ -478,7 +491,7 @@ function J:OnDeath()
 end
 
 function J:OnLoot(msg)
-    if type(msg) ~= "string" then return end
+    if not IsPlainString(msg) then return end
     if not msg:find("You receive loot", 1, true) and not msg:find("You receive item", 1, true) then
         return
     end

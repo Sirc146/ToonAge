@@ -1,18 +1,20 @@
 -- ToonAge/Modules/Forever/MageSuggest.lua
 --
--- A suggested next spell for a Forever Mage, drawn as an icon in its own
+-- Live spec-aware Combat Suggest HUD for WoW Forever (all 9 classes, with
+-- verified Frost / Fire / Arcane Mage specializations and Playbook-backed
+-- multi-class fallback). Drawn as a compact Liquid Glass capsule in its own
 -- frame. The frame does not cast, does not sit on an action button, and does
 -- not glow one.
 --
--- Priority is the Frost leveling guide, the same source MageGuidance.lua
--- cites for Frost Armor, Arcane Intellect, the wand, Fire Blast, and
--- Frost Nova:
+-- Frost Mage priority is the Forever Frost leveling guide already cited by
+-- MageGuidance.lua:
 --   https://www.icy-veins.com/wow-forever/frost-mage-leveling
--- Read 2026-11-13 (page updated 2026-11-10). Spell ids are not written here.
--- BuildSpells copies them from Data/Forever/SpellRanks.lua, Spells.lua, and
--- the Ice Lance row of Data/Forever/Talents.lua (measured spell 1312002).
--- Learned ranks use MageGuidance's check: IsPlayerSpell and IsSpellKnown,
--- by spell id, through Compat.SpellLearned. Unknown is not "unlearned".
+-- Read 2026-11-13 (page updated 2026-11-10). Spell ids are never invented here:
+-- BuildSpells copies them from Data/Forever/SpellRanks.lua, Spells.lua,
+-- Talents.lua (measured Ice Lance spell 1312002), TA_Rotations.forever, and
+-- the player's own live spellbook.
+-- Learned ranks use IsPlayerSpell and IsSpellKnown by spell id through
+-- Compat.SpellLearned. Unknown is not "unlearned".
 --
 -- A secret or nil cooldown, mana value, or aura list makes that rule
 -- unknown. The other rules still run. issecretvalue and canaccessvalue are
@@ -42,11 +44,62 @@ local WANTED = {
     ["Shoot"] = "shoot",
     ["Frost Armor"] = "frostArmor",
     ["Ice Armor"] = "iceArmor",
+    ["Mage Armor"] = "mageArmor",
     ["Arcane Intellect"] = "intellect",
+    ["Arcane Brilliance"] = "arcaneBrilliance",
     ["Ice Lance"] = "iceLance",
+    ["Fireball"] = "fireball",
+    ["Scorch"] = "scorch",
+    ["Arcane Missiles"] = "arcaneMissiles",
+    ["Arcane Explosion"] = "arcaneExplosion",
+    ["Flamestrike"] = "flamestrike",
+    ["Blizzard"] = "blizzard",
+    ["Arcane Blast"] = "arcaneBlast",
+    ["Pyroblast"] = "pyroblast",
+    ["Combustion"] = "combustion",
+    ["Presence of Mind"] = "presenceOfMind",
+    ["Arcane Power"] = "arcanePower",
+    ["Ice Barrier"] = "iceBarrier",
 }
 
 local FROZEN = { ["Frostbite"] = true, ["Frost Nova"] = true, ["Freeze"] = true }
+
+local FALLBACK_BUFF_GROUPS = {
+    MAGE = {
+        { label = "Armor",     spells = { "Ice Armor", "Mage Armor", "Frost Armor" } },
+        { label = "Intellect", spells = { "Arcane Brilliance", "Arcane Intellect" } },
+    },
+    PRIEST = {
+        { label = "Fortitude",  spells = { "Prayer of Fortitude", "Power Word: Fortitude" } },
+        { label = "Inner Fire", spells = { "Inner Fire" } },
+    },
+    DRUID = {
+        { label = "Mark",   spells = { "Gift of the Wild", "Mark of the Wild" } },
+        { label = "Thorns", spells = { "Thorns" } },
+    },
+    WARLOCK = {
+        { label = "Armor", spells = { "Demon Armor", "Demon Skin" } },
+    },
+    WARRIOR = {
+        { label = "Shout", spells = { "Battle Shout" } },
+    },
+    PALADIN = {
+        { label = "Aura",     spells = { "Devotion Aura", "Retribution Aura", "Sanctity Aura", "Concentration Aura" } },
+        { label = "Blessing", spells = { "Blessing of Kings", "Blessing of Might", "Blessing of Wisdom" } },
+    },
+    SHAMAN = {
+        { label = "Shield", spells = { "Lightning Shield" } },
+    },
+    HUNTER = {
+        { label = "Aspect", spells = { "Aspect of the Hawk", "Aspect of the Monkey", "Aspect of the Cheetah" } },
+    },
+}
+
+local WAND_CLASSES = {
+    MAGE = true,
+    PRIEST = true,
+    WARLOCK = true,
+}
 
 M._blocked = 0
 M._forbidden = 0
@@ -104,7 +157,7 @@ local function AddSpell(bucket, name, spellID, learned)
     row.learned[spellID] = type(learned) == "number" and learned or 0
 end
 
-function M.BuildSpells(ranks, mageSpells, talents)
+function M.BuildSpells(ranks, mageSpells, talents, liveByName)
     local bucket = {}
     if type(ranks) == "table" then
         for name, chain in pairs(ranks) do
@@ -126,8 +179,17 @@ function M.BuildSpells(ranks, mageSpells, talents)
     end
     if type(talents) == "table" then
         for _, row in ipairs(talents) do
-            if type(row) == "table" and row.name == "Ice Lance" then
-                AddSpell(bucket, row.name, row.spell, 20)
+            if type(row) == "table" and type(row.name) == "string" and WANTED[row.name] then
+                AddSpell(bucket, row.name, row.spell, row.learned or 20)
+            end
+        end
+    end
+    if type(liveByName) == "table" then
+        for name, ids in pairs(liveByName) do
+            if WANTED[name] and type(ids) == "table" then
+                for idx, sid in ipairs(ids) do
+                    AddSpell(bucket, name, sid, idx)
+                end
             end
         end
     end
@@ -165,7 +227,7 @@ local function Up(map, name)
     return false
 end
 
-local function PickReady(state, spells, key, why)
+local function PickReady(state, spells, key, why, meta)
     local spell = spells and spells[key]
     if not spell then return nil end
     local known = state.known or {}
@@ -173,8 +235,255 @@ local function PickReady(state, spells, key, why)
     for i = #spell.ids, 1, -1 do
         local spellID = spell.ids[i]
         if known[spellID] == "yes" and cooldown[spellID] == "ready" then
-            return { spellID = spellID, name = spell.name, why = why }
+            return {
+                spellID = spellID,
+                name = spell.name,
+                why = why,
+                spec = meta and meta.spec or state.spec,
+                mode = meta and meta.mode or state.mode or "st",
+                unverified = meta and meta.unverified or false,
+            }
         end
+    end
+    return nil
+end
+
+local function PickReadyIDs(state, ids, name, why, meta)
+    if type(ids) ~= "table" then return nil end
+    local known = state.known or {}
+    local cooldown = state.cooldown or {}
+    for i = #ids, 1, -1 do
+        local spellID = ids[i]
+        if known[spellID] == "yes" and cooldown[spellID] == "ready" then
+            return {
+                spellID = spellID,
+                name = name,
+                why = why,
+                spec = meta and meta.spec or state.spec,
+                mode = meta and meta.mode or state.mode or "st",
+                unverified = meta and meta.unverified or false,
+            }
+        end
+    end
+    return nil
+end
+
+local function SuggestMageBuffs(state, spells, preferMageArmor, meta)
+    if type(state.buffs) ~= "table" then return nil end
+    local armorUp = Up(state.buffs, "Frost Armor") or Up(state.buffs, "Ice Armor")
+        or Up(state.buffs, "Mage Armor")
+    if not armorUp then
+        if preferMageArmor then
+            local mage = PickReady(state, spells, "mageArmor",
+                "Suggestion: keep Mage Armor up for mana regeneration.", meta)
+            if mage then return mage end
+        end
+        local ice = PickReady(state, spells, "iceArmor",
+            "Suggestion: keep Ice Armor up while leveling.", meta)
+        if ice then return ice end
+        local frost = PickReady(state, spells, "frostArmor",
+            "Suggestion: keep Frost Armor up while leveling.", meta)
+        if frost then return frost end
+    end
+    if not Up(state.buffs, "Arcane Intellect") and not Up(state.buffs, "Arcane Brilliance") then
+        local intellect = PickReady(state, spells, "intellect",
+            "Suggestion: keep Arcane Intellect up.", meta)
+        if intellect then return intellect end
+    end
+    return nil
+end
+
+local function SuggestMageAoE(state, spells, spec)
+    local meta = { spec = spec or "Frost", mode = "aoe", unverified = false }
+    if state.mana == "low" then
+        return PickReady(state, spells, "shoot",
+            "Suggestion: use the wand when mana is low.", meta)
+    end
+    local buff = SuggestMageBuffs(state, spells, spec == "Arcane", meta)
+    if buff then return buff end
+
+    if state.melee == true then
+        local nova = PickReady(state, spells, "frostNova",
+            "Suggestion: Frost Nova to root the pack before AoE.", meta)
+        if nova then return nova end
+        if spec == "Frost" then
+            local cone = PickReady(state, spells, "cone",
+                "Suggestion: Cone of Cold while enemies are stacked in melee.", meta)
+            if cone then return cone end
+        end
+        local ae = PickReady(state, spells, "arcaneExplosion",
+            "Suggestion: Arcane Explosion on packs in melee range.", meta)
+        if ae then return ae end
+    end
+
+    if spec == "Fire" then
+        local fs = PickReady(state, spells, "flamestrike",
+            "Suggestion: Flamestrike on stacked packs.", meta)
+        if fs then return fs end
+        local ae = PickReady(state, spells, "arcaneExplosion",
+            "Suggestion: Arcane Explosion while moving through melee packs.", meta)
+        if ae then return ae end
+    elseif spec == "Arcane" then
+        local ae = PickReady(state, spells, "arcaneExplosion",
+            "Suggestion: Arcane Explosion on packs in melee range.", meta)
+        if ae then return ae end
+        local bliz = PickReady(state, spells, "blizzard",
+            "Suggestion: Blizzard for ranged AoE.", meta)
+        if bliz then return bliz end
+        local fs = PickReady(state, spells, "flamestrike",
+            "Suggestion: Flamestrike on stacked packs.", meta)
+        if fs then return fs end
+    else
+        local bliz = PickReady(state, spells, "blizzard",
+            "Suggestion: Blizzard for ranged AoE grinding.", meta)
+        if bliz then return bliz end
+        local cone = PickReady(state, spells, "cone",
+            "Suggestion: Cone of Cold when enemies close in.", meta)
+        if cone then return cone end
+        local ae = PickReady(state, spells, "arcaneExplosion",
+            "Suggestion: Arcane Explosion on packs in melee range.", meta)
+        if ae then return ae end
+    end
+    return PickReady(state, spells, "frostbolt",
+        "Suggestion: Frostbolt when AoE spells are not available.", meta)
+        or PickReady(state, spells, "fireball",
+            "Suggestion: Fireball when AoE spells are not available.", meta)
+end
+
+local function SuggestMageFire(state, spells)
+    local meta = { spec = "Fire", mode = "st", unverified = true }
+    if state.mana == "low" then
+        return PickReady(state, spells, "shoot",
+            "Suggestion: use the wand when mana is low.", meta)
+    end
+    local buff = SuggestMageBuffs(state, spells, false, meta)
+    if buff then return buff end
+
+    if state.melee == true then
+        local nova = PickReady(state, spells, "frostNova",
+            "Suggestion: Frost Nova when an enemy is in melee, then step back.", meta)
+        if nova then return nova end
+        local blast = PickReady(state, spells, "fireBlast",
+            "Suggestion: Fire Blast is the instant while Frost Nova is not ready.", meta)
+        if blast then return blast end
+    end
+
+    local comb = PickReady(state, spells, "combustion",
+        "Suggestion: Combustion on elites or tough pulls.", meta)
+    if comb then return comb end
+
+    local blast = PickReady(state, spells, "fireBlast",
+        "Suggestion: Fire Blast on cooldown or to finish.", meta)
+    if blast then return blast end
+
+    local fball = PickReady(state, spells, "fireball",
+        "Suggestion: Fireball is the primary Fire nuke.", meta)
+    if fball then return fball end
+
+    local scorch = PickReady(state, spells, "scorch",
+        "Suggestion: Scorch as a fast Fire cast.", meta)
+    if scorch then return scorch end
+
+    return PickReady(state, spells, "frostbolt",
+        "Suggestion: Frostbolt while Fire spells are unavailable.", meta)
+end
+
+local function SuggestMageArcane(state, spells)
+    local meta = { spec = "Arcane", mode = "st", unverified = true }
+    if state.mana == "low" then
+        return PickReady(state, spells, "shoot",
+            "Suggestion: use the wand when mana is low.", meta)
+    end
+    local buff = SuggestMageBuffs(state, spells, true, meta)
+    if buff then return buff end
+
+    if state.melee == true then
+        local nova = PickReady(state, spells, "frostNova",
+            "Suggestion: Frost Nova when an enemy is in melee, then step back.", meta)
+        if nova then return nova end
+        local blast = PickReady(state, spells, "fireBlast",
+            "Suggestion: Fire Blast is the instant while Frost Nova is not ready.", meta)
+        if blast then return blast end
+    end
+
+    if Up(state.buffs, "Clearcasting") then
+        local am = PickReady(state, spells, "arcaneMissiles",
+            "Suggestion: Arcane Missiles while Clearcasting is active.", meta)
+        if am then return am end
+    end
+
+    local ap = PickReady(state, spells, "arcanePower",
+        "Suggestion: Arcane Power for burst windows.", meta)
+    if ap then return ap end
+
+    local pom = PickReady(state, spells, "presenceOfMind",
+        "Suggestion: Presence of Mind for an instant cast.", meta)
+    if pom then return pom end
+
+    local ab = PickReady(state, spells, "arcaneBlast",
+        "Suggestion: Arcane Blast as your primary Arcane cast.", meta)
+    if ab then return ab end
+
+    local am = PickReady(state, spells, "arcaneMissiles",
+        "Suggestion: Arcane Missiles as Arcane filler.", meta)
+    if am then return am end
+
+    local bolt = PickReady(state, spells, "frostbolt",
+        "Suggestion: Frostbolt when Arcane casts are unavailable.", meta)
+    if bolt then return bolt end
+
+    return PickReady(state, spells, "fireball",
+        "Suggestion: Fireball when Arcane casts are unavailable.", meta)
+        or PickReady(state, spells, "fireBlast",
+            "Suggestion: Fire Blast as an instant fallback.", meta)
+end
+
+-- Generalized multi-class suggestion engine powered by TA_Rotations.forever
+-- and live spellbook / buff checks. Honest about unverified reference guides.
+function M.SuggestForClass(state, playbook)
+    if type(state) ~= "table" or type(playbook) ~= "table" then return nil end
+    local meta = {
+        spec = playbook.spec or state.spec,
+        mode = playbook.mode or state.mode or "st",
+        unverified = playbook.verified ~= true,
+    }
+
+    if state.mana == "low" and WAND_CLASSES[state.class] and type(playbook.shootIDs) == "table" then
+        local wand = PickReadyIDs(state, playbook.shootIDs, "Shoot",
+            "Suggestion: use your wand while mana is low.", meta)
+        if wand then return wand end
+    end
+
+    if type(state.buffs) == "table" and type(playbook.buffGroups) == "table" then
+        for _, grp in ipairs(playbook.buffGroups) do
+            local isUp = false
+            for _, sp in ipairs(grp.spells or {}) do
+                if Up(state.buffs, sp.name) then
+                    isUp = true
+                    break
+                end
+            end
+            if not isUp then
+                for _, sp in ipairs(grp.spells or {}) do
+                    local pick = PickReadyIDs(state, sp.ids, sp.name,
+                        "Suggestion: keep " .. tostring(sp.name) .. " active.", meta)
+                    if pick then return pick end
+                end
+            end
+        end
+    end
+
+    for _, entry in ipairs(playbook.entries or {}) do
+        local cond = type(entry.cond) == "string" and entry.cond ~= ""
+            and (" (" .. entry.cond .. ")") or ""
+        local entryMeta = {
+            spec = meta.spec,
+            mode = meta.mode,
+            unverified = (entry.verified ~= true) or meta.unverified,
+        }
+        local pick = PickReadyIDs(state, entry.ids, entry.name,
+            "Suggestion: " .. tostring(entry.name) .. cond .. ".", entryMeta)
+        if pick then return pick end
     end
     return nil
 end
@@ -183,9 +492,30 @@ end
 -- state.mana is "low", "ok", or "unknown". state.melee is true, false, or nil.
 -- state.buffs / state.debuffs nil means that aura read was skipped.
 function M.Suggest(state, spells)
-    if type(state) ~= "table" or state.class ~= "MAGE" then return nil end
-    spells = spells or {}
+    if type(state) ~= "table" then return nil end
 
+    if state.class ~= "MAGE" then
+        if type(state.playbook) == "table" then
+            return M.SuggestForClass(state, state.playbook)
+        end
+        return nil
+    end
+
+    spells = spells or {}
+    local mode = state.mode or "st"
+    local spec = state.spec
+
+    if mode == "aoe" then
+        return SuggestMageAoE(state, spells, spec)
+    end
+    if spec == "Fire" then
+        return SuggestMageFire(state, spells)
+    end
+    if spec == "Arcane" then
+        return SuggestMageArcane(state, spells)
+    end
+
+    -- Default / Frost Mage (verified Forever Frost leveling guide).
     if state.mana == "low" then
         -- Guide: Shoot from a wand when mana is the problem, including to
         -- finish so the five-second regen rule can start.
@@ -193,25 +523,8 @@ function M.Suggest(state, spells)
             "Suggestion: use the wand when mana is low.")
     end
 
-    if type(state.buffs) == "table" then
-        -- Guide: keep Frost Armor (or Ice Armor once you have it) and
-        -- Arcane Intellect up. Mage Armor already up is left as it is.
-        local armorUp = Up(state.buffs, "Frost Armor") or Up(state.buffs, "Ice Armor")
-            or Up(state.buffs, "Mage Armor")
-        if not armorUp then
-            local ice = PickReady(state, spells, "iceArmor",
-                "Suggestion: keep Ice Armor up while leveling.")
-            if ice then return ice end
-            local frost = PickReady(state, spells, "frostArmor",
-                "Suggestion: keep Frost Armor up while leveling.")
-            if frost then return frost end
-        end
-        if not Up(state.buffs, "Arcane Intellect") then
-            local intellect = PickReady(state, spells, "intellect",
-                "Suggestion: keep Arcane Intellect up.")
-            if intellect then return intellect end
-        end
-    end
+    local buff = SuggestMageBuffs(state, spells, false)
+    if buff then return buff end
 
     local lanceWhy
     if Up(state.buffs, "Fingers of Frost") then
@@ -265,6 +578,182 @@ function M.Suggest(state, spells)
     return nil
 end
 
+local function AppendUnique(list, id)
+    if type(id) ~= "number" then return end
+    for _, existing in ipairs(list) do
+        if existing == id then return end
+    end
+    list[#list + 1] = id
+end
+
+--- Scan the player's live spellbook via manifest-verified C_SpellBook APIs.
+--- Returns byName[spellName] = { id1, id2, ... } sorted ascending.
+function M.ScanLiveSpellbook()
+    if M._liveByName then return M._liveByName end
+    local byName = {}
+    if not (C_SpellBook and type(C_SpellBook.GetNumSpellBookSkillLines) == "function"
+        and type(C_SpellBook.GetSpellBookSkillLineInfo) == "function"
+        and type(C_SpellBook.GetSpellBookItemInfo) == "function") then
+        M._liveByName = byName
+        return byName
+    end
+    local bank = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
+    local okN, numLines = pcall(C_SpellBook.GetNumSpellBookSkillLines)
+    if not okN or not M.ValueKnown(numLines) or type(numLines) ~= "number" then
+        M._liveByName = byName
+        return byName
+    end
+    for i = 1, numLines do
+        local okL, line = pcall(C_SpellBook.GetSpellBookSkillLineInfo, i)
+        if okL and type(line) == "table" and M.ValueKnown(line.itemIndexOffset) and M.ValueKnown(line.numSpellBookItems) then
+            local offset = tonumber(line.itemIndexOffset) or 0
+            local count = tonumber(line.numSpellBookItems) or 0
+            for slot = offset + 1, offset + count do
+                local okI, info = pcall(C_SpellBook.GetSpellBookItemInfo, slot, bank)
+                if okI and type(info) == "table" and not info.isPassive then
+                    local sid = info.spellID or info.actionID
+                    local name = info.name
+                    if (type(name) ~= "string" or name == "") and type(sid) == "number"
+                        and C_Spell and type(C_Spell.GetSpellInfo) == "function" then
+                        local okS, sinfo = pcall(C_Spell.GetSpellInfo, sid)
+                        if okS and type(sinfo) == "table" then name = sinfo.name end
+                    end
+                    if M.ValueKnown(sid) and type(sid) == "number"
+                        and M.ValueKnown(name) and type(name) == "string" and name ~= "" then
+                        byName[name] = byName[name] or {}
+                        AppendUnique(byName[name], sid)
+                    end
+                end
+            end
+        end
+    end
+    for _, ids in pairs(byName) do
+        table.sort(ids)
+    end
+    M._liveByName = byName
+    return byName
+end
+
+--- Build a Playbook-backed class catalog for any Forever class + spec + level.
+function M.BuildClassPlaybook(classToken, specName, level, mode, liveByName, rotationsRoot, dataRoot)
+    if type(classToken) ~= "string" or classToken == "" then return nil end
+    local root = rotationsRoot or (_G.TA_Rotations and _G.TA_Rotations.forever)
+    local cls = type(root) == "table" and root[classToken] or nil
+    local live = type(liveByName) == "table" and liveByName or {}
+    local data = dataRoot or TA.Data or {}
+    local ranks = data.ForeverSpellRanks or {}
+    local classSpells = data.ForeverSpells and data.ForeverSpells[classToken] or nil
+
+    local catalogByName = {}
+    if type(ranks) == "table" then
+        for name, chain in pairs(ranks) do
+            if type(chain) == "table" then
+                catalogByName[name] = catalogByName[name] or {}
+                for _, r in ipairs(chain) do
+                    if type(r) == "table" then AppendUnique(catalogByName[name], r.id) end
+                end
+            end
+        end
+    end
+    if type(classSpells) == "table" then
+        for _, row in ipairs(classSpells) do
+            if type(row) == "table" and type(row.name) == "string" then
+                catalogByName[row.name] = catalogByName[row.name] or {}
+                AppendUnique(catalogByName[row.name], row.id)
+            end
+        end
+    end
+
+    local function CollectIDs(name, fallbackIDs, singleID)
+        local ids = {}
+        if type(fallbackIDs) == "table" then
+            for _, id in ipairs(fallbackIDs) do AppendUnique(ids, id) end
+        end
+        if type(singleID) == "number" then AppendUnique(ids, singleID) end
+        if type(catalogByName[name]) == "table" then
+            for _, id in ipairs(catalogByName[name]) do AppendUnique(ids, id) end
+        end
+        if type(live[name]) == "table" then
+            for _, id in ipairs(live[name]) do AppendUnique(ids, id) end
+        end
+        return ids
+    end
+
+    local pickedSpec = nil
+    local band = nil
+    local specVerified = false
+    if type(cls) == "table" then
+        local specs = {}
+        for k, v in pairs(cls) do
+            if type(k) == "string" and type(v) == "table"
+                and (v["10-19"] or v["20-39"] or v["40-59"] or v["60"]) then
+                specs[#specs + 1] = k
+            end
+        end
+        table.sort(specs)
+        if type(specName) == "string" then
+            for _, s in ipairs(specs) do
+                if s == specName then pickedSpec = s; break end
+            end
+        end
+        if not pickedSpec then pickedSpec = specs[1] end
+        local specTbl = pickedSpec and cls[pickedSpec] or nil
+        if type(specTbl) == "table" then
+            specVerified = specTbl.verified == true
+            local lv = tonumber(level) or 1
+            local bandKey = (lv >= 60 and "60") or (lv >= 40 and "40-59")
+                or (lv >= 20 and "20-39") or "10-19"
+            band = specTbl[bandKey] or specTbl["10-19"] or specTbl["20-39"] or specTbl["60"]
+        end
+    end
+
+    local activeMode = (mode == "aoe") and "aoe" or "st"
+    local rawList = band and (band[activeMode] or band.st) or {}
+    local entries = {}
+    for _, row in ipairs(rawList) do
+        if type(row) == "table" and type(row.name) == "string" then
+            local ids = CollectIDs(row.name, row.rankIDs, row.spellID)
+            if #ids > 0 then
+                entries[#entries + 1] = {
+                    name = row.name,
+                    ids = ids,
+                    cond = row.cond,
+                    verified = row.verified == true,
+                }
+            end
+        end
+    end
+
+    local rawGroups = (TA.SpellPlaybook and TA.SpellPlaybook.GetBuffGroups
+        and TA.SpellPlaybook.GetBuffGroups(classToken))
+        or FALLBACK_BUFF_GROUPS[classToken] or {}
+    local buffGroups = {}
+    for _, grp in ipairs(rawGroups) do
+        local spells = {}
+        for _, spName in ipairs(grp.spells or {}) do
+            local ids = CollectIDs(spName)
+            if #ids > 0 then
+                spells[#spells + 1] = { name = spName, ids = ids }
+            end
+        end
+        if #spells > 0 then
+            buffGroups[#buffGroups + 1] = { label = grp.label, spells = spells }
+        end
+    end
+
+    local shootIDs = WAND_CLASSES[classToken] and CollectIDs("Shoot") or nil
+
+    return {
+        class = classToken,
+        spec = pickedSpec,
+        mode = activeMode,
+        verified = specVerified,
+        entries = entries,
+        buffGroups = buffGroups,
+        shootIDs = (shootIDs and #shootIDs > 0) and shootIDs or nil,
+    }
+end
+
 function M.Spells()
     if M._spells then return M._spells end
     local data = TA.Data or {}
@@ -273,7 +762,8 @@ function M.Spells()
     M._spells = M.BuildSpells(
         data.ForeverSpellRanks,
         book and book.MAGE,
-        talents and talents.MAGE)
+        talents and talents.MAGE,
+        M.ScanLiveSpellbook())
     return M._spells
 end
 
@@ -302,30 +792,35 @@ local function ManaAllowed()
     return TA:HasAPI("UnitPower") and TA:HasAPI("UnitPowerMax")
 end
 
-function M.ReadState()
-    local state = {
-        known = {},
-        cooldown = {},
-        mana = "unknown",
-        melee = nil,
-        buffs = nil,
-        debuffs = nil,
-    }
-    local compat = TA.Compat
-    if not compat then return state end
-    if type(compat.UnitClass) == "function" then
-        local _, token = compat.UnitClass("player")
-        if M.ValueKnown(token) and type(token) == "string" and token ~= "" then
-            state.class = token
+local function ResolveActiveSpec()
+    local SP = TA.SpellPlaybook
+    if SP and type(SP.selectedSpec) == "string" and SP.selectedSpec ~= "" then
+        return SP.selectedSpec
+    end
+    if TA.Utils and type(TA.Utils.GetPlayerSpec) == "function" then
+        local ok, _, sName = pcall(TA.Utils.GetPlayerSpec)
+        if ok and M.ValueKnown(sName) and type(sName) == "string" and sName ~= "" then
+            return sName
         end
     end
-    if state.class ~= "MAGE" then return state end
+    return nil
+end
 
-    local spells = M.Spells()
-    local canLearn = type(compat.SpellLearned) == "function"
-    local canCd = CooldownAllowed() and type(compat.GetSpellCooldown) == "function"
-    for _, row in pairs(spells) do
-        for _, spellID in ipairs(row.ids) do
+local function ResolveActiveMode()
+    local db = TA.db and TA.db.mageSuggest
+    if db and (db.mode == "st" or db.mode == "aoe") then
+        return db.mode
+    end
+    local SP = TA.SpellPlaybook
+    if SP and (SP.activeMode == "aoe" or SP.activeMode == "st") then
+        return SP.activeMode
+    end
+    return "st"
+end
+
+local function ReadSpellIDsState(state, ids, compat, canLearn, canCd)
+    for _, spellID in ipairs(ids or {}) do
+        if state.known[spellID] == nil then
             local learned = "unknown"
             if canLearn then
                 local ok, value = pcall(compat.SpellLearned, spellID)
@@ -343,6 +838,62 @@ function M.ReadState()
                 end
             else
                 state.cooldown[spellID] = "unknown"
+            end
+        end
+    end
+end
+
+function M.ReadState()
+    local state = {
+        known = {},
+        cooldown = {},
+        mana = "unknown",
+        melee = nil,
+        buffs = nil,
+        debuffs = nil,
+        spec = ResolveActiveSpec(),
+        mode = ResolveActiveMode(),
+    }
+    local compat = TA.Compat
+    if not compat then return state end
+    if type(compat.UnitClass) == "function" then
+        local _, token = compat.UnitClass("player")
+        if M.ValueKnown(token) and type(token) == "string" and token ~= "" then
+            state.class = token
+        end
+    end
+    if not state.class then return state end
+
+    local level = 1
+    if type(UnitLevel) == "function" then
+        local okL, lv = pcall(UnitLevel, "player")
+        if okL and M.ValueKnown(lv) and type(lv) == "number" then level = lv end
+    end
+    state.level = level
+
+    local canLearn = type(compat.SpellLearned) == "function"
+    local canCd = CooldownAllowed() and type(compat.GetSpellCooldown) == "function"
+
+    if state.class == "MAGE" then
+        local spells = M.Spells()
+        for _, row in pairs(spells) do
+            ReadSpellIDsState(state, row.ids, compat, canLearn, canCd)
+        end
+    else
+        local pb = M.BuildClassPlaybook(state.class, state.spec, level, state.mode, M.ScanLiveSpellbook())
+        state.playbook = pb
+        if pb then
+            if pb.spec and not state.spec then state.spec = pb.spec end
+            for _, entry in ipairs(pb.entries or {}) do
+                ReadSpellIDsState(state, entry.ids, compat, canLearn, canCd)
+            end
+            for _, grp in ipairs(pb.buffGroups or {}) do
+                for _, sp in ipairs(grp.spells or {}) do
+                    ReadSpellIDsState(state, sp.ids, compat, canLearn, canCd)
+                end
+            end
+            if pb.shootIDs then
+                ReadSpellIDsState(state, pb.shootIDs, compat, canLearn, canCd)
             end
         end
     end
@@ -394,9 +945,70 @@ local function Saved()
     return TA.db.mageSuggest
 end
 
+function M:IsEnabled()
+    local db = TA.db and TA.db.mageSuggest
+    if db and db.enabled == false then return false end
+    return true
+end
+
+function M:SetEnabled(flag)
+    local db = Saved()
+    if db then db.enabled = flag and true or false end
+    self:Refresh()
+    return self:IsEnabled()
+end
+
+function M:ToggleEnabled()
+    return self:SetEnabled(not self:IsEnabled())
+end
+
 function M:Locked()
     local db = TA.db and TA.db.mageSuggest
     return db and db.locked and true or false
+end
+
+function M:ToggleLock()
+    local db = Saved()
+    if db then db.locked = not db.locked end
+    self:ApplyLock()
+    return self:Locked()
+end
+
+function M:GetMode()
+    return ResolveActiveMode()
+end
+
+function M:SetMode(mode)
+    local norm = (mode == "aoe") and "aoe" or "st"
+    local db = Saved()
+    if db then db.mode = norm end
+    if TA.SpellPlaybook and (TA.SpellPlaybook.activeMode == "st" or TA.SpellPlaybook.activeMode == "aoe") then
+        TA.SpellPlaybook.activeMode = norm
+    end
+    self:Refresh()
+    return norm
+end
+
+function M:ToggleMode()
+    return self:SetMode(self:GetMode() == "aoe" and "st" or "aoe")
+end
+
+function M:ResetPosition()
+    local db = Saved()
+    if db then
+        db.point = nil
+        db.rel = nil
+        db.x = nil
+        db.y = nil
+    end
+    self._placed = nil
+    local frame = self._frame
+    if frame and not InCombat() then
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    elseif frame then
+        self._deferred = true
+    end
 end
 
 local function FontFile()
@@ -404,6 +1016,30 @@ local function FontFile()
         return STANDARD_TEXT_FONT
     end
     return "Fonts\\FRIZQT__.TTF"
+end
+
+function M:ApplyTheme(classToken)
+    local frame = self._frame
+    if not frame then return end
+    local accent = { 0.85, 0.65, 0.13 }
+    if TA.Theme and type(TA.Theme.GetAccent) == "function" then
+        local ok, col = pcall(TA.Theme.GetAccent, TA.Theme, classToken)
+        if ok and type(col) == "table" and type(col[1]) == "number" then
+            accent = col
+        end
+    end
+    if frame.SetBackdropColor then
+        frame:SetBackdropColor(0.05, 0.06, 0.08, 0.86)
+    end
+    if frame.SetBackdropBorderColor then
+        frame:SetBackdropBorderColor(accent[1], accent[2], accent[3], 0.85)
+    end
+    if frame.specular and frame.specular.SetColorTexture then
+        frame.specular:SetColorTexture(1, 1, 1, 0.22)
+    end
+    if frame.badge and frame.badge.SetTextColor then
+        frame.badge:SetTextColor(accent[1], accent[2], accent[3], 0.95)
+    end
 end
 
 function M:ApplyLock()
@@ -437,7 +1073,7 @@ function M:ApplyFrame()
     end
 end
 
-local function Paint(frame, suggestion)
+local function Paint(frame, suggestion, state)
     frame.suggestion = suggestion
     if suggestion then
         local tex
@@ -455,20 +1091,37 @@ local function Paint(frame, suggestion)
             frame.icon:Hide()
         end
         if frame.label then frame.label:SetText(suggestion.name or "") end
+        if frame.badge then
+            local modeTag = (suggestion.mode == "aoe") and "AoE" or "ST"
+            local specTag = suggestion.spec or (state and state.spec) or ""
+            frame.badge:SetText(specTag ~= "" and (specTag .. " " .. modeTag) or modeTag)
+        end
     else
         if frame.icon then frame.icon:Hide() end
         if frame.label then frame.label:SetText("") end
+        if frame.badge then frame.badge:SetText("") end
     end
 end
 
 function M:Refresh()
     local state = M.ReadState()
     local forever = TA.flavor == "forever"
-    local show = forever and state.class == "MAGE"
+    local enabled = self:IsEnabled()
+    local show = forever and enabled and type(state.class) == "string" and state.class ~= ""
     local suggestion
-    if show then suggestion = M.Suggest(state, M.Spells()) end
+    if show then
+        suggestion = M.Suggest(state, state.class == "MAGE" and M.Spells() or nil)
+        -- For non-Mage classes, hide the capsule cleanly if no spell is ready/known
+        -- so the player never sees an empty floating box.
+        if state.class ~= "MAGE" and not suggestion then
+            show = false
+        end
+    end
     self._wantShow = show and true or false
-    if self._frame then Paint(self._frame, suggestion) end
+    if self._frame then
+        self:ApplyTheme(state.class)
+        Paint(self._frame, suggestion, state)
+    end
     self:ApplyFrame()
 end
 
@@ -490,7 +1143,7 @@ end
 function M:CreateFrame()
     if self._frame or type(CreateFrame) ~= "function" or not UIParent then return end
     local frame = CreateFrame("Frame", "ToonAgeMageSuggestFrame", UIParent, "BackdropTemplate")
-    frame:SetSize(48, 64)
+    frame:SetSize(64, 76)
     frame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
     frame:SetFrameStrata("MEDIUM")
     frame:SetClampedToScreen(true)
@@ -503,21 +1156,37 @@ function M:CreateFrame()
             edgeFile = "Interface\\Buttons\\WHITE8X8",
             edgeSize = 1,
         })
-        if frame.SetBackdropColor then frame:SetBackdropColor(0.05, 0.05, 0.06, 0.85) end
-        if frame.SetBackdropBorderColor then frame:SetBackdropBorderColor(0.85, 0.65, 0.13, 0.9) end
+        if frame.SetBackdropColor then frame:SetBackdropColor(0.05, 0.06, 0.08, 0.86) end
+        if frame.SetBackdropBorderColor then frame:SetBackdropBorderColor(0.85, 0.65, 0.13, 0.85) end
     end
+
+    -- 1px top specular highlight (Liquid Glass suggestion capsule).
+    local specular = frame:CreateTexture(nil, "OVERLAY")
+    specular:SetHeight(1)
+    specular:SetPoint("TOPLEFT", 1, -1)
+    specular:SetPoint("TOPRIGHT", -1, -1)
+    if specular.SetColorTexture then specular:SetColorTexture(1, 1, 1, 0.22) end
+    frame.specular = specular
+
+    local badge = frame:CreateFontString(nil, "OVERLAY")
+    if badge.SetFont then badge:SetFont(FontFile(), 8, "") end
+    badge:SetPoint("TOP", 0, -3)
+    badge:SetSize(60, 10)
+    badge:SetTextColor(0.85, 0.65, 0.13, 0.95)
+    badge:SetText("")
+    frame.badge = badge
 
     local icon = frame:CreateTexture(nil, "ARTWORK")
     icon:SetSize(40, 40)
-    icon:SetPoint("TOP", 0, -4)
+    icon:SetPoint("TOP", 0, -15)
     icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     icon:Hide()
     frame.icon = icon
 
     local label = frame:CreateFontString(nil, "OVERLAY")
     if label.SetFont then label:SetFont(FontFile(), 9, "") end
-    label:SetPoint("BOTTOM", 0, 3)
-    label:SetSize(46, 12)
+    label:SetPoint("BOTTOM", 0, 4)
+    label:SetSize(60, 12)
     label:SetTextColor(0.92, 0.90, 0.87, 1)
     label:SetText("")
     frame.label = label
@@ -534,8 +1203,17 @@ function M:CreateFrame()
         if not self.suggestion or not GameTooltip then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:ClearLines()
+        local header = self.suggestion.name or "Suggestion"
+        if self.suggestion.spec and self.suggestion.spec ~= "" then
+            header = header .. " (" .. self.suggestion.spec
+                .. (self.suggestion.mode == "aoe" and " · AoE" or " · ST") .. ")"
+        end
+        GameTooltip:AddLine(header, 1, 0.85, 0.3, false)
         GameTooltip:AddLine(self.suggestion.why or "Suggestion", 0.92, 0.90, 0.87, true)
-        GameTooltip:AddLine("Suggestion only. This frame does not cast.", 0.62, 0.59, 0.55, true)
+        if self.suggestion.unverified then
+            GameTooltip:AddLine("Reference priority (unverified on Forever 1.60.1).", 0.85, 0.70, 0.35, true)
+        end
+        GameTooltip:AddLine("Suggestion only. This frame does not cast. (/ta hud)", 0.62, 0.59, 0.55, true)
         GameTooltip:Show()
     end)
     frame:SetScript("OnLeave", function()
@@ -560,6 +1238,10 @@ function M:CreateFrame()
         if event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
             M:NoteBlock(event, ...)
             return
+        end
+        if event == "SPELLS_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
+            M._liveByName = nil
+            M._spells = nil
         end
         if event == "PLAYER_REGEN_ENABLED" then M._deferred = true end
         M._dirty = true
@@ -591,6 +1273,31 @@ function M:CreateFrame()
     self._wantShow = false
     frame:Hide()
 end
+
+M.SlashCommands = {
+    hud = function(self, arg)
+        local cmd = type(arg) == "string" and arg:lower():match("^%s*(%S+)") or ""
+        if cmd == "lock" then
+            local locked = self:ToggleLock()
+            if TA.Print then TA:Print("Combat Suggest HUD " .. (locked and "locked." or "unlocked.")) end
+        elseif cmd == "st" or cmd == "aoe" then
+            local m = self:SetMode(cmd)
+            if TA.Print then TA:Print("Combat Suggest HUD mode: " .. (m == "aoe" and "AoE." or "Single Target.")) end
+        elseif cmd == "reset" then
+            self:ResetPosition()
+            if TA.Print then TA:Print("Combat Suggest HUD position reset.") end
+        elseif cmd == "on" then
+            self:SetEnabled(true)
+            if TA.Print then TA:Print("Combat Suggest HUD enabled.") end
+        elseif cmd == "off" then
+            self:SetEnabled(false)
+            if TA.Print then TA:Print("Combat Suggest HUD hidden.") end
+        else
+            local on = self:ToggleEnabled()
+            if TA.Print then TA:Print("Combat Suggest HUD " .. (on and "enabled." or "hidden.")) end
+        end
+    end,
+}
 
 function M:Init()
     self:CreateFrame()
