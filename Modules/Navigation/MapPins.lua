@@ -50,6 +50,7 @@ end
 -- Frame pool for pin recycling (avoids GC pressure from creating/destroying pins)
 MapPins._pinPool = {}
 MapPins._activePins = {}
+MapPins._foreverPins = {}
 
 function MapPins.DataProvider:RemoveAllData()
     -- Release all active pins back to the pool
@@ -59,6 +60,8 @@ function MapPins.DataProvider:RemoveAllData()
         table.insert(MapPins._pinPool, pin)
     end
     wipe(MapPins._activePins)
+    wipe(MapPins._foreverPins)
+    MapPins._foreverPin = nil
     self:GetMap():RemoveAllPinsByTemplate(PIN_TEMPLATE)
 end
 
@@ -107,6 +110,61 @@ function MapPins.DataProvider:PlaceForeverPin()
     return true
 end
 
+--- Dungeon quest item, object, NPC, and quest-boss pins on Forever dungeon maps.
+--- Reads only cached tables from ForeverDungeonPins (zero quest/API taint).
+function MapPins.DataProvider:PlaceForeverDungeonPins()
+    if TA.flavor ~= "forever" then return 0 end
+    local DP = TA.GetModule and TA:GetModule("ForeverDungeonPins")
+    if not (DP and type(DP.ResolvePinsForMap) == "function") then return 0 end
+    if type(self.GetMap) ~= "function" then return 0 end
+    local map = self:GetMap()
+    if type(map) ~= "table" or type(map.GetMapID) ~= "function" then return 0 end
+    local okID, mapID = pcall(map.GetMapID, map)
+    if not okID or type(mapID) ~= "number" then return 0 end
+    if type(map.AcquirePin) ~= "function" then return 0 end
+
+    local Arrow = TA:GetModule("Arrow")
+    local openName = (Arrow and type(Arrow.MapName) == "function") and Arrow.MapName(mapID) or nil
+    if not openName and TA.Compat and type(TA.Compat.MapInfo) == "function" then
+        local info = TA.Compat.MapInfo(mapID)
+        openName = info and info.name or nil
+    end
+    if type(openName) ~= "string" or openName == "" then return 0 end
+
+    local pins = DP.ResolvePinsForMap(mapID, openName)
+    if type(pins) ~= "table" or #pins == 0 then return 0 end
+
+    local placed = 0
+    for _, p in ipairs(pins) do
+        local step = {
+            type = p.kind or "item",
+            text = p.title,
+            questID = p.questID,
+            questName = p.questName,
+            progress = p.progress,
+            faction = p.faction,
+            minLevel = p.minLevel,
+            note = p.note,
+            bossAnchor = p.bossAnchor,
+            liveAnchored = p.liveAnchored,
+            estimated = p.estimated,
+            foreverPin = true,
+            dungeonPin = true,
+            dungeonActive = p.active and true or false,
+        }
+        local pin
+        local function acquire()
+            pin = map:AcquirePin(PIN_TEMPLATE, p.x, p.y, step, p.badge or "Q", p.color or PIN_COLORS.item, p.active and true or false)
+        end
+        local ok = pcall(acquire)
+        if ok and type(pin) == "table" then
+            MapPins.FinishForeverPin(pin, p.x, p.y)
+            placed = placed + 1
+        end
+    end
+    return placed
+end
+
 --- Pixel offset from the canvas TOPLEFT. x,y are 0-1, or 0-100 display
 --- coords. Nil when the canvas has no size, so the caller does not anchor at 0,0.
 function MapPins.CanvasOffset(width, height, x, y)
@@ -152,6 +210,13 @@ function MapPins.FinishForeverPin(pin, x, y)
     if type(x) ~= "number" or type(y) ~= "number" then return false end
     pin._taX, pin._taY = x, y
     MapPins._foreverPin = pin
+    local tracked = false
+    for _, existing in ipairs(MapPins._foreverPins) do
+        if existing == pin then tracked = true break end
+    end
+    if not tracked then
+        MapPins._foreverPins[#MapPins._foreverPins + 1] = pin
+    end
     if type(pin.SetScalingLimits) == "function" then
         pcall(pin.SetScalingLimits, pin, 0, 1, 1)
     end
@@ -171,6 +236,14 @@ function MapPins.FinishForeverPin(pin, x, y)
 end
 
 function MapPins.DataProvider:OnCanvasSizeChanged()
+    if #MapPins._foreverPins > 0 then
+        for _, pin in ipairs(MapPins._foreverPins) do
+            if type(pin) == "table" and type(pin._taX) == "number" then
+                MapPins.FinishForeverPin(pin, pin._taX, pin._taY)
+            end
+        end
+        return
+    end
     local pin = MapPins._foreverPin
     if type(pin) ~= "table" or type(pin._taX) ~= "number" then return end
     MapPins.FinishForeverPin(pin, pin._taX, pin._taY)
@@ -183,7 +256,14 @@ end
 function MapPins.DataProvider:RefreshAllData(fromOnShow)
     self:RemoveAllData()
 
-    if self.PlaceForeverPin and self:PlaceForeverPin() then return end
+    local placedForever = false
+    if self.PlaceForeverPin and self:PlaceForeverPin() then
+        placedForever = true
+    end
+    if self.PlaceForeverDungeonPins and self:PlaceForeverDungeonPins() > 0 then
+        placedForever = true
+    end
+    if placedForever then return end
 
     local QT = TA:GetModule("QuestTracker")
     if not QT or not QT.guideID then return end
@@ -275,7 +355,12 @@ function TAMapPinMixin:OnAcquired(x, y, step, relNum, color, isCurrent)
         self:SetPosition(x, y)
     end
 
-    local size = isCurrent and (PIN_SIZE_BASE * 1.4) or PIN_SIZE_BASE
+    local size
+    if step and step.dungeonPin then
+        size = isCurrent and 22 or 18
+    else
+        size = isCurrent and (PIN_SIZE_BASE * 1.4) or PIN_SIZE_BASE
+    end
     self:SetSize(size, size)
 
     -- Store for tooltip
@@ -283,7 +368,8 @@ function TAMapPinMixin:OnAcquired(x, y, step, relNum, color, isCurrent)
     self.relNum   = relNum
     self.isCurrent = isCurrent
 
-    -- Background dot. Estimated coordinates use the hollow ring instead.
+    -- Background dot. Estimated guide steps use the hollow ring instead;
+    -- dungeon quest pins keep a solid colored badge so they stay visible on dark maps.
     if not self.bg then
         self.bg = self:CreateTexture(nil, "BACKGROUND")
         self.bg:SetTexture("Interface\\Buttons\\WHITE8X8")
@@ -303,7 +389,7 @@ function TAMapPinMixin:OnAcquired(x, y, step, relNum, color, isCurrent)
         self.border:SetPoint("BOTTOMRIGHT", 1, -1)
     end
 
-    local estimated = U.CoordsEstimated(step)
+    local estimated = (not (step and step.dungeonPin)) and U.CoordsEstimated(step)
     if estimated then
         self.bg:Hide()
         self.border:Hide()
@@ -313,11 +399,11 @@ function TAMapPinMixin:OnAcquired(x, y, step, relNum, color, isCurrent)
         self._ring:Hide()
         self.bg:Show()
         self.border:Show()
-        self.bg:SetVertexColor(color[1], color[2], color[3], color[4] * 0.85)
-        self.border:SetVertexColor(0, 0, 0, 0.7)
+        self.bg:SetVertexColor(color[1], color[2], color[3], (color[4] or 1) * 0.90)
+        self.border:SetVertexColor(0, 0, 0, 0.85)
     end
 
-    -- Number label
+    -- Number or badge label
     if not self.numLabel then
         self.numLabel = self:CreateFontString(nil, "OVERLAY")
         self.numLabel:SetFont(STANDARD_TEXT_FONT, 10, "OUTLINE")
@@ -332,6 +418,36 @@ end
 function TAMapPinMixin:OnMouseEnter()
     if not self.step then return end
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+
+    if self.step.dungeonPin then
+        local badge = tostring(self.relNum or "Q")
+        local kindLabel = (self.step.type == "boss") and "Dungeon Quest Boss"
+            or ((self.step.type == "npc") and "Dungeon Quest / Escort NPC" or "Dungeon Quest Item / Object")
+        GameTooltip:SetText(string.format("|cFFFFD100[%s]|r %s", badge, tostring(self.step.text or "Quest Item")), 1, 1, 1)
+        GameTooltip:AddLine(kindLabel, 0.72, 0.78, 0.86)
+        if self.step.dungeonActive then
+            local qLine = "Active in your log: " .. tostring(self.step.questName or "Quest")
+            if self.step.progress then qLine = qLine .. " (" .. tostring(self.step.progress) .. ")" end
+            GameTooltip:AddLine(qLine, 0.30, 0.95, 0.50, true)
+        elseif self.step.questName then
+            local tag = (self.step.faction and self.step.faction ~= "Both") and (" · " .. tostring(self.step.faction)) or ""
+            local lv = self.step.minLevel and (" · Lv " .. tostring(self.step.minLevel) .. "+") or ""
+            GameTooltip:AddLine("Quest: " .. tostring(self.step.questName) .. " (not in log" .. tag .. lv .. ")", 0.55, 0.78, 1.0, true)
+        end
+        if self.step.bossAnchor then
+            local anchorTag = self.step.liveAnchored and " (snapped to live boss pin)" or " (map area)"
+            GameTooltip:AddLine("Near: " .. tostring(self.step.bossAnchor) .. anchorTag, 0.90, 0.82, 0.50, true)
+        end
+        if self.step.note and self.step.note ~= "" then
+            GameTooltip:AddLine(self.step.note, 0.92, 0.92, 0.95, true)
+        end
+        if self.step.estimated then
+            GameTooltip:AddLine("Area cluster -- spawns/drops across nearby rooms & paths.", 0.65, 0.70, 0.76, true)
+        end
+        GameTooltip:AddLine("Tip: /ta dpins cycles All / Active Only / Off.", 0.52, 0.60, 0.70, true)
+        GameTooltip:Show()
+        return
+    end
 
     local stepType = self.step.type or "quest"
     local typeLabel = stepType:sub(1,1):upper() .. stepType:sub(2)

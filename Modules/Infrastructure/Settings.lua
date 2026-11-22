@@ -821,6 +821,14 @@ function Settings:Render(content, sidebar)
                 lw.SlashCommands.lootwatch()
             end
         end)
+        if Has("ForeverDungeonPins") then
+            y = MakeActionRow(content, y, w, "Cycle Dungeon Quest Map Pins (All / Active Only / Off)", function()
+                local dp = TA:GetModule("ForeverDungeonPins")
+                if dp and dp.SlashCommands and dp.SlashCommands.dpins then
+                    dp.SlashCommands.dpins("")
+                end
+            end)
+        end
         y = y - 8
     end
 

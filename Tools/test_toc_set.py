@@ -123,6 +123,7 @@ FOREVER_MODULES = [
     "Modules/Navigation/MapPins.xml",
     "Modules/Navigation/MapPins.lua",
     "Modules/Forever/Pins.lua",
+    "Modules/Forever/DungeonPins.lua",
     "Modules/Infrastructure/TestHarness.lua",
 ]
 
@@ -460,6 +461,14 @@ def test_forever_toc_carries_no_retail_content():
                 return False
             return ("TA.Data.ForeverTrainers" in text
                     and "forever-trainers-v1" in text)
+        # Forever Dungeon Quests map pin directory: pure data table.
+        if f == "Data/Forever/DungeonQuests.lua":
+            try:
+                text = (ROOT / f).read_text(encoding="utf-8")
+            except OSError:
+                return False
+            return ("TA.Data.DungeonQuests" in text
+                    and "forever-dungeon-quests-v1" in text)
         return False
     check("Forever: ships no game data beyond the manifest, the sourced coach, the sourced stat priorities, measured harvest data, the unverified profession list, the unverified rotation list and the sourced reagent list",
           [f for f in data if not allowed_data(f)], [])

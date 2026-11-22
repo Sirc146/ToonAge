@@ -393,6 +393,8 @@ local PROFILES = {
             Arrow            = true,
             MapPins          = true,
             ForeverPins      = true,
+            -- Dungeon quest item, object, escort NPC, and quest-boss pins on dungeon maps.
+            ForeverDungeonPins = true,
         },
         tabs      = {
             { id = "now",        label = "Now",        module = "ForeverNow"       },

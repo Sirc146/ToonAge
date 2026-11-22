@@ -1676,4 +1676,63 @@ function C.AssistedNextSpell()
     return id
 end
 
+--- Live dungeon-map encounter positions (name + 0..1 mapX/mapY) from the client.
+--- Tries C_EncounterJournal.GetEncountersOnMap, then EJ_GetMapEncounter, then
+--- C_AreaPoiInfo.GetAreaPOIForMap. Always returns a plain array (possibly empty).
+function C.DungeonMapEncounters(mapID)
+    local out = {}
+    if type(mapID) ~= "number" or mapID <= 0 then return out end
+    local seen = {}
+    local function push(name, x, y, encounterID)
+        if type(name) ~= "string" or name == "" then return end
+        if type(x) ~= "number" or type(y) ~= "number" or x ~= x or y ~= y then return end
+        if math.abs(x) > 1 then x = x / 100 end
+        if math.abs(y) > 1 then y = y / 100 end
+        if x < 0 or x > 1 or y < 0 or y > 1 then return end
+        local key = string.lower(name)
+        if seen[key] then return end
+        seen[key] = true
+        out[#out + 1] = { name = name, x = x, y = y, encounterID = encounterID }
+    end
+
+    if C_EncounterJournal and type(C_EncounterJournal.GetEncountersOnMap) == "function" then
+        local ok, list = pcall(C_EncounterJournal.GetEncountersOnMap, mapID)
+        if ok and type(list) == "table" then
+            for _, info in ipairs(list) do
+                if type(info) == "table" and info.encounterID ~= nil then
+                    local nm = info.name
+                    if (type(nm) ~= "string" or nm == "") and type(EJ_GetEncounterInfo) == "function" then
+                        local okN, en = pcall(EJ_GetEncounterInfo, info.encounterID)
+                        if okN and type(en) == "string" then nm = en end
+                    end
+                    push(nm, tonumber(info.mapX), tonumber(info.mapY), info.encounterID)
+                end
+            end
+        end
+    end
+
+    if #out == 0 and type(EJ_GetMapEncounter) == "function" then
+        for i = 1, 20 do
+            local ok, x, y, _, nm, _, eid = pcall(EJ_GetMapEncounter, mapID, i)
+            if not ok or not nm then break end
+            push(nm, tonumber(x), tonumber(y), eid)
+        end
+    end
+
+    if C_AreaPoiInfo and type(C_AreaPoiInfo.GetAreaPOIForMap) == "function"
+        and type(C_AreaPoiInfo.GetAreaPOIInfo) == "function" then
+        local ok, ids = pcall(C_AreaPoiInfo.GetAreaPOIForMap, mapID)
+        if ok and type(ids) == "table" then
+            for _, pid in ipairs(ids) do
+                local okI, info = pcall(C_AreaPoiInfo.GetAreaPOIInfo, mapID, pid)
+                if okI and type(info) == "table" and type(info.position) == "table" then
+                    push(info.name, tonumber(info.position.x), tonumber(info.position.y), pid)
+                end
+            end
+        end
+    end
+
+    return out
+end
+
 return C

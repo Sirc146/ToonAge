@@ -107,6 +107,8 @@ Data\Forever\FactionRewards.lua
 Data\Forever\RareGearQuests.lua
 # Sourced Forever class trainers (all 9 classes, both factions) & Mage portal trainers.
 Data\Forever\Trainers.lua
+# Classic / Forever leveling dungeon quest items, objects, NPCs, and quest-boss anchors.
+Data\Forever\DungeonQuests.lua
 # Rotation priorities. Forever entries stay verified=false until a harvest
 # confirms the rank IDs. Retail, TBC, Mists, and Era lists are not loaded here.
 Data\Forever\RotationLists.lua
@@ -230,5 +232,7 @@ Modules\Navigation\Arrow.lua
 Modules\Navigation\MapPins.xml
 Modules\Navigation\MapPins.lua
 Modules\Forever\Pins.lua
+# Dungeon quest item, object, escort NPC, and quest-boss pins on dungeon maps.
+Modules\Forever\DungeonPins.lua
 # In-game self-test: /ta test, /tatest, or the Self-test title-bar button. Loads last.
 Modules\Infrastructure\TestHarness.lua

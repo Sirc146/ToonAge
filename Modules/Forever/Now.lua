@@ -211,6 +211,29 @@ function M:BuildItems()
         end
     end
 
+    -- 2c. In-Dungeon Quest Item Map Pins checklist (ForeverDungeonPins)
+    local DP = TA.GetModule and TA:GetModule("ForeverDungeonPins")
+    if DP and type(DP.GetCurrentDungeonChecklist) == "function" then
+        local okD, dInfo = pcall(DP.GetCurrentDungeonChecklist)
+        if okD and type(dInfo) == "table" then
+            local hasActive = (dInfo.activeCount or 0) > 0
+            local detail
+            if hasActive then
+                detail = "Active: " .. table.concat(dInfo.activeNames, " · ") .. ". Press M to view marked quest item & boss pins on the dungeon map."
+            else
+                detail = tostring(dInfo.pinCount) .. " quest item/boss pins marked on your dungeon map (press M). Type /ta dpins to filter Active Only or Off."
+            end
+            items[#items + 1] = {
+                priority = hasActive and 1 or 2,
+                category = "Dungeon",
+                status = hasActive and "warning" or "info",
+                title = "In " .. tostring(dInfo.dungeon) .. " -- Quest Map Pins",
+                value = hasActive and (tostring(dInfo.activeCount) .. " active") or (tostring(dInfo.pinCount) .. " pins"),
+                detail = detail,
+            }
+        end
+    end
+
     -- 3. Weapon & Defense skill readiness (ForeverCharacter)
     local FC = TA.GetModule and TA:GetModule("ForeverCharacter")
     if FC and FC._ReadSkillLines and FC._WeaponSkillFor then
