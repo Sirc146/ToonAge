@@ -313,6 +313,72 @@ function SP.BuildPriorityRows(list, knownByName, dueByName, castStats)
     return out
 end
 
+--- Locate the nearest class trainer for (classToken, side, currentZone).
+--- Priority: exact zone match -> same-continent capital -> same-continent town -> primary faction capital.
+function SP.FindNearestTrainer(classToken, side, currentZone)
+    local root = TA.Data and TA.Data.ForeverTrainers
+    if type(root) ~= "table" or type(root.classes) ~= "table" then return nil end
+    local byClass = classToken and root.classes[classToken] or nil
+    local list = (type(byClass) == "table" and side) and byClass[side] or nil
+    if type(list) ~= "table" or #list == 0 then return nil end
+
+    local zc = root.zoneContinent or {}
+    local curCont = currentZone and zc[currentZone] or nil
+    local sameZone, sameContCap, sameContTown, firstCap = nil, nil, nil, nil
+    for _, tr in ipairs(list) do
+        if type(tr) == "table" then
+            if not firstCap and tr.hubType == "capital" then firstCap = tr end
+            if currentZone and tr.zone == currentZone and not sameZone then
+                sameZone = tr
+            end
+            if curCont and tr.continent == curCont then
+                if tr.hubType == "capital" and not sameContCap then
+                    sameContCap = tr
+                elseif tr.hubType ~= "capital" and not sameContTown then
+                    sameContTown = tr
+                end
+            end
+        end
+    end
+    local picked = sameZone or sameContCap or sameContTown or firstCap or list[1]
+    local note = root.notes and root.notes[classToken] and root.notes[classToken][side] or nil
+    return {
+        trainer = picked,
+        all = list,
+        note = note,
+        sameZone = (sameZone ~= nil),
+        sameContinent = (curCont ~= nil and picked and picked.continent == curCont),
+    }
+end
+
+--- Filter Mage Teleports & Portals by level, faction, and live spellbook.
+function SP.GetMagePortals(level, side, knownByName)
+    local root = TA.Data and TA.Data.ForeverTrainers
+    local out = { due = {}, known = {}, upcoming = {} }
+    if type(root) ~= "table" or type(root.magePortals) ~= "table" then return out end
+    local lv = tonumber(level) or 1
+    local known = type(knownByName) == "table" and knownByName or {}
+    for _, p in ipairs(root.magePortals) do
+        if type(p) == "table" and (p.side == "Both" or not side or p.side == side) then
+            if known[p.name] then
+                out.known[#out.known + 1] = p
+            elseif lv >= (tonumber(p.level) or 99) then
+                out.due[#out.due + 1] = p
+            else
+                out.upcoming[#out.upcoming + 1] = p
+            end
+        end
+    end
+    local byLvl = function(a, b)
+        if a.level ~= b.level then return a.level < b.level end
+        return tostring(a.name) < tostring(b.name)
+    end
+    table.sort(out.due, byLvl)
+    table.sort(out.known, byLvl)
+    table.sort(out.upcoming, byLvl)
+    return out
+end
+
 --- Render the live Spell Playbook at the top of the Spells tab.
 function SP.Render(content, y, L, lines, dueList, opts)
     opts = opts or {}
@@ -481,6 +547,129 @@ function SP.Render(content, y, L, lines, dueList, opts)
     y = L:Paragraph(content, y,
         "Filtered to spells confirmed in your live spellbook. Sourced priorities & live tooltip math only; never casts for you.",
         { color = L.C_DIM, size = 9 })
+
+    -- Nearest Class Trainer (location & faction aware, all 9 classes)
+    local side = opts.side
+    if not side then
+        if TA.Compat and type(TA.Compat.PlayerFaction) == "function" then
+            side = PlainStr(Try(TA.Compat.PlayerFaction))
+        elseif type(UnitFactionGroup) == "function" then
+            side = PlainStr(Try(UnitFactionGroup, "player"))
+        end
+    end
+    local curZone = opts.zone
+    if not curZone then
+        if type(GetRealZoneText) == "function" then curZone = PlainStr(Try(GetRealZoneText)) end
+        if (not curZone or curZone == "") and type(GetZoneText) == "function" then
+            curZone = PlainStr(Try(GetZoneText))
+        end
+    end
+    local pins = TA.GetModule and TA:GetModule("ForeverPins") or nil
+
+    local trInfo = SP.FindNearestTrainer(classToken, side, curZone)
+    if trInfo and trInfo.trainer then
+        local tr = trInfo.trainer
+        if L.Divider then y = L:Divider(content, y) end
+        local sub = curZone
+            and ("Nearest " .. tostring(side or "") .. " trainer from " .. curZone)
+            or ("Sourced " .. tostring(side or "") .. " class trainers")
+        y = L:SectionHeader(content, y, "Class Trainer Locator", sub)
+        local coordStr = (tr.x and tr.y) and string.format(" (%.1f, %.1f)", tr.x, tr.y) or ""
+        local whereVal = tr.zone .. coordStr
+        local whereNote = (tr.npc and (tr.npc .. " · ") or "") .. tostring(tr.district or "")
+        if trInfo.note then whereNote = whereNote .. " · " .. trInfo.note end
+        y = L:DataRow(content, y, {
+            label = trInfo.sameZone and "Trainer in your zone" or "Nearest Class Trainer",
+            value = whereVal,
+            note = whereNote,
+            status = (#(dueList or {}) > 0) and "warn" or "good",
+        })
+        if #trInfo.all > 1 then
+            local others = {}
+            for _, o in ipairs(trInfo.all) do
+                if o ~= tr then
+                    others[#others + 1] = o.zone .. (o.district and (" (" .. o.district .. ")") or "")
+                end
+            end
+            if #others > 0 then
+                y = L:Paragraph(content, y, "Other faction trainers: " .. table.concat(others, " · "),
+                    { color = L.C_DIM, size = 9 })
+            end
+        end
+        if pins and type(pins.ToggleTargetPin) == "function" and L.ButtonRow then
+            local pinned = pins.IsPinned and pins:IsPinned("class_trainer") or false
+            y = L:ButtonRow(content, y, {
+                {
+                    label = pinned and ("Clear Trainer Pin") or ("Pin " .. tr.zone .. " Trainer"),
+                    active = pinned,
+                    onClick = function()
+                        pins:ToggleTargetPin(tr, "class_trainer")
+                        if TA.QueueUIRefresh then TA:QueueUIRefresh("PIN_TOGGLE") end
+                    end,
+                },
+            })
+        end
+    end
+
+    -- Mage Teleports & Portals tracker + Portal Trainer reminders
+    if classToken == "MAGE" then
+        local portals = SP.GetMagePortals(level, side, knownByName)
+        if (#portals.due + #portals.known + #portals.upcoming) > 0 then
+            if L.Divider then y = L:Divider(content, y) end
+            local pSub = (#portals.due > 0)
+                and (tostring(#portals.due) .. " teleport/portal(s) ready to train now")
+                or "City-specific Portal Trainers (Teleports Lv 20/30/50 · Portals Lv 40/50)"
+            y = L:SectionHeader(content, y, "Mage Teleports & Portals", pSub)
+            for _, p in ipairs(portals.due) do
+                local tag = (p.verified == false) and " [UNVERIFIED]" or ""
+                y = L:DataRow(content, y, {
+                    label = p.name .. tag,
+                    value = "Train now (Lv " .. tostring(p.level) .. ")",
+                    note = string.format("%s · %s, %s (%.1f, %.1f) · Uses %s",
+                        p.npc, p.zone, p.district, p.x or 0, p.y or 0, p.reagent),
+                    status = (p.verified == false) and "neutral" or "warn",
+                })
+            end
+            for _, p in ipairs(portals.known) do
+                y = L:DataRow(content, y, {
+                    label = p.name,
+                    value = "Known",
+                    note = p.zone .. " · Uses " .. p.reagent,
+                    status = "good",
+                })
+            end
+            for _, p in ipairs(portals.upcoming) do
+                local tag = (p.verified == false) and " [UNVERIFIED]" or ""
+                y = L:DataRow(content, y, {
+                    label = p.name .. tag,
+                    value = "Unlocks Lv " .. tostring(p.level),
+                    note = string.format("%s · %s, %s (%.1f, %.1f)",
+                        p.npc, p.zone, p.district, p.x or 0, p.y or 0),
+                    status = "dim",
+                })
+            end
+            local pinTarget = portals.due[1] or portals.upcoming[1]
+            if pinTarget and pins and type(pins.ToggleTargetPin) == "function" and L.ButtonRow then
+                local pinned = pins.IsPinned and pins:IsPinned("portal_trainer") or false
+                y = L:ButtonRow(content, y, {
+                    {
+                        label = pinned and "Clear Portal Trainer Pin"
+                            or ("Pin " .. pinTarget.npc .. " (" .. pinTarget.zone .. ")"),
+                        active = pinned,
+                        onClick = function()
+                            pins:ToggleTargetPin({
+                                name = pinTarget.npc .. " (" .. pinTarget.name .. ")",
+                                zone = pinTarget.zone,
+                                x = pinTarget.x,
+                                y = pinTarget.y,
+                            }, "portal_trainer")
+                            if TA.QueueUIRefresh then TA:QueueUIRefresh("PIN_TOGGLE") end
+                        end,
+                    },
+                })
+            end
+        end
+    end
     return y
 end
 

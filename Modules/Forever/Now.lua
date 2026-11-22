@@ -69,6 +69,20 @@ function M:BuildItems()
                     names[i] = tostring(due[i].name or "Spell")
                 end
                 local tail = (#due > 3) and (" +" .. tostring(#due - 3) .. " more") or ""
+                local trainerHint = ""
+                local SP = TA.SpellPlaybook
+                if SP and type(SP.FindNearestTrainer) == "function" then
+                    local _, clsTok = Try(UnitClass, "player")
+                    local side = (TA.Compat and TA.Compat.PlayerFaction and Try(TA.Compat.PlayerFaction))
+                        or (type(UnitFactionGroup) == "function" and Try(UnitFactionGroup, "player")) or nil
+                    local zone = (type(GetRealZoneText) == "function" and Try(GetRealZoneText)) or nil
+                    local info = SP.FindNearestTrainer(clsTok, side, zone)
+                    if info and info.trainer then
+                        local tr = info.trainer
+                        trainerHint = string.format(" Nearest trainer: %s (%s, %.0f, %.0f).",
+                            tr.zone, tr.district or "", tr.x or 0, tr.y or 0)
+                    end
+                end
                 items[#items + 1] = {
                     priority = 1,
                     category = "Spells",
@@ -76,7 +90,7 @@ function M:BuildItems()
                     title = string.format("%d spell %s ready at your class trainer",
                         #due, #due == 1 and "rank" or "ranks"),
                     value = tostring(#due) .. " due",
-                    detail = "Trainable now: " .. table.concat(names, ", ") .. tail .. ".",
+                    detail = "Trainable now: " .. table.concat(names, ", ") .. tail .. "." .. trainerHint,
                     actionLabel = "Open Spells",
                     actionTab = "spells",
                 }
@@ -93,6 +107,45 @@ function M:BuildItems()
                     title = "Spell ranks checked",
                     value = "Up to date",
                     detail = covNote,
+                    actionLabel = "Open Spells",
+                    actionTab = "spells",
+                }
+            end
+        end
+    end
+
+    -- 1c. Mage Teleports & Portals training reminder (SpellPlaybook + live spellbook)
+    local SP = TA.SpellPlaybook
+    if SP and type(SP.GetMagePortals) == "function" and level then
+        local _, clsTok = Try(UnitClass, "player")
+        if clsTok == "MAGE" then
+            local side = (TA.Compat and TA.Compat.PlayerFaction and Try(TA.Compat.PlayerFaction))
+                or (type(UnitFactionGroup) == "function" and Try(UnitFactionGroup, "player")) or nil
+            local knownByName = {}
+            local M = TA.GetModule and TA:GetModule("ForeverMageSuggest") or nil
+            if M and type(M.ScanLiveSpellbook) == "function" then
+                local okS, byName = pcall(M.ScanLiveSpellbook)
+                if okS and type(byName) == "table" then knownByName = byName end
+            end
+            local portals = SP.GetMagePortals(level, side, knownByName)
+            local verifiedDue = {}
+            for _, p in ipairs(portals.due or {}) do
+                if p.verified ~= false then verifiedDue[#verifiedDue + 1] = p end
+            end
+            if #verifiedDue > 0 then
+                local parts = {}
+                for i = 1, math.min(#verifiedDue, 3) do
+                    local p = verifiedDue[i]
+                    parts[#parts + 1] = p.name .. " (" .. p.npc .. ", " .. p.zone .. ")"
+                end
+                items[#items + 1] = {
+                    priority = 2,
+                    category = "Portals",
+                    status = "warning",
+                    title = string.format("%d Mage teleport/portal %s ready to train",
+                        #verifiedDue, #verifiedDue == 1 and "spell" or "spells"),
+                    value = tostring(#verifiedDue) .. " due",
+                    detail = table.concat(parts, " · ") .. ".",
                     actionLabel = "Open Spells",
                     actionTab = "spells",
                 }

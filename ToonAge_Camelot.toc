@@ -105,6 +105,8 @@ Data\Forever\Enchants.lua
 Data\Forever\FactionRewards.lua
 # Verified Forever rare/drop quests awarding notable gear upgrades.
 Data\Forever\RareGearQuests.lua
+# Sourced Forever class trainers (all 9 classes, both factions) & Mage portal trainers.
+Data\Forever\Trainers.lua
 # Rotation priorities. Forever entries stay verified=false until a harvest
 # confirms the rank IDs. Retail, TBC, Mists, and Era lists are not loaded here.
 Data\Forever\RotationLists.lua

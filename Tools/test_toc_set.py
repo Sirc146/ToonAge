@@ -452,6 +452,14 @@ def test_forever_toc_carries_no_retail_content():
                 return False
             return ("TA.Data.ForeverRareGearQuests" in text
                     and "forever-rare-gear-quests-v1" in text)
+        # Forever Trainers & Mage Portals directory: pure data table.
+        if f == "Data/Forever/Trainers.lua":
+            try:
+                text = (ROOT / f).read_text(encoding="utf-8")
+            except OSError:
+                return False
+            return ("TA.Data.ForeverTrainers" in text
+                    and "forever-trainers-v1" in text)
         return False
     check("Forever: ships no game data beyond the manifest, the sourced coach, the sourced stat priorities, measured harvest data, the unverified profession list, the unverified rotation list and the sourced reagent list",
           [f for f in data if not allowed_data(f)], [])

@@ -460,6 +460,18 @@ function M:ToggleFeathersPin()
     return self:SuggestFeathers()
 end
 
+--- Generic toggle-to-clear pin for any sourced { name, zone, x, y } point
+--- (used by Class Trainers and Mage Portal Trainers on Spells / Now tabs).
+function M:ToggleTargetPin(place, key)
+    local tag = key or "target"
+    if self:IsPinned(tag) then
+        self:ClearPin()
+        return false
+    end
+    if type(place) ~= "table" or type(place.zone) ~= "string" then return false end
+    return self:Pin(place, false, tag)
+end
+
 function M:NearestAuction()
     local C = TA.Compat
     local faction = C and type(C.PlayerFaction) == "function" and C.PlayerFaction() or nil
