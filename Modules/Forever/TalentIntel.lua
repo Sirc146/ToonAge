@@ -111,24 +111,96 @@ local PLAYSTYLE_FILTERS = {
     {
         key = "damage",
         label = "Damage",
+        why = "Boosts raw spell/weapon output, crit, or cast speed. Pick when mana and survival feel comfortable and you want faster kills.",
         patterns = { "damage", "critical strike", "crit", "cast time", "casting time", "spell power", "attack power", "haste" },
     },
     {
         key = "mana",
         label = "Mana/Res",
+        why = "Cuts mana/resource cost, boosts regen, or adds free casts (Clearcasting). Pick when you drink too often between pulls or run dry in long fights.",
         patterns = { "mana", "clearcasting", "regeneration", "spirit", "rage", "energy", "focus", "cost" },
     },
     {
         key = "control",
         label = "Control/Surv",
+        why = "Adds roots, slows, shields, pushback resistance, or defensive tools. Pick for soloing elites, multi-mob pulls, or PvP.",
         patterns = { "chill", "freeze", "frozen", "snare", "stun", "root", "armor", "resist", "shield", "barrier", "health", "threat", "dodge", "parry", "block", "silence", "counterspell" },
     },
     {
         key = "aoe",
         label = "AoE",
+        why = "Scales multi-target spells (Blizzard, Arcane Explosion, Flamestrike, Cleave). Pick for dungeon packs or AoE grinding.",
         patterns = { "blizzard", "flamestrike", "arcane explosion", "cone of cold", "frost nova", "blast wave", "cleave", "whirlwind", "multi%-shot", "volley", "rain of fire", "hellfire", "consecration", "chain lightning", "area" },
     },
 }
+
+local SPELL_PILL_WHY = {
+    channeling = "Protects channeled spells (Arcane Missiles, Blizzard, Evocation) from hit pushback or boosts channeled ticks. Pick if you channel under melee hits or lean on Arcane Missiles / Blizzard.",
+}
+
+--- Explain WHY a player would pick a given talent filter pill and find the
+--- most accessible unmaxed matching node to inspect or plan next.
+function TI.FilterInfo(filterKey, nodes, descByID)
+    if not filterKey or filterKey == "all" then
+        return {
+            key = "all",
+            title = "All Talents",
+            why = "Showing every talent in your tree. Click any filter pill to spotlight a goal and see why it helps.",
+            matchCount = type(nodes) == "table" and #nodes or 0,
+            unmaxedCount = 0,
+            firstUnmaxed = nil,
+        }
+    end
+    local title, why
+    for _, pf in ipairs(PLAYSTYLE_FILTERS) do
+        if pf.key == filterKey then
+            title = pf.label
+            why = pf.why
+            break
+        end
+    end
+    if not title then
+        local sp = type(filterKey) == "string" and filterKey:match("^spell:(.+)$") or nil
+        if sp then
+            title = sp:gsub("(%a)([%w_']*)", function(a, b) return a:upper() .. b end)
+            why = SPELL_PILL_WHY[sp]
+                or ("Highlights every talent in your tree that directly upgrades " .. title .. ". Pick if " .. title .. " is a core cast in your rotation.")
+        else
+            title = tostring(filterKey)
+            why = "Highlights matching talents in your tree."
+        end
+    end
+
+    local matchCount, unmaxedCount = 0, 0
+    local firstUnmaxed = nil
+    if type(nodes) == "table" then
+        for _, n in ipairs(nodes) do
+            local d = (type(descByID) == "table" and descByID[n.id]) or n.desc or ""
+            if TI.NodeMatchesFilter(n, d, filterKey) then
+                matchCount = matchCount + 1
+                local cur = tonumber(n.ranksPurchased) or 0
+                local mx  = tonumber(n.maxRanks) or 1
+                if cur < mx then
+                    unmaxedCount = unmaxedCount + 1
+                    if not firstUnmaxed
+                        or (tonumber(n.posY) or 9999) < (tonumber(firstUnmaxed.posY) or 9999)
+                        or ((tonumber(n.posY) or 9999) == (tonumber(firstUnmaxed.posY) or 9999)
+                            and (tonumber(n.posX) or 9999) < (tonumber(firstUnmaxed.posX) or 9999)) then
+                        firstUnmaxed = n
+                    end
+                end
+            end
+        end
+    end
+    return {
+        key = filterKey,
+        title = title,
+        why = why,
+        matchCount = matchCount,
+        unmaxedCount = unmaxedCount,
+        firstUnmaxed = firstUnmaxed,
+    }
+end
 
 --- Known spell names from the player's spellbook (excluding General), used to
 --- discover real spell filter pills referenced by the current talent tree.

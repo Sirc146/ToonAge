@@ -714,6 +714,8 @@ def main():
         local clicksReg = btns[104] and btns[104]._registeredClicks and btns[104]._registeredClicks[2] or ""
 
         -- Click a filter pill (Mana/Res) and check dimming alpha on Improved Fireball (106) vs Frost Channeling (107)
+        local whyHiddenOnAll = not (_G.TATalentFilterBar._whyBar and _G.TATalentFilterBar._whyBar:IsShown())
+        local treeYBeforeWhy = _G.TATalentTreeScroll._points[1] and _G.TATalentTreeScroll._points[1].e or 0
         local manaPillBtn = nil
         for _, pb in ipairs(_G.TATalentFilterBar._pills) do
             if pb.label:GetText() == "Mana/Res" then manaPillBtn = pb end
@@ -721,6 +723,35 @@ def main():
         if manaPillBtn then manaPillBtn.scripts.OnClick(manaPillBtn, "LeftButton") end
         local alphaFireUnderMana = btns[106] and btns[106].icon:GetAlpha() or -1
         local alphaChanUnderMana = btns[107] and btns[107].icon:GetAlpha() or -1
+        local whyBar = _G.TATalentFilterBar._whyBar
+        local whyShownUnderMana = whyBar and whyBar:IsShown() or false
+        local whyDescMana = whyBar and whyBar.desc and whyBar.desc:GetText() or ""
+        local whyTitleMana = whyBar and whyBar.title and whyBar.title:GetText() or ""
+        local treeYAfterWhy = _G.TATalentTreeScroll._points[1] and _G.TATalentTreeScroll._points[1].e or 0
+
+        -- Channeling pill explanation via TI.FilterInfo
+        local chanInfo = TI.FilterInfo("spell:channeling", nil, nil)
+        local chanWhy = chanInfo and chanInfo.why or ""
+
+        -- Click Inspect Next -> selects Frost Channeling (107), then +Plan Next -> pins it, then Clear -> resets to All
+        if whyBar and whyBar.inspectBtn and whyBar.inspectBtn.scripts.OnClick then
+            whyBar.inspectBtn.scripts.OnClick(whyBar.inspectBtn, "LeftButton")
+        end
+        local selectedAfterInspect = M.selectedID
+        if whyBar and whyBar.planBtn and whyBar.planBtn.scripts.OnClick then
+            whyBar.planBtn.scripts.OnClick(whyBar.planBtn, "LeftButton")
+        end
+        local planLabelAfterPlan = whyBar and whyBar.planBtn and whyBar.planBtn.label:GetText() or ""
+        if whyBar and whyBar.clearBtn and whyBar.clearBtn.scripts.OnClick then
+            whyBar.clearBtn.scripts.OnClick(whyBar.clearBtn, "LeftButton")
+        end
+        local filterAfterClear = M.activeFilter
+        local whyHiddenAfterClear = not (whyBar and whyBar:IsShown())
+        -- Restore selectedID = 104 and clean milestones before sandbox tests below
+        TI.ClearMilestones()
+        M.selectedID = 104
+        M.planTargetID = nil
+        M:Render(content, nil)
 
         -- Click dock +1 button to enter Sandbox mode and add +1 to Shatter (104)
         _G.TATalentDetailDock.plusBtn.scripts.OnClick(_G.TATalentDetailDock.plusBtn, "LeftButton")
@@ -759,6 +790,16 @@ def main():
             clicksReg = clicksReg,
             alphaFireUnderMana = alphaFireUnderMana,
             alphaChanUnderMana = alphaChanUnderMana,
+            whyHiddenOnAll = whyHiddenOnAll,
+            whyShownUnderMana = whyShownUnderMana,
+            whyDescMana = whyDescMana,
+            whyTitleMana = whyTitleMana,
+            treeShiftedDown = treeYAfterWhy < treeYBeforeWhy,
+            chanWhy = chanWhy,
+            selectedAfterInspect = selectedAfterInspect,
+            planLabelAfterPlan = planLabelAfterPlan,
+            filterAfterClear = filterAfterClear,
+            whyHiddenAfterClear = whyHiddenAfterClear,
             sandboxOnAfterPlus = sandboxOnAfterPlus,
             badge104AfterPlus = badge104AfterPlus,
             badge104AfterShift = badge104AfterShift,
@@ -783,6 +824,15 @@ def main():
     check("Filter pill Mana/Res dims non-matching Fireball (0.22) and keeps Frost Channeling bright (1.0)",
           (abs(r4["alphaFireUnderMana"] - 0.22) < 0.01, r4["alphaChanUnderMana"] > 0.5),
           (True, True))
+    check("Filter Why strip hidden on All, shown on Mana/Res with plain-English explanation + tree shift",
+          (r4["whyHiddenOnAll"], r4["whyShownUnderMana"], "Clearcasting" in r4["whyDescMana"],
+           "Mana/Res" in r4["whyTitleMana"], r4["treeShiftedDown"]),
+          (True, True, True, True, True))
+    check("TI.FilterInfo explains Channeling pushback & channeled ticks",
+          "Arcane Missiles" in r4["chanWhy"] and "pushback" in r4["chanWhy"])
+    check("Why strip Inspect Next selects Frost Channeling (107), +Plan Next marks Planned, Clear resets to all",
+          (r4["selectedAfterInspect"], r4["planLabelAfterPlan"], r4["filterAfterClear"], r4["whyHiddenAfterClear"]),
+          (107, "Planned", "all", True))
     check("Dock +1 enables Sandbox and shows 1/5 badge",
           (r4["sandboxOnAfterPlus"], r4["badge104AfterPlus"]), (True, "1/5"))
     check("Shift-Click adds +1 (2/5) and Right-Click removes -1 (1/5)",

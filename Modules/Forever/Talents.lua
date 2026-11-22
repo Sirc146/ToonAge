@@ -1847,9 +1847,12 @@ local function StyleDockButton(btn, text, active)
     end
 end
 
---- Pooled Spell & Playstyle Filter Pills + Saved Plan Slot selector bar.
+local FILTER_WHY_H = 44
+
+--- Pooled Spell & Playstyle Filter Pills + Saved Plan Slot selector bar
+--- + inline "Why this filter?" explanation & Plan Next option strip.
 --- Mounted only when TA.TalentIntel is loaded. 0 frame churn on redraw.
-local function MountFilterBar(content, yTop, width, pills, refreshFn)
+local function MountFilterBar(content, yTop, width, pills, refreshFn, nodes, intelCtx)
     local TI = TA.TalentIntel
     local bar = _G.TATalentFilterBar
     if not (TI and type(pills) == "table" and #pills > 0) then
@@ -1862,13 +1865,56 @@ local function MountFilterBar(content, yTop, width, pills, refreshFn)
         bar._pills = {}
         bar.slotBtn = BuildDockButton(bar)
         bar.slotBtn:SetSize(78, 20)
-        bar.slotBtn:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+        bar.slotBtn:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, -3)
+
+        -- Pooled "Why this filter?" strip right under the pills (hidden on All)
+        local whyBar = CreateFrame("Frame", nil, bar)
+        whyBar._laKind = "ForeverTalent"
+        whyBar:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, -(FILTER_BAR_H + 2))
+        whyBar:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, -(FILTER_BAR_H + 2))
+        whyBar:SetHeight(FILTER_WHY_H)
+        whyBar.bg = whyBar:CreateTexture(nil, "BACKGROUND")
+        whyBar.bg:SetAllPoints()
+        whyBar.bg:SetColorTexture(0.06, 0.09, 0.14, 0.88)
+        whyBar.rule = whyBar:CreateTexture(nil, "BORDER")
+        whyBar.rule:SetHeight(1)
+        whyBar.rule:SetPoint("TOPLEFT")
+        whyBar.rule:SetPoint("TOPRIGHT")
+        whyBar.rule:SetColorTexture(0.32, 0.72, 0.96, 0.55)
+
+        whyBar.title = whyBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        whyBar.title:SetPoint("TOPLEFT", whyBar, "TOPLEFT", 8, -5)
+        if whyBar.title.SetJustifyH then whyBar.title:SetJustifyH("LEFT") end
+
+        whyBar.desc = whyBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        whyBar.desc:SetPoint("TOPLEFT", whyBar, "TOPLEFT", 8, -19)
+        whyBar.desc:SetPoint("BOTTOMRIGHT", whyBar, "BOTTOMRIGHT", -226, 4)
+        if whyBar.desc.SetJustifyH then whyBar.desc:SetJustifyH("LEFT") end
+        if whyBar.desc.SetWordWrap then whyBar.desc:SetWordWrap(true) end
+
+        whyBar.clearBtn = BuildDockButton(whyBar)
+        whyBar.clearBtn:SetSize(48, 20)
+        whyBar.clearBtn:SetPoint("RIGHT", whyBar, "RIGHT", -6, 0)
+
+        whyBar.planBtn = BuildDockButton(whyBar)
+        whyBar.planBtn:SetSize(82, 20)
+        whyBar.planBtn:SetPoint("RIGHT", whyBar.clearBtn, "LEFT", -4, 0)
+
+        whyBar.inspectBtn = BuildDockButton(whyBar)
+        whyBar.inspectBtn:SetSize(82, 20)
+        whyBar.inspectBtn:SetPoint("RIGHT", whyBar.planBtn, "LEFT", -4, 0)
+
+        whyBar:Hide()
+        bar._whyBar = whyBar
     end
     bar._laKind = "ForeverTalent"
     if bar.SetParent then bar:SetParent(content) end
     if bar.ClearAllPoints then bar:ClearAllPoints() end
+    local activeKey = M.activeFilter or "all"
+    local showWhy = (activeKey ~= "all") and (type(TI.FilterInfo) == "function")
+    local totalH = showWhy and (FILTER_BAR_H + FILTER_WHY_H + 4) or FILTER_BAR_H
     local barW = math.max(220, math.floor((tonumber(width) or 480) + 0.5))
-    bar:SetSize(barW, FILTER_BAR_H)
+    bar:SetSize(barW, totalH)
     bar:SetPoint("TOPLEFT", content, "TOPLEFT", L.PAD, yTop)
     if bar.Show then bar:Show() end
 
@@ -1881,6 +1927,7 @@ local function MountFilterBar(content, yTop, width, pills, refreshFn)
         if refreshFn then refreshFn() end
     end)
 
+    local descByID = intelCtx and intelCtx.descByID or nil
     local maxX = barW - 84
     local curX = 0
     local used = 0
@@ -1897,18 +1944,38 @@ local function MountFilterBar(content, yTop, width, pills, refreshFn)
             btn._laKind = "ForeverTalent"
             if btn.ClearAllPoints then btn:ClearAllPoints() end
             btn:SetSize(approxW, 20)
-            btn:SetPoint("LEFT", bar, "LEFT", curX, 0)
-            local isActive = (M.activeFilter or "all") == pill.key
+            btn:SetPoint("TOPLEFT", bar, "TOPLEFT", curX, -3)
+            local isActive = activeKey == pill.key
             StyleDockButton(btn, labelTxt, isActive)
             local pKey = pill.key
             btn:SetScript("OnClick", function()
+                local wasAll = (M.activeFilter == nil or M.activeFilter == "all")
                 if M.activeFilter == pKey and pKey ~= "all" then
                     M.activeFilter = "all"
                 else
                     M.activeFilter = pKey
                 end
+                local nowAll = (M.activeFilter == nil or M.activeFilter == "all")
                 if refreshFn then refreshFn() end
+                if wasAll ~= nowAll and TA.QueueUIRefresh then
+                    TA:QueueUIRefresh("TALENT_FILTER")
+                end
             end)
+            if btn.SetScript then
+                btn:SetScript("OnEnter", function(self)
+                    if not (GameTooltip and TI.FilterInfo) then return end
+                    local fInfo = TI.FilterInfo(pKey, nodes, descByID)
+                    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+                    GameTooltip:ClearLines()
+                    GameTooltip:AddLine(fInfo.title .. " (" .. tostring(fInfo.matchCount) .. " talents)", 1, 0.85, 0.3, false)
+                    GameTooltip:AddLine(fInfo.why, 0.92, 0.92, 0.95, true)
+                    GameTooltip:AddLine("Click to highlight matching nodes & show Plan options.", 0.60, 0.72, 0.85, true)
+                    GameTooltip:Show()
+                end)
+                btn:SetScript("OnLeave", function()
+                    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+                end)
+            end
             if btn.Show then btn:Show() end
             curX = curX + approxW + 4
         end
@@ -1916,7 +1983,48 @@ local function MountFilterBar(content, yTop, width, pills, refreshFn)
     for i = used + 1, #bar._pills do
         if bar._pills[i] and bar._pills[i].Hide then bar._pills[i]:Hide() end
     end
-    return FILTER_BAR_H
+
+    local whyBar = bar._whyBar
+    if whyBar then
+        if showWhy then
+            local info = TI.FilterInfo(activeKey, nodes, descByID)
+            local nextNode = info.firstUnmaxed
+            whyBar.title:SetText(string.format("%s · %d matching (%d unmaxed)",
+                tostring(info.title), info.matchCount or 0, info.unmaxedCount or 0))
+            whyBar.desc:SetText(info.why or "")
+            StyleDockButton(whyBar.clearBtn, "Clear", false)
+            whyBar.clearBtn:SetScript("OnClick", function()
+                M.activeFilter = "all"
+                if refreshFn then refreshFn() end
+                if TA.QueueUIRefresh then TA:QueueUIRefresh("TALENT_FILTER") end
+            end)
+            if nextNode then
+                StyleDockButton(whyBar.inspectBtn, "Inspect Next", false)
+                whyBar.inspectBtn:SetScript("OnClick", function()
+                    M.selectedID = nextNode.id
+                    if refreshFn then refreshFn() end
+                end)
+                whyBar.inspectBtn:Show()
+
+                local alreadyPlanned = TI.HasMilestone and TI.HasMilestone(nextNode.id) or false
+                StyleDockButton(whyBar.planBtn, alreadyPlanned and "Planned" or "+Plan Next", alreadyPlanned)
+                whyBar.planBtn:SetScript("OnClick", function()
+                    M.selectedID = nextNode.id
+                    if TI.ToggleMilestone then TI.ToggleMilestone(nextNode.id) end
+                    M.planTargetID = nextNode.id
+                    if refreshFn then refreshFn() end
+                end)
+                whyBar.planBtn:Show()
+            else
+                whyBar.inspectBtn:Hide()
+                whyBar.planBtn:Hide()
+            end
+            whyBar:Show()
+        else
+            whyBar:Hide()
+        end
+    end
+    return totalH
 end
 
 --- Pooled bottom Node Detail, Sandbox Plan Mode & Reality Callouts dock.
@@ -2256,7 +2364,7 @@ function M:Render(content, side)
     if TI and filterPills then
         local fH = MountFilterBar(content, filterY, availW, filterPills, function()
             if refreshPlanUI then refreshPlanUI() end
-        end)
+        end, nodes, intelCtx)
         if fH > 0 then y = y - fH - 4 end
     elseif _G.TATalentFilterBar and _G.TATalentFilterBar.Hide then
         _G.TATalentFilterBar:Hide()
@@ -2275,7 +2383,7 @@ function M:Render(content, side)
     end
 
     local route = M.ActiveRoute(nodes, conds, spent, unspent, level)
-    local mountedButtons, mountedLines
+    local _scroll, mountedButtons, mountedLines
     local function applyHeight(dockH)
         if scrolls then
             local view = ViewportHeight(content)
@@ -2296,7 +2404,15 @@ function M:Render(content, side)
     refreshPlanUI = function()
         local activeRoute = M.ActiveRoute(nodes, conds, spent, unspent, level)
         if TI and filterPills then
-            MountFilterBar(content, filterY, availW, filterPills, refreshPlanUI)
+            local fH = MountFilterBar(content, filterY, availW, filterPills, refreshPlanUI, nodes, intelCtx)
+            local newTreeY = (fH > 0) and (filterY - fH - 4) or filterY
+            if newTreeY ~= y then
+                y = newTreeY
+                if _scroll then
+                    if _scroll.ClearAllPoints then _scroll:ClearAllPoints() end
+                    _scroll:SetPoint("TOPLEFT", content, "TOPLEFT", L.PAD, y)
+                end
+            end
         end
         if mountedButtons then
             local fKey = M.activeFilter or "all"
@@ -2324,7 +2440,6 @@ function M:Render(content, side)
         applyHeight(dockH)
     end
 
-    local _scroll
     _scroll, mountedButtons, mountedLines = MountTree(content, y, plans, paneH, treeH, treeW, route, unspent, refreshPlanUI, intelCtx)
     local dockH = MountDetailDock(content, y - paneH - 8, availW, nodes, conds, spent, unspent, refreshPlanUI, intelCtx)
     applyHeight(dockH)
