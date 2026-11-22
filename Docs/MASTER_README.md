@@ -8,7 +8,7 @@
 - **Version:** `v2.0.0-dev.1` · **Language:** Lua 5.1
 - **Lead Client:** **WoW Forever** (`1.60.1`, build `71037`, interface `16001`, `ToonAge_Camelot.toc`)
 - **Other Supported Flavors:** Retail (`ToonAge_Mainline.toc`), TBC Anniversary (`ToonAge_TBC.toc`), Mists Classic (`ToonAge_Mists.toc`), Classic Era (`ToonAge_Vanilla.toc`), Cata (`ToonAge_Cata.toc`), Wrath (`ToonAge_Wrath.toc`)
-- **Last Verified State:** `2026-11-22` · HEAD `antigravity/phase12-combat-suggest-hud` (`90` automated test suites · `8/8` TOCs parse clean · `0` PII/hygiene findings across `490+` files)
+- **Last Verified State:** `2026-11-22` · HEAD `antigravity/phase13-trainers-and-mage-portals` (`91` automated test suites · `8/8` TOCs parse clean · `0` PII/hygiene findings across `492+` files)
 
 ---
 
@@ -45,7 +45,8 @@ Base: `origin/test @ 6eeb530` (do NOT drop/pop `stash@{0}`; do NOT rebase/force-
 | **9** | `antigravity/phase9-roadmap-backup-reagents` | `f87c0b9` | Pushed to `origin` | Roadmap `1.2` + `2A`: pre-install SavedVariables auto-backup in `build_flavors.ps1` (last 10 snapshots in `<WoW>\ToonAge_Backups\<client>\`); verified Forever reagent IDs `17020`/`17031`/`17032` in `Data/Forever/Reagents.lua` |
 | **10** | `antigravity/phase10-enchants-and-factions` | `0bb4538` | Pushed to `origin` | Roadmap `2B`: `Data/Forever/Enchants.lua` + `Gear.lua` role-aware Forever Enchant Guide (Necklace, Off-Hand, Relics, Enchanter Rings, no gems); `Data/Forever/FactionRewards.lua` + `FactionTracker.lua` faction-filtered standing unlock milestones (`test_forever_enchants_factions.py` 52/52) |
 | **11** | `antigravity/phase11-retail-midnight-fixes` | `a5c9cd3` | Pushed to `origin` (installed `_retail_`, `_forever_`, `_anniversary_`) | Retail `Midnight 12.x` fixes `R1`-`R7` + `build_flavors.ps1` Retail/PTR/Remix `Media\*` assets + TBC Anniversary live Reputation walk & clean `_anniversary_` sync (`test_retail_midnight_fixes.py`) |
-| **12** | `antigravity/phase12-combat-suggest-hud` | *current* | Pushed to `origin` | Spec-aware 9-class Live Combat Suggest HUD (`MageSuggest.lua`, `SpellPlaybook.lua` HUD/Lock pills, `/ta hud`, Settings toggles), single-copy 60k Modern Azeroth `ToonAgeCopyWindow` (`UI.lua`), Professions scroll-flash fix + EditBox focus guard (`UI.lua`), Profession tier trainer reminders under bars & on `Now` (`ProfessionBoard.lua`, `Now.lua`), `Journey.lua` secret-string guard, `LootWatch.lua` icon layering + width fix, Gear <-> Professions <-> Reputation upgrade/enchant sourcing, `Data/Forever/RareGearQuests.lua` schema, cross-flavor Socket & Jewelcrafting / BoP farmed gem audit (`Modules/Gear/Gear.lua`) |
+| **12** | `antigravity/phase12-combat-suggest-hud` | `d8c0f89` | Pushed to `origin` | Option A 9-class Live Combat Suggest HUD (opt-in: Prep out of combat, Blizzard `C_AssistedCombat` in combat), single-copy 60k Modern Azeroth `ToonAgeCopyWindow`, Professions scroll-flash fix & trainer tier reminders, `Journey.lua` secret-string guard, `LootWatch.lua` icon layering + width fix, Gear <-> Professions <-> Reputation sourcing, 20 sourced Forever Rare Gear Quests (`Data/Forever/RareGearQuests.lua`), cross-flavor Socket/JC BoP gem audit |
+| **13** | `antigravity/phase13-trainers-and-mage-portals` | `1576881` | Pushed to `origin` | All-9-class faction & location-aware Class Trainer Locator (`Data/Forever/Trainers.lua`, `SpellPlaybook.lua`, `Now.lua`), Mage Teleports & Portals training reminders (Lv 20/30/40/50 + Dalaran), 1-click toggle-to-clear `ForeverPins:ToggleTargetPin` waypoints (`test_forever_trainers_portals.py`) |
 
 ---
 
