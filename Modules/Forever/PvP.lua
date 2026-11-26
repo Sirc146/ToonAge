@@ -312,7 +312,88 @@ end
 
 -- ─── 4. RANK & HONOR READS ─────────────────────────────────────────────────
 
-local function ReadRank()
+-- Forever Season 1 non-decaying Rank 0..14 titles & cumulative Rank Point thresholds
+-- (verified against live Forever 1.60.1 PvP UI: Rank 1 = 750, Rank 14 = 24,750).
+local FOREVER_RANK_TITLES = {
+    Horde = {
+        [0] = "Civilian", [1] = "Scout", [2] = "Grunt", [3] = "Sergeant",
+        [4] = "Senior Sergeant", [5] = "First Sergeant", [6] = "Stone Guard",
+        [7] = "Blood Guard", [8] = "Legionnaire", [9] = "Centurion",
+        [10] = "Champion", [11] = "Lieutenant General", [12] = "General",
+        [13] = "Warlord", [14] = "High Warlord",
+    },
+    Alliance = {
+        [0] = "Civilian", [1] = "Private", [2] = "Corporal", [3] = "Sergeant",
+        [4] = "Master Sergeant", [5] = "Sergeant Major", [6] = "Knight",
+        [7] = "Knight-Lieutenant", [8] = "Knight-Captain", [9] = "Knight-Champion",
+        [10] = "Lieutenant Commander", [11] = "Commander", [12] = "Marshal",
+        [13] = "Field Marshal", [14] = "Grand Marshal",
+    },
+}
+
+local FOREVER_RANK_CUMULATIVE = {
+    [0] = 0, [1] = 750, [2] = 1650, [3] = 2700, [4] = 3900, [5] = 5250,
+    [6] = 6750, [7] = 8400, [8] = 10200, [9] = 12150, [10] = 14250,
+    [11] = 16600, [12] = 19100, [13] = 21750, [14] = 24750,
+}
+
+local FOREVER_RANK_TIER = {
+    [0] = 750, [1] = 900, [2] = 1050, [3] = 1200, [4] = 1350, [5] = 1500,
+    [6] = 1650, [7] = 1800, [8] = 1950, [9] = 2100, [10] = 2350,
+    [11] = 2500, [12] = 2650, [13] = 3000, [14] = 0,
+}
+
+function M.ReadForeverRank(faction)
+    local raw = nil
+    if TA.Compat and type(TA.Compat.ForeverPvPRank) == "function" then
+        raw = TA.Compat.ForeverPvPRank()
+    elseif C_MajorFactions and type(C_MajorFactions.GetMajorFactionData) == "function" then
+        local d = Try(C_MajorFactions.GetMajorFactionData, 2800)
+        if type(d) == "table" and Num(d.renownLevel) ~= nil then
+            raw = {
+                rank = Num(d.renownLevel) or 0,
+                earned = Num(d.renownReputationEarned) or 0,
+                threshold = Num(d.renownLevelThreshold),
+            }
+        end
+    end
+    if type(raw) ~= "table" then return nil end
+
+    local r = math.max(0, math.min(14, tonumber(raw.rank) or 0))
+    local titles = FOREVER_RANK_TITLES[faction] or FOREVER_RANK_TITLES.Horde
+    local threshold = (raw.threshold and raw.threshold > 0) and raw.threshold or FOREVER_RANK_TIER[r]
+    local earned = tonumber(raw.earned) or 0
+    local baseTotal = FOREVER_RANK_CUMULATIVE[r] or 0
+    local totalEarned = math.min(24750, baseTotal + earned)
+    local nextTitle = (r < 14) and titles[r + 1] or nil
+    local vendor = (faction == "Alliance") and "Champions' Hall (Stormwind)" or "Hall of Legends (Orgrimmar)"
+
+    return {
+        isForever = true,
+        number = r,
+        name = titles[r] or ("Rank " .. tostring(r)),
+        nextRank = (r < 14) and (r + 1) or nil,
+        nextTitle = nextTitle,
+        earned = earned,
+        threshold = threshold,
+        progress = (threshold and threshold > 0) and math.max(0, math.min(1, earned / threshold)) or 1,
+        totalEarned = totalEarned,
+        totalMax = 24750,
+        vendor = vendor,
+    }
+end
+
+function M.ReadHonorCurrency()
+    if TA.Compat and type(TA.Compat.HonorCurrency) == "function" then
+        return TA.Compat.HonorCurrency()
+    end
+    return nil
+end
+
+local function ReadRank(faction)
+    local foreverRank = M.ReadForeverRank(faction)
+    if foreverRank then return foreverRank end
+
     local rankIndex = Num(Try(UnitPVPRank, "player"))
     if not rankIndex then return nil end
 
@@ -702,25 +783,61 @@ local function RenderMatchups(content, y, race, faction, class, mine, myCCTags)
     return y
 end
 
-local function RenderStanding(content, y, rank)
-    y = L:SectionHeader(content, y, "Standing",
-        rank.number and string.format("Rank %d", rank.number) or nil)
-    y = L:DataRow(content, y, { label = "Rank", value = rank.name or "n/a", bold = true })
-    if rank.number ~= nil then
-        y = L:DataRow(content, y, { label = "Rank number", value = Show(rank.number) })
+local function RenderStanding(content, y, rank, honorCur)
+    local hasRank = type(rank) == "table"
+    local hasHonor = type(honorCur) == "table"
+    if not hasRank and not hasHonor then return y, false end
+
+    local hdrRight = hasRank and rank.number ~= nil and string.format("Rank %d", rank.number) or nil
+    y = L:SectionHeader(content, y, "Standing & Honor", hdrRight)
+
+    if hasRank then
+        y = L:DataRow(content, y, {
+            label = "Current rank",
+            value = string.format("Rank %d · %s", rank.number or 0, tostring(rank.name or "n/a")),
+            bold = true,
+            note = rank.isForever and ("Non-decaying Forever Rank Points · Rewards at " .. tostring(rank.vendor)) or nil,
+        })
+        if rank.isForever and rank.threshold and rank.threshold > 0 then
+            local nextLbl = rank.nextRank
+                and string.format("Rank %d (%s)", rank.nextRank, tostring(rank.nextTitle or ""))
+                or "Next rank"
+            y = L:CapBar(content, y, {
+                label = "Rank Points to " .. nextLbl,
+                value = string.format("%d / %d", rank.earned or 0, rank.threshold),
+                current = rank.earned or 0,
+                cap = rank.threshold,
+                capped = (rank.earned or 0) >= rank.threshold,
+            })
+            y = L:DataRow(content, y, {
+                label = "Total Rank 14 progress",
+                value = string.format("%d / %d", rank.totalEarned or 0, rank.totalMax or 24750),
+                note = "Weekly cap rises each week up to 24,750 for Rank 14.",
+            })
+        elseif rank.progress ~= nil then
+            local pct = math.max(0, math.min(1, rank.progress))
+            y = L:CapBar(content, y, {
+                label = "Progress to next rank",
+                value = string.format("%.0f%%", pct * 100),
+                current = pct, cap = 1, capped = pct >= 1,
+            })
+        end
     end
-    if rank.progress ~= nil then
-        local pct = math.max(0, math.min(1, rank.progress))
+
+    if hasHonor then
+        local cap = (honorCur.maxQuantity and honorCur.maxQuantity > 0) and honorCur.maxQuantity or 25000
         y = L:CapBar(content, y, {
-            label = "Progress to next rank",
-            value = string.format("%.0f%%", pct * 100),
-            current = pct, cap = 1, capped = pct >= 1,
+            label = "Spendable Honor",
+            value = string.format("%d / %d", honorCur.quantity or 0, cap),
+            current = honorCur.quantity or 0,
+            cap = cap,
+            capped = (honorCur.quantity or 0) >= cap,
         })
     end
-    return y
+    return y, true
 end
 
-local function RenderTally(content, y, title, fn)
+local function RenderTally(content, y, title, fn, hasHonorCurrency)
     local hk, arg2, arg3 = Try(fn)
     hk = Num(hk)
     local honor = Num(arg3) or Num(arg2)
@@ -730,17 +847,28 @@ local function RenderTally(content, y, title, fn)
     if hk ~= nil then
         y = L:DataRow(content, y, { label = "Honorable kills", value = Show(hk) })
     end
-    if honor ~= nil then
-        y = L:DataRow(content, y, { label = "Honor", value = Show(honor) })
+    if honor ~= nil and (honor > 0 or not hasHonorCurrency) then
+        if honor == 0 and (hk or 0) > 0 then
+            y = L:DataRow(content, y, {
+                label = "Honor",
+                value = "Rank Points / Currency",
+                note = "Classic session honor reports 0 on Forever; Rank Points and spendable Honor track under Standing & Honor.",
+            })
+        else
+            y = L:DataRow(content, y, { label = "Honor", value = Show(honor) })
+        end
     end
     if fn == GetPVPSessionStats and M._sessionStart and time then
         local minutes = (time() - M._sessionStart) / 60
         if minutes >= 10 and ((honor or 0) > 0 or (hk or 0) > 0) then
             local perHour = 60 / minutes
-            y = L:DataRow(content, y, { label = "Per hour (this session)",
-                value = string.format("%s honor, %s kills (%d min)",
-                    honor and string.format("%.0f", honor * perHour) or "?",
-                    hk and string.format("%.1f", hk * perHour) or "?", math.floor(minutes)) })
+            local paceVal
+            if (honor or 0) > 0 then
+                paceVal = string.format("%.0f hon · %.1f HK/hr", honor * perHour, (hk or 0) * perHour)
+            else
+                paceVal = string.format("%.1f HK/hr (%dm)", (hk or 0) * perHour, math.floor(minutes))
+            end
+            y = L:DataRow(content, y, { label = "Session pace", value = paceVal })
         end
     end
     return y, true
@@ -797,17 +925,20 @@ function M:Render(content, side)
         y = L:Divider(content, y)
     end
 
-    local rank = ReadRank()
-    if rank then
-        y = RenderStanding(content, y, rank)
+    local rank = ReadRank(faction)
+    local honorCur = M.ReadHonorCurrency()
+    local standingShown = false
+    y, standingShown = RenderStanding(content, y, rank, honorCur)
+    if standingShown then
         y = L:Divider(content, y)
     end
 
+    local hasCur = type(honorCur) == "table"
     local shown
-    y, shown = RenderTally(content, y, "This week",    GetPVPThisWeekStats)
-    y, shown = RenderTally(content, y, "Last week",    GetPVPLastWeekStats)
-    y, shown = RenderTally(content, y, "This session", GetPVPSessionStats)
-    y, shown = RenderTally(content, y, "Lifetime",     GetPVPLifetimeStats)
+    y, shown = RenderTally(content, y, "This week",    GetPVPThisWeekStats, hasCur)
+    y, shown = RenderTally(content, y, "Last week",    GetPVPLastWeekStats, hasCur)
+    y, shown = RenderTally(content, y, "This session", GetPVPSessionStats, hasCur)
+    y, shown = RenderTally(content, y, "Lifetime",     GetPVPLifetimeStats, hasCur)
 
     y = RenderFooter(content, y)
     L:Finish(content, y)
@@ -822,6 +953,9 @@ M.Events = {
     "PLAYER_PVP_RANK_CHANGED",
     "PLAYER_PVP_KILLS_CHANGED",
     "HONOR_CURRENCY_UPDATE",
+    "CURRENCY_DISPLAY_UPDATE",
+    "MAJOR_FACTION_RENOWN_LEVEL_CHANGED",
+    "MAJOR_FACTION_UNLOCKED",
     "PLAYER_FLAGS_CHANGED",
     "UNIT_FACTION",
     "ZONE_CHANGED_NEW_AREA",

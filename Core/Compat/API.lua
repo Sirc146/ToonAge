@@ -1735,4 +1735,75 @@ function C.DungeonMapEncounters(mapID)
     return out
 end
 
+--- WoW Forever PvP Rank Points progression (tracked under Major Faction 2800).
+--- Returns { rank = 0..14, earned = num, threshold = num, maxLevel = num|nil } or nil.
+function C.ForeverPvPRank()
+    if not C_MajorFactions then return nil end
+    local data = nil
+    if type(C_MajorFactions.GetMajorFactionData) == "function" then
+        local ok, d = pcall(C_MajorFactions.GetMajorFactionData, 2800)
+        if ok and type(d) == "table" and not SecretValue(d.renownLevel) then
+            data = d
+        end
+    end
+    if not data and type(C_MajorFactions.GetMajorFactionProgressionInfo) == "function" then
+        local ok, d = pcall(C_MajorFactions.GetMajorFactionProgressionInfo, 2800)
+        if ok and type(d) == "table" and not SecretValue(d.renownLevel) then
+            data = d
+        end
+    end
+    if not data then return nil end
+    local rank = tonumber(data.renownLevel)
+    local earned = tonumber(data.renownReputationEarned)
+    local threshold = tonumber(data.renownLevelThreshold)
+    if rank == nil and earned == nil then return nil end
+    return {
+        rank = rank or 0,
+        earned = earned or 0,
+        threshold = (threshold and threshold > 0) and threshold or nil,
+    }
+end
+
+--- Live spendable Honor currency via C_CurrencyInfo (Forever caps at 25,000).
+--- Scans currency list for "Honor" first, then probes standard Honor IDs.
+--- Returns { quantity = num, maxQuantity = num, name = str } or nil.
+function C.HonorCurrency()
+    if not C_CurrencyInfo then return nil end
+    if type(C_CurrencyInfo.GetCurrencyListSize) == "function"
+        and type(C_CurrencyInfo.GetCurrencyListInfo) == "function" then
+        local okN, n = pcall(C_CurrencyInfo.GetCurrencyListSize)
+        if okN and type(n) == "number" and n > 0 then
+            for i = 1, math.min(n, 200) do
+                local okI, info = pcall(C_CurrencyInfo.GetCurrencyListInfo, i)
+                if okI and type(info) == "table" and not info.isHeader
+                    and not SecretValue(info.name) and type(info.name) == "string"
+                    and string.lower(info.name) == "honor"
+                    and not SecretValue(info.quantity) and type(info.quantity) == "number" then
+                    return {
+                        name = info.name,
+                        quantity = info.quantity,
+                        maxQuantity = (not SecretValue(info.maxQuantity) and type(info.maxQuantity) == "number") and info.maxQuantity or 0,
+                    }
+                end
+            end
+        end
+    end
+    if type(C_CurrencyInfo.GetCurrencyInfo) == "function" then
+        for _, cid in ipairs({ 1792, 1901, 1580 }) do
+            local okI, info = pcall(C_CurrencyInfo.GetCurrencyInfo, cid)
+            if okI and type(info) == "table"
+                and not SecretValue(info.name) and type(info.name) == "string"
+                and string.lower(info.name) == "honor"
+                and not SecretValue(info.quantity) and type(info.quantity) == "number" then
+                return {
+                    name = info.name,
+                    quantity = info.quantity,
+                    maxQuantity = (not SecretValue(info.maxQuantity) and type(info.maxQuantity) == "number") and info.maxQuantity or 0,
+                }
+            end
+        end
+    end
+    return nil
+end
+
 return C

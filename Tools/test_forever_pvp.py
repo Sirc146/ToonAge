@@ -51,6 +51,7 @@ ToonAge.Utils = {
 
 STANDARD_TEXT_FONT = "Fonts\\FRIZQT__.TTF"
 issecretvalue = function() return false end
+time = function() return 10000 end
 
 _ctx = { inInst = false, instType = "none", zoneType = "friendly", zoneName = "Orgrimmar", flagged = false, ffa = false, timer = 301000 }
 IsInInstance = function() return _ctx.inInst, _ctx.instType end
@@ -104,8 +105,25 @@ C_SpellBook = {
     end,
 }
 
-GetPVPSessionStats = function() return 3, 240 end
-GetPVPLifetimeStats = function() return 45, 0, 3200 end
+GetPVPSessionStats = function() return 44, 0 end
+GetPVPLifetimeStats = function() return 44, 0, 0 end
+
+C_MajorFactions = {
+    GetMajorFactionData = function(fid)
+        if fid == 2800 then
+            return { renownLevel = 0, renownReputationEarned = 100, renownLevelThreshold = 750 }
+        end
+        return nil
+    end,
+}
+
+C_CurrencyInfo = {
+    GetCurrencyListSize = function() return 2 end,
+    GetCurrencyListInfo = function(i)
+        if i == 1 then return { isHeader = true, name = "Player vs. Player" } end
+        return { isHeader = false, name = "Honor", quantity = 1250, maxQuantity = 25000 }
+    end,
+}
 
 local function Widget(kind)
     local f = { kind = kind, _children = {}, _regions = {}, _shown = true, scripts = {}, _text = "", _w = 0, _h = 0 }
@@ -153,6 +171,7 @@ end
 def main():
     lua = lua51.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(PRELUDE)
+    lua.execute(read("Core/Compat/API.lua"))
     lua.execute(read("Core/Theme.lua"))
     lua.execute(read("Core/Layout.lua"))
     lua.execute(read("Data/Forever/Racials.lua"))
@@ -203,7 +222,10 @@ def main():
             if it.category == "PvP" then pvpCard = it end
         end
 
-        -- 5. Full render (Target Dossier + Spellbook Clashes + Utility Racials)
+        -- 5. Full render (Target Dossier + Spellbook Clashes + Utility Racials + Forever Standing & Honor)
+        P._sessionStart = (time and time() or 10000) - 3600
+        local fRank = P.ReadForeverRank("Horde")
+        local hCur = P.ReadHonorCurrency()
         local content = CreateFrame("Frame", nil, nil)
         content:SetSize(640, 800)
         P:Render(content, nil)
@@ -249,6 +271,15 @@ def main():
             hasShadowmeld = blob:find("Shadowmeld", 1, true) ~= nil,
             hasWalkOnAir = blob:find("Walk on Air", 1, true) ~= nil,
             hasCannibalize = blob:find("Cannibalize", 1, true) ~= nil,
+            fRankTitle = fRank and fRank.name or "",
+            fRankEarned = fRank and fRank.earned or -1,
+            fRankThresh = fRank and fRank.threshold or -1,
+            fRankTotalMax = fRank and fRank.totalMax or -1,
+            hCurQty = hCur and hCur.quantity or -1,
+            hasStandingSec = blob:find("Standing & Honor", 1, true) ~= nil,
+            hasRankPtsBar = blob:find("100 / 750", 1, true) ~= nil,
+            hasSpendHonor = blob:find("1250 / 25000", 1, true) ~= nil,
+            hasSessionPace = blob:find("HK/hr", 1, true) ~= nil,
         }
     end)()
     """)
@@ -277,6 +308,14 @@ def main():
     check("Render cross-checks Mage Frost Nova against Gnome Escape Artist", r["hasSpellbookClash"], True)
     check("Render includes utility PvP racials (Shadowmeld, Walk on Air, Cannibalize)",
           (r["hasShadowmeld"], r["hasWalkOnAir"], r["hasCannibalize"]), (True, True, True))
+    check("ReadForeverRank reads Rank 0 Civilian 100/750 out of 24750 via Major Faction 2800",
+          (r["fRankTitle"], r["fRankEarned"], r["fRankThresh"], r["fRankTotalMax"]),
+          ("Civilian", 100, 750, 24750))
+    check("ReadHonorCurrency reads live spendable Honor (1250) via C_CurrencyInfo",
+          r["hCurQty"], 1250)
+    check("Render shows Standing & Honor, 100 / 750 Rank Points bar, 1250 / 25000 Honor, and compact HK/hr pace",
+          (r["hasStandingSec"], r["hasRankPtsBar"], r["hasSpendHonor"], r["hasSessionPace"]),
+          (True, True, True, True))
 
     passed = sum(1 for x in _results if x)
     total = len(_results)
