@@ -154,6 +154,22 @@ def main():
             buffs = { ["Mage Armor"] = true, ["Arcane Intellect"] = true },
         }, SPELLS)
         AOE_ARCANE = aoeArcane and aoeArcane.name or ""
+
+        -- Regression: C_UnitAuras returns applications = 0 for non-stacking buffs
+        -- (Frost Armor, Arcane Intellect, etc.). IndexAuras must treat them as active,
+        -- while keeping positive stack counts (Winter's Chill = 5) intact.
+        local indexedZero = M.IndexAuras({
+            { name = "Frost Armor", applications = 0 },
+            { name = "Arcane Intellect", applications = 0 },
+            { name = "Winter's Chill", applications = 5 },
+        })
+        local aoeArcaneZeroApps = M.Suggest({
+            class = "MAGE", spec = "Arcane", mode = "aoe",
+            known = mageKnown, cooldown = wcd(), mana = "ok", melee = false,
+            buffs = indexedZero,
+        }, SPELLS)
+        AOE_ARCANE_ZERO_APPS = aoeArcaneZeroApps and aoeArcaneZeroApps.name or ""
+        INDEXED_STACKS = indexedZero and indexedZero["Winter's Chill"] or 0
     """)
 
     check("Fire Mage suggests Fire Blast when ready", lua.eval("FIRE_INSTANT"), "Fire Blast|Fire")
@@ -165,6 +181,9 @@ def main():
     check("Frost AoE suggests Blizzard at range", lua.eval("AOE_FROST"), "Blizzard|aoe")
     check("Fire AoE suggests Flamestrike at range", lua.eval("AOE_FIRE"), "Flamestrike")
     check("Arcane AoE suggests Arcane Explosion", lua.eval("AOE_ARCANE"), "Arcane Explosion")
+    check("Non-stacking buffs with applications=0 (Frost Armor + Arcane Intellect) are recognized as active",
+          lua.eval("AOE_ARCANE_ZERO_APPS"), "Arcane Explosion")
+    check("Stacking auras retain exact stack count in IndexAuras", lua.eval("INDEXED_STACKS"), 5)
 
     # 2. Multi-class Playbook suggestions (Warrior, Rogue, Priest, Hunter)
     lua.execute(r"""

@@ -209,7 +209,10 @@ function M.IndexAuras(list)
     local map = {}
     for _, row in ipairs(list) do
         if type(row) == "table" and type(row.name) == "string" then
-            if type(row.applications) == "number" then
+            -- C_UnitAuras returns applications = 0 for non-stacking buffs
+            -- (Frost Armor, Arcane Intellect, Fortitude, etc.). Store positive
+            -- stack counts as numbers and non-stacking auras as true.
+            if type(row.applications) == "number" and row.applications > 0 then
                 map[row.name] = row.applications
             else
                 map[row.name] = true
@@ -223,7 +226,7 @@ local function Up(map, name)
     if type(map) ~= "table" then return false end
     local value = map[name]
     if value == true then return true end
-    if type(value) == "number" and value > 0 then return true end
+    if type(value) == "number" and value >= 0 then return true end
     return false
 end
 
