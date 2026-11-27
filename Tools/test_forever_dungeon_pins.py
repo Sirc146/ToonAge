@@ -110,7 +110,9 @@ _completed = {
 }
 
 C_QuestLog = {
-    GetNumQuestLogEntries = function() return #_activeQuests end,
+    -- WoW returns (numShownEntries, numQuests); returning 1 as the 2nd value
+    -- guards against tonumber(Try(...)) treating numQuests as an invalid base.
+    GetNumQuestLogEntries = function() return #_activeQuests, 1 end,
     GetInfo = function(i) return _activeQuests[i] end,
     GetQuestObjectives = function(qid) return _questObjs[qid] or {} end,
     IsQuestFlaggedCompleted = function(qid) return _completed[qid] == true end,

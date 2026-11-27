@@ -104,7 +104,10 @@ function DP:RefreshQuestCache()
     -- 1. Active quests + objective progress
     if C_QuestLog and type(C_QuestLog.GetNumQuestLogEntries) == "function"
         and type(C_QuestLog.GetInfo) == "function" then
-        local n = tonumber(Try(C_QuestLog.GetNumQuestLogEntries)) or 0
+        -- C_QuestLog.GetNumQuestLogEntries returns (numShownEntries, numQuests);
+        -- capture only the first value so tonumber never treats numQuests as a base.
+        local rawN = Try(C_QuestLog.GetNumQuestLogEntries)
+        local n = tonumber(rawN) or 0
         for i = 1, n do
             local info = Try(C_QuestLog.GetInfo, i)
             if type(info) == "table" and not info.isHeader and type(info.questID) == "number" and info.questID > 0 then
