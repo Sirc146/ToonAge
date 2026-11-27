@@ -1791,34 +1791,167 @@ local function MerchantLink(index)
     return Try(_G.GetMerchantItemLink, index)
 end
 
---- Price in copper for a gold-priced item, or nil (unknown, or paid in
---- tokens/honor -- then affordability isn't judged).
-local function MerchantPrice(index)
+--- Merchant slot metadata: { price = copper|nil, isUsable = bool|nil }.
+local function MerchantMeta(index)
     if C_MerchantFrame and C_MerchantFrame.GetItemInfo then
         local info = Try(C_MerchantFrame.GetItemInfo, index)
         if type(info) == "table" then
-            if info.hasExtendedCost then return nil end
-            return tonumber(info.price)
+            local price = (not info.hasExtendedCost) and tonumber(info.price) or nil
+            local usable = (info.isUsable ~= nil) and (info.isUsable == true) or nil
+            return { price = price, isUsable = usable }
         end
     end
     local r = { Try(_G.GetMerchantItemInfo, index) }
     -- name, texture, price, quantity, numAvailable, isPurchasable, isUsable, extendedCost
     if r[1] == nil then return nil end
-    if r[8] then return nil end
-    return tonumber(r[3])
+    local price = (not r[8]) and tonumber(r[3]) or nil
+    local usable = (r[7] ~= nil) and (r[7] == true or r[7] == 1) or nil
+    return { price = price, isUsable = usable }
+end
+
+--- True when the item's tooltip carries Blizzard's "Already known" line
+--- (recipes, patterns, schematics, formulas, books, scrolls, mounts, pets).
+local function IsKnownItem(link, linesOverride)
+    local knownStr = string.lower(tostring(_G.ITEM_SPELL_KNOWN or "Already known"))
+    if type(linesOverride) == "table" then
+        for _, line in ipairs(linesOverride) do
+            if type(line) == "string" then
+                local clean = line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("^%s+", ""):gsub("%s+$", "")
+                if string.lower(clean) == knownStr then return true end
+            end
+        end
+        return false
+    end
+    if type(link) ~= "string" or link == "" then return false end
+    if C_TooltipInfo and type(C_TooltipInfo.GetHyperlink) == "function" then
+        local tip = Try(C_TooltipInfo.GetHyperlink, link)
+        if type(tip) == "table" and type(tip.lines) == "table" then
+            for _, ln in ipairs(tip.lines) do
+                if type(ln) == "table" and type(ln.leftText) == "string"
+                    and not (issecretvalue and issecretvalue(ln.leftText)) then
+                    local clean = ln.leftText:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("^%s+", ""):gsub("%s+$", "")
+                    if string.lower(clean) == knownStr then return true end
+                end
+            end
+        end
+    end
+    return false
+end
+
+--- Classify a merchant item into one of:
+---   "known"    — already learned recipe / pattern / book / scroll / mount
+---   "unusable" — armor/weapon/class item this character cannot wear or use
+---   "upgrade"  — strictly better equippable item you can wear
+---   "trade"    — equippable trade-off (non-downgrade)
+---   "normal"   — standard consumable, reagent, or wearable downgrade
+function M.ClassifyVendorItem(index, link, ctx, money, metaOverride, linesOverride)
+    if type(link) ~= "string" or link == "" then return { kind = "normal" } end
+    if IsKnownItem(link, linesOverride) then
+        return { kind = "known", reason = "already known" }
+    end
+
+    local meta = metaOverride
+    if meta == nil and type(index) == "number" then
+        meta = MerchantMeta(index)
+    end
+    local info = FullInfo(link)
+    local isEquippable = info and info.equipLoc and EQUIP_SLOTS[info.equipLoc] ~= nil
+
+    if isEquippable and ctx then
+        local hasSkills = type(ctx.skills) == "table" and next(ctx.skills) ~= nil
+        local canEq, why = CanEquip(info, ctx.level, ctx.skills)
+        if not canEq then
+            -- Grey out level-locked gear always, and unwearable armor/weapons
+            -- when skill lines were actually loaded. Leave lighter-but-wearable
+            -- armor (e.g. Cloth on a healer) visible.
+            if (type(why) == "string" and why:find("^requires level"))
+                or (hasSkills and (why == "armour type you cannot wear" or why == "untrained weapon type")) then
+                return { kind = "unusable", reason = why }
+            end
+        end
+        if meta and meta.isUsable == false then
+            return { kind = "unusable", reason = "cannot use" }
+        end
+
+        local r = EvaluateLink(link, ctx)
+        if r and r.verdict == "unchecked" then r = nil end
+        if not r and canEq and TA.GearAdvice and type(TA.GearAdvice.IsUpgrade) == "function" then
+            local okU, isUp = pcall(TA.GearAdvice.IsUpgrade, TA.GearAdvice, link)
+            if okU and isUp == true then
+                local slotList = SlotsFor(info.equipLoc, ctx.equipped, ctx.dualWield)
+                local slotID = slotList and slotList[1]
+                local cur = slotID and ctx.equipped and ctx.equipped[slotID]
+                r = {
+                    slot = (slotID and SLOT_NAME[slotID]) or tostring(info.equipLoc),
+                    name = info.name, quality = info.quality, ilvl = info.ilvl or 0,
+                    curName = cur and cur.info and cur.info.name,
+                    verdict = "better",
+                }
+            end
+        end
+        if r then
+            local price = meta and meta.price or nil
+            r.short = (price and money and price > money) and (price - money) or nil
+            return { kind = (r.verdict == "better") and "upgrade" or "trade", verdict = r }
+        end
+        return { kind = "normal" }
+    end
+
+    if meta and meta.isUsable == false then
+        return { kind = "unusable", reason = "cannot use" }
+    end
+    return { kind = "normal" }
+end
+
+local function EnsureGlow(btn)
+    if btn._taGlow then return btn._taGlow end
+    local g = CreateFrame("Frame", nil, btn)
+    g:SetPoint("TOPLEFT", btn, "TOPLEFT", -2, 2)
+    g:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 2, -2)
+    g:SetFrameLevel((btn:GetFrameLevel() or 1) + 4)
+    local edges = {}
+    local top = g:CreateTexture(nil, "OVERLAY")
+    top:SetPoint("TOPLEFT"); top:SetPoint("TOPRIGHT"); top:SetHeight(2)
+    edges[1] = top
+    local bot = g:CreateTexture(nil, "OVERLAY")
+    bot:SetPoint("BOTTOMLEFT"); bot:SetPoint("BOTTOMRIGHT"); bot:SetHeight(2)
+    edges[2] = bot
+    local left = g:CreateTexture(nil, "OVERLAY")
+    left:SetPoint("TOPLEFT"); left:SetPoint("BOTTOMLEFT"); left:SetWidth(2)
+    edges[3] = left
+    local right = g:CreateTexture(nil, "OVERLAY")
+    right:SetPoint("TOPRIGHT"); right:SetPoint("BOTTOMRIGHT"); right:SetWidth(2)
+    edges[4] = right
+    g._edges = edges
+    g:Hide()
+    btn._taGlow = g
+    return g
+end
+
+local function SetGlow(btn, r, gCol, bCol, aCol)
+    local glow = btn._taGlow
+    if r then
+        glow = glow or EnsureGlow(btn)
+        for _, edge in ipairs(glow._edges or {}) do
+            if edge.SetColorTexture then edge:SetColorTexture(r, gCol, bCol, aCol or 0.95) end
+        end
+        glow:Show()
+    elseif glow then
+        glow:Hide()
+    end
 end
 
 local function Badge(btn)
     if btn._taBadge then return btn._taBadge end
     local f = CreateFrame("Frame", nil, btn)
-    f:SetSize(22, 12)
+    f:SetSize(24, 12)
     f:SetPoint("TOPLEFT", btn, "TOPLEFT", -2, 2)
-    f:SetFrameLevel((btn:GetFrameLevel() or 1) + 5)
+    f:SetFrameLevel((btn:GetFrameLevel() or 1) + 6)
     f.bg = f:CreateTexture(nil, "BACKGROUND")
     f.bg:SetAllPoints()
-    f.bg:SetColorTexture(0, 0, 0, 0.75)
+    f.bg:SetColorTexture(0.04, 0.06, 0.09, 0.88)
     f.text = f:CreateFontString(nil, "OVERLAY")
-    f.text:SetFont(STANDARD_TEXT_FONT, 9, "OUTLINE")
+    f.text:SetFont(STANDARD_TEXT_FONT, 8, "OUTLINE")
     f.text:SetPoint("CENTER")
     f:Hide()
     btn._taBadge = f
@@ -1846,6 +1979,47 @@ local function Badge(btn)
     return f
 end
 
+local function VendorSlotVisual(i, btn, state)
+    local row = _G["MerchantItem" .. i]
+    local icon = (btn and btn.icon) or _G["MerchantItem" .. i .. "ItemButtonIconTexture"]
+    if state == "known" then
+        if row and row.SetAlpha then row:SetAlpha(0.38) end
+        if icon and icon.SetDesaturated then icon:SetDesaturated(true) end
+        SetGlow(btn, nil)
+        local b = Badge(btn)
+        b:SetSize(38, 12)
+        b.text:SetText("|cFFB0BAC9KNOWN|r")
+        b:Show()
+    elseif state == "unusable" then
+        if row and row.SetAlpha then row:SetAlpha(0.35) end
+        if icon and icon.SetDesaturated then icon:SetDesaturated(true) end
+        SetGlow(btn, nil)
+        local b = Badge(btn)
+        b:Hide()
+    elseif state == "upgrade" then
+        if row and row.SetAlpha then row:SetAlpha(1.0) end
+        if icon and icon.SetDesaturated then icon:SetDesaturated(false) end
+        SetGlow(btn, 0.29, 0.88, 0.48, 0.95)
+        local b = Badge(btn)
+        b:SetSize(22, 12)
+        b.text:SetText("|cFF4AE07AUP|r")
+        b:Show()
+    elseif state == "trade" then
+        if row and row.SetAlpha then row:SetAlpha(1.0) end
+        if icon and icon.SetDesaturated then icon:SetDesaturated(false) end
+        SetGlow(btn, 1.00, 0.65, 0.20, 0.85)
+        local b = Badge(btn)
+        b:SetSize(16, 12)
+        b.text:SetText("|cFFFFA633~|r")
+        b:Show()
+    else
+        if row and row.SetAlpha then row:SetAlpha(1.0) end
+        if icon and icon.SetDesaturated then icon:SetDesaturated(false) end
+        SetGlow(btn, nil)
+        if btn and btn._taBadge then btn._taBadge:Hide() end
+    end
+end
+
 local function MerchantNote()
     local mf = _G.MerchantFrame
     if not mf then return nil end
@@ -1858,8 +2032,18 @@ local function MerchantNote()
     return mf._taNote
 end
 
+local function VendorHighlightsOn()
+    return not (TA.db and TA.db.vendorHighlights == false)
+end
+
+local HideVendorFlags
+
 function M:FlagVendor()
     vendorPending = false
+    if not VendorHighlightsOn() then
+        if HideVendorFlags then HideVendorFlags() end
+        return
+    end
     local mf = _G.MerchantFrame
     -- Only the buyback tab (2) is excluded. MEASURED on Forever 70205: the buy
     -- view does not report selectedTab == 1, so "== 1" skipped every vendor.
@@ -1870,32 +2054,24 @@ function M:FlagVendor()
     -- Counts for the window line AND for vendorProbe, so a silent vendor can
     -- be told apart: no buttons (frame names differ -> code fix) vs. links not
     -- read vs. scanned and nothing qualified (working as intended).
-    local c = { buttons = 0, links = 0, better = 0, trade = 0, short = 0, none = 0 }
+    local c = { buttons = 0, links = 0, better = 0, trade = 0, short = 0, known = 0, unusable = 0, none = 0 }
     for i = 1, MERCHANT_PER_PAGE do
         local btn = _G["MerchantItem" .. i .. "ItemButton"]
         if btn then
             c.buttons = c.buttons + 1
-            local r
+            local res = { kind = "normal" }
             if ctx then
                 local index = (page - 1) * MERCHANT_PER_PAGE + i
                 local link = MerchantLink(index)
                 if link then
                     c.links = c.links + 1
-                    r = EvaluateLink(link, ctx)
-                    if r and r.verdict == "unchecked" then r = nil end
-                    if r then
-                        local price = MerchantPrice(index)
-                        r.short = (price and money and price > money) and (price - money) or nil
-                    else
-                        c.none = c.none + 1
-                    end
+                    res = M.ClassifyVendorItem(index, link, ctx, money)
+                    if res.kind == "normal" then c.none = c.none + 1 end
                 end
             end
+            local r = res.verdict
             btn._taVerdict = r
-            -- The badge frame only exists so its OnEnter hook can run. The
-            -- mark itself is 4px after the item name, not in the corner.
-            local b = Badge(btn)
-            b:Hide()
+            VendorSlotVisual(i, btn, onBuyTab and res.kind or "normal")
             local nameFS = _G["MerchantItem" .. i .. "Name"]
             if nameFS and nameFS.GetText and nameFS.SetText then
                 local plain = (nameFS:GetText() or ""):gsub("|T.-|t", "")
@@ -1905,15 +2081,23 @@ function M:FlagVendor()
                 end
                 nameFS:SetText(plain .. mark)
             end
-            if r then
-                if r.verdict == "better" then c.better = c.better + 1 else c.trade = c.trade + 1 end
-                if r.short then c.short = c.short + 1 end
+            if res.kind == "upgrade" then
+                c.better = c.better + 1
+                if r and r.short then c.short = c.short + 1 end
+            elseif res.kind == "trade" then
+                c.trade = c.trade + 1
+                if r and r.short then c.short = c.short + 1 end
+            elseif res.kind == "known" then
+                c.known = c.known + 1
+            elseif res.kind == "unusable" then
+                c.unusable = c.unusable + 1
             end
         end
     end
     local note = MerchantNote()
     if note then
-        if c.better + c.trade > 0 then
+        local dimmed = c.known + c.unusable
+        if c.better + c.trade + dimmed > 0 then
             local parts = {}
             if c.better > 0 then
                 parts[#parts + 1] = string.format("|cFF4AE07A%d upgrade%s|r", c.better, c.better == 1 and "" or "s")
@@ -1921,9 +2105,11 @@ function M:FlagVendor()
             if c.trade > 0 then
                 parts[#parts + 1] = string.format("|cFFFFA633%d trade-off%s|r", c.trade, c.trade == 1 and "" or "s")
             end
+            if dimmed > 0 then
+                parts[#parts + 1] = string.format("|cFF9EA8B8%d dimmed|r", dimmed)
+            end
             local tail = (c.short > 0) and string.format(" (%d not affordable yet)", c.short) or ""
-            note:SetText("|cFFFFD100ToonAge|r: " .. table.concat(parts, ", ") .. tail
-                .. " on this page -- hover for the difference")
+            note:SetText("|cFFFFD100ToonAge|r: " .. table.concat(parts, ", ") .. tail)
             note:Show()
         else
             note:Hide()
@@ -1934,12 +2120,12 @@ function M:FlagVendor()
         if not onBuyTab then why = "not on the buy tab"
         elseif c.buttons == 0 then why = "NO merchant buttons found -- frame names differ on this client (code fix)"
         elseif c.links == 0 then why = "buttons found but no item links read -- link API differs (code fix)"
-        elseif c.better + c.trade == 0 then why = "working: scanned, nothing qualified"
+        elseif c.better + c.trade + c.known + c.unusable == 0 then why = "working: scanned, nothing qualified"
         else why = "working: flagged items" end
-        TA.db.vendorProbe = string.format("%s | %s | tab=%s page=%s buttons=%d links=%d better=%d trade=%d "
+        TA.db.vendorProbe = string.format("%s | %s | tab=%s page=%s buttons=%d links=%d better=%d trade=%d known=%d unusable=%d "
             .. "notAffordable=%d notOffered=%d | C_MerchantFrame.GetItemLink=%s GetMerchantItemLink=%s price=%s",
             date and date("%Y-%m-%d %H:%M") or "?", why, tostring(mf and mf.selectedTab), tostring(mf and mf.page),
-            c.buttons, c.links, c.better, c.trade, c.short, c.none,
+            c.buttons, c.links, c.better, c.trade, c.known, c.unusable, c.short, c.none,
             tostring(C_MerchantFrame and C_MerchantFrame.GetItemLink ~= nil),
             tostring(_G.GetMerchantItemLink ~= nil),
             (C_MerchantFrame and C_MerchantFrame.GetItemInfo) and "C_MerchantFrame.GetItemInfo"
@@ -1953,12 +2139,12 @@ local function QueueVendor()
     C_Timer.After(0.1, function() pcall(M.FlagVendor, M) end)
 end
 
-local function HideVendorFlags()
+HideVendorFlags = function()
     for i = 1, MERCHANT_PER_PAGE do
         local btn = _G["MerchantItem" .. i .. "ItemButton"]
         if btn then
             btn._taVerdict = nil
-            if btn._taBadge then btn._taBadge:Hide() end
+            VendorSlotVisual(i, btn, "normal")
         end
         local nameFS = _G["MerchantItem" .. i .. "Name"]
         if nameFS and nameFS.GetText and nameFS.SetText then
@@ -1974,11 +2160,16 @@ function M:OnEvent(event)
         pcall(TA.GearAdvice.OnGearEvent, TA.GearAdvice, event)
     end
     if event == "MERCHANT_SHOW" or event == "MERCHANT_UPDATE" then
-        -- Page turns and the buy/buyback tabs redraw through MerchantFrame_Update;
-        -- hooked once, after the fact, so Blizzard's own code runs untouched.
-        if not self._merchantHooked and type(_G.MerchantFrame_Update) == "function" then
+        -- Page turns and the buy/buyback tabs redraw through MerchantFrame_Update
+        -- / MerchantFrame_UpdateMerchantInfo; hooked once, after the fact.
+        if not self._merchantHooked then
             self._merchantHooked = true
-            hooksecurefunc("MerchantFrame_Update", QueueVendor)
+            if type(_G.MerchantFrame_Update) == "function" then
+                hooksecurefunc("MerchantFrame_Update", QueueVendor)
+            end
+            if type(_G.MerchantFrame_UpdateMerchantInfo) == "function" then
+                hooksecurefunc("MerchantFrame_UpdateMerchantInfo", QueueVendor)
+            end
         end
         QueueVendor()
         return

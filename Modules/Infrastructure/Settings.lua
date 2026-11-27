@@ -560,6 +560,16 @@ function Settings:Render(content, sidebar)
             if advice and advice.RefreshArrows then pcall(advice.RefreshArrows, advice) end
         end)
 
+        y = MakeToggleRow(content, y, w, "Vendor Highlights (glow upgrades, grey out unusable & already-known items)", function()
+            return not (TA.db and TA.db.vendorHighlights == false)
+        end, function()
+            if not TA.db then return end
+            local on = not (TA.db.vendorHighlights == false)
+            TA.db.vendorHighlights = not on
+            local fg = TA:GetModule("ForeverGear")
+            if fg and fg.FlagVendor then pcall(fg.FlagVendor, fg) end
+        end)
+
         y = y - 8
     end
 
