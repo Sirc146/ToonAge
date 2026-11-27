@@ -351,6 +351,18 @@ function DP:HookWorldMap()
     end
 end
 
+function DP:SyncAfterEvent(refreshMap)
+    self:RefreshQuestCache()
+    if TA.Compat and type(TA.Compat.PlayerMap) == "function" then
+        local mid = TA.Compat.PlayerMap()
+        if type(mid) == "number" then self:CacheMapEncounters(mid) end
+    end
+    if refreshMap and WorldMapFrame and WorldMapFrame.IsShown and WorldMapFrame:IsShown() then
+        local MP = TA.GetModule and TA:GetModule("MapPins")
+        if MP and MP.Refresh then pcall(MP.Refresh, MP) end
+    end
+end
+
 function DP:Init()
     self:RefreshQuestCache()
     self:HookWorldMap()
@@ -367,13 +379,19 @@ function DP:Init()
                 if arg1 == "Blizzard_WorldMap" then DP:HookWorldMap() end
                 return
             end
-            DP:RefreshQuestCache()
-            if TA.Compat and type(TA.Compat.PlayerMap) == "function" then
-                local mid = TA.Compat.PlayerMap()
-                if type(mid) == "number" then DP:CacheMapEncounters(mid) end
+            if event == "QUEST_LOG_UPDATE" then
+                -- Coalesce bursty QUEST_LOG_UPDATE storms (login / zone / turn-in).
+                if DP._questDebounce then return end
+                if C_Timer and type(C_Timer.After) == "function" then
+                    DP._questDebounce = true
+                    C_Timer.After(0.3, function()
+                        DP._questDebounce = nil
+                        DP:SyncAfterEvent(true)
+                    end)
+                    return
+                end
             end
-            local MP = TA.GetModule and TA:GetModule("MapPins")
-            if MP and MP.Refresh then pcall(MP.Refresh, MP) end
+            DP:SyncAfterEvent(true)
         end)
         self._eventFrame = f
     end

@@ -320,6 +320,38 @@ function RM:OnEvent(event, ...)
         end
     elseif event == "GROUP_ROSTER_UPDATE" then
         self:UpdateTriage()
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        self:StartCombatTickers()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        self:StopCombatTickers()
+    end
+end
+
+function RM:StartCombatTickers()
+    if not self._threatTicker and C_Timer and C_Timer.NewTicker then
+        self._threatTicker = C_Timer.NewTicker(0.5, function()
+            if UnitAffectingCombat("player") then
+                pcall(RM.UpdateThreatPlates, RM)
+            end
+        end)
+    end
+    if not self._triageTicker and C_Timer and C_Timer.NewTicker then
+        self._triageTicker = C_Timer.NewTicker(0.3, function()
+            if UnitAffectingCombat("player") and IsInGroup() then
+                pcall(RM.UpdateTriage, RM)
+            end
+        end)
+    end
+end
+
+function RM:StopCombatTickers()
+    if self._threatTicker then
+        pcall(self._threatTicker.Cancel, self._threatTicker)
+        self._threatTicker = nil
+    end
+    if self._triageTicker then
+        pcall(self._triageTicker.Cancel, self._triageTicker)
+        self._triageTicker = nil
     end
 end
 
@@ -330,6 +362,8 @@ end
 function RM:Init()
     -- Register events
     TA:RegisterEvent("READY_CHECK")
+    TA:RegisterEvent("PLAYER_REGEN_DISABLED")
+    TA:RegisterEvent("PLAYER_REGEN_ENABLED")
 
     -- Apply camera on login (in case they logged in as a different spec)
     C_Timer.After(2, function() RM:ApplyCameraProfile() end)
@@ -337,19 +371,10 @@ function RM:Init()
     -- Check heirlooms on login
     C_Timer.After(3, function() RM:CheckHeirlooms() end)
 
-    -- Start threat plate updates (throttled ticker)
-    C_Timer.NewTicker(0.5, function()
-        if UnitAffectingCombat("player") then
-            pcall(RM.UpdateThreatPlates, RM)
-        end
-    end)
-
-    -- Triage ticker for healers (0.3s in combat)
-    C_Timer.NewTicker(0.3, function()
-        if UnitAffectingCombat("player") and IsInGroup() then
-            pcall(RM.UpdateTriage, RM)
-        end
-    end)
+    -- Only run combat tickers while actually in combat (zero idle tickers out of combat)
+    if UnitAffectingCombat and UnitAffectingCombat("player") then
+        self:StartCombatTickers()
+    end
 end
 
 RM.SlashCommands = {}

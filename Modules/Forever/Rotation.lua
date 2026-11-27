@@ -920,39 +920,48 @@ function M:Init()
     end
     self._bar = bar
     self._barIcons = icons
-    bar:SetScript("OnUpdate", function(_, elapsed)
+    self._barOnUpdate = function(_, elapsed)
         M._barWait = (M._barWait or 0) + (elapsed or 0)
         if M._barWait < 0.2 then return end
         M._barWait = 0
         M:PaintBar()
-    end)
+    end
+    -- Keep OnUpdate detached while the bar is hidden (zero idle CPU).
+    bar:SetScript("OnUpdate", nil)
     bar:Hide()
 end
 
 function M:PaintBar()
+    local bar = self._bar
     local Guide = TA.MageLevel12
+    local function HideBar()
+        if bar then
+            if bar.SetScript then bar:SetScript("OnUpdate", nil) end
+            if bar.Hide then bar:Hide() end
+        end
+    end
     if Guide and Guide.Gate and Guide.Gate() then
-        if self._bar and self._bar.Hide then self._bar:Hide() end
+        HideBar()
         return
     end
     local RL = TA.RotationLists
-    local bar = self._bar
     if not RL or not bar or not self._barIcons then return end
     local class = U.GetPlayerClass and U.GetPlayerClass() or nil
     local _, specName = U.GetPlayerSpec()
     local level = tonumber(Try(UnitLevel, "player"))
     local view = RL.Resolve(nil, class, specName, level, "st")
     if not view then
-        if bar.Hide then bar:Hide() end
+        HideBar()
         return
     end
     local inCombat = InCombat()
     local assisted = inCombat and AssistedSpell() or nil
     local plan = RL.BarPlan(view.spells, assisted, inCombat)
     if #plan == 0 then
-        if bar.Hide then bar:Hide() end
+        HideBar()
         return
     end
+    if bar.SetScript and self._barOnUpdate then bar:SetScript("OnUpdate", self._barOnUpdate) end
     if bar.Show then bar:Show() end
     local gold = { 0.910, 0.702, 0.353 }
     for i = 1, 3 do

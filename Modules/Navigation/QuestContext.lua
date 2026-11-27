@@ -499,7 +499,11 @@ function QC:Refresh()
         return
     end
     local step = QC.CurrentStep()
-    local owned = QC.OwnedQuests()
+    local owned = self._ownedCache
+    if not owned then
+        owned = QC.OwnedQuests()
+        self._ownedCache = owned
+    end
     local hoverID = QC.HoveredQuest(owned, step and step.questID)
     local questID = hoverID
     local hover = hoverID ~= nil
@@ -511,7 +515,12 @@ function QC:Refresh()
         if near or targeting then questID = step.questID or questID end
     end
     if not hover and not near and not targeting then
-        CA:Set("quest item", nil)
+        if self._hadCandidate then
+            self._hadCandidate = false
+            CA:Set("quest item", nil)
+        else
+            CA:Set("quest item", nil)
+        end
         return
     end
     -- A hovered quest uses its own guide step. The current step is only the
@@ -553,10 +562,21 @@ function QC:Refresh()
         local start, duration = QC.ItemCooldown(id)
         if start then cand.cooldown = { start = start, duration = duration } end
     end
+    self._hadCandidate = cand ~= nil
     CA:Set("quest item", cand)
 end
 
+function QC:Tick()
+    -- Event handlers already refresh on QUEST_LOG_UPDATE / TARGET / MOUSEOVER.
+    -- Skip the 0.25s proximity poll when no guide step and no candidate are active.
+    if not self._hadCandidate and not QC.CurrentStep() then return end
+    self:Refresh()
+end
+
 function QC:OnEvent(event)
+    if event == "QUEST_LOG_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+        self._ownedCache = nil
+    end
     if event == "QUEST_LOG_UPDATE" or event == "PLAYER_TARGET_CHANGED"
         or event == "UPDATE_MOUSEOVER_UNIT" or event == "PLAYER_SOFT_INTERACT_CHANGED" then
         self:Refresh()
@@ -564,6 +584,7 @@ function QC:OnEvent(event)
 end
 
 QC.Events = {
+    "PLAYER_ENTERING_WORLD",
     "QUEST_LOG_UPDATE",
     "PLAYER_TARGET_CHANGED",
     "UPDATE_MOUSEOVER_UNIT",
@@ -572,7 +593,7 @@ QC.Events = {
 
 function QC:Init()
     if type(C_Timer) == "table" and type(C_Timer.NewTicker) == "function" then
-        self._ticker = C_Timer.NewTicker(0.25, function() QC:Refresh() end)
+        self._ticker = C_Timer.NewTicker(0.25, function() QC:Tick() end)
         return
     end
     if type(CreateFrame) ~= "function" then return end
@@ -581,7 +602,7 @@ function QC:Init()
         QC._acc = (QC._acc or 0) + (elapsed or 0)
         if QC._acc < 0.25 then return end
         QC._acc = 0
-        QC:Refresh()
+        QC:Tick()
     end)
     self._pulse = pulse
 end

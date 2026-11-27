@@ -1259,11 +1259,21 @@ function CS:Init()
     local csFrame = CreateFrame("Frame", "TACombatStateFrame")
     self._eventFrame = csFrame
 
+    local function regUnit(ev, u1, u2)
+        local okUnit = csFrame.RegisterUnitEvent
+            and pcall(csFrame.RegisterUnitEvent, csFrame, ev, u1, u2)
+        if not okUnit then
+            pcall(csFrame.RegisterEvent, csFrame, ev)
+        end
+    end
+
     csFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     csFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    csFrame:RegisterEvent("UNIT_HEALTH")
-    csFrame:RegisterEvent("UNIT_POWER_FREQUENT")
-    csFrame:RegisterEvent("UNIT_AURA")
+    -- Filter high-frequency unit events at the C++ engine layer so 20-40 player
+    -- raid/BG bursts do not wake Lua for party/raid/nameplate units.
+    regUnit("UNIT_HEALTH", "player", "target")
+    regUnit("UNIT_POWER_FREQUENT", "player")
+    regUnit("UNIT_AURA", "player", "target")
     csFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
     csFrame:RegisterEvent("NAME_PLATE_UNIT_ADDED")
     csFrame:RegisterEvent("NAME_PLATE_UNIT_REMOVED")

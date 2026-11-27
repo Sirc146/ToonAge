@@ -883,7 +883,14 @@ function M.ReadState()
             ReadSpellIDsState(state, row.ids, compat, canLearn, canCd)
         end
     else
-        local pb = M.BuildClassPlaybook(state.class, state.spec, level, state.mode, M.ScanLiveSpellbook())
+        local pbKey = tostring(state.class) .. "|" .. tostring(state.spec or "")
+            .. "|" .. tostring(level) .. "|" .. tostring(state.mode or "st")
+        local pb = (M._playbookCacheKey == pbKey) and M._playbookCache or nil
+        if not pb then
+            pb = M.BuildClassPlaybook(state.class, state.spec, level, state.mode, M.ScanLiveSpellbook())
+            M._playbookCacheKey = pbKey
+            M._playbookCache = pb
+        end
         state.playbook = pb
         if pb then
             if pb.spec and not state.spec then state.spec = pb.spec end
@@ -988,6 +995,7 @@ end
 function M:SetEnabled(flag)
     local db = Saved()
     if db then db.enabled = flag and true or false end
+    if self._syncWatch then self._syncWatch(self:IsEnabled()) end
     self:Refresh()
     return self:IsEnabled()
 end
@@ -1291,46 +1299,96 @@ function M:CreateFrame()
     local function watch(event)
         pcall(frame.RegisterEvent, frame, event)
     end
+    local function watchUnit(event, u1, u2)
+        if type(frame.RegisterUnitEvent) == "function" then
+            local ok = pcall(frame.RegisterUnitEvent, frame, event, u1, u2)
+            if ok then return end
+        end
+        pcall(frame.RegisterEvent, frame, event)
+    end
+    local function unwatch(event)
+        if type(frame.UnregisterEvent) == "function" then
+            pcall(frame.UnregisterEvent, frame, event)
+        end
+    end
+
+    -- Lifecycle & safety events stay registered even while the HUD is off.
     watch("ADDON_ACTION_BLOCKED")
     watch("ADDON_ACTION_FORBIDDEN")
     watch("PLAYER_ENTERING_WORLD")
     watch("PLAYER_REGEN_ENABLED")
     watch("PLAYER_REGEN_DISABLED")
-    watch("PLAYER_TARGET_CHANGED")
     watch("SPELLS_CHANGED")
-    watch("SPELL_UPDATE_COOLDOWN")
-    watch("UNIT_AURA")
-    watch("UNIT_POWER_UPDATE")
+    watch("PLAYER_LEVEL_UP")
+
+    local elapsed = 0
+    local function OnUpdateTick(_, dt)
+        if not M.ValueKnown(dt) or type(dt) ~= "number" then return end
+        if M._deferred and not InCombat() then
+            M:ApplyFrame()
+        end
+        elapsed = elapsed + dt
+        -- Strict rate limit: never bypass UPDATE_INTERVAL even under rapid aura spam.
+        if elapsed < UPDATE_INTERVAL then return end
+        if not M._dirty and not M._wantShow and not M:IsEnabled() then
+            elapsed = 0
+            return
+        end
+        elapsed = 0
+        M._dirty = nil
+        local ok, err = pcall(M.Refresh, M)
+        if not ok and not M._logged then
+            M._logged = true
+            local log = TA.ErrorLog
+            if log and log.Log then pcall(log.Log, log, "MageSuggest", tostring(err)) end
+        end
+    end
+
+    -- Arm hot gameplay events + OnUpdate ONLY while the HUD is enabled (0 CPU when off).
+    local function SyncWatch(active)
+        if active then
+            if not M._hotWatched then
+                watch("PLAYER_TARGET_CHANGED")
+                watch("SPELL_UPDATE_COOLDOWN")
+                watchUnit("UNIT_AURA", "player", "target")
+                watchUnit("UNIT_POWER_UPDATE", "player")
+                M._hotWatched = true
+            end
+            elapsed = UPDATE_INTERVAL
+            frame:SetScript("OnUpdate", OnUpdateTick)
+        else
+            if M._hotWatched then
+                unwatch("PLAYER_TARGET_CHANGED")
+                unwatch("SPELL_UPDATE_COOLDOWN")
+                unwatch("UNIT_AURA")
+                unwatch("UNIT_POWER_UPDATE")
+                M._hotWatched = false
+            end
+            frame:SetScript("OnUpdate", nil)
+        end
+    end
+    self._syncWatch = SyncWatch
 
     frame:SetScript("OnEvent", function(_, event, ...)
         if event == "ADDON_ACTION_BLOCKED" or event == "ADDON_ACTION_FORBIDDEN" then
             M:NoteBlock(event, ...)
             return
         end
-        if event == "SPELLS_CHANGED" or event == "PLAYER_ENTERING_WORLD" then
+        if event == "SPELLS_CHANGED" or event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LEVEL_UP" then
             M._liveByName = nil
             M._spells = nil
+            M._playbookCache = nil
+            M._playbookCacheKey = nil
         end
-        if event == "PLAYER_REGEN_ENABLED" then M._deferred = true end
-        M._dirty = true
-    end)
-
-    local elapsed = 0
-    frame:SetScript("OnUpdate", function(_, dt)
-        if not M.ValueKnown(dt) or type(dt) ~= "number" then return end
-        elapsed = elapsed + dt
-        if elapsed < UPDATE_INTERVAL and not M._dirty and not M._deferred then return end
-        if elapsed >= UPDATE_INTERVAL or M._dirty then
-            elapsed = 0
-            M._dirty = nil
-            local ok, err = pcall(M.Refresh, M)
-            if not ok and not M._logged then
-                M._logged = true
-                local log = TA.ErrorLog
-                if log and log.Log then pcall(log.Log, log, "MageSuggest", tostring(err)) end
+        if event == "PLAYER_REGEN_ENABLED" then
+            M._deferred = true
+            if not M:IsEnabled() then
+                M:ApplyFrame()
+                return
             end
-        elseif M._deferred and not InCombat() then
-            M:ApplyFrame()
+        end
+        if M:IsEnabled() then
+            M._dirty = true
         end
     end)
 
@@ -1339,6 +1397,7 @@ function M:CreateFrame()
     -- ApplyFrame, which waits for combat to end.
     self._frame = frame
     self._wantShow = false
+    SyncWatch(self:IsEnabled())
     frame:Hide()
 end
 
