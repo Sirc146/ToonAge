@@ -77,6 +77,7 @@ param(
     [switch] $Install,
     [switch] $Prune,
     [switch] $Check,
+    [switch] $Release,
     [string] $WowPath = 'C:\Program Files (x86)\World of Warcraft'
 )
 
@@ -200,11 +201,20 @@ function Get-TocFiles {
     return $files
 }
 
+# Scaffold flavors omitted from public -Release packaging (still buildable by name).
+$ScaffoldFlavors = @('Classic Era')
+
 $targets = if ($Flavor) {
     if (-not $Builds.Contains($Flavor)) {
         throw "Unknown flavor '$Flavor'. Known: $($Builds.Keys -join ', ')"
     }
     @{ $Flavor = $Builds[$Flavor] }
+} elseif ($Release) {
+    $ship = [ordered]@{}
+    foreach ($k in $Builds.Keys) {
+        if ($ScaffoldFlavors -notcontains $k) { $ship[$k] = $Builds[$k] }
+    }
+    $ship
 } else { $Builds }
 
 # ── Check ────────────────────────────────────────────────────────────────

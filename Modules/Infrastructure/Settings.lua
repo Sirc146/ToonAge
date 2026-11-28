@@ -560,6 +560,22 @@ function Settings:Render(content, sidebar)
             if advice and advice.RefreshArrows then pcall(advice.RefreshArrows, advice) end
         end)
 
+        if TA.StatPriority and TA.StatPriority.View and TA.StatPriority.SetView then
+            y = MakeChoiceRow(content, y, w, "Gear Guide Source (when Icy Veins & Wowhead disagree)", {
+                { value = "both", text = "Both" },
+                { value = "iv",   text = "Icy Veins" },
+                { value = "wh",   text = "Wowhead" },
+            }, function()
+                return TA.StatPriority:View() or "both"
+            end, function(val)
+                TA.StatPriority:SetView(val)
+                if TA.GearAdvice and TA.GearAdvice.RefreshArrows then
+                    pcall(TA.GearAdvice.RefreshArrows, TA.GearAdvice)
+                end
+                if TA.QueueUIRefresh then TA:QueueUIRefresh("STAT_PRIORITY_VIEW") end
+            end)
+        end
+
         y = MakeToggleRow(content, y, w, "Vendor Highlights (glow upgrades, grey out unusable & already-known items)", function()
             return not (TA.db and TA.db.vendorHighlights == false)
         end, function()
@@ -832,15 +848,33 @@ function Settings:Render(content, sidebar)
             end
         end)
         if Has("ForeverDungeonPins") then
-            y = MakeActionRow(content, y, w, "Cycle Dungeon Quest Map Pins (All / Active Only / Off)", function()
+            y = MakeChoiceRow(content, y, w, "Dungeon Quest Map Pins (items, objects, escorts & bosses)", {
+                { value = "all",    text = "All" },
+                { value = "active", text = "Active Only" },
+                { value = "off",    text = "Off" },
+            }, function()
                 local dp = TA:GetModule("ForeverDungeonPins")
-                if dp and dp.SlashCommands and dp.SlashCommands.dpins then
-                    dp.SlashCommands.dpins("")
-                end
+                return (dp and dp.GetMode and dp.GetMode()) or "all"
+            end, function(val)
+                local dp = TA:GetModule("ForeverDungeonPins")
+                if dp and dp.SetMode then dp.SetMode(val) end
             end)
         end
         y = y - 8
     end
+
+    -- Developer Tools (all flavors): hides Harvest tab & Self-test button by default.
+    y = MakeSection(content, y, w, "DEVELOPER TOOLS")
+    y = MakeToggleRow(content, y, w, "Developer Tools (show Harvest tab & Self-test title-bar button)", function()
+        return (TA.IsDevMode and TA:IsDevMode()) or false
+    end, function()
+        if TA.SetDevMode then
+            TA:SetDevMode(not TA:IsDevMode())
+        elseif TA.db then
+            TA.db.devMode = not (TA.db.devMode == true)
+        end
+    end)
+    y = y - 8
 
     -- Layout: both rows describe the arrow/tracker windows.
     if Has("Arrow", "QuestTracker") then

@@ -304,9 +304,29 @@ local function RetailPetTabWanted()
     return false
 end
 
+--- Developer Tools gate (OFF by default across all flavors so regular players
+--- do not see Harvest tab or Self-test button until they opt in).
+function TA:IsDevMode()
+    return (self.db and self.db.devMode == true) or self.debug == true
+end
+
+function TA:SetDevMode(flag)
+    if self.db then
+        self.db.devMode = flag and true or false
+    end
+    if self.UI and type(self.UI.RebuildTabs) == "function" then
+        pcall(self.UI.RebuildTabs, self.UI)
+    end
+    if self.TestHarness and type(self.TestHarness.SyncTitleButton) == "function" then
+        pcall(self.TestHarness.SyncTitleButton, self.TestHarness)
+    end
+    return self:IsDevMode()
+end
+
 local function TabAvailable(tabDef)
     if not TA:GetModule(tabDef.module) then return false end
     if TA.ModuleAllowed and not TA:ModuleAllowed(tabDef.module) then return false end
+    if tabDef.id == "harvest" and TA.IsDevMode and not TA:IsDevMode() then return false end
     if tabDef.id == "guide" and not HasGuideContent() then return false end
     if tabDef.id == "pets" and TA.flavor == "retail" and not RetailPetTabWanted() then return false end
     if tabDef.condition then
@@ -567,7 +587,14 @@ function TA:InitUI()
         b:SetScript("OnClick", function() TA:SlashCommand(cmd) end)
         return b
     end
-    local helpBtn = TitleButton(optionsBtn, "?", 24, "Commands", "help")
+    local helpBtn = TitleButton(optionsBtn, "?", 24, "Quick Start & Commands", "help")
+    helpBtn:SetScript("OnClick", function()
+        if TA.ShowQuickStart then
+            TA:ShowQuickStart()
+        else
+            TA:SlashCommand("help")
+        end
+    end)
     local copyBtn = TitleButton(helpBtn, "Copy", 48, "Copy chat", "copy")
     frame.helpBtn = helpBtn
     frame.copyBtn = copyBtn
@@ -2279,6 +2306,144 @@ function TA:ToggleSettingsDrawer()
 
     self:RefreshSettingsDrawer()
     drawer:Show()
+end
+
+-- ── Flavor-Aware Quick Start card (? title-bar button) ───────────────────────
+
+function TA.QuickStartLines(flavor)
+    local fl = flavor or TA.flavor or "retail"
+    if fl == "forever" then
+        return "ToonAge · WoW Forever Quick Start", {
+            "|cFFFFD100Now tab:|r Your single prioritized checklist — profession caps, talent plans, trainers, buffs, and in-dungeon quests.",
+            "|cFFFFD100Talents:|r Click any filter pill (Mana/Res, Channeling, Damage) for the plain-English Why + Inspect / +Plan Next.",
+            "|cFFFFD100Dungeon Map Pins:|r Open your map (M) inside leveling dungeons for quest items, books, escorts, and boss drops (/ta dpins).",
+            "|cFFFFD100Vendors & Loot Watch:|r Vendors glow green on upgrades and grey out unusable/known items. Loot Watch privately flags off-class or BoE Need rolls (/ta lootwatch).",
+            "|cFFFFD100Combat HUD (opt-in):|r Type /ta hud or toggle on the Spells tab. Out of combat shows Prep; in combat surfaces Blizzard Assisted Combat only.",
+        }
+    elseif fl == "tbc" then
+        return "ToonAge · TBC Anniversary Quick Start", {
+            "|cFFFFD100Stat Caps & Weapons:|r Tracks hit, expertise, defense, and weapon skill gaps against TBC hard caps.",
+            "|cFFFFD100Gear & Sockets:|r Highlights upgrades, empty sockets, and gem sourcing without inventing weights.",
+            "|cFFFFD100Professions & Reputation:|r Compact horizontal skill & standing bars with next-tier trainer alerts.",
+            "|cFFFFD100Rotation & Spells:|r Spec priority overview and trained-rank reminders.",
+            "|cFFFFD100Settings (Gear icon):|r Customize themes, tabs, and optional Developer Tools anytime.",
+        }
+    elseif fl == "mists" then
+        return "ToonAge · Mists Classic Quick Start", {
+            "|cFFFFD100Guide & Arrow:|r Step-by-step zone guidance with waypoint arrow and map pins.",
+            "|cFFFFD100Gear & AutoEquip:|r Highlights upgrades and tracks heirlooms cleanly.",
+            "|cFFFFD100Professions & Reputation:|r Horizontal skill & standing bars with trainer reminders.",
+            "|cFFFFD100Pets & Character:|r Pet care and character stats in one compact frame.",
+            "|cFFFFD100Settings (Gear icon):|r Toggle themes, tabs, and optional Developer Tools anytime.",
+        }
+    end
+    return "ToonAge · Quick Start", {
+        "|cFFFFD100Guide & NavHud:|r Step-by-step leveling, world quests, and waypoint routing.",
+        "|cFFFFD100Gear & Sockets:|r Upgrade scoring, empty socket checks, and enchant reminders.",
+        "|cFFFFD100Professions & Reputation:|r Horizontal progress bars with tier & renown tracking.",
+        "|cFFFFD100Combat & Rotation:|r Live spec guidance with zero combat taint.",
+        "|cFFFFD100Settings (Gear icon):|r Customize themes, tabs, tooltip lines, and Developer Tools.",
+    }
+end
+
+function TA:ShowQuickStart()
+    local titleTxt, lines = TA.QuickStartLines(TA.flavor)
+    if type(CreateFrame) ~= "function" or not UIParent then
+        if TA.PrintInteractiveHelp then TA:PrintInteractiveHelp() end
+        return nil
+    end
+
+    local f = _G.ToonAgeQuickStartFrame
+    if not f then
+        f = CreateFrame("Frame", "ToonAgeQuickStartFrame", UIParent, "BackdropTemplate")
+        f:SetSize(460, 290)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        if type(UISpecialFrames) == "table" then
+            table.insert(UISpecialFrames, "ToonAgeQuickStartFrame")
+        end
+
+        ApplyBackdrop(f, 0.055, 0.075, 0.110, 0.96, 0.35, 0.65, 0.95, 0.55)
+
+        local hdr = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -14)
+        hdr:SetPoint("TOPRIGHT", f, "TOPRIGHT", -38, -14)
+        hdr:SetJustifyH("LEFT")
+        hdr:SetTextColor(1, 0.85, 0.30, 1)
+        f._hdr = hdr
+
+        local closeX = CreateFrame("Button", nil, f, "BackdropTemplate")
+        closeX:SetSize(22, 22)
+        closeX:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -10)
+        ApplyBackdrop(closeX, 0.12, 0.14, 0.18, 0.9, 1, 1, 1, 0.15)
+        local xLbl = closeX:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        xLbl:SetAllPoints()
+        xLbl:SetText("X")
+        closeX:SetScript("OnClick", function() f:Hide() end)
+
+        f._rows = {}
+        for i = 1, 6 do
+            local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetJustifyH("LEFT")
+            if fs.SetWordWrap then fs:SetWordWrap(true) end
+            fs:SetTextColor(0.90, 0.92, 0.95, 1)
+            f._rows[i] = fs
+        end
+
+        local cmdBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        cmdBtn:SetSize(160, 24)
+        cmdBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 16, 12)
+        ApplyBackdrop(cmdBtn, 0.10, 0.16, 0.24, 0.95, 0.32, 0.70, 0.96, 0.60)
+        local cmdLbl = cmdBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        cmdLbl:SetAllPoints()
+        cmdLbl:SetText("Print Slash Commands")
+        cmdBtn:SetScript("OnClick", function()
+            if TA.PrintInteractiveHelp then TA:PrintInteractiveHelp() end
+            f:Hide()
+        end)
+
+        local okBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        okBtn:SetSize(74, 24)
+        okBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16, 12)
+        ApplyBackdrop(okBtn, 0.10, 0.14, 0.20, 0.95, 1, 1, 1, 0.20)
+        local okLbl = okBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        okLbl:SetAllPoints()
+        okLbl:SetText("Got it")
+        okBtn:SetScript("OnClick", function() f:Hide() end)
+
+        f:Hide()
+    end
+
+    if f:IsShown() then
+        f:Hide()
+        return f
+    end
+
+    f._hdr:SetText(titleTxt)
+    local y = -42
+    for i = 1, #f._rows do
+        local fs = f._rows[i]
+        local txt = lines[i]
+        if txt then
+            fs:ClearAllPoints()
+            fs:SetPoint("TOPLEFT", f, "TOPLEFT", 16, y)
+            fs:SetPoint("TOPRIGHT", f, "TOPRIGHT", -16, y)
+            fs:SetText(txt)
+            fs:Show()
+            local h = (fs.GetStringHeight and fs:GetStringHeight()) or 28
+            y = y - math.max(h, 24) - 10
+        else
+            fs:Hide()
+        end
+    end
+    f:SetHeight(math.max(240, math.abs(y) + 50))
+    f:Show()
+    return f
 end
 
 -- ── Blizzard Settings registration ───────────────────────────────────────────

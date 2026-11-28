@@ -311,6 +311,7 @@ def main():
             spellbook = {}, talents = {},
         }
 
+        ToonAge.db.devMode = true
         ToonAge:InitUI()
     """)
 

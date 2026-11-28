@@ -1674,12 +1674,20 @@ end
 TA.extraSystemCommands = TA.extraSystemCommands or {}
 table.insert(TA.extraSystemCommands, { name = "test", label = "Self-test" })
 
--- Title-bar button (dev builds, or when /ta debug is on at login).
+-- Title-bar button: shown only when Developer Tools (TA:IsDevMode()) or /ta debug
+-- is enabled, keeping the public title bar clean for everyday players.
 local function AddTitleButton()
     local UI = TA.UI
-    if not UI or H.button then return end
-    local isDev = type(TA.version) == "string" and TA.version:find("%-dev") ~= nil
-    if not (isDev or TA.debug) then return end
+    if not UI then return end
+    local wantDev = (TA.IsDevMode and TA:IsDevMode()) or (TA.debug == true)
+    if not wantDev then
+        if H.button and H.button.Hide then H.button:Hide() end
+        return
+    end
+    if H.button then
+        if H.button.Show then H.button:Show() end
+        return
+    end
 
     local b = CreateFrame("Button", "ToonAgeSelfTestButton", UI, "BackdropTemplate")
     b:SetSize(64, 18)
@@ -1714,6 +1722,10 @@ local function AddTitleButton()
         if IsShiftKeyDown() then H:Run("tabs settings") else H:Run() end
     end)
     H.button = b
+end
+
+function H:SyncTitleButton()
+    pcall(AddTitleButton)
 end
 
 -- Fallback command that does not depend on OnLogin finishing: /ta is registered at

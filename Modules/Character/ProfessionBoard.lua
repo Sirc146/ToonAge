@@ -144,6 +144,62 @@ RankOf = function(card)
     return rank, max
 end
 
+local PROF_BAR_COLORS = {
+    Skinning       = { 0.80, 0.34, 0.34 },
+    Tailoring      = { 0.38, 0.56, 0.92 },
+    Herbalism      = { 0.28, 0.78, 0.44 },
+    Mining         = { 0.78, 0.54, 0.26 },
+    Alchemy        = { 0.56, 0.44, 0.88 },
+    Blacksmithing  = { 0.72, 0.56, 0.40 },
+    Enchanting     = { 0.68, 0.42, 0.88 },
+    Engineering    = { 0.85, 0.62, 0.24 },
+    Leatherworking = { 0.74, 0.48, 0.30 },
+    Jewelcrafting  = { 0.36, 0.78, 0.86 },
+    Inscription    = { 0.60, 0.54, 0.86 },
+    Comprehension  = { 0.34, 0.56, 0.76 },
+    Cooking        = { 0.86, 0.68, 0.26 },
+    ["First Aid"]  = { 0.76, 0.82, 0.86 },
+    Fishing        = { 0.28, 0.66, 0.88 },
+}
+
+--- Tier badge shown next to each profession bar (matches Reputation standing column).
+function B.TierLabel(card, rank, max)
+    local nm = card and card.name or ""
+    if nm == "Comprehension" or (card and card.skillID == 3012) then
+        return "Scaled"
+    end
+    local r = tonumber(rank) or 0
+    local m = tonumber(max) or 0
+    if m > 0 and r >= m then
+        return (m < 300) and "CAPPED" or "Max"
+    end
+    if m <= 75 then return "Apprentice" end
+    if m <= 150 then return "Journeyman" end
+    if m <= 225 then return "Expert" end
+    if m <= 300 then return "Artisan" end
+    if m <= 375 then return "Master" end
+    return "Skilled"
+end
+
+--- Compact gather breakdown omitting zero counts so it never truncates.
+function B.FormatGatherBreakdown(sum)
+    if type(sum) ~= "table" then return "" end
+    local parts = {}
+    if (sum.herbs or 0) > 0 then
+        parts[#parts + 1] = string.format("%d %s", sum.herbs, sum.herbs == 1 and "herb" or "herbs")
+    end
+    if (sum.ore or 0) > 0 then
+        parts[#parts + 1] = string.format("%d ore", sum.ore)
+    end
+    if (sum.skin or 0) > 0 then
+        parts[#parts + 1] = string.format("%d skinned", sum.skin)
+    end
+    if #parts == 0 then
+        return string.format("%d nodes", sum.total or 0)
+    end
+    return table.concat(parts, " · ")
+end
+
 function B:Render(content, side)
     local L = TA.Layout
     if not L then return end
@@ -185,17 +241,19 @@ function B:Render(content, side)
     local gear = TA.ProfessionGear
     if gear and gear.Begin then gear:Begin() end
 
-    local y = -8
-    y = L:SectionHeader(content, y, "Professions")
-
     local PS = TA.ProfessionSkills
     local result = (PS and PS.Collect and PS.Collect()) or { cards = {} }
-    if result.unverified then
+    local cards = result.cards or {}
+
+    local y = -8
+    local summaryRight = (#cards > 0) and string.format("%d learned", #cards) or nil
+    y = L:SectionHeader(content, y, "Professions", summaryRight)
+
+    if result.unverified and #cards == 0 then
         y = L:Paragraph(content, y,
             "Skill lines and caps for this client are unverified until an in-game probe confirms them.")
     end
 
-    local cards = result.cards or {}
     local function DrawGathering(at)
         local GT = TA.GetModule and TA:GetModule("GatherTracker")
         if not (GT and type(GT.GetSummary) == "function") then return at end
@@ -210,7 +268,7 @@ function B:Render(content, side)
         else
             at = L:DataRow(content, at, {
                 label = "Logged nodes",
-                value = string.format("%d herbs · %d ore · %d skinned", sum.herbs, sum.ore, sum.skin),
+                value = B.FormatGatherBreakdown(sum),
                 note = (sum.hereNodes and sum.hereNodes > 0)
                     and string.format("%d %s recorded in your current zone.", sum.hereNodes, sum.hereNodes == 1 and "node" or "nodes")
                     or nil,
@@ -240,31 +298,92 @@ function B:Render(content, side)
         if okL and type(rawLv) == "number" then playerLvl = rawLv end
     end
 
+    -- Group into Primary Professions and Secondary Skills (matching Reputation layout).
+    local primaryCards, secondaryCards = {}, {}
     for _, card in ipairs(cards) do
-        local rank, max = RankOf(card)
-        local text = string.format("%d / %d", rank or 0, max or 0)
-        if card.secondary then text = text .. "  Secondary" end
-        y = L:ProfessionCard(content, y, {
-            name     = card.name,
-            icon     = card.icon,
-            rankText = text,
-            rank     = rank,
-            max      = max,
-            segments = card.segments,
-        })
-        local rem = B.TrainerReminder(card, rank, max, playerLvl)
-        if rem then
-            y = L:DataRow(content, y, {
-                label  = card.name .. " — Next tier open",
-                value  = rem.badge,
-                note   = rem.note,
-                status = rem.status,
-            })
-        end
-        if gear and gear.Draw then
-            y = gear:Draw(content, y, card)
+        if card.secondary then
+            secondaryCards[#secondaryCards + 1] = card
+        else
+            primaryCards[#primaryCards + 1] = card
         end
     end
+
+    local useStatBar = type(L.StatBar) == "function"
+    local function DrawGroup(groupTitle, groupCards, addSpacer)
+        if #groupCards == 0 then return end
+        if addSpacer and L.Spacer then y = L:Spacer(y, 6) end
+        if useStatBar then
+            y = L:SectionHeader(content, y, groupTitle)
+        end
+        for _, card in ipairs(groupCards) do
+            local rank, max = RankOf(card)
+            local rNum = tonumber(rank) or 0
+            local mNum = tonumber(max) or 0
+            local rem = B.TrainerReminder(card, rNum, mNum, playerLvl)
+            if useStatBar then
+                local pct = (mNum > 0) and math.floor(math.min(math.max(rNum / mNum, 0), 1) * 100 + 0.5) or 0
+                local tier = B.TierLabel(card, rNum, mNum)
+                local col = (rem and rem.capped) and { 0.90, 0.34, 0.30 }
+                    or ((mNum > 0 and rNum >= mNum) and { 0.27, 0.78, 0.42 }
+                    or PROF_BAR_COLORS[card.name] or { 0.35, 0.65, 0.90 })
+                local tipLines = {
+                    string.format("%s: %d / %d (%d%%)", tostring(card.name or "Profession"), rNum, mNum, pct),
+                    "Tier: " .. tier,
+                }
+                if rem and rem.note then
+                    tipLines[#tipLines + 1] = rem.note
+                end
+                if type(card.segments) == "table" and #card.segments > 1 then
+                    for _, seg in ipairs(card.segments) do
+                        if seg.label then
+                            tipLines[#tipLines + 1] = string.format("%s: %d / %d",
+                                tostring(seg.label), tonumber(seg.rank) or 0, tonumber(seg.max) or 0)
+                        end
+                    end
+                end
+                y = L:StatBar(content, y, {
+                    label = card.name or "Profession",
+                    labelWidth = 126,
+                    value = rNum,
+                    scale = (mNum > 0) and mNum or 1,
+                    barHeight = 16,
+                    rowGap = 4,
+                    color = col,
+                    badge = tier,
+                    barText = string.format("%d%%", pct),
+                    displayText = string.format("%d / %d", rNum, mNum),
+                    valueWidth = 88,
+                    status = (rem and rem.capped) and "bad" or "neutral",
+                    tooltip = tipLines,
+                })
+            else
+                local text = string.format("%d / %d", rNum, mNum)
+                if card.secondary then text = text .. "  Secondary" end
+                y = L:ProfessionCard(content, y, {
+                    name     = card.name,
+                    icon     = card.icon,
+                    rankText = text,
+                    rank     = rNum,
+                    max      = mNum,
+                    segments = card.segments,
+                })
+            end
+            if rem then
+                y = L:DataRow(content, y, {
+                    label  = card.name .. " — Next tier open",
+                    value  = rem.badge,
+                    note   = rem.note,
+                    status = rem.status,
+                })
+            end
+            if gear and gear.Draw then
+                y = gear:Draw(content, y, card)
+            end
+        end
+    end
+
+    DrawGroup("Primary Professions", primaryCards, false)
+    DrawGroup("Secondary Skills", secondaryCards, #primaryCards > 0)
     finish(y)
 end
 
